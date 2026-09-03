@@ -37,6 +37,7 @@ mod tests {
         let output = render(&IrProgram {
             functions: vec![crate::compiler::ir::IrFunction {
                 name: "main".into(),
+                parameters: Vec::new(),
                 instructions: vec![Instruction::Return],
             }],
         });

@@ -1,9 +1,10 @@
 # Sovra
 
 Sovra is a small, expressive programming language and toolchain. This
-repository contains the M4 foundation: a stable command-line entry point,
+repository contains the M9 foundation: a stable command-line entry point,
 compiler pipeline boundaries, a lexer, parser, semantic validation, a minimal
-intermediate representation, an interpreter, and a text backend.
+intermediate representation, an interpreter with user-function calls, typed
+locals, module-aware name resolution, and a standard-library `std` namespace.
 
 ## Quick start
 
@@ -13,7 +14,7 @@ cargo run -- --help
 cargo test
 ```
 
-The canonical executable is `svr`. M4 supports `run` and `build` for a source
+The canonical executable is `svr`. M6 supports `svr run` for a `.svr` source
 path; remaining commands are listed by `svr --help` and report a clear,
 non-zero “not implemented” message when selected.
 

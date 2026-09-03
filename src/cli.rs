@@ -33,8 +33,8 @@ Commands:
   update           Update project dependencies (planned)
   doc              Build Sovra documentation (planned)
 
-M4 provides lexing, parsing, semantic analysis, IR lowering, execution, and a
-text backend. Other commands remain planned.
+M6 provides the `run` command over lexing, parsing, semantic analysis, IR
+lowering, and interpreter execution. Other commands remain planned.
 Use `svr <COMMAND> --help` for command-specific status.";
 
 /// Run the CLI using an iterator of argument strings.
@@ -92,18 +92,23 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
     }
 
     let mut message = String::new();
-    let _ = write!(message, "svr: command '{command}' is not implemented in M4");
+    let _ = write!(message, "svr: command '{command}' is not implemented in M6");
     if !args.is_empty() {
         let _ = write!(message, " (arguments were not processed)");
     }
 
     fn compile_command(command: &str, args: &[String]) -> ExitCode {
+        if args.len() != 1 {
+            eprintln!("svr: {command} expects exactly one .svr source path");
+            return ExitCode::from(2);
+        }
         let path = match args.first() {
-            Some(path) => path,
-            None => {
-                eprintln!("svr: {command} requires a .svr source path");
+            Some(path) if path.ends_with(".svr") => path,
+            Some(path) => {
+                eprintln!("svr: source path `{path}` must have a .svr extension");
                 return ExitCode::from(2);
             }
+            None => unreachable!("argument count is validated above"),
         };
         let source = match fs::read_to_string(path) {
             Ok(source) => source,
@@ -164,7 +169,7 @@ mod tests {
 
     #[test]
     fn known_future_command_is_not_implemented() {
-        assert_eq!(run(["build"]), ExitCode::from(1));
+        assert_eq!(run(["build"]), ExitCode::from(2));
     }
 
     #[test]

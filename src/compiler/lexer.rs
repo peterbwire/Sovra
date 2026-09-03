@@ -192,6 +192,10 @@ impl<'a> Scanner<'a> {
             "else" => TokenKind::Keyword("else"),
             "true" => TokenKind::Keyword("true"),
             "false" => TokenKind::Keyword("false"),
+            "mod" => TokenKind::Keyword("mod"),
+            "export" => TokenKind::Keyword("export"),
+            "use" => TokenKind::Keyword("use"),
+            "import" => TokenKind::Keyword("import"),
             _ => TokenKind::Identifier(text.to_owned()),
         }
     }
@@ -261,6 +265,7 @@ impl<'a> Scanner<'a> {
         let operator = match (self.peek(), self.peek_next()) {
             (Some('='), Some('>')) => ("=>", 2),
             (Some('-'), Some('>')) => ("->", 2),
+            (Some(':'), Some(':')) => ("::", 2),
             (Some('='), Some('=')) => ("==", 2),
             (Some('!'), Some('=')) => ("!=", 2),
             (Some('<'), Some('=')) => ("<=", 2),

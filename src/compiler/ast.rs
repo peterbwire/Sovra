@@ -7,6 +7,19 @@ use crate::compiler::diagnostics::Span;
 pub struct Program {
     /// Top-level function declarations.
     pub functions: Vec<Function>,
+    /// Named source modules defined in the file.
+    pub modules: Vec<Module>,
+}
+
+/// A named source module.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Module {
+    /// Module name.
+    pub name: String,
+    /// Exported functions in the module.
+    pub functions: Vec<Function>,
+    /// Location of the module declaration.
+    pub span: Span,
 }
 
 /// A function declaration.
@@ -14,6 +27,8 @@ pub struct Program {
 pub struct Function {
     /// Function name.
     pub name: String,
+    /// Whether the function is exported from a module.
+    pub is_exported: bool,
     /// Function parameters.
     pub parameters: Vec<Parameter>,
     /// Optional declared return type.
@@ -42,6 +57,8 @@ pub enum Statement {
     Let {
         /// Binding name.
         name: String,
+        /// Optional declared binding type.
+        type_name: Option<String>,
         /// Initializer expression.
         value: Expression,
         /// Statement location.
@@ -71,6 +88,11 @@ pub enum Expression {
     Boolean(bool),
     /// A variable reference.
     Identifier(String),
+    /// A module-qualified function or value reference.
+    QualifiedName {
+        /// Path segments.
+        path: Vec<String>,
+    },
     /// A function call.
     Call {
         /// Expression resolving to the called function.

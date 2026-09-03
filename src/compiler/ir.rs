@@ -15,6 +15,8 @@ pub struct IrProgram {
 pub struct IrFunction {
     /// Function name.
     pub name: String,
+    /// Parameter names, in call order.
+    pub parameters: Vec<String>,
     /// Linear instruction sequence.
     pub instructions: Vec<Instruction>,
 }
@@ -45,14 +47,24 @@ pub enum Instruction {
 
 /// Lower a semantically valid program into the minimal IR.
 pub fn lower(program: &TypedProgram) -> IrProgram {
-    IrProgram {
-        functions: program
-            .program
-            .functions
-            .iter()
-            .map(lower_function)
-            .collect(),
+    let mut functions = Vec::new();
+    for function in &program.program.functions {
+        functions.push(lower_function(function));
     }
+    for module in &program.program.modules {
+        for function in &module.functions {
+            if function.is_exported {
+                functions.push(lower_namespaced_function(&module.name, function));
+            }
+        }
+    }
+    IrProgram { functions }
+}
+
+fn lower_namespaced_function(module_name: &str, function: &crate::compiler::ast::Function) -> IrFunction {
+    let mut lowered = lower_function(function);
+    lowered.name = format!("{module_name}::{name}", name = lowered.name);
+    lowered
 }
 
 fn lower_function(function: &crate::compiler::ast::Function) -> IrFunction {
@@ -62,6 +74,11 @@ fn lower_function(function: &crate::compiler::ast::Function) -> IrFunction {
     }
     IrFunction {
         name: function.name.clone(),
+        parameters: function
+            .parameters
+            .iter()
+            .map(|parameter| parameter.name.clone())
+            .collect(),
         instructions,
     }
 }
@@ -94,16 +111,22 @@ fn lower_expression(expression: &Expression, instructions: &mut Vec<Instruction>
             instructions.push(Instruction::LoadLiteral(value.to_string()))
         }
         Expression::Identifier(name) => instructions.push(Instruction::LoadName(name.clone())),
+        Expression::QualifiedName { path } => {
+            instructions.push(Instruction::LoadName(path.join("::")));
+        }
         Expression::Call { callee, arguments } => {
             for argument in arguments {
                 lower_expression(argument, instructions);
             }
-            if let Expression::Identifier(name) = callee.as_ref() {
-                instructions.push(Instruction::Call {
-                    name: name.clone(),
-                    arguments: arguments.len(),
-                });
-            }
+            let name = match callee.as_ref() {
+                Expression::Identifier(name) => name.clone(),
+                Expression::QualifiedName { path } => path.join("::"),
+                _ => return,
+            };
+            instructions.push(Instruction::Call {
+                name,
+                arguments: arguments.len(),
+            });
         }
         Expression::Binary {
             left,

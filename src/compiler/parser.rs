@@ -45,20 +45,52 @@ struct TokenParser<'a> {
 impl<'a> TokenParser<'a> {
     fn program(&mut self) -> Program {
         let mut functions = Vec::new();
+        let mut modules = Vec::new();
         while !self.at_eof() {
-            if self.check_keyword("fn") {
+            if self.check_keyword("mod") {
+                if let Some(module) = self.module() {
+                    modules.push(module);
+                }
+            } else if self.check_keyword("fn") || self.check_keyword("export") {
                 if let Some(function) = self.function() {
                     functions.push(function);
                 }
             } else {
-                self.error("E2000", "expected a function declaration");
+                self.error("E2000", "expected a function or module declaration");
                 self.advance();
             }
         }
-        Program { functions }
+        Program { functions, modules }
+    }
+
+    fn module(&mut self) -> Option<crate::compiler::ast::Module> {
+        let start = self.expect_keyword("mod")?.span;
+        let name = self.expect_identifier("module name")?;
+        self.expect_punctuation('{');
+        let mut functions = Vec::new();
+        while !self.check_punctuation('}') && !self.at_eof() {
+            if self.check_keyword("fn") || self.check_keyword("export") {
+                if let Some(function) = self.function() {
+                    functions.push(function);
+                }
+            } else {
+                self.error("E2000", "expected a function declaration in module");
+                self.advance();
+            }
+        }
+        let end = self.expect_punctuation('}').unwrap_or(start);
+        Some(crate::compiler::ast::Module {
+            name,
+            functions,
+            span: Span {
+                end: end.end,
+                ..start
+            },
+        })
     }
 
     fn function(&mut self) -> Option<Function> {
+        let is_exported = self.consume_keyword("export");
         let start = self.expect_keyword("fn")?.span;
         let name = self.expect_identifier("function name")?;
         self.expect_punctuation('(');
@@ -66,7 +98,7 @@ impl<'a> TokenParser<'a> {
         while !self.check_punctuation(')') && !self.at_eof() {
             let parameter_start = self.peek().span;
             let parameter_name = self.expect_identifier("parameter name")?;
-            let type_name = if self.consume_operator(":") {
+            let type_name = if self.consume_punctuation(':') {
                 self.expect_identifier("parameter type")
             } else {
                 None
@@ -98,6 +130,7 @@ impl<'a> TokenParser<'a> {
         let end = self.expect_punctuation('}').unwrap_or(start);
         Some(Function {
             name,
+            is_exported,
             parameters,
             return_type,
             body,
@@ -112,11 +145,17 @@ impl<'a> TokenParser<'a> {
         if self.consume_keyword("let") {
             let start = self.previous().span;
             let name = self.expect_identifier("binding name")?;
+            let type_name = if self.consume_punctuation(':') {
+                Some(self.expect_identifier("binding type")?)
+            } else {
+                None
+            };
             self.expect_operator("=");
             let value = self.expression()?;
             self.consume_punctuation(';');
             return Some(Statement::Let {
                 name,
+                type_name,
                 value,
                 span: Span {
                     end: self.previous().span.end,
@@ -170,7 +209,7 @@ impl<'a> TokenParser<'a> {
 
     fn primary(&mut self) -> Option<Expression> {
         let token = self.peek().clone();
-        let expression = match token.kind {
+        let mut expression = match token.kind {
             TokenKind::String(value) => {
                 self.advance();
                 Expression::String(value)
@@ -206,6 +245,22 @@ impl<'a> TokenParser<'a> {
                 return None;
             }
         };
+        if self.consume_operator("::") {
+            let name = self.expect_identifier("module member name")?;
+            expression = Expression::QualifiedName {
+                path: match expression {
+                    Expression::Identifier(module) => vec![module, name],
+                    Expression::QualifiedName { mut path } => {
+                        path.push(name);
+                        path
+                    }
+                    _ => {
+                        self.error("E2001", "expected a module path before `::`");
+                        vec![]
+                    }
+                },
+            };
+        }
         if self.consume_punctuation('(') {
             let mut arguments = Vec::new();
             while !self.check_punctuation(')') && !self.at_eof() {
@@ -367,6 +422,31 @@ mod tests {
         assert!(matches!(
             program.functions[0].body[0],
             Statement::Return { .. }
+        ));
+    }
+
+    #[test]
+    fn parses_module_functions_and_qualified_calls() {
+        let program = Parser::new()
+            .parse_source(
+                "mod math { export fn add(a: Int, b: Int) -> Int { return a + b } } fn main() { print(math::add(2, 3)) }",
+            )
+            .expect("source should parse");
+        assert_eq!(program.modules.len(), 1);
+        assert_eq!(program.modules[0].name, "math");
+        assert_eq!(program.modules[0].functions[0].name, "add");
+        assert_eq!(program.functions[0].name, "main");
+    }
+
+    #[test]
+    fn parses_std_namespace_calls() {
+        let program = Parser::new()
+            .parse_source("fn main() { std::println(42) }")
+            .expect("source should parse");
+        assert!(matches!(
+            &program.functions[0].body[0],
+            Statement::Expression(Expression::Call { callee, .. })
+                if matches!(callee.as_ref(), Expression::QualifiedName { path } if path == &["std".to_owned(), "println".to_owned()])
         ));
     }
 
