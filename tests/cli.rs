@@ -1,3 +1,5 @@
+//! Integration tests for the `svr` command-line contract.
+
 use std::process::Command;
 
 fn svr() -> Command {
@@ -18,14 +20,21 @@ fn help_command_describes_m0() {
     let help = String::from_utf8_lossy(&output.stdout);
     assert!(help.contains("Usage:"));
     assert!(help.contains("build"));
-    assert!(help.contains("M0"));
+    assert!(help.contains("M4"));
 }
 
 #[test]
-fn future_command_reports_status() {
-    let output = svr().arg("build").output().expect("svr should run");
-    assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("not implemented in M0"));
+fn all_reserved_commands_are_recognized() {
+    for command in [
+        "new", "init", "run", "build", "test", "check", "fmt", "repl", "install", "update", "doc",
+    ] {
+        let output = svr().arg(command).output().expect("svr should run");
+        if command == "run" || command == "build" {
+            assert_eq!(output.status.code(), Some(2));
+        } else {
+            assert_ne!(output.status.code(), Some(2));
+        }
+    }
 }
 
 #[test]
@@ -34,4 +43,3 @@ fn unknown_command_has_helpful_error() {
     assert_eq!(output.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&output.stderr).contains("svr --help"));
 }
-

@@ -1,8 +1,6 @@
 //! Public boundaries for the Sovra compiler pipeline.
 //!
-//! M0 deliberately contains no language implementation. Each module exposes a
-//! small, documented marker so later milestones can add behavior without
-//! changing the top-level crate layout.
+//! Compiler pipeline boundaries and the M1 lexical foundation.
 
 pub mod ast;
 pub mod backend;
@@ -13,9 +11,10 @@ pub mod lexer;
 pub mod parser;
 pub mod semantic;
 
-const COMMANDS: &[&str] = &["build", "check", "fmt", "init", "run"];
+const COMMANDS: &[&str] = &[
+    "build", "check", "doc", "fmt", "init", "install", "new", "repl", "run", "test", "update",
+];
 
 pub(crate) fn is_known_command(command: &str) -> bool {
     COMMANDS.contains(&command)
 }
-

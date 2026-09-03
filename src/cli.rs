@@ -1,6 +1,7 @@
 //! Command-line parsing for `svr`.
 
 use std::fmt::Write as _;
+use std::fs;
 use std::process::ExitCode;
 
 use crate::compiler;
@@ -20,13 +21,20 @@ Options:
   -V, --version    Print version information
 
 Commands:
-  build            Compile a Sovra source file (planned)
+  new              Create a Sovra project (planned)
+  init             Initialize a Sovra project (planned)
+  run              Compile and run a Sovra program
+  build            Compile a Sovra source file
+  test             Run Sovra tests (planned)
   check            Check a Sovra source file (planned)
   fmt              Format Sovra source files (planned)
-  init             Create a Sovra project (planned)
-  run              Compile and run a Sovra program (planned)
+  repl             Start the Sovra REPL (planned)
+  install          Install a package (planned)
+  update           Update project dependencies (planned)
+  doc              Build Sovra documentation (planned)
 
-M0 provides the command-line foundation only. Compiler stages are placeholders.
+M4 provides lexing, parsing, semantic analysis, IR lowering, execution, and a
+text backend. Other commands remain planned.
 Use `svr <COMMAND> --help` for command-specific status.";
 
 /// Run the CLI using an iterator of argument strings.
@@ -76,17 +84,69 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
 
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         println!("{command} is planned for a future Sovra milestone.");
-        println!("M0 does not implement compiler or runtime functionality.");
         return ExitCode::SUCCESS;
     }
 
+    if command == "run" || command == "build" {
+        return compile_command(command, args);
+    }
+
     let mut message = String::new();
-    let _ = write!(
-        message,
-        "svr: command '{command}' is not implemented in M0"
-    );
+    let _ = write!(message, "svr: command '{command}' is not implemented in M4");
     if !args.is_empty() {
         let _ = write!(message, " (arguments were not processed)");
+    }
+
+    fn compile_command(command: &str, args: &[String]) -> ExitCode {
+        let path = match args.first() {
+            Some(path) => path,
+            None => {
+                eprintln!("svr: {command} requires a .svr source path");
+                return ExitCode::from(2);
+            }
+        };
+        let source = match fs::read_to_string(path) {
+            Ok(source) => source,
+            Err(error) => {
+                eprintln!("svr: cannot read `{path}`: {error}");
+                return ExitCode::from(1);
+            }
+        };
+        let program = match compiler::parser::Parser::new().parse_source(&source) {
+            Ok(program) => program,
+            Err(diagnostics) => {
+                for diagnostic in diagnostics.items {
+                    eprintln!("error[{}]: {}", diagnostic.code, diagnostic.message);
+                }
+                return ExitCode::from(1);
+            }
+        };
+        let typed = match compiler::semantic::SemanticAnalyzer::new().analyze(&program) {
+            Ok(typed) => typed,
+            Err(diagnostics) => {
+                for diagnostic in diagnostics.items {
+                    eprintln!("error[{}]: {}", diagnostic.code, diagnostic.message);
+                }
+                return ExitCode::from(1);
+            }
+        };
+        let ir = compiler::ir::lower(&typed);
+        if command == "build" {
+            print!("{}", compiler::backend::render(&ir));
+            return ExitCode::SUCCESS;
+        }
+        match compiler::interpreter::run(&ir) {
+            Ok(output) => {
+                for line in output {
+                    println!("{line}");
+                }
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("svr: runtime error: {error}");
+                ExitCode::from(1)
+            }
+        }
     }
     eprintln!("{message}.");
     eprintln!("See docs/roadmap.md for planned functionality.");
@@ -112,4 +172,3 @@ mod tests {
         assert_eq!(run(["wat"]), ExitCode::from(2));
     }
 }
-
