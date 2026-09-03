@@ -1,0 +1,26 @@
+[package]
+name = "sovra"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+description = "The Sovra programming language toolchain"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/sovra-lang/sovra"
+keywords = ["compiler", "programming-language", "sovra"]
+categories = ["compilers", "command-line-utilities"]
+
+[[bin]]
+name = "svr"
+path = "src/main.rs"
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_debug_implementations = "warn"
+missing_docs = "warn"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+

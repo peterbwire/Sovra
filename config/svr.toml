@@ -1,0 +1,7 @@
+# Reserved project configuration for future Sovra milestones.
+# M0 does not read configuration files.
+
+[project]
+# name = "hello-world"
+# entry = "main.svr"
+

@@ -1,0 +1,5 @@
+// The first Sovra example. Execution is planned for a future milestone.
+fn main() {
+    print("Hello, world!");
+}
+
