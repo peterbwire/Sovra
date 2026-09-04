@@ -65,10 +65,11 @@ models, auth policies, standard-library calls, service contracts, and page
 bindings before execution.
 
 Current implementation validates the project manifest, required project
-metadata, runtime target, configured entry path, source-file discovery, and
-external service binding consistency between the manifest, source declarations,
-and app entry. Application-level routes, models, auth policies, full service
-contracts, and page bindings remain next.
+metadata, runtime target, configured entry path, source-file discovery, external
+service binding consistency between the manifest, source declarations, and app
+entry, app route and page path/target bindings, auth target wiring, app data
+model references, scheduled task targets, and auth policy model references.
+Full service contracts and richer page/model checks remain next.
 
 ## M13 — Sovra Tests
 

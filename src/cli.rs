@@ -206,9 +206,16 @@ fn check_command(args: &[String]) -> ExitCode {
         match compiler::project::check_project(path) {
             Ok(project) => {
                 println!(
-                    "checked project `{}`: {} source file(s), entry {}",
+                    "checked project `{}`: {} source file(s), {} service(s), {} model(s), {} route(s), {} page(s), {} scheduled task(s), {} auth policy(ies), auth {}, entry {}",
                     project.name,
                     project.source_files.len(),
+                    project.declared_services.len(),
+                    project.data_models.len(),
+                    project.routes.len(),
+                    project.pages.len(),
+                    project.scheduled_tasks.len(),
+                    project.auth_policies.len(),
+                    project.auth_target.as_deref().unwrap_or("none"),
                     project.entry_path.display()
                 );
                 ExitCode::SUCCESS

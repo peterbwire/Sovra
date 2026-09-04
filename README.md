@@ -88,7 +88,9 @@ idea-to-application walkthrough.
 
 Read [docs/spec.md](docs/spec.md) for the current language contract,
 [ARCHITECTURE.md](ARCHITECTURE.md) for the system boundaries, and
-[CONTRIBUTING.md](CONTRIBUTING.md) for development conventions.
+[CONTRIBUTING.md](CONTRIBUTING.md) for development conventions. Agents
+continuing the production hardening work should start with
+[docs/production-upgrade-flow.md](docs/production-upgrade-flow.md).
 
 ## License
 

@@ -20,8 +20,9 @@ backend.
 * `check <source.svr>` validates a source file through parsing and semantic
   analysis without executing it.
 * `check <project-directory>` validates the project manifest, required
-  metadata, runtime target, entry path, source-file discovery, and external
-  service binding consistency.
+  metadata, runtime target, entry path, source-file discovery, external
+  service binding consistency, app routes, page bindings, auth wiring, data
+  model references, and scheduled task targets.
 * Other commands remain reserved and report that they are not implemented.
 * Unknown commands are rejected with a non-zero status and a help hint.
 
@@ -96,7 +97,19 @@ requires `project.name` and `project.entry`, accepts `project.version`,
 stable `E40xx` diagnostics for malformed or unsupported project metadata.
 Manifest service bindings must correspond to `service <name>` declarations in
 project source, and app-entry service references must be both declared and
-manifest-bound.
+manifest-bound. App entry route declarations must use
+`route METHOD "/path" -> target`; methods are limited to common HTTP verbs,
+paths must be slash-rooted without whitespace, empty segments, trailing slashes
+outside `/`, or invalid `:parameter` names, and targets must resolve to a
+function or task symbol. Page route declarations use `page "/path" -> target`
+with the same path rules and must resolve to a page or view symbol. App
+`auth: module.symbol` bindings must resolve to an `auth` declaration, app
+`data: [...]` entries must resolve to known models, and scheduled
+`task <schedule> -> module.symbol` declarations must resolve to known task or
+function symbols. Auth policies use `allow role to action on Model` with single
+items or bracketed action/model lists, plus `allow role to action Model where
+...` shorthand for conditional policies; policy model references must resolve
+to known model declarations and duplicate policies are rejected.
 
 ## Application-language direction
 

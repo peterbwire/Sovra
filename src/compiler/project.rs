@@ -33,6 +33,14 @@ pub struct ProjectCheck {
     pub routes: Vec<AppRoute>,
     /// Page routes declared by the application entry.
     pub pages: Vec<AppPage>,
+    /// Authentication target requested by the application entry, if present.
+    pub auth_target: Option<String>,
+    /// Auth policies declared by project source.
+    pub auth_policies: Vec<AuthPolicy>,
+    /// Data models requested by the application entry.
+    pub data_models: Vec<String>,
+    /// Scheduled tasks declared by the application entry.
+    pub scheduled_tasks: Vec<AppTask>,
 }
 
 /// API route declared by an application entry file.
@@ -53,6 +61,26 @@ pub struct AppPage {
     pub path: String,
     /// Dotted Sovra page target.
     pub target: String,
+}
+
+/// Scheduled task declared by an application entry file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppTask {
+    /// Human-readable schedule expression from the app entry.
+    pub schedule: String,
+    /// Dotted Sovra task target.
+    pub target: String,
+}
+
+/// Authorization policy declared by an `auth` block.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuthPolicy {
+    /// Role name granted by the policy.
+    pub role: String,
+    /// Action names granted by the policy.
+    pub actions: Vec<String>,
+    /// Model names guarded by the policy.
+    pub models: Vec<String>,
 }
 
 /// Validate a Sovra project directory.
@@ -107,6 +135,10 @@ pub fn check_project(path: impl AsRef<Path>) -> Result<ProjectCheck, Diagnostics
             app_services: source_index.app_services,
             routes: source_index.routes,
             pages: source_index.pages,
+            auth_target: source_index.auth_target,
+            auth_policies: source_index.auth_policies,
+            data_models: source_index.data_models,
+            scheduled_tasks: source_index.scheduled_tasks,
         })
     } else {
         Err(diagnostics)
@@ -277,8 +309,14 @@ struct ProjectSourceIndex {
     app_services: Vec<String>,
     callable_symbols: BTreeSet<String>,
     page_symbols: BTreeSet<String>,
+    auth_symbols: BTreeSet<String>,
+    model_symbols: BTreeSet<String>,
+    auth_policies: Vec<AuthPolicy>,
     routes: Vec<AppRoute>,
     pages: Vec<AppPage>,
+    auth_target: Option<String>,
+    data_models: Vec<String>,
+    scheduled_tasks: Vec<AppTask>,
 }
 
 fn scan_project_sources(
@@ -325,6 +363,15 @@ fn scan_project_sources(
         .pages
         .sort_by(|left, right| left.path.cmp(&right.path));
     index
+        .scheduled_tasks
+        .sort_by(|left, right| left.target.cmp(&right.target));
+    index.auth_policies.sort_by(|left, right| {
+        left.role
+            .cmp(&right.role)
+            .then(left.models.cmp(&right.models))
+    });
+    index.data_models.sort();
+    index
 }
 
 fn scan_source_file(
@@ -355,10 +402,34 @@ fn scan_source_file(
                 .insert(format!("{module_name}.{name}"));
         }
         if let Some(name) = parse_prefixed_identifier(trimmed, "task") {
-            index.callable_symbols.insert(name.clone());
-            index
-                .callable_symbols
-                .insert(format!("{module_name}.{name}"));
+            if trimmed
+                .strip_prefix("task")
+                .is_some_and(|rest| rest.trim_start().starts_with(&format!("{name}(")))
+            {
+                index.callable_symbols.insert(name.clone());
+                index
+                    .callable_symbols
+                    .insert(format!("{module_name}.{name}"));
+            }
+        }
+        if let Some(name) = parse_prefixed_identifier(trimmed, "model") {
+            index.model_symbols.insert(name.clone());
+            index.model_symbols.insert(format!("{module_name}.{name}"));
+        }
+        if let Some(name) = parse_prefixed_identifier(trimmed, "auth") {
+            index.auth_symbols.insert(name.clone());
+            index.auth_symbols.insert(format!("{module_name}.{name}"));
+        }
+        if starts_keyword(trimmed, "allow") {
+            match parse_auth_policy(trimmed) {
+                Some(policy) => index.auth_policies.push(policy),
+                None => push_manifest_error(
+                    diagnostics,
+                    line_index,
+                    "E4080",
+                    "malformed auth policy; expected `allow role to action on Model`",
+                ),
+            }
         }
         if let Some(name) = parse_prefixed_identifier(trimmed, "page") {
             index.page_symbols.insert(name.clone());
@@ -372,14 +443,81 @@ fn scan_source_file(
             index
                 .app_services
                 .extend(parse_named_list(trimmed, "services"));
-            if let Some(route) = parse_app_route(trimmed) {
-                index.routes.push(route);
+            index.data_models.extend(parse_named_list(trimmed, "data"));
+            if starts_named_key(trimmed, "auth") || starts_keyword(trimmed, "auth") {
+                match parse_named_target(trimmed, "auth") {
+                    Some(target) => {
+                        if index.auth_target.replace(target).is_some() {
+                            push_manifest_error(
+                                diagnostics,
+                                line_index,
+                                "E4051",
+                                "application entry declares multiple auth bindings",
+                            );
+                        }
+                    }
+                    None => push_manifest_error(
+                        diagnostics,
+                        line_index,
+                        "E4050",
+                        "malformed auth binding; expected `auth: module.symbol`",
+                    ),
+                }
             }
-            if let Some(page) = parse_app_page(trimmed) {
-                index.pages.push(page);
+            if starts_keyword(trimmed, "route") {
+                match parse_app_route(trimmed) {
+                    Some(route) => index.routes.push(route),
+                    None => push_manifest_error(
+                        diagnostics,
+                        line_index,
+                        "E4034",
+                        "malformed route declaration; expected `route METHOD \"/path\" -> target`",
+                    ),
+                }
+            }
+            if starts_keyword(trimmed, "page")
+                && trimmed
+                    .strip_prefix("page")
+                    .is_some_and(|rest| rest.trim_start().starts_with('"'))
+            {
+                match parse_app_page(trimmed) {
+                    Some(page) => index.pages.push(page),
+                    None => push_manifest_error(
+                        diagnostics,
+                        line_index,
+                        "E4043",
+                        "malformed page route declaration; expected `page \"/path\" -> target`",
+                    ),
+                }
+            }
+            if starts_keyword(trimmed, "task") && trimmed.contains("->") {
+                match parse_app_task(trimmed) {
+                    Some(task) => index.scheduled_tasks.push(task),
+                    None => push_manifest_error(
+                        diagnostics,
+                        line_index,
+                        "E4070",
+                        "malformed scheduled task; expected `task <schedule> -> target`",
+                    ),
+                }
             }
         }
     }
+}
+
+fn starts_keyword(line: &str, keyword: &str) -> bool {
+    line.strip_prefix(keyword).is_some_and(|rest| {
+        rest.is_empty()
+            || rest
+                .chars()
+                .next()
+                .is_some_and(|character| character.is_ascii_whitespace())
+    })
+}
+
+fn starts_named_key(line: &str, key: &str) -> bool {
+    line.strip_prefix(key)
+        .is_some_and(|rest| rest.trim_start().starts_with(':'))
 }
 
 fn parse_prefixed_identifier(line: &str, keyword: &str) -> Option<String> {
@@ -421,6 +559,16 @@ fn parse_named_list(line: &str, key: &str) -> Vec<String> {
         .collect()
 }
 
+fn parse_named_target(line: &str, key: &str) -> Option<String> {
+    let rest = line.strip_prefix(key)?.trim_start();
+    let target = rest.strip_prefix(':')?.trim();
+    if is_dotted_identifier(target) {
+        Some(target.to_owned())
+    } else {
+        None
+    }
+}
+
 fn parse_app_route(line: &str) -> Option<AppRoute> {
     let rest = line.strip_prefix("route")?.trim_start();
     let (method, rest) = split_identifier(rest)?;
@@ -441,6 +589,88 @@ fn parse_app_page(line: &str) -> Option<AppPage> {
     let (path, rest) = parse_quoted_prefix(rest)?;
     let target = parse_arrow_target(rest)?;
     Some(AppPage { path, target })
+}
+
+fn parse_app_task(line: &str) -> Option<AppTask> {
+    let rest = line.strip_prefix("task")?.trim_start();
+    let (schedule, target) = rest.split_once("->")?;
+    let schedule = schedule.trim();
+    if schedule.is_empty() {
+        return None;
+    }
+    let target = target.trim();
+    if !is_dotted_identifier(target) {
+        return None;
+    }
+    Some(AppTask {
+        schedule: schedule.to_owned(),
+        target: target.to_owned(),
+    })
+}
+
+fn parse_auth_policy(line: &str) -> Option<AuthPolicy> {
+    let rest = line.strip_prefix("allow")?.trim_start();
+    let (role, rest) = split_identifier(rest)?;
+    let rest = rest.trim_start().strip_prefix("to")?.trim_start();
+    let (actions, rest) = split_policy_action_and_models(rest)?;
+    let models = rest
+        .split_once(" where ")
+        .map(|(models, _)| models)
+        .unwrap_or(rest)
+        .trim();
+    let actions = parse_policy_list(actions, is_dotted_identifier)?;
+    let models = parse_policy_list(models, is_dotted_identifier)?;
+    Some(AuthPolicy {
+        role: role.to_owned(),
+        actions,
+        models,
+    })
+}
+
+fn split_policy_action_and_models(value: &str) -> Option<(&str, &str)> {
+    split_policy_list_before_keyword(value, "on").or_else(|| {
+        let (action, models) = split_identifier(value)?;
+        Some((action, models.trim_start()))
+    })
+}
+
+fn split_policy_list_before_keyword<'a>(
+    value: &'a str,
+    keyword: &str,
+) -> Option<(&'a str, &'a str)> {
+    let mut bracket_depth = 0usize;
+    for (index, character) in value.char_indices() {
+        match character {
+            '[' => bracket_depth += 1,
+            ']' => bracket_depth = bracket_depth.checked_sub(1)?,
+            _ => {}
+        }
+        if bracket_depth == 0 {
+            let candidate = &value[index..];
+            if starts_keyword(candidate.trim_start(), keyword) {
+                let before = value[..index].trim();
+                let after = candidate.trim_start()[keyword.len()..].trim_start();
+                return Some((before, after));
+            }
+        }
+    }
+    None
+}
+
+fn parse_policy_list(value: &str, is_valid_item: fn(&str) -> bool) -> Option<Vec<String>> {
+    let value = value.trim();
+    let items = if let Some(rest) = value.strip_prefix('[') {
+        rest.strip_suffix(']')?
+            .split(',')
+            .map(str::trim)
+            .collect::<Vec<_>>()
+    } else {
+        vec![value]
+    };
+    if items.is_empty() || items.iter().any(|item| !is_valid_item(item)) {
+        return None;
+    }
+    Some(items.into_iter().map(str::to_owned).collect())
 }
 
 fn split_identifier(value: &str) -> Option<(&str, &str)> {
@@ -555,6 +785,10 @@ fn validate_services(
     }
     validate_routes(source_index, diagnostics);
     validate_pages(source_index, diagnostics);
+    validate_auth(source_index, diagnostics);
+    validate_data_models(source_index, diagnostics);
+    validate_scheduled_tasks(source_index, diagnostics);
+    validate_auth_policies(source_index, diagnostics);
 }
 
 fn validate_routes(source_index: &ProjectSourceIndex, diagnostics: &mut Diagnostics) {
@@ -573,6 +807,9 @@ fn validate_routes(source_index: &ProjectSourceIndex, diagnostics: &mut Diagnost
                 "E4031",
                 format!("route path `{}` must start with `/`", route.path),
             );
+        }
+        if let Err(message) = validate_public_path(&route.path) {
+            push_error(diagnostics, "E4034", format!("route path {message}"));
         }
         if !seen.insert((route.method.clone(), route.path.clone())) {
             push_error(
@@ -601,6 +838,9 @@ fn validate_pages(source_index: &ProjectSourceIndex, diagnostics: &mut Diagnosti
                 format!("page path `{}` must start with `/`", page.path),
             );
         }
+        if let Err(message) = validate_public_path(&page.path) {
+            push_error(diagnostics, "E4043", format!("page path {message}"));
+        }
         if !seen.insert(page.path.clone()) {
             push_error(
                 diagnostics,
@@ -616,6 +856,112 @@ fn validate_pages(source_index: &ProjectSourceIndex, diagnostics: &mut Diagnosti
             );
         }
     }
+}
+
+fn validate_auth(source_index: &ProjectSourceIndex, diagnostics: &mut Diagnostics) {
+    if let Some(target) = &source_index.auth_target {
+        if !source_index.auth_symbols.contains(target) {
+            push_error(
+                diagnostics,
+                "E4052",
+                format!("auth target `{target}` was not found"),
+            );
+        }
+    }
+}
+
+fn validate_data_models(source_index: &ProjectSourceIndex, diagnostics: &mut Diagnostics) {
+    let mut seen = BTreeSet::new();
+    for model in &source_index.data_models {
+        if !seen.insert(model.clone()) {
+            push_error(
+                diagnostics,
+                "E4061",
+                format!("duplicate app data model `{model}`"),
+            );
+        }
+        if !source_index.model_symbols.contains(model) {
+            push_error(
+                diagnostics,
+                "E4060",
+                format!("app data model `{model}` was not found"),
+            );
+        }
+    }
+}
+
+fn validate_scheduled_tasks(source_index: &ProjectSourceIndex, diagnostics: &mut Diagnostics) {
+    let mut seen = BTreeSet::new();
+    for task in &source_index.scheduled_tasks {
+        if !seen.insert((task.schedule.clone(), task.target.clone())) {
+            push_error(
+                diagnostics,
+                "E4071",
+                format!(
+                    "duplicate scheduled task `{}` -> `{}`",
+                    task.schedule, task.target
+                ),
+            );
+        }
+        if !source_index.callable_symbols.contains(&task.target) {
+            push_error(
+                diagnostics,
+                "E4072",
+                format!("scheduled task target `{}` was not found", task.target),
+            );
+        }
+    }
+}
+
+fn validate_auth_policies(source_index: &ProjectSourceIndex, diagnostics: &mut Diagnostics) {
+    let mut seen = BTreeSet::new();
+    for policy in &source_index.auth_policies {
+        if !seen.insert((
+            policy.role.clone(),
+            policy.actions.clone(),
+            policy.models.clone(),
+        )) {
+            push_error(
+                diagnostics,
+                "E4082",
+                format!("duplicate auth policy for role `{}`", policy.role),
+            );
+        }
+        for model in &policy.models {
+            if !source_index.model_symbols.contains(model) {
+                push_error(
+                    diagnostics,
+                    "E4081",
+                    format!("auth policy model `{model}` was not found"),
+                );
+            }
+        }
+    }
+}
+
+fn validate_public_path(path: &str) -> Result<(), String> {
+    if path.chars().any(char::is_whitespace) {
+        return Err(format!("`{path}` cannot contain whitespace"));
+    }
+    if path == "/" {
+        return Ok(());
+    }
+    if path != "/" && path.ends_with('/') {
+        return Err(format!("`{path}` cannot end with `/`"));
+    }
+    for segment in path.split('/').skip(1) {
+        if segment.is_empty() {
+            return Err(format!("`{path}` cannot contain empty path segments"));
+        }
+        if let Some(parameter) = segment.strip_prefix(':') {
+            if !is_identifier(parameter) {
+                return Err(format!(
+                    "`{path}` contains invalid route parameter `:{parameter}`"
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn is_http_method(value: &str) -> bool {
@@ -1082,6 +1428,182 @@ app Demo {
     }
 
     #[test]
+    fn validates_auth_data_models_and_scheduled_tasks() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            r#"
+[project]
+name = "demo"
+entry = "app/main.svr"
+"#,
+        );
+        project.write_file(
+            "app/main.svr",
+            r#"
+app Demo {
+    auth: auth.session
+    data: [Customer, Job]
+    task every 5 minutes -> jobs.refresh_open_jobs
+}
+"#,
+        );
+        project.write_file("app/auth.svr", "auth session {}");
+        project.write_file("app/models.svr", "model Customer {}\nmodel Job {}");
+        project.write_file("app/jobs.svr", "task refresh_open_jobs() {}");
+
+        let checked = check_project(project.path()).expect("project should check");
+
+        assert_eq!(checked.auth_target.as_deref(), Some("auth.session"));
+        assert_eq!(checked.data_models, ["Customer", "Job"]);
+        assert_eq!(checked.scheduled_tasks.len(), 1);
+        assert_eq!(checked.scheduled_tasks[0].target, "jobs.refresh_open_jobs");
+    }
+
+    #[test]
+    fn validates_auth_policy_models() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            r#"
+[project]
+name = "demo"
+entry = "app/main.svr"
+"#,
+        );
+        project.write_file("app/main.svr", "fn main() {}");
+        project.write_file(
+            "app/auth.svr",
+            r#"
+auth session {
+    allow manager to [read, write] on [Customer, Job]
+    allow technician to update.status on Job where Job.assigned_to.id == user.id
+}
+"#,
+        );
+        project.write_file("app/models.svr", "model Customer {}\nmodel Job {}");
+
+        let checked = check_project(project.path()).expect("project should check");
+
+        assert_eq!(checked.auth_policies.len(), 2);
+        assert_eq!(checked.auth_policies[0].role, "manager");
+        assert_eq!(checked.auth_policies[0].models, ["Customer", "Job"]);
+        assert_eq!(checked.auth_policies[1].actions, ["update.status"]);
+    }
+
+    #[test]
+    fn reports_auth_policy_model_without_declaration() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            r#"
+[project]
+name = "demo"
+entry = "app/main.svr"
+"#,
+        );
+        project.write_file("app/main.svr", "fn main() {}");
+        project.write_file(
+            "app/auth.svr",
+            r#"
+auth session {
+    allow manager to read on Invoice
+}
+"#,
+        );
+
+        let diagnostics = check_project(project.path()).expect_err("project should fail");
+
+        assert!(diagnostics.items.iter().any(|item| item.code == "E4081"));
+    }
+
+    #[test]
+    fn reports_malformed_and_duplicate_auth_policies() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            r#"
+[project]
+name = "demo"
+entry = "app/main.svr"
+"#,
+        );
+        project.write_file("app/main.svr", "fn main() {}");
+        project.write_file(
+            "app/auth.svr",
+            r#"
+auth session {
+    allow manager read on Job
+    allow technician to read on Job
+    allow technician to read on Job
+}
+"#,
+        );
+        project.write_file("app/models.svr", "model Job {}");
+
+        let diagnostics = check_project(project.path()).expect_err("project should fail");
+
+        assert!(diagnostics.items.iter().any(|item| item.code == "E4080"));
+        assert!(diagnostics.items.iter().any(|item| item.code == "E4082"));
+    }
+
+    #[test]
+    fn reports_missing_auth_data_model_and_scheduled_task_targets() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            r#"
+[project]
+name = "demo"
+entry = "app/main.svr"
+"#,
+        );
+        project.write_file(
+            "app/main.svr",
+            r#"
+app Demo {
+    auth: auth.session
+    data: [Customer]
+    task every 5 minutes -> jobs.refresh_open_jobs
+}
+"#,
+        );
+
+        let diagnostics = check_project(project.path()).expect_err("project should fail");
+
+        assert!(diagnostics.items.iter().any(|item| item.code == "E4052"));
+        assert!(diagnostics.items.iter().any(|item| item.code == "E4060"));
+        assert!(diagnostics.items.iter().any(|item| item.code == "E4072"));
+    }
+
+    #[test]
+    fn reports_malformed_auth_and_scheduled_task_bindings() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            r#"
+[project]
+name = "demo"
+entry = "app/main.svr"
+"#,
+        );
+        project.write_file(
+            "app/main.svr",
+            r#"
+app Demo {
+    auth auth.session
+    task -> jobs.refresh_open_jobs
+}
+"#,
+        );
+
+        let diagnostics = check_project(project.path()).expect_err("project should fail");
+
+        assert!(diagnostics.items.iter().any(|item| item.code == "E4050"));
+        assert!(diagnostics.items.iter().any(|item| item.code == "E4070"));
+    }
+
+    #[test]
     fn reports_missing_route_target() {
         let project = TestProject::new();
         project.write_file(
@@ -1104,6 +1626,62 @@ app Demo {
         let diagnostics = check_project(project.path()).expect_err("project should fail");
 
         assert!(diagnostics.items.iter().any(|item| item.code == "E4033"));
+    }
+
+    #[test]
+    fn reports_malformed_route_and_page_declarations() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            r#"
+[project]
+name = "demo"
+entry = "app/main.svr"
+"#,
+        );
+        project.write_file(
+            "app/main.svr",
+            r#"
+app Demo {
+    route POST "/api/jobs" jobs.create_job
+    page "/" pages.dashboard
+}
+"#,
+        );
+
+        let diagnostics = check_project(project.path()).expect_err("project should fail");
+
+        assert!(diagnostics.items.iter().any(|item| item.code == "E4034"));
+        assert!(diagnostics.items.iter().any(|item| item.code == "E4043"));
+    }
+
+    #[test]
+    fn reports_invalid_route_and_page_paths() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            r#"
+[project]
+name = "demo"
+entry = "app/main.svr"
+"#,
+        );
+        project.write_file(
+            "app/main.svr",
+            r#"
+app Demo {
+    route GET "/api//jobs" -> jobs.list_jobs
+    page "/jobs/:bad-id" -> pages.job_detail
+}
+"#,
+        );
+        project.write_file("app/jobs.svr", "fn list_jobs() {}");
+        project.write_file("app/pages.svr", "page job_detail() {}");
+
+        let diagnostics = check_project(project.path()).expect_err("project should fail");
+
+        assert!(diagnostics.items.iter().any(|item| item.code == "E4034"));
+        assert!(diagnostics.items.iter().any(|item| item.code == "E4043"));
     }
 
     #[test]
