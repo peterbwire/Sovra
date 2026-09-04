@@ -1,0 +1,19 @@
+auth session {
+    provider: passwordless_email
+    user: StaffUser
+
+    allow manager to [read, write] on [Customer, Job, Technician, Invoice]
+    allow technician to read on Job where Job.assigned_to.id == user.id
+    allow technician to update Job where fields.changed_only(["status"])
+}
+
+model StaffUser {
+    id: Id<StaffUser>
+    email: Email
+    role: Role
+}
+
+enum Role {
+    manager
+    technician
+}

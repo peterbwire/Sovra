@@ -1,4 +1,4 @@
-//! Stable, minimal intermediate representation for M3.
+//! Stable, minimal intermediate representation for M10 and later backends.
 
 use crate::compiler::ast::{Expression, Program, Statement};
 use crate::compiler::semantic::TypedProgram;
@@ -21,11 +21,24 @@ pub struct IrFunction {
     pub instructions: Vec<Instruction>,
 }
 
-/// M3's backend-neutral instructions.
+/// A typed literal value in IR.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Literal {
+    /// An integer literal.
+    Integer(String),
+    /// A floating-point literal.
+    Float(String),
+    /// A boolean literal.
+    Boolean(bool),
+    /// A string literal.
+    String(String),
+}
+
+/// Backend-neutral instructions.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Instruction {
     /// Load a literal value.
-    LoadLiteral(String),
+    LoadLiteral(Literal),
     /// Load a named value.
     LoadName(String),
     /// Store a named value.
@@ -61,7 +74,10 @@ pub fn lower(program: &TypedProgram) -> IrProgram {
     IrProgram { functions }
 }
 
-fn lower_namespaced_function(module_name: &str, function: &crate::compiler::ast::Function) -> IrFunction {
+fn lower_namespaced_function(
+    module_name: &str,
+    function: &crate::compiler::ast::Function,
+) -> IrFunction {
     let mut lowered = lower_function(function);
     lowered.name = format!("{module_name}::{name}", name = lowered.name);
     lowered
@@ -104,11 +120,17 @@ fn lower_statement(statement: &Statement, instructions: &mut Vec<Instruction>) {
 
 fn lower_expression(expression: &Expression, instructions: &mut Vec<Instruction>) {
     match expression {
-        Expression::String(value) => instructions.push(Instruction::LoadLiteral(value.clone())),
-        Expression::Integer(value) => instructions.push(Instruction::LoadLiteral(value.clone())),
-        Expression::Float(value) => instructions.push(Instruction::LoadLiteral(value.clone())),
+        Expression::String(value) => {
+            instructions.push(Instruction::LoadLiteral(Literal::String(value.clone())));
+        }
+        Expression::Integer(value) => {
+            instructions.push(Instruction::LoadLiteral(Literal::Integer(value.clone())));
+        }
+        Expression::Float(value) => {
+            instructions.push(Instruction::LoadLiteral(Literal::Float(value.clone())));
+        }
         Expression::Boolean(value) => {
-            instructions.push(Instruction::LoadLiteral(value.to_string()))
+            instructions.push(Instruction::LoadLiteral(Literal::Boolean(*value)));
         }
         Expression::Identifier(name) => instructions.push(Instruction::LoadName(name.clone())),
         Expression::QualifiedName { path } => {

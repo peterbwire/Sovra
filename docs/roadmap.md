@@ -26,7 +26,7 @@ Name resolution, type checking, declaration validation, and stable diagnostics.
 IR execution with values, operators, function calls, output capture, and runtime
 errors.
 
-## M6 — `svr run` (current)
+## M6 — `svr run` (complete)
 
 Expose the complete source-to-execution pipeline through the `svr run
 <source.svr>` command with user-facing diagnostics and end-to-end coverage.
@@ -39,16 +39,43 @@ Typed locals, parameter declarations, numeric widening, and type-directed diagno
 
 Source modules, exports, and module-aware name resolution for namespaced calls.
 
-## M9 — Standard Library (current)
+## M9 — Standard Library (complete)
 
 Define stable standard-library boundaries for I/O, conversions, and utility
 functions under a `std` namespace.
 
-## M10 — IR
+## M10 — IR (complete)
 
 Make the intermediate representation explicit, extensible, and independently
 inspectable.
 
-## M11 — Compiler Backend
+## M11 — Compiler Backend (complete)
 
 Add a native or portable compiled backend over the stable IR.
+
+## Product experience track
+
+The next roadmap turns the foundation into the application language shown in
+[`examples/fielddesk`](../examples/fielddesk):
+
+## M12 — Project Checker
+
+Make `svr check <project>` validate project manifests, modules, app routes,
+models, auth policies, standard-library calls, service contracts, and page
+bindings before execution.
+
+## M13 — Sovra Tests
+
+Make `svr test <project>` run Sovra-native unit, integration, service-contract,
+policy, and page tests.
+
+## M14 — Application Runtime
+
+Make `svr run <project>` start an integrated application with APIs, pages,
+auth, background tasks, concurrency, and external services.
+
+## M15 — Agent Inspection
+
+Expose structured project metadata, diagnostics, tests, routes, models, and
+dependency boundaries so AI agents can inspect and modify Sovra projects
+without reverse-engineering the codebase.

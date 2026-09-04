@@ -10,6 +10,7 @@ pub mod ir;
 pub mod lexer;
 pub mod parser;
 pub mod semantic;
+pub mod stdlib;
 
 const COMMANDS: &[&str] = &[
     "build", "check", "doc", "fmt", "init", "install", "new", "repl", "run", "test", "update",

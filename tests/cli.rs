@@ -14,29 +14,84 @@ fn version_command_prints_canonical_version() {
 }
 
 #[test]
-fn help_command_describes_m6() {
+fn help_command_describes_m11() {
     let output = svr().arg("--help").output().expect("svr should run");
     assert!(output.status.success());
     let help = String::from_utf8_lossy(&output.stdout);
     assert!(help.contains("Usage:"));
     assert!(help.contains("build"));
-    assert!(help.contains("M6"));
+    assert!(help.contains("M11"));
 }
 
 #[test]
 fn run_command_executes_source_file() {
-    let source = format!("{}/examples/hello-world/main.svr", env!("CARGO_MANIFEST_DIR"));
+    let source = format!(
+        "{}/examples/hello-world/main.svr",
+        env!("CARGO_MANIFEST_DIR")
+    );
     let output = svr()
         .args(["run", source.as_str()])
         .output()
         .expect("svr should run");
     assert!(output.status.success());
-    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "Hello, Sovra!");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "Hello, Sovra!"
+    );
+}
+
+#[test]
+fn build_command_emits_inspectable_ir() {
+    let source = format!(
+        "{}/examples/hello-world/main.svr",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let output = svr()
+        .args(["build", source.as_str()])
+        .output()
+        .expect("svr should run");
+    assert!(output.status.success());
+    let ir = String::from_utf8_lossy(&output.stdout);
+    assert!(ir.contains("function main:"));
+    assert!(ir.contains("call print 1"));
+}
+
+#[test]
+fn build_command_emits_javascript_backend() {
+    let source = format!(
+        "{}/examples/hello-world/main.svr",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let output = svr()
+        .args(["build", "--emit", "js", source.as_str()])
+        .output()
+        .expect("svr should run");
+    assert!(output.status.success());
+    let javascript = String::from_utf8_lossy(&output.stdout);
+    assert!(javascript.contains("\"use strict\";"));
+    assert!(javascript.contains("svrFunctions[\"main\"] = svr_fn_0;"));
+    assert!(javascript.contains("console.log"));
+}
+
+#[test]
+fn build_help_describes_current_usage() {
+    let output = svr()
+        .args(["build", "--help"])
+        .output()
+        .expect("svr should run");
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "Usage: svr build [--emit ir|js] <source.svr>"
+    );
 }
 
 #[test]
 fn run_command_rejects_non_sovra_paths() {
-    let output = svr().args(["run", "README.md"]).output().expect("svr should run");
+    let output = svr()
+        .args(["run", "README.md"])
+        .output()
+        .expect("svr should run");
     assert_eq!(output.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&output.stderr).contains(".svr extension"));
 }

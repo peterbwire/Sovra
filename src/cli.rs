@@ -33,8 +33,9 @@ Commands:
   update           Update project dependencies (planned)
   doc              Build Sovra documentation (planned)
 
-M6 provides the `run` command over lexing, parsing, semantic analysis, IR
-lowering, and interpreter execution. Other commands remain planned.
+M11 provides `run` over lexing, parsing, semantic analysis, IR lowering, and
+interpreter execution, plus `build` for IR inspection and portable JavaScript
+output. Other commands remain planned.
 Use `svr <COMMAND> --help` for command-specific status.";
 
 /// Run the CLI using an iterator of argument strings.
@@ -82,6 +83,15 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
         return ExitCode::from(2);
     }
 
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") && matches!(command, "run" | "build") {
+        if command == "build" {
+            println!("Usage: svr build [--emit ir|js] <source.svr>");
+        } else {
+            println!("Usage: svr run <source.svr>");
+        }
+        return ExitCode::SUCCESS;
+    }
+
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         println!("{command} is planned for a future Sovra milestone.");
         return ExitCode::SUCCESS;
@@ -92,17 +102,27 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
     }
 
     let mut message = String::new();
-    let _ = write!(message, "svr: command '{command}' is not implemented in M6");
+    let _ = write!(
+        message,
+        "svr: command '{command}' is not implemented in M11"
+    );
     if !args.is_empty() {
         let _ = write!(message, " (arguments were not processed)");
     }
 
     fn compile_command(command: &str, args: &[String]) -> ExitCode {
-        if args.len() != 1 {
+        let (emit, source_args) = match parse_emit(command, args) {
+            Ok(parsed) => parsed,
+            Err(message) => {
+                eprintln!("{message}");
+                return ExitCode::from(2);
+            }
+        };
+        if source_args.len() != 1 {
             eprintln!("svr: {command} expects exactly one .svr source path");
             return ExitCode::from(2);
         }
-        let path = match args.first() {
+        let path = match source_args.first() {
             Some(path) if path.ends_with(".svr") => path,
             Some(path) => {
                 eprintln!("svr: source path `{path}` must have a .svr extension");
@@ -137,7 +157,10 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
         };
         let ir = compiler::ir::lower(&typed);
         if command == "build" {
-            print!("{}", compiler::backend::render(&ir));
+            match emit {
+                Emit::Ir => print!("{}", compiler::backend::render(&ir)),
+                Emit::Js => print!("{}", compiler::backend::render_javascript(&ir)),
+            }
             return ExitCode::SUCCESS;
         }
         match compiler::interpreter::run(&ir) {
@@ -156,6 +179,46 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
     eprintln!("{message}.");
     eprintln!("See docs/roadmap.md for planned functionality.");
     ExitCode::from(1)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Emit {
+    Ir,
+    Js,
+}
+
+fn parse_emit(command: &str, args: &[String]) -> Result<(Emit, Vec<String>), String> {
+    if command != "build" {
+        return Ok((Emit::Ir, args.to_vec()));
+    }
+    let mut emit = Emit::Ir;
+    let mut source_args = Vec::new();
+    let mut index = 0;
+    while index < args.len() {
+        let arg = &args[index];
+        if arg == "--emit" {
+            let Some(value) = args.get(index + 1) else {
+                return Err("svr: --emit expects `ir` or `js`".to_owned());
+            };
+            emit = parse_emit_value(value)?;
+            index += 2;
+        } else if let Some(value) = arg.strip_prefix("--emit=") {
+            emit = parse_emit_value(value)?;
+            index += 1;
+        } else {
+            source_args.push(arg.clone());
+            index += 1;
+        }
+    }
+    Ok((emit, source_args))
+}
+
+fn parse_emit_value(value: &str) -> Result<Emit, String> {
+    match value {
+        "ir" => Ok(Emit::Ir),
+        "js" => Ok(Emit::Js),
+        _ => Err(format!("svr: unsupported emit target `{value}`")),
+    }
 }
 
 #[cfg(test)]

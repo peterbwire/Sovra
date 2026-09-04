@@ -1,0 +1,50 @@
+use app.jobs
+use app.models
+
+page dashboard(user: StaffUser) {
+    let board = jobs.live_board()
+
+    layout AppShell(title: "Fielddesk", user) {
+        section "Open jobs" {
+            for job in board.open {
+                JobCard(job, action: assign_button(job))
+            }
+        }
+
+        section "Assigned today" {
+            Timeline(board.assigned)
+        }
+
+        aside "Technicians" {
+            for tech in board.technicians {
+                AvailabilityRow(tech)
+            }
+        }
+    }
+}
+
+page job_detail(id: Id<Job>) {
+    let job = Job.require(id)
+
+    layout AppShell(title: job.title) {
+        view JobSummary(job)
+        view CustomerPanel(job.customer)
+        view AssignmentPanel(job.assigned_to)
+    }
+}
+
+view JobCard(job: Job, action: Action) {
+    card {
+        title job.title
+        text job.customer.name
+        badge job.status
+        meter "Urgency" value job.urgency max 100
+        action
+    }
+}
+
+fn assign_button(job: Job) -> Action {
+    return action "Assign" {
+        POST "/api/jobs/{job.id}/assign"
+    }
+}

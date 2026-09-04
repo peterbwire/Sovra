@@ -1,0 +1,12 @@
+service maps {
+    fn travel_minutes(from: GeoPoint, to: Address) -> Result<Int, ServiceError>
+}
+
+service payments {
+    fn draft_invoice(customer: Customer, job: Job, amount: Money) -> Result<Invoice, ServiceError>
+}
+
+type ServiceError {
+    message: Text
+    retryable: Bool
+}

@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 use crate::compiler::ast::{Expression, Function, Program, Statement};
 use crate::compiler::diagnostics::{Diagnostic, Diagnostics, Severity, Span};
+use crate::compiler::stdlib;
 
 /// The types understood by the initial semantic checker.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,13 +66,19 @@ impl SemanticAnalyzer {
                     if seen.insert(function.name.clone(), function.span).is_some() {
                         diagnostics.push(diagnostic(
                             "E3008",
-                            format!("duplicate function `{}` in module `{}`", function.name, module.name),
+                            format!(
+                                "duplicate function `{}` in module `{}`",
+                                function.name, module.name
+                            ),
                             function.span,
                         ));
                     }
                 }
             }
-            if module_names.insert(module.name.clone(), module.span).is_some() {
+            if module_names
+                .insert(module.name.clone(), module.span)
+                .is_some()
+            {
                 diagnostics.push(diagnostic(
                     "E3008",
                     format!("duplicate module `{}`", module.name),
@@ -236,26 +243,21 @@ fn check_expression(
         }),
         Expression::QualifiedName { path } => {
             let qualified = path.join("::");
-            match qualified.as_str() {
-                "std::print" | "std::println" => Type::Unit,
-                "std::len" => Type::Int,
-                "std::to_string" => Type::String,
-                _ => {
-                    if let Some(function) = functions.get(&qualified) {
-                        function
-                            .return_type
-                            .as_deref()
-                            .map(type_from_name)
-                            .unwrap_or(Type::Unit)
-                    } else {
-                        diagnostics.push(diagnostic(
-                            "E3004",
-                            format!("undefined function `{qualified}`"),
-                            span,
-                        ));
-                        Type::Unknown
-                    }
-                }
+            if let Some(function) = stdlib::lookup(&qualified) {
+                type_from_name(function.return_type)
+            } else if let Some(function) = functions.get(&qualified) {
+                function
+                    .return_type
+                    .as_deref()
+                    .map(type_from_name)
+                    .unwrap_or(Type::Unit)
+            } else {
+                diagnostics.push(diagnostic(
+                    "E3004",
+                    format!("undefined function `{qualified}`"),
+                    span,
+                ));
+                Type::Unknown
             }
         }
         Expression::Call { callee, arguments } => {
@@ -274,47 +276,17 @@ fn check_expression(
             let Some(name) = name else {
                 return Type::Unknown;
             };
-            if matches!(name.as_str(), "print" | "std::print" | "std::println") {
-                for argument in arguments {
-                    check_expression(argument, scope, functions, diagnostics, span);
-                }
-                if arguments.len() != 1 {
-                    diagnostics.push(diagnostic(
-                        "E3006",
-                        format!(
-                            "function `{name}` expects 1 argument(s), found {}",
-                            arguments.len()
-                        ),
-                        span,
-                    ));
-                }
-                return Type::Unit;
-            }
-            if matches!(name.as_str(), "std::len") {
-                if arguments.len() != 1 {
-                    diagnostics.push(diagnostic(
-                        "E3006",
-                        format!("function `{name}` expects 1 argument(s), found {}", arguments.len()),
-                        span,
-                    ));
-                }
-                for argument in arguments {
-                    check_expression(argument, scope, functions, diagnostics, span);
-                }
-                return Type::Int;
-            }
-            if matches!(name.as_str(), "std::to_string") {
-                if arguments.len() != 1 {
-                    diagnostics.push(diagnostic(
-                        "E3006",
-                        format!("function `{name}` expects 1 argument(s), found {}", arguments.len()),
-                        span,
-                    ));
-                }
-                for argument in arguments {
-                    check_expression(argument, scope, functions, diagnostics, span);
-                }
-                return Type::String;
+            if let Some(function) = stdlib::lookup(&name) {
+                check_std_call(
+                    function,
+                    &name,
+                    arguments,
+                    scope,
+                    functions,
+                    diagnostics,
+                    span,
+                );
+                return type_from_name(function.return_type);
             }
             if let Some(function) = functions.get(&name) {
                 if arguments.len() != function.parameters.len() {
@@ -371,8 +343,13 @@ fn check_expression(
             let comparable = numeric_or_string_comparison_compatible(&left_type, &right_type)
                 && match operator.as_str() {
                     "==" | "!=" => {
-                        matches!(&left_type, Type::Bool | Type::Int | Type::Float | Type::String)
-                            || matches!(&right_type, Type::Bool | Type::Int | Type::Float | Type::String)
+                        matches!(
+                            &left_type,
+                            Type::Bool | Type::Int | Type::Float | Type::String
+                        ) || matches!(
+                            &right_type,
+                            Type::Bool | Type::Int | Type::Float | Type::String
+                        )
                     }
                     "<" | "<=" | ">" | ">=" => matches!(
                         (&left_type, &right_type),
@@ -415,6 +392,44 @@ fn check_expression(
                 ));
                 Type::Unknown
             }
+        }
+    }
+}
+
+fn check_std_call(
+    function: stdlib::StdFunction,
+    source_name: &str,
+    arguments: &[Expression],
+    scope: &HashMap<String, Type>,
+    functions: &HashMap<String, &Function>,
+    diagnostics: &mut Diagnostics,
+    span: Span,
+) {
+    if arguments.len() != function.parameters.len() {
+        diagnostics.push(diagnostic(
+            "E3006",
+            format!(
+                "function `{source_name}` expects {} argument(s), found {}",
+                function.parameters.len(),
+                arguments.len()
+            ),
+            span,
+        ));
+    }
+    for (argument, expected) in arguments.iter().zip(function.parameters) {
+        let argument_type = check_expression(argument, scope, functions, diagnostics, span);
+        if stdlib::is_any_type(expected) {
+            continue;
+        }
+        let expected = type_from_name(expected);
+        if !types_compatible(&expected, &argument_type) {
+            diagnostics.push(diagnostic(
+                "E3007",
+                format!(
+                    "argument type mismatch for `{source_name}`: expected {expected:?}, found {argument_type:?}"
+                ),
+                span,
+            ));
         }
     }
 }
@@ -466,7 +481,10 @@ fn types_compatible(expected: &Type, actual: &Type) -> bool {
     if expected == actual {
         return true;
     }
-    matches!((expected, actual), (Type::Float, Type::Int) | (Type::String, Type::String))
+    matches!(
+        (expected, actual),
+        (Type::Float, Type::Int) | (Type::String, Type::String)
+    )
 }
 
 fn diagnostic(code: &'static str, message: impl Into<String>, span: Span) -> Diagnostic {
@@ -527,7 +545,9 @@ mod tests {
     #[test]
     fn accepts_typed_local_bindings_and_numeric_widening() {
         let program = Parser::new()
-            .parse_source("fn main() { let scaled: Float = 2; let total = scaled + 3.5; print(total) }")
+            .parse_source(
+                "fn main() { let scaled: Float = 2; let total = scaled + 3.5; print(total) }",
+            )
             .expect("source should parse");
         assert!(SemanticAnalyzer::new().analyze(&program).is_ok());
     }

@@ -1,0 +1,104 @@
+use app.models
+use app.services
+
+fn create_job(request: JobRequest) -> Result<Job, Problem> {
+    let customer = Customer.find_or_create(
+        email: request.email,
+        name: request.name,
+        address: request.address,
+    )
+
+    let job = Job.insert({
+        customer,
+        title: request.title,
+        description: request.description,
+        skill: request.skill,
+        urgency: score_urgency(request),
+    })
+
+    dispatch(job)
+    return Ok(job)
+}
+
+fn assign_job(job_id: Id<Job>) -> Result<Job, Problem> {
+    let job = Job.require(job_id)
+    let tech = best_technician(job)?
+
+    return Job.update(job.id, {
+        status: .assigned,
+        assigned_to: tech,
+        scheduled_for: Time.now().plus(minutes: 30),
+    })
+}
+
+fn live_board() -> PageData {
+    return {
+        open: Job.where(status == .open).order_by(desc urgency).limit(20),
+        assigned: Job.where(status == .assigned).order_by(scheduled_for),
+        technicians: Technician.where(available == true),
+    }
+}
+
+task dispatch(job: Job) {
+    let quote = parallel {
+        tech: best_technician(job)
+        invoice: draft_invoice(job)
+    }
+
+    when quote.tech is Ok(tech) {
+        Job.update(job.id, { status: .assigned, assigned_to: tech })
+    }
+
+    when quote.invoice is Err(error) if error.retryable {
+        retry in 10 minutes
+    }
+}
+
+task refresh_open_jobs() {
+    for job in Job.where(status == .open) {
+        dispatch(job)
+    }
+}
+
+fn best_technician(job: Job) -> Result<Technician, Problem> {
+    let candidates =
+        Technician.where(available == true)
+            .filter(fn tech => tech.skills.contains(job.skill))
+
+    return candidates
+        .map_async(fn tech => {
+            tech,
+            minutes: maps.travel_minutes(tech.location, job.customer.address)?
+        })
+        .min_by(fn option => option.minutes)
+        .map(fn option => option.tech)
+}
+
+fn draft_invoice(job: Job) -> Result<Invoice, Problem> {
+    let amount = pricing.for_job(job)
+    return payments.draft_invoice(job.customer, job, amount)
+}
+
+fn score_urgency(request: JobRequest) -> Int {
+    match request.priority {
+        .emergency => 100
+        .today => 70
+        .this_week => 30
+    }
+}
+
+type JobRequest {
+    name: Text
+    email: Email
+    address: Address
+    title: Text
+    description: Text
+    skill: Text
+    priority: Priority
+}
+
+enum Priority {
+    emergency
+    today
+    this_week
+}

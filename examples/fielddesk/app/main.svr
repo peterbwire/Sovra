@@ -1,0 +1,25 @@
+use app.models
+use app.auth
+use app.services
+use app.jobs
+use app.pages
+
+app Fielddesk {
+    title: "Fielddesk"
+    auth: auth.session
+    data: [Customer, Job, Technician, Invoice]
+    services: [maps, payments]
+
+    route POST "/api/jobs" -> jobs.create_job
+    route POST "/api/jobs/:id/assign" -> jobs.assign_job
+    route GET "/api/jobs/live" -> jobs.live_board
+
+    page "/" -> pages.dashboard
+    page "/jobs/:id" -> pages.job_detail
+
+    task every 5 minutes -> jobs.refresh_open_jobs
+}
+
+fn main() {
+    Fielddesk.run()
+}

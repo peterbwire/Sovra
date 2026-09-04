@@ -1,4 +1,4 @@
-// The first Sovra example. Execution is planned for a future milestone.
+// The first Sovra example.
 fn main() {
     print("Hello, Sovra!")
 }

@@ -1,0 +1,11 @@
+[project]
+name = "fielddesk"
+version = "0.1.0"
+entry = "app/main.svr"
+
+[runtime]
+target = "web"
+
+[services]
+maps = "env:MAPS_API_KEY"
+payments = "env:PAYMENTS_API_KEY"

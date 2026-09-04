@@ -1,0 +1,45 @@
+model Customer {
+    id: Id<Customer>
+    name: Text
+    email: Email
+    address: Address
+}
+
+model Technician {
+    id: Id<Technician>
+    name: Text
+    skills: Set<Text>
+    location: GeoPoint
+    available: Bool
+}
+
+model Job {
+    id: Id<Job>
+    customer: Customer
+    title: Text
+    description: Text
+    skill: Text
+    status: JobStatus = .open
+    urgency: Int
+    assigned_to: Technician?
+    scheduled_for: Time?
+}
+
+model Invoice {
+    id: Id<Invoice>
+    job: Job
+    subtotal: Money
+    status: InvoiceStatus = .draft
+}
+
+enum JobStatus {
+    open
+    assigned
+    complete
+}
+
+enum InvoiceStatus {
+    draft
+    sent
+    paid
+}

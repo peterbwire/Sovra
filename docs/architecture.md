@@ -8,8 +8,10 @@ source -> lexer -> parser -> ast -> semantic -> ir -> backend
                          ir -> interpreter
 ```
 
-M0 provides the module boundaries and CLI contract only. Stages should receive
-explicit inputs and return structured results as they are implemented. Error
-reporting belongs in `diagnostics`, rather than ad-hoc output in individual
-stages. The CLI should remain a thin adapter over the compiler API.
+The current M11 pipeline has working lexer, parser, AST, semantic analysis,
+standard-library registry, IR lowering, text IR rendering, portable JavaScript
+backend rendering, and interpreter execution stages. Stages receive explicit
+inputs and return structured results. Error reporting belongs in `diagnostics`,
+rather than ad-hoc output in individual stages. The CLI remains a thin adapter
+over the compiler API.
 

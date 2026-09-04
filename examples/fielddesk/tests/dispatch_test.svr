@@ -1,0 +1,19 @@
+use app.jobs
+use app.models
+
+test "assigns the closest matching technician" {
+    let customer = Customer.fake(address: "12 Market St")
+    let nearby = Technician.fake(skills: ["hvac"], location: GeoPoint(1, 1), available: true)
+    let far = Technician.fake(skills: ["hvac"], location: GeoPoint(50, 50), available: true)
+    let job = Job.fake(customer, skill: "hvac", urgency: 80)
+
+    services.maps.stub(fn travel_minutes(from, to) => {
+        if from == nearby.location { 8 } else { 42 }
+    })
+
+    expect(jobs.best_technician(job)).to_equal(Ok(nearby))
+}
+
+test "keeps auth policy visible to agents and reviewers" {
+    expect(policy.for_role(.technician).on(Job).allows_only(["read", "update.status"]))
+}

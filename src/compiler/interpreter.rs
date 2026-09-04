@@ -1,12 +1,13 @@
-//! Minimal stack-based interpreter for the M3 IR.
+//! Minimal stack-based interpreter for the current IR.
 
 use std::collections::HashMap;
 
-use crate::compiler::ir::{Instruction, IrFunction, IrProgram};
+use crate::compiler::ir::{Instruction, IrFunction, IrProgram, Literal};
+use crate::compiler::stdlib;
 
 const MAX_CALL_DEPTH: usize = 256;
 
-/// Runtime values supported by the M4 interpreter.
+/// Runtime values supported by the interpreter.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     /// An integer.
@@ -72,7 +73,7 @@ fn execute_function(
     let mut output = Vec::new();
     for instruction in &function.instructions {
         match instruction {
-            Instruction::LoadLiteral(value) => stack.push(parse_literal(value)),
+            Instruction::LoadLiteral(value) => stack.push(value_from_literal(value)),
             Instruction::LoadName(name) => stack.push(
                 names
                     .get(name)
@@ -104,39 +105,8 @@ fn execute_function(
                     );
                 }
                 call_arguments.reverse();
-                if matches!(name.as_str(), "print" | "std::print") {
-                    if *arguments != 1 {
-                        return Err(format!("{name} expects exactly one argument"));
-                    }
-                    output.push(call_arguments[0].display());
-                    stack.push(Value::Unit);
-                } else if name == "std::println" {
-                    if *arguments != 1 {
-                        return Err(format!("{name} expects exactly one argument"));
-                    }
-                    output.push(call_arguments[0].display());
-                    stack.push(Value::Unit);
-                } else if name == "std::len" {
-                    if *arguments != 1 {
-                        return Err(format!("{name} expects exactly one argument"));
-                    }
-                    let value = match &call_arguments[0] {
-                        Value::String(value) => Value::Int(value.len() as i64),
-                        _ => return Err(format!("{name} expects a String argument")),
-                    };
-                    stack.push(value);
-                } else if name == "std::to_string" {
-                    if *arguments != 1 {
-                        return Err(format!("{name} expects exactly one argument"));
-                    }
-                    let value = match &call_arguments[0] {
-                        Value::Int(value) => Value::String(value.to_string()),
-                        Value::Float(value) => Value::String(value.to_string()),
-                        Value::Bool(value) => Value::String(value.to_string()),
-                        Value::String(value) => Value::String(value.clone()),
-                        Value::Unit => Value::String(String::new()),
-                    };
-                    stack.push(value);
+                if stdlib::lookup(name).is_some() {
+                    execute_std_call(name, &call_arguments, &mut output, &mut stack)?;
                 } else {
                     let callee = program
                         .functions
@@ -162,17 +132,64 @@ fn execute_function(
     Ok((output, stack.pop().unwrap_or(Value::Unit)))
 }
 
-fn parse_literal(value: &str) -> Value {
-    if value == "true" {
-        Value::Bool(true)
-    } else if value == "false" {
-        Value::Bool(false)
-    } else if let Ok(integer) = value.parse() {
-        Value::Int(integer)
-    } else if let Ok(float) = value.parse() {
-        Value::Float(float)
-    } else {
-        Value::String(value.to_owned())
+fn execute_std_call(
+    name: &str,
+    arguments: &[Value],
+    output: &mut Vec<String>,
+    stack: &mut Vec<Value>,
+) -> Result<(), String> {
+    let function = stdlib::lookup(name).expect("standard-library call was already checked");
+    if arguments.len() != function.parameters.len() {
+        return Err(format!(
+            "{name} expects exactly {} argument(s)",
+            function.parameters.len()
+        ));
+    }
+    match function.name {
+        "std::print" | "std::println" => {
+            output.push(arguments[0].display());
+            stack.push(Value::Unit);
+        }
+        "std::len" => {
+            let value = match &arguments[0] {
+                Value::String(value) => Value::Int(value.len() as i64),
+                _ => return Err(format!("{name} expects a String argument")),
+            };
+            stack.push(value);
+        }
+        "std::to_string" => {
+            let value = match &arguments[0] {
+                Value::Int(value) => Value::String(value.to_string()),
+                Value::Float(value) => Value::String(value.to_string()),
+                Value::Bool(value) => Value::String(value.to_string()),
+                Value::String(value) => Value::String(value.clone()),
+                Value::Unit => Value::String(String::new()),
+            };
+            stack.push(value);
+        }
+        _ => {
+            return Err(format!(
+                "standard-library function `{name}` is not implemented"
+            ))
+        }
+    }
+    Ok(())
+}
+
+fn value_from_literal(value: &Literal) -> Value {
+    match value {
+        Literal::Integer(value) => Value::Int(
+            value
+                .parse()
+                .expect("integer literals are validated before IR lowering"),
+        ),
+        Literal::Float(value) => Value::Float(
+            value
+                .parse()
+                .expect("float literals are validated before IR lowering"),
+        ),
+        Literal::Boolean(value) => Value::Bool(*value),
+        Literal::String(value) => Value::String(value.clone()),
     }
 }
 
@@ -242,6 +259,18 @@ mod tests {
             .expect("source should type-check");
         let output = run(&ir::lower(&typed)).expect("program should execute");
         assert_eq!(output, vec!["2", "42"]);
+    }
+
+    #[test]
+    fn preserves_string_literals_that_look_numeric() {
+        let program = Parser::new()
+            .parse_source("fn main() { print(\"42\") }")
+            .expect("source should parse");
+        let typed = SemanticAnalyzer::new()
+            .analyze(&program)
+            .expect("source should type-check");
+        let output = run(&ir::lower(&typed)).expect("program should execute");
+        assert_eq!(output, vec!["42"]);
     }
 
     #[test]
