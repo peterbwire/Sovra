@@ -9,6 +9,7 @@ backend.
 ## Toolchain contract
 
 * The package is named `sovra`; its canonical binary is `svr`.
+* The compiler, runtime, and core tooling are implemented in Rust.
 * `svr --version` prints `svr <package-version>` and exits successfully.
 * `svr --help` documents options and planned commands.
 * `run` compiles programs through semantic analysis, IR lowering, and
@@ -16,6 +17,11 @@ backend.
 * `build` compiles programs through semantic analysis and emits human-readable
   IR by default.
 * `build --emit js` emits portable JavaScript generated from the lowered IR.
+* `check <source.svr>` validates a source file through parsing and semantic
+  analysis without executing it.
+* `check <project-directory>` validates the project manifest, required
+  metadata, runtime target, entry path, source-file discovery, and external
+  service binding consistency.
 * Other commands remain reserved and report that they are not implemented.
 * Unknown commands are rejected with a non-zero status and a help hint.
 
@@ -65,6 +71,10 @@ as an alias for `std::print` so early examples continue to run.
 `std::len` accepts a `String` and returns `Int`. `std::to_string` accepts any
 single value and returns `String`.
 
+The initial standard-library registry is Rust-owned. Future standard-library
+modules can be written in Sovra once module loading, packaging, and bootstrap
+behavior are stable enough to support that without changing the trusted core.
+
 ## M10 IR contract
 
 The current IR is backend-neutral, typed at the literal boundary, and
@@ -77,6 +87,16 @@ The initial compiler backend emits portable JavaScript through
 IR execution model, including stack-based local execution, user-function calls,
 standard-library output capture, arithmetic, comparison, and runtime division
 by zero checks.
+
+## M12 project-checker contract
+
+The initial project checker reads `sovra.toml` from a project directory. It
+requires `project.name` and `project.entry`, accepts `project.version`,
+`runtime.target`, and arbitrary service bindings under `[services]`, and emits
+stable `E40xx` diagnostics for malformed or unsupported project metadata.
+Manifest service bindings must correspond to `service <name>` declarations in
+project source, and app-entry service references must be both declared and
+manifest-bound.
 
 ## Application-language direction
 

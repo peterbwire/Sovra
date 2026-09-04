@@ -1,11 +1,33 @@
 # Configuration
 
-Project configuration is reserved for future milestones. The starter template
-at [`config/svr.toml`](../config/svr.toml) documents the intended location.
-M0 does not read configuration and therefore has no configuration-dependent
-behavior.
+`svr check <project-directory>` reads `sovra.toml` from the project root and
+validates the production-facing project shell.
 
-Future configuration will define the project name, source entry point, target,
-and profile settings. Unknown settings should be reported as diagnostics rather
-than silently ignored.
+Supported sections:
+
+```toml
+[project]
+name = "fielddesk"
+version = "0.1.0"
+entry = "app/main.svr"
+
+[runtime]
+target = "web"
+
+[services]
+maps = "env:MAPS_API_KEY"
+```
+
+The required project keys are `project.name` and `project.entry`.
+`project.entry` must point to an existing `.svr` source file. Supported runtime
+targets are `web` and `cli`.
+
+Unknown sections, unknown keys, duplicate sections, duplicate keys, malformed
+assignments, unsupported runtime targets, missing entries, and unreadable
+project directories are reported as structured diagnostics.
+
+Service bindings under `[services]` must use valid Sovra identifiers. During
+project checks, each manifest service binding must match a `service <name>`
+declaration in project source, and each service requested by the app entry's
+`services: [...]` list must be both declared and bound.
 

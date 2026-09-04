@@ -20,7 +20,7 @@ fn help_command_describes_m11() {
     let help = String::from_utf8_lossy(&output.stdout);
     assert!(help.contains("Usage:"));
     assert!(help.contains("build"));
-    assert!(help.contains("M11"));
+    assert!(help.contains("M12"));
 }
 
 #[test]
@@ -87,6 +87,46 @@ fn build_help_describes_current_usage() {
 }
 
 #[test]
+fn check_help_describes_current_usage() {
+    let output = svr()
+        .args(["check", "--help"])
+        .output()
+        .expect("svr should run");
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "Usage: svr check <source.svr|project-directory>"
+    );
+}
+
+#[test]
+fn check_command_validates_source_file() {
+    let source = format!(
+        "{}/examples/hello-world/main.svr",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let output = svr()
+        .args(["check", source.as_str()])
+        .output()
+        .expect("svr should run");
+    assert!(output.status.success());
+    assert!(String::from_utf8_lossy(&output.stdout).contains("checked source"));
+}
+
+#[test]
+fn check_command_validates_project_directory() {
+    let project = format!("{}/examples/fielddesk", env!("CARGO_MANIFEST_DIR"));
+    let output = svr()
+        .args(["check", project.as_str()])
+        .output()
+        .expect("svr should run");
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("checked project `fielddesk`"));
+    assert!(stdout.contains("entry"));
+}
+
+#[test]
 fn run_command_rejects_non_sovra_paths() {
     let output = svr()
         .args(["run", "README.md"])
@@ -102,7 +142,7 @@ fn all_reserved_commands_are_recognized() {
         "new", "init", "run", "build", "test", "check", "fmt", "repl", "install", "update", "doc",
     ] {
         let output = svr().arg(command).output().expect("svr should run");
-        if command == "run" || command == "build" {
+        if matches!(command, "run" | "build" | "check") {
             assert_eq!(output.status.code(), Some(2));
         } else {
             assert_ne!(output.status.code(), Some(2));

@@ -53,6 +53,11 @@ semantic validation, an explicit intermediate representation, an interpreter
 with user-function calls, typed locals, module-aware name resolution, a
 standard-library `std` namespace, and a portable JavaScript backend.
 
+The compiler, runtime, and core tooling are implemented in Rust. As Sovra
+matures, parts of the standard library and ecosystem can move into Sovra
+itself, while the trusted language implementation remains small, inspectable,
+and production-oriented.
+
 ## Quick start
 
 ```text

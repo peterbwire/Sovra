@@ -62,17 +62,17 @@ impl SemanticAnalyzer {
         for module in &program.modules {
             let mut seen = HashMap::new();
             for function in &module.functions {
-                if function.is_exported {
-                    if seen.insert(function.name.clone(), function.span).is_some() {
-                        diagnostics.push(diagnostic(
-                            "E3008",
-                            format!(
-                                "duplicate function `{}` in module `{}`",
-                                function.name, module.name
-                            ),
-                            function.span,
-                        ));
-                    }
+                if function.is_exported
+                    && seen.insert(function.name.clone(), function.span).is_some()
+                {
+                    diagnostics.push(diagnostic(
+                        "E3008",
+                        format!(
+                            "duplicate function `{}` in module `{}`",
+                            function.name, module.name
+                        ),
+                        function.span,
+                    ));
                 }
             }
             if module_names
@@ -454,24 +454,30 @@ fn numeric_result_type(left: &Type, right: &Type) -> Type {
 }
 
 fn numeric_or_string_arithmetic_compatible(left: &Type, right: &Type) -> bool {
-    match (left, right) {
-        (Type::String, Type::String) => true,
-        (Type::Unknown, _) | (_, Type::Unknown) => true,
-        (Type::Int, Type::Int) => true,
-        (Type::Int, Type::Float) | (Type::Float, Type::Int) | (Type::Float, Type::Float) => true,
-        _ => false,
-    }
+    matches!(
+        (left, right),
+        (Type::String, Type::String)
+            | (Type::Unknown, _)
+            | (_, Type::Unknown)
+            | (Type::Int, Type::Int)
+            | (Type::Int, Type::Float)
+            | (Type::Float, Type::Int)
+            | (Type::Float, Type::Float)
+    )
 }
 
 fn numeric_or_string_comparison_compatible(left: &Type, right: &Type) -> bool {
-    match (left, right) {
-        (Type::String, Type::String) => true,
-        (Type::Unknown, _) | (_, Type::Unknown) => true,
-        (Type::Int, Type::Int) => true,
-        (Type::Int, Type::Float) | (Type::Float, Type::Int) | (Type::Float, Type::Float) => true,
-        (Type::Bool, Type::Bool) => true,
-        _ => false,
-    }
+    matches!(
+        (left, right),
+        (Type::String, Type::String)
+            | (Type::Unknown, _)
+            | (_, Type::Unknown)
+            | (Type::Int, Type::Int)
+            | (Type::Int, Type::Float)
+            | (Type::Float, Type::Int)
+            | (Type::Float, Type::Float)
+            | (Type::Bool, Type::Bool)
+    )
 }
 
 fn types_compatible(expected: &Type, actual: &Type) -> bool {

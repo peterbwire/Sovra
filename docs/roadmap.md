@@ -58,11 +58,17 @@ Add a native or portable compiled backend over the stable IR.
 The next roadmap turns the foundation into the application language shown in
 [`examples/fielddesk`](../examples/fielddesk):
 
-## M12 — Project Checker
+## M12 — Project Checker (started)
 
 Make `svr check <project>` validate project manifests, modules, app routes,
 models, auth policies, standard-library calls, service contracts, and page
 bindings before execution.
+
+Current implementation validates the project manifest, required project
+metadata, runtime target, configured entry path, source-file discovery, and
+external service binding consistency between the manifest, source declarations,
+and app entry. Application-level routes, models, auth policies, full service
+contracts, and page bindings remain next.
 
 ## M13 — Sovra Tests
 

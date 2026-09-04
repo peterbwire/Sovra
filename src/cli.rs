@@ -26,16 +26,17 @@ Commands:
   run              Compile and run a Sovra program
   build            Compile a Sovra source file
   test             Run Sovra tests (planned)
-  check            Check a Sovra source file (planned)
+  check            Check a Sovra source file or project
   fmt              Format Sovra source files (planned)
   repl             Start the Sovra REPL (planned)
   install          Install a package (planned)
   update           Update project dependencies (planned)
   doc              Build Sovra documentation (planned)
 
-M11 provides `run` over lexing, parsing, semantic analysis, IR lowering, and
-interpreter execution, plus `build` for IR inspection and portable JavaScript
-output. Other commands remain planned.
+M12 provides `check` for source files and project manifests. M11 provides
+`run` over lexing, parsing, semantic analysis, IR lowering, and interpreter
+execution, plus `build` for IR inspection and portable JavaScript output.
+Other commands remain planned.
 Use `svr <COMMAND> --help` for command-specific status.";
 
 /// Run the CLI using an iterator of argument strings.
@@ -83,9 +84,13 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
         return ExitCode::from(2);
     }
 
-    if args.iter().any(|arg| arg == "--help" || arg == "-h") && matches!(command, "run" | "build") {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h")
+        && matches!(command, "run" | "build" | "check")
+    {
         if command == "build" {
             println!("Usage: svr build [--emit ir|js] <source.svr>");
+        } else if command == "check" {
+            println!("Usage: svr check <source.svr|project-directory>");
         } else {
             println!("Usage: svr run <source.svr>");
         }
@@ -99,6 +104,9 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
 
     if command == "run" || command == "build" {
         return compile_command(command, args);
+    }
+    if command == "check" {
+        return check_command(args);
     }
 
     let mut message = String::new();
@@ -179,6 +187,79 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
     eprintln!("{message}.");
     eprintln!("See docs/roadmap.md for planned functionality.");
     ExitCode::from(1)
+}
+
+fn check_command(args: &[String]) -> ExitCode {
+    if args.len() != 1 {
+        eprintln!("svr: check expects exactly one source path or project directory");
+        return ExitCode::from(2);
+    }
+    let path = &args[0];
+    let metadata = match fs::metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) => {
+            eprintln!("svr: cannot inspect `{path}`: {error}");
+            return ExitCode::from(1);
+        }
+    };
+    if metadata.is_dir() {
+        match compiler::project::check_project(path) {
+            Ok(project) => {
+                println!(
+                    "checked project `{}`: {} source file(s), entry {}",
+                    project.name,
+                    project.source_files.len(),
+                    project.entry_path.display()
+                );
+                ExitCode::SUCCESS
+            }
+            Err(diagnostics) => {
+                print_diagnostics(diagnostics);
+                ExitCode::from(1)
+            }
+        }
+    } else {
+        check_source_file(path)
+    }
+}
+
+fn check_source_file(path: &str) -> ExitCode {
+    if !path.ends_with(".svr") {
+        eprintln!("svr: source path `{path}` must have a .svr extension");
+        return ExitCode::from(2);
+    }
+    let source = match fs::read_to_string(path) {
+        Ok(source) => source,
+        Err(error) => {
+            eprintln!("svr: cannot read `{path}`: {error}");
+            return ExitCode::from(1);
+        }
+    };
+    let program = match compiler::parser::Parser::new().parse_source(&source) {
+        Ok(program) => program,
+        Err(diagnostics) => {
+            print_diagnostics(diagnostics);
+            return ExitCode::from(1);
+        }
+    };
+    if let Err(diagnostics) = compiler::semantic::SemanticAnalyzer::new().analyze(&program) {
+        print_diagnostics(diagnostics);
+        return ExitCode::from(1);
+    }
+    println!("checked source `{path}`");
+    ExitCode::SUCCESS
+}
+
+fn print_diagnostics(diagnostics: compiler::diagnostics::Diagnostics) {
+    for diagnostic in diagnostics.items {
+        eprintln!(
+            "error[{}] at {}:{}: {}",
+            diagnostic.code,
+            diagnostic.span.line + 1,
+            diagnostic.span.column + 1,
+            diagnostic.message
+        );
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
