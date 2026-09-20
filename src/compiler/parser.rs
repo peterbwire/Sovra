@@ -1,6 +1,6 @@
 //! Recursive-descent parser for the M2 grammar.
 
-use crate::compiler::ast::{Expression, Function, Parameter, Program, Statement};
+use crate::compiler::ast::{Expression, ExpressionKind, Function, Parameter, Program, Statement};
 use crate::compiler::diagnostics::{Diagnostic, Diagnostics, Severity, Span};
 use crate::compiler::lexer::{Lexer, Token, TokenKind};
 
@@ -20,8 +20,31 @@ impl Parser {
         self.parse_tokens(&tokens)
     }
 
-    /// Parse a token stream that ends with an EOF token.
+    /// Parse a token stream containing exactly one EOF token, at its end.
+    /// Empty streams and misplaced or missing EOF markers produce E2006.
     pub fn parse_tokens(&self, tokens: &[Token]) -> Result<Program, Diagnostics> {
+        let first_eof = tokens.iter().position(|token| token.kind == TokenKind::Eof);
+        if tokens.is_empty() || first_eof != tokens.len().checked_sub(1) {
+            let span = first_eof
+                .and_then(|index| tokens.get(index))
+                .or_else(|| tokens.last())
+                .map(|token| token.span)
+                .unwrap_or(Span {
+                    start: 0,
+                    end: 0,
+                    line: 0,
+                    column: 0,
+                });
+            let mut diagnostics = Diagnostics::new();
+            diagnostics.push(Diagnostic {
+                source_file: None,
+                severity: Severity::Error,
+                code: "E2006",
+                message: "token stream must end with exactly one EOF token".to_owned(),
+                span,
+            });
+            return Err(diagnostics);
+        }
         let mut parser = TokenParser {
             tokens,
             position: 0,
@@ -200,10 +223,16 @@ impl<'a> TokenParser<'a> {
             let operator = (*operator).to_owned();
             self.advance();
             let right = self.binary_expression(precedence + 1)?;
-            left = Expression::Binary {
-                left: Box::new(left),
-                operator,
-                right: Box::new(right),
+            left = Expression {
+                span: Span {
+                    end: right.span.end,
+                    ..left.span
+                },
+                kind: ExpressionKind::Binary {
+                    left: Box::new(left),
+                    operator,
+                    right: Box::new(right),
+                },
             };
         }
         Some(left)
@@ -211,48 +240,55 @@ impl<'a> TokenParser<'a> {
 
     fn primary(&mut self) -> Option<Expression> {
         let token = self.peek().clone();
-        let mut expression = match token.kind {
+        let expression = match token.kind {
             TokenKind::String(value) => {
                 self.advance();
-                Expression::String(value)
+                ExpressionKind::String(value)
             }
             TokenKind::Integer(value) => {
                 self.advance();
-                Expression::Integer(value)
+                ExpressionKind::Integer(value)
             }
             TokenKind::Float(value) => {
                 self.advance();
-                Expression::Float(value)
+                ExpressionKind::Float(value)
             }
             TokenKind::Keyword("true") => {
                 self.advance();
-                Expression::Boolean(true)
+                ExpressionKind::Boolean(true)
             }
             TokenKind::Keyword("false") => {
                 self.advance();
-                Expression::Boolean(false)
+                ExpressionKind::Boolean(false)
             }
             TokenKind::Identifier(name) => {
                 self.advance();
-                Expression::Identifier(name)
+                ExpressionKind::Identifier(name)
             }
             TokenKind::Punctuation('(') => {
                 self.advance();
                 let expression = self.expression();
                 self.expect_punctuation(')');
-                expression?
+                expression?.kind
             }
             _ => {
                 self.error("E2001", "expected an expression");
                 return None;
             }
         };
+        let mut expression = Expression {
+            kind: expression,
+            span: Span {
+                end: self.previous().span.end,
+                ..token.span
+            },
+        };
         if self.consume_operator("::") {
             let name = self.expect_identifier("module member name")?;
-            expression = Expression::QualifiedName {
-                path: match expression {
-                    Expression::Identifier(module) => vec![module, name],
-                    Expression::QualifiedName { mut path } => {
+            expression.kind = ExpressionKind::QualifiedName {
+                path: match expression.kind {
+                    ExpressionKind::Identifier(module) => vec![module, name],
+                    ExpressionKind::QualifiedName { mut path } => {
                         path.push(name);
                         path
                     }
@@ -262,6 +298,7 @@ impl<'a> TokenParser<'a> {
                     }
                 },
             };
+            expression.span.end = self.previous().span.end;
         }
         if self.consume_punctuation('(') {
             let mut arguments = Vec::new();
@@ -272,9 +309,15 @@ impl<'a> TokenParser<'a> {
                 }
             }
             self.expect_punctuation(')');
-            Some(Expression::Call {
-                callee: Box::new(expression),
-                arguments,
+            Some(Expression {
+                span: Span {
+                    end: self.previous().span.end,
+                    ..expression.span
+                },
+                kind: ExpressionKind::Call {
+                    callee: Box::new(expression),
+                    arguments,
+                },
             })
         } else {
             Some(expression)
@@ -383,6 +426,7 @@ impl<'a> TokenParser<'a> {
 
     fn error(&mut self, code: &'static str, message: impl Into<String>) {
         self.diagnostics.push(Diagnostic {
+            source_file: None,
             severity: Severity::Error,
             code,
             message: message.into(),
@@ -403,6 +447,89 @@ fn precedence(operator: &str) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retains_nested_expression_ranges() {
+        fn collect<'a>(expression: &Expression, source: &'a str, spans: &mut Vec<&'a str>) {
+            let span = expression.span;
+            spans.push(&source[span.start..span.end]);
+            let prefix = &source[..span.start];
+            assert_eq!(span.line, prefix.chars().filter(|ch| *ch == '\n').count());
+            assert_eq!(
+                span.column,
+                prefix.rsplit('\n').next().unwrap().chars().count()
+            );
+            match &expression.kind {
+                ExpressionKind::Call { callee, arguments } => {
+                    collect(callee, source, spans);
+                    for argument in arguments {
+                        collect(argument, source, spans);
+                    }
+                }
+                ExpressionKind::Binary { left, right, .. } => {
+                    collect(left, source, spans);
+                    collect(right, source, spans);
+                }
+                _ => {}
+            }
+        }
+        let source =
+            "fn main() {\r\n  std::print(\"é\\n\", ((1 +\n 2 * 3)), true, false, 4.5, value);\n}";
+        let program = Parser::new().parse_source(source).unwrap();
+        let Statement::Expression(expression) = &program.functions[0].body[0] else {
+            panic!("expected expression statement");
+        };
+        let mut spans = Vec::new();
+        collect(expression, source, &mut spans);
+        assert_eq!(
+            spans,
+            vec![
+                "std::print(\"é\\n\", ((1 +\n 2 * 3)), true, false, 4.5, value)",
+                "std::print",
+                "\"é\\n\"",
+                "((1 +\n 2 * 3))",
+                "1",
+                "2 * 3",
+                "2",
+                "3",
+                "true",
+                "false",
+                "4.5",
+                "value",
+            ]
+        );
+    }
+
+    #[test]
+    fn rejects_empty_token_stream() {
+        let errors = Parser::new().parse_tokens(&[]).expect_err("missing EOF");
+        assert_eq!(errors.items[0].code, "E2006");
+    }
+
+    #[test]
+    fn rejects_missing_or_embedded_eof() {
+        let tokens = Lexer::new().tokenize("fn main() {}").unwrap();
+        let errors = Parser::new()
+            .parse_tokens(&tokens[..tokens.len() - 1])
+            .expect_err("missing EOF");
+        assert_eq!(errors.items[0].code, "E2006");
+        assert_eq!(errors.items[0].span, tokens[tokens.len() - 2].span);
+        let mut embedded = tokens.clone();
+        embedded.insert(0, tokens.last().unwrap().clone());
+        let errors = Parser::new()
+            .parse_tokens(&embedded)
+            .expect_err("early EOF must not hide trailing tokens");
+        assert_eq!(errors.items[0].code, "E2006");
+        assert_eq!(errors.items[0].span, embedded[0].span);
+    }
+
+    #[test]
+    fn accepts_eof_only_token_stream() {
+        let tokens = Lexer::new().tokenize("").unwrap();
+        let program = Parser::new().parse_tokens(&tokens).unwrap();
+        assert!(program.functions.is_empty());
+        assert!(program.modules.is_empty());
+    }
 
     #[test]
     fn parses_function_and_call() {
@@ -460,8 +587,8 @@ mod tests {
             .expect("source should parse");
         assert!(matches!(
             &program.functions[0].body[0],
-            Statement::Expression(Expression::Call { callee, .. })
-                if matches!(callee.as_ref(), Expression::QualifiedName { path } if path == &["std".to_owned(), "println".to_owned()])
+            Statement::Expression(Expression { kind: ExpressionKind::Call { callee, .. }, .. })
+                if matches!(&callee.kind, ExpressionKind::QualifiedName { path } if path == &["std".to_owned(), "println".to_owned()])
         ));
     }
 

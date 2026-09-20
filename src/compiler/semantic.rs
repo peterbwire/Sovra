@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use crate::compiler::ast::{Expression, Function, Program, Statement};
+use crate::compiler::ast::{Expression, ExpressionKind, Function, Program, Statement};
 use crate::compiler::diagnostics::{Diagnostic, Diagnostics, Severity, Span};
 use crate::compiler::stdlib;
 
@@ -213,7 +213,7 @@ fn check_statement(
             value,
             span,
         } => {
-            let value_type = check_expression(value, scope, functions, diagnostics, *span);
+            let value_type = check_expression(value, scope, functions, diagnostics);
             let declared_type = type_name
                 .as_deref()
                 .map(type_from_name)
@@ -232,9 +232,7 @@ fn check_statement(
         Statement::Return { value, span } => {
             let actual = value
                 .as_ref()
-                .map(|expression| {
-                    check_expression(expression, scope, functions, diagnostics, *span)
-                })
+                .map(|expression| check_expression(expression, scope, functions, diagnostics))
                 .unwrap_or(Type::Unit);
             if !types_compatible(expected_return, &actual) {
                 diagnostics.push(diagnostic(
@@ -245,18 +243,7 @@ fn check_statement(
             }
         }
         Statement::Expression(expression) => {
-            check_expression(
-                expression,
-                scope,
-                functions,
-                diagnostics,
-                Span {
-                    start: 0,
-                    end: 0,
-                    line: 0,
-                    column: 0,
-                },
-            );
+            check_expression(expression, scope, functions, diagnostics);
         }
     }
 }
@@ -266,11 +253,11 @@ fn check_expression(
     scope: &HashMap<String, Type>,
     functions: &HashMap<String, &Function>,
     diagnostics: &mut Diagnostics,
-    span: Span,
 ) -> Type {
-    match expression {
-        Expression::String(_) => Type::String,
-        Expression::Integer(value) => {
+    let span = expression.span;
+    match &expression.kind {
+        ExpressionKind::String(_) => Type::String,
+        ExpressionKind::Integer(value) => {
             if value.parse::<i64>().is_err() {
                 diagnostics.push(diagnostic(
                     "E3012",
@@ -280,9 +267,9 @@ fn check_expression(
             }
             Type::Int
         }
-        Expression::Float(_) => Type::Float,
-        Expression::Boolean(_) => Type::Bool,
-        Expression::Identifier(name) => scope.get(name).cloned().unwrap_or_else(|| {
+        ExpressionKind::Float(_) => Type::Float,
+        ExpressionKind::Boolean(_) => Type::Bool,
+        ExpressionKind::Identifier(name) => scope.get(name).cloned().unwrap_or_else(|| {
             diagnostics.push(diagnostic(
                 "E3001",
                 format!("undefined variable `{name}`"),
@@ -290,7 +277,7 @@ fn check_expression(
             ));
             Type::Unknown
         }),
-        Expression::QualifiedName { path } => {
+        ExpressionKind::QualifiedName { path } => {
             let qualified = path.join("::");
             if let Some(function) = stdlib::lookup(&qualified) {
                 type_from_name(function.return_type)
@@ -309,15 +296,15 @@ fn check_expression(
                 Type::Unknown
             }
         }
-        Expression::Call { callee, arguments } => {
-            let name = match callee.as_ref() {
-                Expression::Identifier(name) => Some(name.clone()),
-                Expression::QualifiedName { path } => Some(path.join("::")),
+        ExpressionKind::Call { callee, arguments } => {
+            let name = match &callee.kind {
+                ExpressionKind::Identifier(name) => Some(name.clone()),
+                ExpressionKind::QualifiedName { path } => Some(path.join("::")),
                 _ => {
                     diagnostics.push(diagnostic(
                         "E3003",
                         "call target must be a function name",
-                        span,
+                        callee.span,
                     ));
                     return Type::Unknown;
                 }
@@ -350,8 +337,7 @@ fn check_expression(
                     ));
                 }
                 for (argument, parameter) in arguments.iter().zip(&function.parameters) {
-                    let argument_type =
-                        check_expression(argument, scope, functions, diagnostics, span);
+                    let argument_type = check_expression(argument, scope, functions, diagnostics);
                     if let Some(parameter_type) = parameter.type_name.as_deref() {
                         let expected = type_from_name(parameter_type);
                         if !types_compatible(&expected, &argument_type) {
@@ -360,7 +346,7 @@ fn check_expression(
                                 format!(
                                     "argument type mismatch for `{name}`: expected {expected:?}, found {argument_type:?}"
                                 ),
-                                span,
+                                argument.span,
                             ));
                         }
                     }
@@ -372,23 +358,23 @@ fn check_expression(
                     .unwrap_or(Type::Unit)
             } else {
                 for argument in arguments {
-                    check_expression(argument, scope, functions, diagnostics, span);
+                    check_expression(argument, scope, functions, diagnostics);
                 }
                 diagnostics.push(diagnostic(
                     "E3004",
                     format!("undefined function `{name}`"),
-                    span,
+                    callee.span,
                 ));
                 Type::Unknown
             }
         }
-        Expression::Binary {
+        ExpressionKind::Binary {
             left,
             operator,
             right,
         } => {
-            let left_type = check_expression(left, scope, functions, diagnostics, span);
-            let right_type = check_expression(right, scope, functions, diagnostics, span);
+            let left_type = check_expression(left, scope, functions, diagnostics);
+            let right_type = check_expression(right, scope, functions, diagnostics);
             let comparable = numeric_or_string_comparison_compatible(&left_type, &right_type)
                 && match operator.as_str() {
                     "==" | "!=" => {
@@ -432,7 +418,7 @@ fn check_expression(
             if comparable {
                 Type::Bool
             } else if arithmetic {
-                numeric_result_type(&left_type, &right_type)
+                arithmetic_result_type(&left_type, &right_type)
             } else {
                 diagnostics.push(diagnostic(
                     "E3005",
@@ -466,7 +452,7 @@ fn check_std_call(
         ));
     }
     for (argument, expected) in arguments.iter().zip(function.parameters) {
-        let argument_type = check_expression(argument, scope, functions, diagnostics, span);
+        let argument_type = check_expression(argument, scope, functions, diagnostics);
         if stdlib::is_any_type(expected) {
             continue;
         }
@@ -477,7 +463,7 @@ fn check_std_call(
                 format!(
                     "argument type mismatch for `{source_name}`: expected {expected:?}, found {argument_type:?}"
                 ),
-                span,
+                argument.span,
             ));
         }
     }
@@ -494,8 +480,9 @@ fn type_from_name(name: &str) -> Type {
     }
 }
 
-fn numeric_result_type(left: &Type, right: &Type) -> Type {
+fn arithmetic_result_type(left: &Type, right: &Type) -> Type {
     match (left, right) {
+        (Type::String, Type::String) => Type::String,
         (Type::Float, _) | (_, Type::Float) => Type::Float,
         (Type::Int, Type::Int) => Type::Int,
         _ => Type::Unknown,
@@ -544,6 +531,7 @@ fn types_compatible(expected: &Type, actual: &Type) -> bool {
 
 fn diagnostic(code: &'static str, message: impl Into<String>, span: Span) -> Diagnostic {
     Diagnostic {
+        source_file: None,
         severity: Severity::Error,
         code,
         message: message.into(),
@@ -555,6 +543,82 @@ fn diagnostic(code: &'static str, message: impl Into<String>, span: Span) -> Dia
 mod tests {
     use super::*;
     use crate::compiler::parser::Parser;
+
+    #[test]
+    fn concatenation_preserves_string_type_contracts() {
+        for (source, code) in [
+            ("fn main() { let number: Int = \"a\" + \"b\" }", "E3002"),
+            ("fn value() -> Int { return \"a\" + \"b\" }", "E3002"),
+            (
+                "fn take(value: Int) {} fn main() { take(\"a\" + \"b\") }",
+                "E3007",
+            ),
+            (
+                "fn main() { let text = \"a\" + \"b\"; let number: Int = text }",
+                "E3002",
+            ),
+        ] {
+            let program = Parser::new().parse_source(source).unwrap();
+            let errors = SemanticAnalyzer::new()
+                .analyze(&program)
+                .expect_err("concatenation is String");
+            assert!(
+                errors.items.iter().any(|error| error.code == code),
+                "{errors:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn inferred_concatenation_can_be_used_as_string() {
+        let source = "fn join(value: String) -> String { return value + \"!\" } fn main() { let text = \"a\" + \"b\"; print(join(text + \"c\")); print(std::len(text)); print(text == \"ab\") }";
+        let program = Parser::new().parse_source(source).unwrap();
+        let typed = SemanticAnalyzer::new()
+            .analyze(&program)
+            .expect("inferred String");
+        let output =
+            crate::compiler::interpreter::run(&crate::compiler::ir::lower(&typed)).unwrap();
+        assert_eq!(output, vec!["abc!", "2", "true"]);
+    }
+
+    #[test]
+    fn expression_diagnostics_identify_the_failing_source() {
+        for (body, code, spelling) in [
+            ("print(missing)", "E3001", "missing"),
+            ("let value = missing", "E3001", "missing"),
+            ("return missing", "E3001", "missing"),
+            ("print(9223372036854775808)", "E3012", "9223372036854775808"),
+            ("print(true + 1)", "E3005", "true + 1"),
+            ("std::len(42)", "E3007", "42"),
+            ("helper(42)", "E3007", "42"),
+            ("absent(1)", "E3004", "absent"),
+            ("std::absent(1)", "E3004", "std::absent"),
+            ("std::len()", "E3006", "std::len()"),
+            ("42()", "E3003", "42"),
+        ] {
+            for prefix in ["fn main() {", "mod sample { fn private() {"] {
+                let source = format!(
+                    "fn helper(value: String) {{}}\n{prefix}\n  print(\"é\"); {body}\n}}{}",
+                    if prefix.starts_with("mod") { "}" } else { "" }
+                );
+                let program = Parser::new().parse_source(&source).expect("valid syntax");
+                let errors = SemanticAnalyzer::new()
+                    .analyze(&program)
+                    .expect_err("invalid body");
+                let error = errors
+                    .items
+                    .iter()
+                    .find(|error| error.code == code)
+                    .unwrap();
+                let start = source.rfind(spelling).unwrap();
+                assert_eq!(error.span.start, start, "{source}: {error:?}");
+                assert_eq!(error.span.end, start + spelling.len(), "{source}");
+                assert_eq!(error.span.line, 2);
+                let line_start = source[..start].rfind('\n').unwrap() + 1;
+                assert_eq!(error.span.column, source[line_start..start].chars().count());
+            }
+        }
+    }
 
     #[test]
     fn requires_parameter_annotations_in_all_functions() {

@@ -67,6 +67,75 @@ fn check_json_reports_source_success() {
 }
 
 #[test]
+fn check_project_diagnostics_identify_scanned_files() {
+    for (fixture, expected) in [
+        ("project-locations", "[['E4034', 'main.svr', '  route broken', 1], ['E4080', 'auth.svr', '  allow broken', 0], ['E4033', 'main.svr', '  route GET \"/missing\" -> absent.handler', 2], ['E4081', 'auth.svr', '  allow user to read on Missing', 1], ['E4003', 'sovra.toml', 'target = \"unknown\"', 5]]"),
+        ("manifest-locations", "[['E4010', 'sovra.toml', '[unknown]', 0]]"),
+    ] {
+        let project = format!("{}/tests/fixtures/{fixture}", env!("CARGO_MANIFEST_DIR"));
+        let Some(output) = output_or_skip(svr().args(["check", "--format=json", &project])) else {
+            return;
+        };
+        assert_eq!(output.status.code(), Some(1));
+        assert_json_report(&output, &format!(r#"
+            assert.equal(report.kind, 'project');
+            assert.equal(report.success, false);
+            if (report.target.endsWith('project-locations')) {{
+                for (const code of ['E4024', 'E4062']) {{
+                    const d = report.diagnostics.find(d => d.code === code);
+                    assert.ok(d.location.file.endsWith('main.svr'));
+                    assert.equal(d.location.line, code === 'E4024' ? 3 : 4);
+                }}
+            }}
+            for (const [code, file, spelling, line] of {expected}) {{
+                const d = report.diagnostics.find(d => d.code === code);
+                const path = require('node:path').join(report.target, file);
+                const bytes = require('node:fs').readFileSync(path);
+                const start = bytes.indexOf(spelling);
+                assert.equal(require('node:path').resolve(d.location.file),
+                    require('node:path').resolve(path));
+                assert.deepEqual(d.location, {{ file: d.location.file, start,
+                    end: start + Buffer.byteLength(spelling), line, column: 0 }});
+            }}
+        "#));
+        let Some(output) = output_or_skip(svr().args(["check", &project])) else {
+            return;
+        };
+        assert_eq!(output.status.code(), Some(1));
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.contains(if fixture == "project-locations" { "main.svr:2:1" } else { "sovra.toml:1:1" }));
+    }
+}
+
+#[test]
+fn check_json_reports_expression_locations() {
+    let source = format!(
+        "{}/tests/fixtures/expression-locations.svr",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let Some(output) = output_or_skip(svr().args(["check", "--format=json", &source])) else {
+        return;
+    };
+    assert_eq!(output.status.code(), Some(1));
+    assert_json_report(
+        &output,
+        r#"
+        assert.equal(report.success, false);
+        const bytes = require('node:fs').readFileSync(report.target);
+        for (const [code, spelling, line, column] of [
+            ['E3007', '42', 1, 25], ['E3001', 'missing', 2, 10]
+        ]) {
+            const diagnostic = report.diagnostics.find(d => d.code === code);
+            const start = bytes.indexOf(spelling);
+            assert.deepEqual(diagnostic.location, {
+                file: report.target, start, end: start + spelling.length, line, column
+            });
+        }
+    "#,
+    );
+}
+
+#[test]
 fn check_json_reports_parameter_diagnostic_location() {
     let source = format!(
         "{}/tests/fixtures/untyped-parameter.svr",
@@ -140,6 +209,27 @@ fn check_rejects_invalid_format_arguments() {
         assert_eq!(output.status.code(), Some(2), "{arguments:?}");
         assert!(output.stdout.is_empty(), "{arguments:?}");
         assert!(!output.stderr.is_empty(), "{arguments:?}");
+    }
+}
+
+#[test]
+fn source_commands_reject_mistyped_concatenation() {
+    let source = format!(
+        "{}/tests/fixtures/invalid-concatenation.svr",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    for args in [
+        vec!["check", source.as_str()],
+        vec!["run", source.as_str()],
+        vec!["build", source.as_str()],
+        vec!["build", "--emit", "js", source.as_str()],
+    ] {
+        let Some(output) = output_or_skip(svr().args(&args)) else {
+            return;
+        };
+        assert_eq!(output.status.code(), Some(1), "{args:?}");
+        assert!(output.stdout.is_empty());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("E3002"));
     }
 }
 

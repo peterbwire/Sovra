@@ -26,7 +26,8 @@ checks. Numeric conversion/bounds, checked Int arithmetic, JS numeric kinds,
 token ranges and straight-line return completeness have since been hardened.
 ADR 0002 is approved and implemented: executable function parameters require
 explicit types (`E3014`), with local inference and the default Unit return type
-preserved. Named-type resolution and expression/file-aware diagnostics remain
+preserved. Expression diagnostics now retain precise source ranges. Named-type
+resolution and richer diagnostics remain
 before broader type-system claims. The project scanner does not enforce source
 semantic rules. See `FULL_DEVELOPMENT_STATUS.md` before further service-contract
 and model/page expansion.
@@ -35,7 +36,12 @@ and model/page expansion.
 
 Agents can request `svr check --format json <path>` for structured outcomes.
 See `reference/check-json.md`: project success remains a wiring check, and
-project diagnostic locations are null until per-file provenance is retained.
+manifest parsing, source scanning and declaration-based value/wiring errors
+retain file/line ranges. Missing keys, discovery and I/O errors keep null locations.
+Malformed entry service/data lists now report E4024/E4062 at the declaration
+instead of silently losing invalid items; list parsing remains single-line.
+Source scanning now strips `//` comments separately from manifest `#` comments,
+preserving markers within quoted strings and original diagnostic line ranges.
 
 Run these in order after each slice:
 

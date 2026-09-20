@@ -17,8 +17,8 @@ pub enum CheckKind {
 ///
 /// A missing kind means the target could not be classified. Source locations
 /// contain the target as supplied and the compiler's zero-based byte offsets,
-/// line, and character column. All-zero spans have no known location. Project
-/// locations remain absent because the scanner does not retain file identity.
+/// line, and character column. All-zero spans without a file have no known
+/// location. Project locations require explicit file identity from the scanner.
 /// A report succeeds when its diagnostics contain no errors; warnings alone do
 /// not make a check fail.
 pub fn render(target: &str, kind: Option<CheckKind>, diagnostics: &Diagnostics) -> String {
@@ -54,9 +54,16 @@ pub fn render(target: &str, kind: Option<CheckKind>, diagnostics: &Diagnostics) 
         output.push_str(",\"message\":");
         push_string(&mut output, &diagnostic.message);
         output.push_str(",\"location\":");
-        if kind == Some(CheckKind::Source) && has_location(diagnostic.span) {
+        let file = diagnostic.source_file.as_deref().or_else(|| {
+            if kind == Some(CheckKind::Source) && has_location(diagnostic.span) {
+                Some(target)
+            } else {
+                None
+            }
+        });
+        if let Some(file) = file {
             output.push_str("{\"file\":");
-            push_string(&mut output, target);
+            push_string(&mut output, file);
             let span = diagnostic.span;
             let _ = write!(
                 output,
@@ -134,6 +141,7 @@ mod tests {
 
     fn diagnostic(severity: Severity, span: Span) -> Diagnostic {
         Diagnostic {
+            source_file: None,
             severity,
             code: "E3014",
             message: "parameter requires an explicit type annotation".into(),
@@ -148,6 +156,34 @@ mod tests {
             line: 0,
             column: 0,
         }
+    }
+
+    #[test]
+    fn project_validation_locations_survive_json_serialization() {
+        let root = format!(
+            "{}/tests/fixtures/project-locations",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let errors = crate::compiler::project::check_project(&root).expect_err("invalid project");
+        let report = render(&root, Some(CheckKind::Project), &errors);
+        assert_report(
+            &report,
+            r#"
+            for (const [code, file, spelling, line] of [
+                ['E4003', 'sovra.toml', 'target = "unknown"', 5],
+                ['E4033', 'main.svr', '  route GET "/missing" -> absent.handler', 2],
+                ['E4081', 'auth.svr', '  allow user to read on Missing', 1]
+            ]) {
+                const d = report.diagnostics.find(d => d.code === code);
+                const path = require('node:path');
+                assert.equal(path.resolve(d.location.file), path.resolve(report.target, file));
+                const bytes = fs.readFileSync(d.location.file);
+                const start = bytes.indexOf(spelling);
+                assert.deepEqual(d.location, { file: d.location.file, start,
+                    end: start + Buffer.byteLength(spelling), line, column: 0 });
+            }
+        "#,
+        );
     }
 
     #[test]

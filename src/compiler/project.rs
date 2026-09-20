@@ -88,7 +88,9 @@ pub fn check_project(path: impl AsRef<Path>) -> Result<ProjectCheck, Diagnostics
     let root = path.as_ref();
     let manifest_path = root.join(MANIFEST_FILE);
     let manifest = read_manifest(&manifest_path)?;
-    let parsed = Manifest::parse(&manifest);
+    let mut parsed = Manifest::parse(&manifest);
+    parsed.source_file = Some(manifest_path.to_string_lossy().into_owned());
+    attach_line_locations(&manifest_path, &manifest, &mut parsed.diagnostics.items);
     if !parsed.diagnostics.is_empty() {
         return Err(parsed.diagnostics);
     }
@@ -99,12 +101,17 @@ pub fn check_project(path: impl AsRef<Path>) -> Result<ProjectCheck, Diagnostics
     let runtime_target = parsed.value("runtime", "target").map(str::to_owned);
 
     if let Some(name) = name.as_deref() {
+        let first = diagnostics.items.len();
         validate_project_name(name, &mut diagnostics);
+        parsed.attach("project", "name", &mut diagnostics.items[first..]);
     }
     if let Some(target) = runtime_target.as_deref() {
+        let first = diagnostics.items.len();
         validate_runtime_target(target, &mut diagnostics);
+        parsed.attach("runtime", "target", &mut diagnostics.items[first..]);
     }
 
+    let first = diagnostics.items.len();
     let entry_path = entry
         .as_deref()
         .and_then(|entry| resolve_project_path(root, entry, &mut diagnostics))
@@ -112,6 +119,7 @@ pub fn check_project(path: impl AsRef<Path>) -> Result<ProjectCheck, Diagnostics
     if entry.is_some() {
         validate_entry_path(&entry_path, &mut diagnostics);
     }
+    parsed.attach("project", "entry", &mut diagnostics.items[first..]);
 
     let source_files = collect_source_files(root, &mut diagnostics);
     if source_files.is_empty() {
@@ -131,14 +139,42 @@ pub fn check_project(path: impl AsRef<Path>) -> Result<ProjectCheck, Diagnostics
             entry_path,
             runtime_target,
             source_files,
-            declared_services: source_index.declared_services,
-            app_services: source_index.app_services,
-            routes: source_index.routes,
-            pages: source_index.pages,
-            auth_target: source_index.auth_target,
-            auth_policies: source_index.auth_policies,
-            data_models: source_index.data_models,
-            scheduled_tasks: source_index.scheduled_tasks,
+            declared_services: source_index
+                .declared_services
+                .into_iter()
+                .map(|item| item.value)
+                .collect(),
+            app_services: source_index
+                .app_services
+                .into_iter()
+                .map(|item| item.value)
+                .collect(),
+            routes: source_index
+                .routes
+                .into_iter()
+                .map(|item| item.value)
+                .collect(),
+            pages: source_index
+                .pages
+                .into_iter()
+                .map(|item| item.value)
+                .collect(),
+            auth_target: source_index.auth_target.map(|item| item.value),
+            auth_policies: source_index
+                .auth_policies
+                .into_iter()
+                .map(|item| item.value)
+                .collect(),
+            data_models: source_index
+                .data_models
+                .into_iter()
+                .map(|item| item.value)
+                .collect(),
+            scheduled_tasks: source_index
+                .scheduled_tasks
+                .into_iter()
+                .map(|item| item.value)
+                .collect(),
         })
     } else {
         Err(diagnostics)
@@ -166,11 +202,13 @@ fn require_manifest_value(
     match manifest.value(section, key) {
         Some(value) if !value.trim().is_empty() => Some(value.to_owned()),
         _ => {
+            let first = diagnostics.items.len();
             push_error(
                 diagnostics,
                 "E4001",
                 format!("project manifest requires `{section}.{key}`"),
             );
+            manifest.attach(section, key, &mut diagnostics.items[first..]);
             None
         }
     }
@@ -305,18 +343,54 @@ fn collect_source_files_inner(
 
 #[derive(Debug, Default)]
 struct ProjectSourceIndex {
-    declared_services: Vec<String>,
-    app_services: Vec<String>,
+    declared_services: Vec<Located<String>>,
+    app_services: Vec<Located<String>>,
     callable_symbols: BTreeSet<String>,
     page_symbols: BTreeSet<String>,
     auth_symbols: BTreeSet<String>,
     model_symbols: BTreeSet<String>,
-    auth_policies: Vec<AuthPolicy>,
-    routes: Vec<AppRoute>,
-    pages: Vec<AppPage>,
-    auth_target: Option<String>,
-    data_models: Vec<String>,
-    scheduled_tasks: Vec<AppTask>,
+    auth_policies: Vec<Located<AuthPolicy>>,
+    routes: Vec<Located<AppRoute>>,
+    pages: Vec<Located<AppPage>>,
+    auth_target: Option<Located<String>>,
+    data_models: Vec<Located<String>>,
+    scheduled_tasks: Vec<Located<AppTask>>,
+}
+
+#[derive(Debug, Clone)]
+struct SourceLocation {
+    file: String,
+    span: Span,
+}
+
+impl SourceLocation {
+    fn locate<T>(&self, value: T) -> Located<T> {
+        Located {
+            value,
+            location: self.clone(),
+        }
+    }
+
+    fn attach(&self, diagnostics: &mut [Diagnostic]) {
+        for diagnostic in diagnostics {
+            diagnostic.source_file = Some(self.file.clone());
+            diagnostic.span = self.span;
+        }
+    }
+}
+
+#[derive(Debug)]
+struct Located<T> {
+    value: T,
+    location: SourceLocation,
+}
+
+impl<T> std::ops::Deref for Located<T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        &self.value
+    }
 }
 
 fn scan_project_sources(
@@ -344,16 +418,25 @@ fn scan_project_sources(
             .file_stem()
             .and_then(|stem| stem.to_str())
             .unwrap_or_default();
+        let first_diagnostic = diagnostics.items.len();
         scan_source_file(
             &source,
+            source_file,
             module_name,
             source_file == entry_path,
             &mut index,
             diagnostics,
         );
+        attach_line_locations(
+            source_file,
+            &source,
+            &mut diagnostics.items[first_diagnostic..],
+        );
     }
-    index.declared_services.sort();
-    index.app_services.sort();
+    index
+        .declared_services
+        .sort_by(|a, b| a.value.cmp(&b.value));
+    index.app_services.sort_by(|a, b| a.value.cmp(&b.value));
     index.routes.sort_by(|left, right| {
         left.path
             .cmp(&right.path)
@@ -370,22 +453,33 @@ fn scan_project_sources(
             .cmp(&right.role)
             .then(left.models.cmp(&right.models))
     });
-    index.data_models.sort();
+    index.data_models.sort_by(|a, b| a.value.cmp(&b.value));
     index
 }
 
 fn scan_source_file(
     source: &str,
+    source_file: &Path,
     module_name: &str,
     is_entry: bool,
     index: &mut ProjectSourceIndex,
     diagnostics: &mut Diagnostics,
 ) {
     let mut seen_services = BTreeSet::new();
+    let spans = source_line_spans(source);
     for (line_index, line) in source.lines().enumerate() {
-        let trimmed = strip_comment(line).trim();
+        let trimmed = strip_line_comment(line, "//").trim();
+        let location = SourceLocation {
+            file: source_file.to_string_lossy().into_owned(),
+            span: spans[line_index],
+        };
         if let Some(name) = parse_prefixed_identifier(trimmed, "service") {
-            if !seen_services.insert(name.clone()) || index.declared_services.contains(&name) {
+            if !seen_services.insert(name.clone())
+                || index
+                    .declared_services
+                    .iter()
+                    .any(|item| item.value == name)
+            {
                 push_manifest_error(
                     diagnostics,
                     line_index,
@@ -393,7 +487,7 @@ fn scan_source_file(
                     format!("duplicate service declaration `{name}`"),
                 );
             }
-            index.declared_services.push(name);
+            index.declared_services.push(location.locate(name));
         }
         if let Some(name) = parse_prefixed_identifier(trimmed, "fn") {
             index.callable_symbols.insert(name.clone());
@@ -422,7 +516,7 @@ fn scan_source_file(
         }
         if starts_keyword(trimmed, "allow") {
             match parse_auth_policy(trimmed) {
-                Some(policy) => index.auth_policies.push(policy),
+                Some(policy) => index.auth_policies.push(location.locate(policy)),
                 None => push_manifest_error(
                     diagnostics,
                     line_index,
@@ -440,14 +534,31 @@ fn scan_source_file(
             index.page_symbols.insert(format!("{module_name}.{name}"));
         }
         if is_entry {
-            index
-                .app_services
-                .extend(parse_named_list(trimmed, "services"));
-            index.data_models.extend(parse_named_list(trimmed, "data"));
+            for (key, code, values) in [
+                ("services", "E4024", &mut index.app_services),
+                ("data", "E4062", &mut index.data_models),
+            ] {
+                if trimmed.strip_prefix(key).is_some_and(|rest| {
+                    !rest
+                        .chars()
+                        .next()
+                        .is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+                }) {
+                    match parse_named_list(trimmed, key) {
+                        Some(items) => values.extend(items.into_iter().map(|value| location.locate(value))),
+                        None => push_manifest_error(
+                            diagnostics,
+                            line_index,
+                            code,
+                            format!("malformed {key} list; expected `{key}: [name, ...]` with identifier items"),
+                        ),
+                    }
+                }
+            }
             if starts_named_key(trimmed, "auth") || starts_keyword(trimmed, "auth") {
                 match parse_named_target(trimmed, "auth") {
                     Some(target) => {
-                        if index.auth_target.replace(target).is_some() {
+                        if index.auth_target.replace(location.locate(target)).is_some() {
                             push_manifest_error(
                                 diagnostics,
                                 line_index,
@@ -466,7 +577,7 @@ fn scan_source_file(
             }
             if starts_keyword(trimmed, "route") {
                 match parse_app_route(trimmed) {
-                    Some(route) => index.routes.push(route),
+                    Some(route) => index.routes.push(location.locate(route)),
                     None => push_manifest_error(
                         diagnostics,
                         line_index,
@@ -481,7 +592,7 @@ fn scan_source_file(
                     .is_some_and(|rest| rest.trim_start().starts_with('"'))
             {
                 match parse_app_page(trimmed) {
-                    Some(page) => index.pages.push(page),
+                    Some(page) => index.pages.push(location.locate(page)),
                     None => push_manifest_error(
                         diagnostics,
                         line_index,
@@ -492,7 +603,7 @@ fn scan_source_file(
             }
             if starts_keyword(trimmed, "task") && trimmed.contains("->") {
                 match parse_app_task(trimmed) {
-                    Some(task) => index.scheduled_tasks.push(task),
+                    Some(task) => index.scheduled_tasks.push(location.locate(task)),
                     None => push_manifest_error(
                         diagnostics,
                         line_index,
@@ -537,25 +648,26 @@ fn parse_prefixed_identifier(line: &str, keyword: &str) -> Option<String> {
     }
 }
 
-fn parse_named_list(line: &str, key: &str) -> Vec<String> {
-    let Some(rest) = line.strip_prefix(key) else {
-        return Vec::new();
-    };
+fn parse_named_list(line: &str, key: &str) -> Option<Vec<String>> {
+    let rest = line.strip_prefix(key)?.trim_start();
+    let list = rest.strip_prefix(':')?.trim_start().strip_prefix('[')?;
+    let (items, rest) = list.split_once(']')?;
     let rest = rest.trim_start();
-    let Some(list) = rest.strip_prefix(':').map(str::trim_start) else {
-        return Vec::new();
-    };
-    let Some(list) = list.strip_prefix('[') else {
-        return Vec::new();
-    };
-    let Some((items, _)) = list.split_once(']') else {
-        return Vec::new();
-    };
+    let rest = rest.strip_prefix(';').unwrap_or(rest).trim_start();
+    if !rest.is_empty() {
+        return None;
+    }
+    if items.trim().is_empty() {
+        return Some(Vec::new());
+    }
+    // Preserve a single trailing comma, but never discard empty interior items.
+    let items = items.trim_end().strip_suffix(',').unwrap_or(items);
     items
         .split(',')
-        .map(str::trim)
-        .filter(|item| is_identifier(item))
-        .map(str::to_owned)
+        .map(|item| {
+            let item = item.trim();
+            is_identifier(item).then(|| item.to_owned())
+        })
         .collect()
 }
 
@@ -736,6 +848,7 @@ fn validate_services(
         .map(|entry| entry.key.as_str())
         .collect();
     for service in &manifest_services {
+        let first = diagnostics.items.len();
         if !is_identifier(service) {
             push_error(
                 diagnostics,
@@ -746,7 +859,7 @@ fn validate_services(
         if !source_index
             .declared_services
             .iter()
-            .any(|declared| declared == service)
+            .any(|declared| declared.value == *service)
         {
             push_error(
                 diagnostics,
@@ -754,8 +867,11 @@ fn validate_services(
                 format!("service binding `{service}` has no matching source declaration"),
             );
         }
+        manifest.attach("services", service, &mut diagnostics.items[first..]);
     }
-    for service in &source_index.declared_services {
+    for item in &source_index.declared_services {
+        let service = &item.value;
+        let first = diagnostics.items.len();
         if !manifest_services
             .iter()
             .any(|bound_service| *bound_service == service)
@@ -766,15 +882,18 @@ fn validate_services(
                 format!("service declaration `{service}` has no manifest binding"),
             );
         }
+        item.location.attach(&mut diagnostics.items[first..]);
     }
-    for service in &source_index.app_services {
+    for item in &source_index.app_services {
+        let service = &item.value;
+        let first = diagnostics.items.len();
         if !manifest_services
             .iter()
             .any(|bound_service| *bound_service == service)
             || !source_index
                 .declared_services
                 .iter()
-                .any(|declared| declared == service)
+                .any(|declared| declared.value == *service)
         {
             push_error(
                 diagnostics,
@@ -782,6 +901,7 @@ fn validate_services(
                 format!("app service `{service}` must be declared and bound in the manifest"),
             );
         }
+        item.location.attach(&mut diagnostics.items[first..]);
     }
     validate_routes(source_index, diagnostics);
     validate_pages(source_index, diagnostics);
@@ -793,7 +913,9 @@ fn validate_services(
 
 fn validate_routes(source_index: &ProjectSourceIndex, diagnostics: &mut Diagnostics) {
     let mut seen = BTreeSet::new();
-    for route in &source_index.routes {
+    for item in &source_index.routes {
+        let route = &item.value;
+        let first = diagnostics.items.len();
         if !is_http_method(&route.method) {
             push_error(
                 diagnostics,
@@ -825,12 +947,15 @@ fn validate_routes(source_index: &ProjectSourceIndex, diagnostics: &mut Diagnost
                 format!("route target `{}` was not found", route.target),
             );
         }
+        item.location.attach(&mut diagnostics.items[first..]);
     }
 }
 
 fn validate_pages(source_index: &ProjectSourceIndex, diagnostics: &mut Diagnostics) {
     let mut seen = BTreeSet::new();
-    for page in &source_index.pages {
+    for item in &source_index.pages {
+        let page = &item.value;
+        let first = diagnostics.items.len();
         if !page.path.starts_with('/') {
             push_error(
                 diagnostics,
@@ -855,11 +980,14 @@ fn validate_pages(source_index: &ProjectSourceIndex, diagnostics: &mut Diagnosti
                 format!("page target `{}` was not found", page.target),
             );
         }
+        item.location.attach(&mut diagnostics.items[first..]);
     }
 }
 
 fn validate_auth(source_index: &ProjectSourceIndex, diagnostics: &mut Diagnostics) {
-    if let Some(target) = &source_index.auth_target {
+    if let Some(item) = &source_index.auth_target {
+        let target = &item.value;
+        let first = diagnostics.items.len();
         if !source_index.auth_symbols.contains(target) {
             push_error(
                 diagnostics,
@@ -867,12 +995,15 @@ fn validate_auth(source_index: &ProjectSourceIndex, diagnostics: &mut Diagnostic
                 format!("auth target `{target}` was not found"),
             );
         }
+        item.location.attach(&mut diagnostics.items[first..]);
     }
 }
 
 fn validate_data_models(source_index: &ProjectSourceIndex, diagnostics: &mut Diagnostics) {
     let mut seen = BTreeSet::new();
-    for model in &source_index.data_models {
+    for item in &source_index.data_models {
+        let model = &item.value;
+        let first = diagnostics.items.len();
         if !seen.insert(model.clone()) {
             push_error(
                 diagnostics,
@@ -887,12 +1018,15 @@ fn validate_data_models(source_index: &ProjectSourceIndex, diagnostics: &mut Dia
                 format!("app data model `{model}` was not found"),
             );
         }
+        item.location.attach(&mut diagnostics.items[first..]);
     }
 }
 
 fn validate_scheduled_tasks(source_index: &ProjectSourceIndex, diagnostics: &mut Diagnostics) {
     let mut seen = BTreeSet::new();
-    for task in &source_index.scheduled_tasks {
+    for item in &source_index.scheduled_tasks {
+        let task = &item.value;
+        let first = diagnostics.items.len();
         if !seen.insert((task.schedule.clone(), task.target.clone())) {
             push_error(
                 diagnostics,
@@ -910,12 +1044,15 @@ fn validate_scheduled_tasks(source_index: &ProjectSourceIndex, diagnostics: &mut
                 format!("scheduled task target `{}` was not found", task.target),
             );
         }
+        item.location.attach(&mut diagnostics.items[first..]);
     }
 }
 
 fn validate_auth_policies(source_index: &ProjectSourceIndex, diagnostics: &mut Diagnostics) {
     let mut seen = BTreeSet::new();
-    for policy in &source_index.auth_policies {
+    for item in &source_index.auth_policies {
+        let policy = &item.value;
+        let first = diagnostics.items.len();
         if !seen.insert((
             policy.role.clone(),
             policy.actions.clone(),
@@ -936,6 +1073,7 @@ fn validate_auth_policies(source_index: &ProjectSourceIndex, diagnostics: &mut D
                 );
             }
         }
+        item.location.attach(&mut diagnostics.items[first..]);
     }
 }
 
@@ -988,6 +1126,7 @@ fn is_dotted_identifier(value: &str) -> bool {
 struct Manifest {
     entries: Vec<ManifestEntry>,
     diagnostics: Diagnostics,
+    source_file: Option<String>,
 }
 
 impl Manifest {
@@ -996,9 +1135,10 @@ impl Manifest {
         let mut current_section: Option<String> = None;
         let mut seen_sections = BTreeSet::new();
         let mut seen_keys = BTreeSet::new();
+        let spans = source_line_spans(source);
 
         for (line_index, line) in source.lines().enumerate() {
-            let line_without_comment = strip_comment(line);
+            let line_without_comment = strip_line_comment(line, "#");
             let trimmed = line_without_comment.trim();
             if trimmed.is_empty() {
                 continue;
@@ -1085,6 +1225,7 @@ impl Manifest {
                 section: section.to_owned(),
                 key: key.to_owned(),
                 value,
+                span: spans[line_index],
             });
         }
 
@@ -1096,6 +1237,21 @@ impl Manifest {
             .iter()
             .find(|entry| entry.section == section && entry.key == key)
             .map(|entry| entry.value.as_str())
+    }
+
+    fn attach(&self, section: &str, key: &str, diagnostics: &mut [Diagnostic]) {
+        if let (Some(file), Some(entry)) = (
+            &self.source_file,
+            self.entries
+                .iter()
+                .find(|entry| entry.section == section && entry.key == key),
+        ) {
+            SourceLocation {
+                file: file.clone(),
+                span: entry.span,
+            }
+            .attach(diagnostics);
+        }
     }
 
     fn entries_in_section<'a>(
@@ -1113,6 +1269,7 @@ struct ManifestEntry {
     section: String,
     key: String,
     value: String,
+    span: Span,
 }
 
 fn validate_manifest_key(
@@ -1137,7 +1294,7 @@ fn validate_manifest_key(
     }
 }
 
-fn strip_comment(line: &str) -> &str {
+fn strip_line_comment<'a>(line: &'a str, marker: &str) -> &'a str {
     let mut escaped = false;
     let mut quoted = false;
     for (index, character) in line.char_indices() {
@@ -1153,7 +1310,7 @@ fn strip_comment(line: &str) -> &str {
             quoted = !quoted;
             continue;
         }
-        if character == '#' && !quoted {
+        if !quoted && line[index..].starts_with(marker) {
             return &line[..index];
         }
     }
@@ -1196,8 +1353,45 @@ fn parse_quoted_value(value: &str) -> Option<String> {
     None
 }
 
+// Only use for errors emitted while scanning one known file. Their line indices
+// are real; later wiring validators use retained declaration locations instead.
+fn attach_line_locations(path: &Path, source: &str, diagnostics: &mut [Diagnostic]) {
+    if diagnostics.is_empty() {
+        return;
+    }
+    let spans = source_line_spans(source);
+    for diagnostic in diagnostics {
+        if let Some(span) = spans.get(diagnostic.span.line) {
+            diagnostic.span = *span;
+            diagnostic.source_file = Some(path.to_string_lossy().into_owned());
+        }
+    }
+}
+
+fn source_line_spans(source: &str) -> Vec<Span> {
+    let mut offset = 0;
+    source
+        .split_inclusive('\n')
+        .enumerate()
+        .map(|(line, segment)| {
+            let content = segment.strip_suffix('\n').map_or(segment, |content| {
+                content.strip_suffix('\r').unwrap_or(content)
+            });
+            let span = Span {
+                start: offset,
+                end: offset + content.len(),
+                line,
+                column: 0,
+            };
+            offset += segment.len();
+            span
+        })
+        .collect()
+}
+
 fn push_error(diagnostics: &mut Diagnostics, code: &'static str, message: impl Into<String>) {
     diagnostics.push(Diagnostic {
+        source_file: None,
         severity: Severity::Error,
         code,
         message: message.into(),
@@ -1217,6 +1411,7 @@ fn push_manifest_error(
     message: impl Into<String>,
 ) {
     diagnostics.push(Diagnostic {
+        source_file: None,
         severity: Severity::Error,
         code,
         message: message.into(),
@@ -1233,6 +1428,330 @@ fn push_manifest_error(
 mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn distinguishes_manifest_and_source_comment_markers() {
+        for (line, marker, expected) in [
+            (
+                r#"value = "https://host/#part" # comment"#,
+                "#",
+                r#"value = "https://host/#part" "#,
+            ),
+            (
+                r#"print("https://host/#part") // comment"#,
+                "//",
+                r#"print("https://host/#part") "#,
+            ),
+            (
+                r#"print("escaped \" // quoted") // comment"#,
+                "//",
+                r#"print("escaped \" // quoted") "#,
+            ),
+            (
+                r#"print("slash \\") // comment"#,
+                "//",
+                r#"print("slash \\") "#,
+            ),
+            (
+                "services: [] # not a source comment",
+                "//",
+                "services: [] # not a source comment",
+            ),
+            (
+                "name = \"sample\" // not a manifest comment",
+                "#",
+                "name = \"sample\" // not a manifest comment",
+            ),
+        ] {
+            assert_eq!(strip_line_comment(line, marker), expected);
+        }
+        let manifest = Manifest::parse("[project]\nname = \"sample\" // invalid");
+        assert!(manifest.items_contain("E4015"));
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"sample\"\nentry = \"main.svr\"",
+        );
+        project.write_file("main.svr", "services: [] # invalid");
+        let errors = check_project(project.path()).expect_err("hash is not a source comment");
+        assert!(errors.items.iter().any(|e| e.code == "E4024"));
+    }
+
+    #[test]
+    fn source_comments_do_not_change_wiring_targets() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"sample\" # manifest comment\nentry = \"main.svr\"\n",
+        );
+        project.write_file("main.svr", "fn handler() {}\nroute GET \"/hash#fragment\" -> handler // trailing comment\n// route GET \"/ignored\" -> missing\n");
+        let checked = check_project(project.path()).expect("source comments are ignored");
+        assert_eq!(checked.routes.len(), 1);
+        assert_eq!(checked.routes[0].path, "/hash#fragment");
+    }
+
+    #[test]
+    fn accepts_complete_application_lists() {
+        for suffix in [
+            "[]",
+            "[valid]",
+            "[valid,]",
+            "[valid, other]",
+            "[valid]; // comment",
+            "[valid] // comment",
+        ] {
+            let project = TestProject::new();
+            project.write_file("sovra.toml", "[project]\nname = \"sample\"\nentry = \"main.svr\"\n[services]\nvalid = \"external\"\nother = \"external\"");
+            project.write_file("main.svr", &format!("service valid {{}}\nservice other {{}}\nmodel valid {{}}\nmodel other {{}}\nservices: {suffix}\ndata: {suffix}\nservices_extra: [ignored]\ndatabase: [ignored]"));
+            let checked = check_project(project.path()).expect(suffix);
+            let expected = if suffix == "[]" {
+                vec![]
+            } else if suffix.contains("other") {
+                vec!["other", "valid"]
+            } else {
+                vec!["valid"]
+            };
+            assert_eq!(checked.app_services, expected);
+            assert_eq!(checked.data_models, expected);
+        }
+    }
+
+    #[test]
+    fn rejects_malformed_application_lists() {
+        for (key, code) in [("services", "E4024"), ("data", "E4062")] {
+            for suffix in [
+                ": [valid, bad-name]",
+                ": [\"quoted\"]",
+                ": [valid,,other]",
+                ": [,]",
+                ": [valid",
+                ": valid]",
+                ": [valid] junk",
+                " [valid]",
+                ": [valid other]",
+                ": [[valid]]",
+                ": [valid],",
+                "=[valid]",
+                "[valid]",
+            ] {
+                let project = TestProject::new();
+                project.write_file(
+                    "sovra.toml",
+                    "[project]\nname = \"sample\"\nentry = \"main.svr\"",
+                );
+                let declaration = format!("  {key}{suffix}");
+                let source = format!("// é\r\n{declaration}\r\n");
+                project.write_file("main.svr", &source);
+                let errors = check_project(project.path()).expect_err("malformed list must fail");
+                let error = errors
+                    .items
+                    .iter()
+                    .find(|error| error.code == code)
+                    .unwrap_or_else(|| panic!("{declaration}: {errors:?}"));
+                assert_eq!(
+                    error.source_file.as_deref(),
+                    project.path().join("main.svr").to_str()
+                );
+                assert_eq!(&source[error.span.start..error.span.end], declaration);
+                assert_eq!(error.span.line, 1);
+            }
+        }
+    }
+
+    #[test]
+    fn manifest_value_errors_identify_assignments() {
+        for (extra, code, spelling) in [
+            ("name = \"\"", "E4001", "name = \"\""),
+            ("name = \"123\"", "E4002", "name = \"123\""),
+            ("entry = \"main.txt\"", "E4004", "entry = \"main.txt\""),
+            (
+                "entry = \"missing.svr\"",
+                "E4005",
+                "entry = \"missing.svr\"",
+            ),
+            (
+                "entry = \"../outside.svr\"",
+                "E4007",
+                "entry = \"../outside.svr\"",
+            ),
+            (
+                "[runtime]\ntarget = \"unknown\"",
+                "E4003",
+                "target = \"unknown\"",
+            ),
+            (
+                "[services]\nbad-name = \"external\"",
+                "E4017",
+                "bad-name = \"external\"",
+            ),
+            (
+                "[services]\nmissing = \"external\"",
+                "E4021",
+                "missing = \"external\"",
+            ),
+        ] {
+            let project = TestProject::new();
+            let mut manifest = String::from("# é\r\n[project]\r\n");
+            if !extra.starts_with("name") {
+                manifest.push_str("name = \"sample\"\r\n");
+            }
+            if !extra.starts_with("entry") {
+                manifest.push_str("entry = \"main.svr\"\r\n");
+            }
+            manifest.push_str(extra);
+            project.write_file("sovra.toml", &manifest);
+            project.write_file("main.svr", "fn main() {}");
+            let errors = check_project(project.path()).expect_err("invalid manifest value");
+            let error = errors.items.iter().find(|e| e.code == code).expect(code);
+            assert_eq!(
+                error.source_file.as_deref(),
+                project.path().join("sovra.toml").to_str()
+            );
+            assert_eq!(
+                &manifest[error.span.start..error.span.end],
+                spelling,
+                "{code}"
+            );
+        }
+    }
+
+    #[test]
+    fn all_wiring_validation_families_retain_locations() {
+        for (body, code) in [
+            ("service email {}", "E4022"),
+            ("services: [email]", "E4023"),
+            ("route UNKNOWN \"/x\" -> missing", "E4030"),
+            ("route GET \"x\" -> missing", "E4031"),
+            ("route GET \"/x/\" -> missing", "E4034"),
+            (
+                "route GET \"/x\" -> missing\n  route GET \"/x\" -> missing",
+                "E4032",
+            ),
+            ("page \"x\" -> missing", "E4040"),
+            ("page \"/x/\" -> missing", "E4043"),
+            ("page \"/x\" -> missing", "E4042"),
+            ("page \"/x\" -> missing\n  page \"/x\" -> missing", "E4041"),
+            ("auth: missing.session", "E4052"),
+            ("data: [Missing]", "E4060"),
+            ("data: [Missing]\n  data: [Missing]", "E4061"),
+            ("task daily -> missing.job", "E4072"),
+            (
+                "task daily -> missing.job\n  task daily -> missing.job",
+                "E4071",
+            ),
+            ("allow user to read on Missing", "E4081"),
+            (
+                "allow user to read on Missing\n  allow user to read on Missing",
+                "E4082",
+            ),
+        ] {
+            let project = TestProject::new();
+            project.write_file(
+                "sovra.toml",
+                "[project]\nname = \"sample\"\nentry = \"main.svr\"\n",
+            );
+            let source = format!("// é\r\n{body}");
+            project.write_file("main.svr", &source);
+            let errors = check_project(project.path()).expect_err("invalid wiring");
+            let error = errors.items.iter().find(|e| e.code == code).expect(code);
+            assert_eq!(
+                error.source_file.as_deref(),
+                project.path().join("main.svr").to_str()
+            );
+            assert_eq!(
+                &source[error.span.start..error.span.end],
+                body.lines().last().unwrap(),
+                "{code}"
+            );
+            assert_eq!(error.span.line, body.lines().count());
+            assert_eq!(error.span.column, 0);
+        }
+    }
+
+    #[test]
+    fn missing_manifest_keys_do_not_invent_locations() {
+        let project = TestProject::new();
+        project.write_file("sovra.toml", "[project]\nentry = \"main.svr\"");
+        project.write_file("main.svr", "fn main() {}");
+        let errors = check_project(project.path()).expect_err("missing name");
+        let error = errors.items.iter().find(|e| e.code == "E4001").unwrap();
+        assert!(error.source_file.is_none());
+    }
+
+    #[test]
+    fn wiring_errors_retain_declaration_locations() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"sample\"\nentry = \"main.svr\"\n",
+        );
+        let source = "// é\r\nroute GET \"/z\" -> missing.z\r\nroute GET \"/a\" -> missing.a\r\n";
+        project.write_file("main.svr", source);
+        let errors = check_project(project.path()).expect_err("missing targets");
+        for (error, spelling) in errors.items.iter().filter(|e| e.code == "E4033").zip([
+            "route GET \"/a\" -> missing.a",
+            "route GET \"/z\" -> missing.z",
+        ]) {
+            assert_eq!(
+                error.source_file.as_deref(),
+                project.path().join("main.svr").to_str()
+            );
+            assert_eq!(&source[error.span.start..error.span.end], spelling);
+        }
+        assert_eq!(errors.items.iter().filter(|e| e.code == "E4033").count(), 2);
+    }
+
+    #[test]
+    fn scan_errors_retain_source_byte_ranges() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"sample\"\nentry = \"main.svr\"\n",
+        );
+        let source = "// é\r\n  route broken\r\n";
+        project.write_file("main.svr", source);
+        let errors = check_project(project.path()).expect_err("malformed route");
+        let error = errors
+            .items
+            .iter()
+            .find(|error| error.code == "E4034")
+            .unwrap();
+        assert_eq!(&source[error.span.start..error.span.end], "  route broken");
+        assert_eq!(error.span.line, 1);
+        assert_eq!(error.span.column, 0);
+        assert_eq!(
+            error.source_file.as_deref(),
+            project.path().join("main.svr").to_str()
+        );
+    }
+
+    #[test]
+    fn manifest_parse_errors_retain_file_and_line_ranges() {
+        for source in ["[unknown]", "# é\r\n  [unknown]\r\n"] {
+            let project = TestProject::new();
+            project.write_file("sovra.toml", source);
+            let errors = check_project(project.path()).expect_err("unknown section");
+            let error = errors
+                .items
+                .iter()
+                .find(|error| error.code == "E4010")
+                .unwrap();
+            assert_eq!(
+                error.source_file.as_deref(),
+                project.path().join("sovra.toml").to_str()
+            );
+            assert_eq!(
+                &source[error.span.start..error.span.end],
+                if source.starts_with('#') {
+                    "  [unknown]"
+                } else {
+                    "[unknown]"
+                }
+            );
+            assert_eq!(error.span.line, usize::from(source.starts_with('#')));
+            assert_eq!(error.span.column, 0);
+        }
+    }
 
     #[test]
     fn parses_supported_manifest_values() {

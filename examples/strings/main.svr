@@ -1,0 +1,10 @@
+fn finish(value: String) -> String {
+    return value + "!"
+}
+
+fn main() {
+    let text = "a" + "b"
+    print(finish(text + "c"))
+    print(std::len(text))
+    print(text == "ab")
+}

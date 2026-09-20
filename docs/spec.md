@@ -50,6 +50,11 @@ block.
 A missing parameter annotation is retained in the AST for a semantic diagnostic;
 every valid function parameter requires an explicit type under ADR 0002.
 
+The public `Parser::parse_tokens` API requires exactly one EOF token at the end
+of the stream. Empty streams and missing, embedded or repeated EOF markers
+produce `E2006`; an EOF-only stream parses as an empty program. Source parsing
+continues to obtain its EOF marker from the lexer.
+
 ## M3-M8 semantic, type, module, and IR contract
 
 The analyzer validates local names, function names, declared return types,
@@ -58,6 +63,15 @@ and basic operand compatibility. Successful analysis produces a minimal linear
 IR containing loads, stores, operators, calls, returns, and value pops.
 Diagnostics use stable `E30xx` codes. Function names and parameters must be
 unique, and the `main` entry function takes no arguments and returns `Unit`.
+
+Parsed expressions retain byte ranges and zero-based line/character columns.
+Undefined variables and out-of-range literals identify that expression;
+invalid operators identify the binary expression. Call-target errors identify
+the callee, argument type errors identify the argument, and arity errors identify
+the full call. Grouping parentheses are included in the grouped expression's
+range. Binding/return contract errors still identify the statement, and
+declaration errors identify the declaration. These ranges also appear in JSON
+source-check reports without changing diagnostic codes or the report schema.
 
 Every function parameter must declare its type, for example `value: String`.
 This includes unused parameters and every top-level, exported module and
@@ -158,6 +172,15 @@ the executable parser or semantic analyzer, so a successful project check does
 not verify function parameter types or bodies. Use `svr check <source.svr>` for
 semantic validation of an executable source file.
 
+Manifest parsing and source-scan diagnostics retain the actual file path and
+full-line byte range (excluding LF/CRLF). Human output includes file/line/column,
+and JSON reports include the same provenance. Manifest-value errors identify
+their assignment. Service, route, page, auth, data, task and policy validation
+errors identify the declaration or reference being checked; duplicates identify
+the repeated declaration. Missing manifest keys, discovery and I/O errors keep
+null JSON locations. This location support does not expand the scanner's
+validation scope.
+
 The initial project checker reads `sovra.toml` from a project directory. It
 requires `project.name` and `project.entry`, accepts `project.version`,
 `runtime.target`, and arbitrary service bindings under `[services]`, and emits
@@ -177,6 +200,21 @@ function symbols. Auth policies use `allow role to action on Model` with single
 items or bracketed action/model lists, plus `allow role to action Model where
 ...` shorthand for conditional policies; policy model references must resolve
 to known model declarations and duplicate policies are rejected.
+
+Entry-file `services: [...]` and `data: [...]` lists must contain comma-separated
+bare identifiers on one line. Empty lists and a single trailing comma are
+accepted, as are an optional trailing semicolon and line comment. Invalid items,
+empty interior items, missing delimiters, or trailing non-comment text produce
+`E4024` (services) or `E4062` (data) at the declaration line. A malformed list
+contributes no entries to wiring validation. This hardens the existing scanner;
+it does not add multiline lists or executable application syntax.
+
+The project scanner follows source `//` line comments and manifest `#` line
+comments separately, ignoring either marker inside quoted strings (including
+escaped quotes/backslashes). Trailing source comments do not become part of
+wiring targets. `#` is not a source comment and is no longer silently removed;
+use `//` in `.svr` files. Diagnostic ranges still cover the original full line,
+including comments. This scanner fix does not provide full lexical validation.
 
 ## Application-language direction
 

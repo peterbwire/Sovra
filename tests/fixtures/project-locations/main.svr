@@ -1,0 +1,5 @@
+// é
+  route broken
+  route GET "/missing" -> absent.handler
+  services: [valid, bad-name]
+  data: [Missing,,Other]

@@ -83,6 +83,7 @@ impl Lexer {
             } else {
                 scanner.advance();
                 scanner.diagnostics.push(Diagnostic {
+                    source_file: None,
                     severity: Severity::Error,
                     code: "E1000",
                     message: format!("unexpected character `{character}`"),
@@ -299,6 +300,7 @@ impl<'a> Scanner<'a> {
 
     fn error(&self, code: &'static str, message: impl Into<String>) -> Diagnostic {
         Diagnostic {
+            source_file: None,
             severity: Severity::Error,
             code,
             message: message.into(),

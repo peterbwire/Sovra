@@ -366,6 +366,7 @@ fn print_check_io_error(path: &str, kind: Option<CheckKind>, format: CheckFormat
     }
     let diagnostics = Diagnostics {
         items: vec![Diagnostic {
+            source_file: None,
             severity: Severity::Error,
             code: "E0001",
             message,
@@ -382,9 +383,15 @@ fn print_check_io_error(path: &str, kind: Option<CheckKind>, format: CheckFormat
 
 fn print_diagnostics(diagnostics: compiler::diagnostics::Diagnostics) {
     for diagnostic in diagnostics.items {
+        let file_prefix = diagnostic
+            .source_file
+            .as_deref()
+            .map(|file| format!("{file}:"))
+            .unwrap_or_default();
         eprintln!(
-            "error[{}] at {}:{}: {}",
+            "error[{}] at {}{}:{}: {}",
             diagnostic.code,
+            file_prefix,
             diagnostic.span.line + 1,
             diagnostic.span.column + 1,
             diagnostic.message

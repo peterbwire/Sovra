@@ -1,6 +1,6 @@
 //! Stable, minimal intermediate representation for M10 and later backends.
 
-use crate::compiler::ast::{Expression, Program, Statement};
+use crate::compiler::ast::{Expression, ExpressionKind, Program, Statement};
 use crate::compiler::semantic::TypedProgram;
 
 /// A lowered Sovra program.
@@ -147,30 +147,30 @@ fn lower_statement(
 }
 
 fn lower_expression(expression: &Expression, instructions: &mut Vec<Instruction>) {
-    match expression {
-        Expression::String(value) => {
+    match &expression.kind {
+        ExpressionKind::String(value) => {
             instructions.push(Instruction::LoadLiteral(Literal::String(value.clone())));
         }
-        Expression::Integer(value) => {
+        ExpressionKind::Integer(value) => {
             instructions.push(Instruction::LoadLiteral(Literal::Integer(value.clone())));
         }
-        Expression::Float(value) => {
+        ExpressionKind::Float(value) => {
             instructions.push(Instruction::LoadLiteral(Literal::Float(value.clone())));
         }
-        Expression::Boolean(value) => {
+        ExpressionKind::Boolean(value) => {
             instructions.push(Instruction::LoadLiteral(Literal::Boolean(*value)));
         }
-        Expression::Identifier(name) => instructions.push(Instruction::LoadName(name.clone())),
-        Expression::QualifiedName { path } => {
+        ExpressionKind::Identifier(name) => instructions.push(Instruction::LoadName(name.clone())),
+        ExpressionKind::QualifiedName { path } => {
             instructions.push(Instruction::LoadName(path.join("::")));
         }
-        Expression::Call { callee, arguments } => {
+        ExpressionKind::Call { callee, arguments } => {
             for argument in arguments {
                 lower_expression(argument, instructions);
             }
-            let name = match callee.as_ref() {
-                Expression::Identifier(name) => name.clone(),
-                Expression::QualifiedName { path } => path.join("::"),
+            let name = match &callee.kind {
+                ExpressionKind::Identifier(name) => name.clone(),
+                ExpressionKind::QualifiedName { path } => path.join("::"),
                 _ => return,
             };
             instructions.push(Instruction::Call {
@@ -178,7 +178,7 @@ fn lower_expression(expression: &Expression, instructions: &mut Vec<Instruction>
                 arguments: arguments.len(),
             });
         }
-        Expression::Binary {
+        ExpressionKind::Binary {
             left,
             operator,
             right,

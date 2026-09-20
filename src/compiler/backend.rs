@@ -224,6 +224,24 @@ mod tests {
     }
 
     #[test]
+    fn string_concatenation_matches_interpreter() {
+        let parsed = crate::compiler::parser::Parser::new()
+            .parse_source(include_str!("../../examples/strings/main.svr"))
+            .expect("valid syntax");
+        let ir = crate::compiler::ir::lower_program(&parsed).expect("inferred String types");
+        let expected = crate::compiler::interpreter::run(&ir).expect("string execution");
+        assert_eq!(expected, vec!["abc!", "2", "true"]);
+        let output = execute_javascript(&render_javascript(&ir));
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let actual = String::from_utf8(output.stdout).unwrap();
+        assert_eq!(actual.lines().collect::<Vec<_>>(), expected);
+    }
+
+    #[test]
     fn numeric_javascript_matches_expected_output() {
         let parsed = crate::compiler::parser::Parser::new()
             .parse_source(include_str!("../../examples/numbers/main.svr"))

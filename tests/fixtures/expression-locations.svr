@@ -1,0 +1,4 @@
+fn main() {
+    print("é"); std::len(42);
+    print(missing);
+}

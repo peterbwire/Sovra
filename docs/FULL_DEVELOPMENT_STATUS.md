@@ -1,6 +1,6 @@
 # Full development status
 
-Updated: 2026-09-12. Status terms: Implemented, Partial, Experimental, Stub, Planned.
+Updated: 2026-09-21. Status terms: Implemented, Partial, Experimental, Stub, Planned.
 
 ## Repository state and audit
 
@@ -37,15 +37,16 @@ foundation model is planned in this development pass.
 
 ## Verification and documentation
 
-The latest `cargo test --lib -- --nocapture` passed 77 library tests, including
-real Node execution, JSON parsing/escaping and direct CLI dispatch coverage.
-Formatting, compilation, test compilation and strict Clippy passed. All 20 CLI
-subprocess tests were skipped by the existing Application Control helper on the
-latest full-suite attempt and one retry; this is not a full-suite pass for the
-final revision. Earlier in this pass, the ADR 0002 revision passed 71 library
-and 14 CLI tests, and eight focused CLI check tests passed after JSON integration.
-Regression failures were observed before each fix. CI explicitly installs Node
-22. Inspect skip messages rather than trusting the reported test count alone.
+The public token parser now rejects malformed EOF boundaries with `E2006`
+instead of panicking, failing to terminate or silently ignoring trailing tokens.
+See the latest development-log entry for this incremental hardening validation.
+
+The source-comment slice passed 93 library and 22 CLI tests, including the
+previously blocked project JSON library regression, with no skipped assertions.
+Formatting, compilation, test compilation and strict Clippy passed. Regression
+failures were reproduced before the fixes. Windows Application Control has
+blocked earlier runs; inspect skip/block messages rather than trusting counts
+alone. CI explicitly installs Node 22.
 
 Specification, architecture, roadmap, handoff, examples, agent context and
 function, module and numeric course lessons exist. JSON check reports have a
@@ -61,18 +62,24 @@ untyped declarations. See `DEVELOPMENT_LOG.md` for validation of that later slic
 
 - Numeric widening, Int bounds/overflow and JS numeric kinds are now fixed and
   tested. Non-finite Float/output policy and structured runtime errors remain.
-- Token byte ranges now cover the full spelling. Diagnostics still lack reliable
-  individual expression spans and project file identity. JSON reports expose
-  source file/offsets where available and use null for unavailable locations.
+- Token and expression byte ranges now cover the full spelling, including
+  grouping parentheses. Semantic expression diagnostics and JSON source reports
+  retain these ranges. Project parsing, scanning and declaration-based value/wiring
+  errors retain file/line ranges. Missing keys, discovery and I/O errors still
+  use null JSON locations; related-location notes remain unimplemented.
 - Private module functions are checked but not lowered/callable; no import graph.
 - Straight-line non-Unit fallthrough and missing parameter annotations are
   rejected. ADR 0002 is approved and implemented; named-type resolution and a
   general typed HIR remain incomplete.
 - Project scanning is line-based, scope-insensitive and not full validation.
+  Malformed entry service/data lists now fail with E4024/E4062 instead of
+  silently dropping invalid items; multiline application parsing remains absent.
+  Source comments use `//`, separately from manifest `#` comments, with quoted
+  markers preserved. This does not make scanning full lexical validation.
 - Tests need backend execution comparisons and meaningful platform coverage.
-- Windows execution policy currently blocks the CLI subprocess assertions,
-  although library and Node tests execute. Do not bypass policy or count skips
-  as validation; rerun the CLI suite in an execution-permitted environment.
+- Windows execution policy has intermittently blocked CLI subprocess assertions;
+  the latest run executed all of them. Do not bypass policy or count future skips
+  as validation.
 
 ## Development sequence
 

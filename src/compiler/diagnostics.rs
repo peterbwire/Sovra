@@ -33,6 +33,10 @@ pub struct Diagnostic {
     pub message: String,
     /// Source location associated with the problem.
     pub span: Span,
+    /// File containing the span, when explicitly retained by a multi-file stage.
+    /// None leaves source-file identity to the caller; project reports must not
+    /// infer a file for diagnostics without provenance.
+    pub source_file: Option<String>,
 }
 
 /// A collection of diagnostics produced by a compiler stage.

@@ -76,9 +76,18 @@ pub enum Statement {
     Expression(Expression),
 }
 
-/// An expression.
+/// An expression with its complete source range.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Expression {
+pub struct Expression {
+    /// Expression structure and operands.
+    pub kind: ExpressionKind,
+    /// Source range, including grouping parentheses when present.
+    pub span: Span,
+}
+
+/// The structure of an expression.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExpressionKind {
     /// A string literal.
     String(String),
     /// An integer literal.

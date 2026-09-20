@@ -1,0 +1,6 @@
+[project]
+name = "locations"
+entry = "main.svr"
+
+[runtime]
+target = "unknown"

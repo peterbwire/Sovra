@@ -1,5 +1,132 @@
 # Development log
 
+## 2026-09-21 — Separate source and manifest comments
+
+- **Changed:** Source scanning strips unquoted `//`; manifest parsing strips
+  unquoted `#`. Shared quote/escape handling preserves markers within strings.
+  Removed the list parser's redundant comment handling now that source scanning
+  consistently owns it. Diagnostic ranges still refer to original source lines.
+- **Regression evidence:** A valid route with a trailing source comment failed
+  before the fix. Added checks for quoted URLs/hash fragments, escaped quotes,
+  escaped backslashes, comment-only lines, and wrong comment markers in each
+  input format. Source `#` text is no longer silently discarded; `.svr` comments
+  must use the existing language's `//` syntax.
+- **Validation:** 93 library and 22 CLI tests passed without skips. Formatting,
+  compilation, test compilation, strict Clippy and diff checks passed.
+- **Limits/next:** Project scanning remains line-based, not full lexical or
+  application validation. Next, reproduce the semantic checker's apparent loss
+  of String type after concatenation and harden existing-subset inference.
+
+## 2026-09-21 — Reject malformed application lists
+
+- **Changed:** Entry service/data lists validate their complete shape and every
+  item. E4024/E4062 identify malformed declarations with existing file/line
+  provenance. Rejected lists contribute no partial entries to wiring checks.
+  Empty lists, identifier items, a single trailing comma, optional semicolon
+  and trailing comments remain accepted. Similar key prefixes are ignored.
+- **Regression evidence:** Before the fix, `services: [valid, bad-name]` silently
+  dropped the invalid item and diagnosed only the remaining reference. Added
+  26 invalid cases across both keys and six positive project cases, including
+  Unicode/CRLF locations. CLI JSON fixtures cover both new codes.
+- **Validation:** 91 library and 22 CLI tests passed without skips, including
+  the previously blocked JSON library regression. Compilation, test compilation,
+  formatting, strict Clippy and diff checks passed.
+- **Limits/next:** The scanner still accepts only single-line lists and is not
+  a full application parser. Next, separate source `//` comment handling from
+  manifest `#` handling so source comments cannot distort wiring declarations.
+
+## 2026-09-21 — Manifest-value and wiring diagnostic locations
+
+- **Changed:** Manifest entries retain assignment spans. Project index values
+  carry their file/range together through sorting and validation. Name/runtime/
+  entry/service manifest errors and every service, route, page, auth, data,
+  scheduled-task and policy validator now attach declaration provenance.
+  Missing targets point at the reference; duplicates at the repeated declaration.
+- **Architecture:** Private located values preserve public project result types,
+  ordering, diagnostic codes, stage signatures and JSON schema. Full-line ranges
+  match the scanner's scope. Entirely missing required keys and filesystem/
+  discovery errors remain unlocated rather than using an invented assignment.
+- **Regression evidence:** Missing route-target provenance failed before the
+  change. Tests cover eight manifest-value cases, 17 wiring cases, locations
+  surviving sorting, duplicate occurrences, Unicode/CRLF offsets, and missing-key
+  null provenance. Extended CLI fixtures verify manifest and two source files.
+- **Validation:** Formatting, compilation, test compilation, strict Clippy and
+  diff checks passed. 88 library tests passed before adding a separate JSON
+  library regression. All 22 CLI tests passed afterward with no skips, including
+  new JSON location assertions. The final 89-test library executable compiled
+  but Application Control blocked it twice (initial attempt and unchanged retry).
+  That additional library test is not claimed as executed; no OS policy bypass.
+- **Next:** Re-run the final library suite when execution is permitted, then
+  harden the scanner's malformed list handling so invalid service/data items do
+  not silently disappear. Named-type/private-module decisions remain separate.
+
+## 2026-09-21 — Project scan diagnostic provenance
+
+- **Milestone:** Incremental project-file locations for structured diagnostics.
+- **Changed:** Manifest parse errors and per-file source-scan errors retain the
+  scanned path and full-line byte range, excluding LF/CRLF. JSON reports use
+  explicit file provenance; human diagnostics include file, line and column.
+  No file is guessed for later validation or I/O errors.
+- **Architecture:** Added optional `Diagnostic::source_file`; Rust callers
+  constructing diagnostics must initialize it. Stage function signatures,
+  diagnostic codes and the version-one JSON envelope remain unchanged.
+- **Regression evidence:** Reproduced a malformed route's empty byte range
+  before implementation. Tests cover Unicode/CRLF offsets, first-line manifest
+  errors, two distinct source files, JSON locations and human output. Corrected
+  the CLI test to compare Windows paths after normalization; reported paths
+  intentionally preserve the supplied root rather than being canonicalized.
+- **Validation:** Formatting, compilation, test compilation, strict Clippy and
+  diff checks passed. Final all-target run passed 84 library and 22 CLI tests
+  with no Application Control skips, including Node JSON/backend checks.
+- **Limits/next:** Retain declaration locations through the project index and
+  manifest entries so later value/wiring validation can identify its source.
+  Those errors, discovery and I/O errors currently retain null JSON locations.
+  Project success still means a shallow wiring check, not application execution.
+
+## 2026-09-21 — Expression source ranges
+
+- **Milestone:** Structured diagnostic precision for the executable subset.
+- **Changed:** AST expressions now contain `kind: ExpressionKind` and `span`.
+  The parser retains literal/name, qualified-name, call, binary and grouped
+  expression ranges. Semantic diagnostics use the relevant expression rather
+  than an enclosing statement or an all-zero fallback; argument mismatches
+  identify the argument and call-target errors identify the callee.
+- **Architecture:** Compiler stage function signatures, diagnostic codes, JSON
+  schema and IR instructions are preserved. Rust consumers matching AST variants
+  must now match `expression.kind`; IR lowering was adapted accordingly.
+  No Sovra syntax or execution semantics changed. Statement-level type contracts
+  and declaration diagnostics keep their existing ranges.
+- **Regression evidence:** Reproduced E3001's all-zero location before the fix.
+  Coverage checks 22 semantic cases across top-level/private module bodies,
+  nested parentheses and precedence, every literal kind, Unicode/escapes,
+  multiline/CRLF input, and source-to-CLI JSON byte/line/column locations.
+- **Validation:** `cargo check`, test compilation, strict Clippy and all-target
+  tests passed: 82 library tests and 21 CLI tests, including Node-backed checks,
+  with no skipped subprocess assertions. Formatting and diff checks passed.
+- **Limits/next:** Project-file provenance remains the next diagnostic slice.
+  Runtime errors still lack expression locations because IR does not retain
+  spans. Named-type resolution and private module execution remain unfinished.
+
+## 2026-09-21 — Token-stream boundary hardening
+
+- **Milestone:** Existing-subset correctness prerequisite to M12 expansion.
+- **Changed:** `Parser::parse_tokens` validates that its input contains exactly
+  one EOF token at the end before entering recursive descent. Empty streams,
+  missing EOF and early/repeated EOF now return E2006, preserving the public
+  stage signature and source-language behavior.
+- **Regression evidence:** The empty-stream test reproduced an index-out-of-bounds
+  panic before the fix. Added missing/embedded EOF rejection and EOF-only empty
+  program coverage, including diagnostic spans. Missing EOF could otherwise
+  fail to terminate; early EOF could silently discard trailing tokens.
+- **Validation:** Formatting, `cargo check` and test compilation passed.
+  `cargo test --all-targets -- --nocapture` passed 80 library and 20 CLI tests,
+  including Node-backed checks, with no skipped subprocess assertions.
+  Strict all-target/all-feature Clippy and `git diff --check` also passed.
+- **Scope/limits:** This validates EOF boundaries, not arbitrary caller-supplied
+  token spellings or spans. No syntax/type decision or AST redesign was made.
+- **Next:** Preserve expression spans and project-file provenance in diagnostics;
+  named-type resolution and private module execution remain unfinished.
+
 ## 2026-09-12 — Structured check reports
 
 - **Milestone:** Initial machine-readable diagnostic interface.
