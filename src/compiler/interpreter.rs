@@ -2,10 +2,8 @@
 
 use std::collections::HashMap;
 
-use crate::compiler::ir::{Instruction, IrFunction, IrProgram, Literal};
+use crate::compiler::ir::{Instruction, IrFunction, IrProgram, Literal, MAX_CALL_DEPTH};
 use crate::compiler::stdlib;
-
-const MAX_CALL_DEPTH: usize = 256;
 
 /// Runtime values supported by the interpreter.
 #[derive(Debug, Clone, PartialEq)]

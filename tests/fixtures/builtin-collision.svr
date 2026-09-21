@@ -1,0 +1,5 @@
+fn print() {}
+mod std {
+    export fn len() {}
+}
+fn main() {}

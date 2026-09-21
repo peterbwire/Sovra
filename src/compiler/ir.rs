@@ -3,6 +3,9 @@
 use crate::compiler::ast::{Expression, ExpressionKind, Program, Statement};
 use crate::compiler::semantic::TypedProgram;
 
+/// Maximum simultaneously active user-function frames in either execution engine.
+pub(super) const MAX_CALL_DEPTH: usize = 256;
+
 /// A lowered Sovra program.
 #[derive(Debug, Clone, PartialEq)]
 pub struct IrProgram {

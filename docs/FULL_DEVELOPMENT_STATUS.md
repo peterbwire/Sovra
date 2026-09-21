@@ -41,12 +41,11 @@ The public token parser now rejects malformed EOF boundaries with `E2006`
 instead of panicking, failing to terminate or silently ignoring trailing tokens.
 See the latest development-log entry for this incremental hardening validation.
 
-The source-comment slice passed 93 library and 22 CLI tests, including the
-previously blocked project JSON library regression, with no skipped assertions.
-Formatting, compilation, test compilation and strict Clippy passed. Regression
-failures were reproduced before the fixes. Windows Application Control has
-blocked earlier runs; inspect skip/block messages rather than trusting counts
-alone. CI explicitly installs Node 22.
+The builtin-collision slice passed 105 library and 26 CLI tests without
+skips, including all previously blocked Unicode-ordering boundary cases.
+Formatting, compilation, test compilation and strict Clippy passed. Windows
+Application Control has intermittently blocked earlier runs; inspect skip/block
+messages rather than trusting counts alone. CI explicitly installs Node 22.
 
 Specification, architecture, roadmap, handoff, examples, agent context and
 function, module and numeric course lessons exist. JSON check reports have a
@@ -62,6 +61,19 @@ untyped declarations. See `DEVELOPMENT_LOG.md` for validation of that later slic
 
 - Numeric widening, Int bounds/overflow and JS numeric kinds are now fixed and
   tested. Non-finite Float/output policy and structured runtime errors remain.
+- String concatenation retains its String result type through local inference,
+  typed calls and returns; invalid numeric annotations no longer pass checking.
+- Qualified function references used as values now report E3015 instead of
+  being typed as the function's return value and failing at runtime.
+- Approved ADR 0003 rejects exact callable builtin collisions with E3016,
+  preserving the print alias and noncolliding std members. E3008 now covers
+  duplicate module functions regardless of visibility.
+- JavaScript string escaping now preserves control characters and Unicode,
+  including NUL followed by digits, with interpreter/Node output comparisons.
+- Both engines enforce the same 256 active user-frame limit, counting main and
+  excluding builtins. JavaScript releases frames on returns and thrown errors.
+- JavaScript string ordering now follows Unicode scalar values like the
+  interpreter, including supplementary characters; no normalization is applied.
 - Token and expression byte ranges now cover the full spelling, including
   grouping parentheses. Semantic expression diagnostics and JSON source reports
   retain these ranges. Project parsing, scanning and declaration-based value/wiring

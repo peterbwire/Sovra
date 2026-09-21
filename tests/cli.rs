@@ -213,6 +213,82 @@ fn check_rejects_invalid_format_arguments() {
 }
 
 #[test]
+fn source_commands_reject_builtin_collisions() {
+    let source = format!(
+        "{}/tests/fixtures/builtin-collision.svr",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    for args in [
+        vec!["check", source.as_str()],
+        vec!["run", source.as_str()],
+        vec!["build", source.as_str()],
+        vec!["build", "--emit", "js", source.as_str()],
+    ] {
+        let Some(output) = output_or_skip(svr().args(&args)) else {
+            return;
+        };
+        assert_eq!(output.status.code(), Some(1), "{args:?}");
+        assert!(output.stdout.is_empty());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("E3016"));
+    }
+    let Some(output) = output_or_skip(svr().args(["check", "--format=json", &source])) else {
+        return;
+    };
+    assert_eq!(output.status.code(), Some(1));
+    assert_json_report(
+        &output,
+        r#"
+        const conflicts = report.diagnostics.filter(d => d.code === 'E3016');
+        assert.equal(conflicts.length, 2);
+        assert.deepEqual(conflicts.map(d => d.location.line), [0, 2]);
+        for (const d of conflicts) assert.equal(d.location.file, report.target);
+    "#,
+    );
+}
+
+#[test]
+fn source_commands_reject_duplicate_private_functions() {
+    let source = format!(
+        "{}/tests/fixtures/duplicate-private.svr",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    for args in [
+        vec!["check", source.as_str()],
+        vec!["run", source.as_str()],
+        vec!["build", source.as_str()],
+        vec!["build", "--emit", "js", source.as_str()],
+    ] {
+        let Some(output) = output_or_skip(svr().args(&args)) else {
+            return;
+        };
+        assert_eq!(output.status.code(), Some(1), "{args:?}");
+        assert!(output.stdout.is_empty());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("E3008"));
+    }
+}
+
+#[test]
+fn source_commands_reject_function_values() {
+    let source = format!(
+        "{}/tests/fixtures/function-value.svr",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    for args in [
+        vec!["check", source.as_str()],
+        vec!["run", source.as_str()],
+        vec!["build", source.as_str()],
+        vec!["build", "--emit", "js", source.as_str()],
+    ] {
+        let Some(output) = output_or_skip(svr().args(&args)) else {
+            return;
+        };
+        assert_eq!(output.status.code(), Some(1), "{args:?}");
+        assert!(output.stdout.is_empty());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("E3015"));
+    }
+}
+
+#[test]
 fn source_commands_reject_mistyped_concatenation() {
     let source = format!(
         "{}/tests/fixtures/invalid-concatenation.svr",

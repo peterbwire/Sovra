@@ -47,6 +47,7 @@ impl SemanticAnalyzer {
         let mut diagnostics = Diagnostics::new();
         let mut declared_functions = HashMap::new();
         for function in &program.functions {
+            check_builtin_collision(&function.name, function.span, &mut diagnostics);
             if declared_functions
                 .insert(function.name.clone(), function.span)
                 .is_some()
@@ -62,9 +63,14 @@ impl SemanticAnalyzer {
         for module in &program.modules {
             let mut seen = HashMap::new();
             for function in &module.functions {
-                if function.is_exported
-                    && seen.insert(function.name.clone(), function.span).is_some()
-                {
+                if function.is_exported {
+                    check_builtin_collision(
+                        &format!("{}::{}", module.name, function.name),
+                        function.span,
+                        &mut diagnostics,
+                    );
+                }
+                if seen.insert(function.name.clone(), function.span).is_some() {
                     diagnostics.push(diagnostic(
                         "E3008",
                         format!(
@@ -132,6 +138,16 @@ impl SemanticAnalyzer {
         } else {
             Err(diagnostics)
         }
+    }
+}
+
+fn check_builtin_collision(name: &str, span: Span, diagnostics: &mut Diagnostics) {
+    if stdlib::lookup(name).is_some() {
+        diagnostics.push(diagnostic(
+            "E3016",
+            format!("function `{name}` conflicts with a builtin; choose a different name"),
+            span,
+        ));
     }
 }
 
@@ -279,14 +295,13 @@ fn check_expression(
         }),
         ExpressionKind::QualifiedName { path } => {
             let qualified = path.join("::");
-            if let Some(function) = stdlib::lookup(&qualified) {
-                type_from_name(function.return_type)
-            } else if let Some(function) = functions.get(&qualified) {
-                function
-                    .return_type
-                    .as_deref()
-                    .map(type_from_name)
-                    .unwrap_or(Type::Unit)
+            if stdlib::lookup(&qualified).is_some() || functions.contains_key(&qualified) {
+                diagnostics.push(diagnostic(
+                    "E3015",
+                    format!("function `{qualified}` cannot be used as a value; call it with parentheses and the required arguments"),
+                    span,
+                ));
+                Type::Unknown
             } else {
                 diagnostics.push(diagnostic(
                     "E3004",
@@ -543,6 +558,89 @@ fn diagnostic(code: &'static str, message: impl Into<String>, span: Span) -> Dia
 mod tests {
     use super::*;
     use crate::compiler::parser::Parser;
+
+    #[test]
+    fn rejects_exact_builtin_callable_collisions() {
+        let mut sources = vec![("fn print() {} fn main() {}".to_owned(), "print".to_owned())];
+        for builtin in stdlib::functions() {
+            let member = builtin.name.strip_prefix("std::").unwrap();
+            sources.push((
+                format!("mod std {{ export fn {member}() {{}} }} fn main() {{}}"),
+                builtin.name.to_owned(),
+            ));
+        }
+        for (source, name) in sources {
+            let parsed = Parser::new().parse_source(&source).unwrap();
+            let errors = SemanticAnalyzer::new()
+                .analyze(&parsed)
+                .expect_err("builtin collision");
+            let collisions: Vec<_> = errors.items.iter().filter(|e| e.code == "E3016").collect();
+            assert_eq!(collisions.len(), 1, "{errors:?}");
+            assert!(collisions[0].message.contains(&name));
+            assert!(source[collisions[0].span.start..collisions[0].span.end].starts_with("fn "));
+        }
+    }
+
+    #[test]
+    fn allows_noncolliding_std_members_and_private_names() {
+        let parsed = Parser::new().parse_source(
+            "mod std { fn len() {} export fn extra() -> Int { return 7 } }
+             mod other { export fn print() -> Int { return 8 } }
+             fn len() -> Int { return 9 }
+             fn main() { print(std::extra()); print(other::print()); print(len()); print(std::len(\"hi\")) }"
+        ).unwrap();
+        let typed = SemanticAnalyzer::new()
+            .analyze(&parsed)
+            .expect("only exact callable collisions are forbidden");
+        assert_eq!(
+            crate::compiler::interpreter::run(&crate::compiler::ir::lower(&typed)).unwrap(),
+            vec!["7", "8", "9", "2"]
+        );
+    }
+
+    #[test]
+    fn rejects_duplicate_module_functions_regardless_of_visibility() {
+        for (first, second) in [
+            ("", ""),
+            ("export ", ""),
+            ("", "export "),
+            ("export ", "export "),
+        ] {
+            let source = format!(
+                "mod sample {{ {first}fn helper() {{}} {second}fn helper() {{}} }} fn main() {{}}"
+            );
+            let parsed = Parser::new().parse_source(&source).unwrap();
+            let errors = SemanticAnalyzer::new()
+                .analyze(&parsed)
+                .expect_err("duplicate declaration");
+            let duplicates: Vec<_> = errors.items.iter().filter(|e| e.code == "E3008").collect();
+            assert_eq!(duplicates.len(), 1);
+            assert_eq!(duplicates[0].span.start, source.rfind("fn helper").unwrap());
+        }
+    }
+
+    #[test]
+    fn rejects_qualified_functions_used_as_values() {
+        for expression in ["std::len", "sample::value"] {
+            for body in [
+                format!("let value = {expression}"),
+                format!("print({expression})"),
+                expression.to_owned(),
+            ] {
+                let source = format!("mod sample {{ export fn value() -> Int {{ return 1 }} }} fn main() {{ {body} }}");
+                let parsed = Parser::new().parse_source(&source).unwrap();
+                let errors = SemanticAnalyzer::new()
+                    .analyze(&parsed)
+                    .expect_err("function values are unsupported");
+                let error = errors
+                    .items
+                    .iter()
+                    .find(|e| e.code == "E3015")
+                    .expect("function-value diagnostic");
+                assert_eq!(&source[error.span.start..error.span.end], expression);
+            }
+        }
+    }
 
     #[test]
     fn concatenation_preserves_string_type_contracts() {

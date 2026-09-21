@@ -12,6 +12,12 @@ calls `math::add`. The qualified spelling is required even inside `math`.
 Top-level functions remain callable by bare name, and builtins use `std::`.
 This is inline grouping, not cross-file imports.
 
+Function names must be unique within a module, including private/exported
+combinations. A repeated name produces E3008 at the repeated declaration.
+Exported names must also avoid exact builtin collisions: exporting `std::len`
+produces E3016, while `std::extra` or `other::len` are allowed. Private module
+functions remain uncallable and do not enter this builtin collision check.
+
 Every function body is checked, including unused and non-exported module
 functions. For example, this is invalid:
 

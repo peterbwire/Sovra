@@ -2,7 +2,7 @@
 
 use std::fmt::Write;
 
-use crate::compiler::ir::{Instruction, IrFunction, IrProgram, Literal};
+use crate::compiler::ir::{Instruction, IrFunction, IrProgram, Literal, MAX_CALL_DEPTH};
 
 /// Render IR as a stable human-readable build artifact.
 pub fn render(program: &IrProgram) -> String {
@@ -36,6 +36,7 @@ pub fn render_javascript(program: &IrProgram) -> String {
     let _ = writeln!(output);
     let _ = writeln!(output, "const svrOutput = [];");
     let _ = writeln!(output, "const svrFunctions = Object.create(null);");
+    let _ = writeln!(output, "let svrCallDepth = 0;");
     output.push_str(include_str!("numeric_runtime.js"));
     let _ = writeln!(output);
     for (index, function) in program.functions.iter().enumerate() {
@@ -71,6 +72,16 @@ fn render_js_function(output: &mut String, index: usize, function: &IrFunction) 
         let _ = write!(output, "{}", js_identifier(parameter));
     }
     let _ = writeln!(output, ") {{");
+    let _ = writeln!(
+        output,
+        "  if (svrCallDepth >= {MAX_CALL_DEPTH}) throw new Error({});",
+        js_string(&format!(
+            "maximum call depth of {MAX_CALL_DEPTH} exceeded in `{}`",
+            function.name
+        ))
+    );
+    let _ = writeln!(output, "  svrCallDepth++;");
+    let _ = writeln!(output, "  try {{");
     let _ = writeln!(output, "  const stack = [];");
     let _ = writeln!(output, "  const names = Object.create(null);");
     for parameter in &function.parameters {
@@ -85,6 +96,7 @@ fn render_js_function(output: &mut String, index: usize, function: &IrFunction) 
         render_js_instruction(output, instruction);
     }
     let _ = writeln!(output, "  return stack.length ? stack.pop() : undefined;");
+    let _ = writeln!(output, "  }} finally {{ svrCallDepth--; }}");
     let _ = writeln!(output, "}}");
     let _ = writeln!(output);
 }
@@ -197,7 +209,23 @@ fn js_identifier(name: &str) -> String {
 }
 
 fn js_string(value: &str) -> String {
-    format!("{value:?}")
+    let mut output = String::from("\"");
+    for character in value.chars() {
+        match character {
+            '"' => output.push_str("\\\""),
+            '\\' => output.push_str("\\\\"),
+            '\n' => output.push_str("\\n"),
+            '\r' => output.push_str("\\r"),
+            '\t' => output.push_str("\\t"),
+            // Fixed-width escapes cannot absorb a following digit (unlike \0).
+            '\u{0000}'..='\u{001f}' | '\u{007f}'..='\u{009f}' | '\u{2028}' | '\u{2029}' => {
+                let _ = write!(output, "\\u{:04x}", character as u32);
+            }
+            _ => output.push(character),
+        }
+    }
+    output.push('"');
+    output
 }
 
 #[cfg(test)]
@@ -221,6 +249,184 @@ mod tests {
             .write_all(source.as_bytes())
             .expect("write JavaScript");
         child.wait_with_output().expect("wait for Node.js")
+    }
+
+    #[test]
+    fn unicode_string_ordering_matches_interpreter() {
+        let pairs = [
+            ("😀", "\u{e000}"),
+            ("\u{e000}", "😀"),
+            ("😀a", "😀b"),
+            ("", "😀"),
+            ("😀", ""),
+            ("", ""),
+            ("😀", "😀a"),
+            ("😀a", "😀"),
+            ("é", "e\u{301}"),
+            ("same", "same"),
+        ];
+        let mut source = String::from("fn main() {\n");
+        for (left, right) in pairs {
+            for operator in ["<", "<=", ">", ">=", "==", "!="] {
+                source.push_str(&format!("print(\"{left}\" {operator} \"{right}\")\n"));
+            }
+        }
+        source.push('}');
+        let parsed = crate::compiler::parser::Parser::new()
+            .parse_source(&source)
+            .unwrap();
+        let ir = crate::compiler::ir::lower_program(&parsed).unwrap();
+        let expected = crate::compiler::interpreter::run(&ir).unwrap();
+        assert_eq!(&expected[..4], ["false", "false", "true", "true"]);
+        let output = execute_javascript(&render_javascript(&ir));
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .lines()
+                .collect::<Vec<_>>(),
+            expected
+        );
+    }
+
+    #[test]
+    fn javascript_depth_recovers_after_returns_and_errors() {
+        let source =
+            "fn main() {} fn recurse() { recurse() } fn early() { return } fn fallthrough() {}";
+        let parsed = crate::compiler::parser::Parser::new()
+            .parse_source(source)
+            .unwrap();
+        let ir = crate::compiler::ir::lower_program(&parsed).unwrap();
+        let mut script = render_javascript(&ir);
+        script.push_str(r#"
+            for (let i = 0; i < 300; i++) {
+                svrFunctions.early();
+                svrFunctions.fallthrough();
+            }
+            for (let i = 0; i < 2; i++) {
+                try { svrFunctions.recurse(); throw new Error('unexpected success'); }
+                catch (error) {
+                    if (error.message !== 'maximum call depth of 256 exceeded in `recurse`') throw error;
+                }
+                svrFunctions.early();
+                svrFunctions.fallthrough();
+            }
+            console.log('recovered');
+        "#);
+        let output = execute_javascript(&script);
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8(output.stdout).unwrap().trim(),
+            "recovered"
+        );
+    }
+
+    #[test]
+    fn javascript_call_depth_matches_interpreter() {
+        for count in [256, 257] {
+            let mut functions = Vec::new();
+            for index in 0..count {
+                let name = if index == 0 {
+                    "main".to_owned()
+                } else {
+                    format!("f{index}")
+                };
+                let instructions = if index + 1 < count {
+                    vec![
+                        Instruction::Call {
+                            name: format!("f{}", index + 1),
+                            arguments: 0,
+                        },
+                        Instruction::Return,
+                    ]
+                } else {
+                    vec![
+                        Instruction::LoadLiteral(Literal::String("reached".into())),
+                        Instruction::Call {
+                            name: "print".into(),
+                            arguments: 1,
+                        },
+                        Instruction::Return,
+                    ]
+                };
+                functions.push(IrFunction {
+                    name,
+                    parameters: vec![],
+                    instructions,
+                });
+            }
+            let ir = IrProgram { functions };
+            let expected = crate::compiler::interpreter::run(&ir);
+            let script = format!("try {{ (function() {{ {} }})(); }} catch (error) {{ console.log(error.message); }}", render_javascript(&ir));
+            let output = execute_javascript(&script);
+            assert!(output.status.success());
+            let actual = String::from_utf8(output.stdout).unwrap();
+            match expected {
+                Ok(lines) => assert_eq!(actual.trim_end(), lines.join("\n")),
+                Err(error) => assert_eq!(actual.trim_end(), error),
+            }
+        }
+    }
+
+    #[test]
+    fn source_strings_survive_javascript_emission() {
+        let source = "fn main() { print(\"\0".to_owned()
+            + "123\"); print(\"line\\nquote\\\"slash\\\\\"); print(\"é😀\u{2028}\u{2029}\") }";
+        let parsed = crate::compiler::parser::Parser::new()
+            .parse_source(&source)
+            .unwrap();
+        let ir = crate::compiler::ir::lower_program(&parsed).unwrap();
+        let expected = crate::compiler::interpreter::run(&ir).unwrap().join("\n") + "\n";
+        let output = execute_javascript(&render_javascript(&ir));
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8(output.stdout).unwrap(), expected);
+    }
+
+    #[test]
+    fn javascript_strings_match_interpreter() {
+        use crate::compiler::ir::{Instruction, IrFunction, Literal};
+        let values = vec![
+            (0u8..=31).map(char::from).collect::<String>(),
+            "\0".to_owned() + "123",
+            "quotes: \" backslash: \\ tab: \t".to_owned(),
+            "café 😀\u{2028}\u{2029}\u{007f}\u{0085}".to_owned(),
+        ];
+        let mut instructions = Vec::new();
+        for value in values {
+            instructions.push(Instruction::LoadLiteral(Literal::String(value)));
+            instructions.push(Instruction::Call {
+                name: "std::print".into(),
+                arguments: 1,
+            });
+            instructions.push(Instruction::Pop);
+        }
+        let ir = IrProgram {
+            functions: vec![IrFunction {
+                name: "main".into(),
+                parameters: vec![],
+                instructions,
+            }],
+        };
+        let expected = crate::compiler::interpreter::run(&ir).unwrap().join("\n") + "\n";
+        let output = execute_javascript(&render_javascript(&ir));
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8(output.stdout).unwrap(), expected);
     }
 
     #[test]

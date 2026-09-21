@@ -73,3 +73,17 @@ Source `check`, `run` and `build` all apply these semantic rules. Project
 directory checking remains a manifest and wiring scan; its success does not
 validate function annotations or bodies. User-defined type declarations,
 named-type resolution and general parameter inference remain unfinished.
+
+The interpreter and JavaScript backend limit simultaneously active user-function
+calls to 256, counting `main`. Builtins do not add a frame. Recursive calls beyond
+that boundary report a call-depth error; sequential calls release their frames
+as they return.
+
+Function values are not implemented. `let value = std::len` produces E3015;
+`let value = std::len("hello")` calls the function and infers an Int result.
+The same restriction applies to exported module functions used without a call.
+
+Declaring a top-level `fn print` produces E3016 because `print` is the builtin
+compatibility alias. Rename the user function; calling `print(value)` remains
+supported. Exact exported builtin collisions follow the same rule under
+[ADR 0003](../adr/0003-builtin-name-collisions.md).

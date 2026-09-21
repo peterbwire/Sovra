@@ -1,5 +1,119 @@
 # Development log
 
+## 2026-09-21 — Builtin collisions and module declaration uniqueness
+
+- **Decision:** User approved Option 1, recorded as accepted ADR 0003: reject
+  exact callable-name collisions while permitting other names in `std`.
+- **Changed:** E3016 checks top-level names and qualified exported names against
+  the builtin registry, including bare print. Noncolliding std exports, unrelated
+  same-named functions and private names remain valid. Duplicate module functions
+  now produce existing E3008 for all private/exported combinations.
+- **Regression evidence:** Duplicate private declarations and builtin collisions
+  passed before the fixes. Tests cover all four visibility combinations, every
+  registered builtin plus print, exact duplicate spans, permitted names executing,
+  CLI check/run/IR/JS rejection, and JSON E3016 locations. Calls through bare print
+  and std::len remain working.
+- **Validation:** 105 library and 26 CLI tests passed without skips. Formatting,
+  compilation, test compilation, strict Clippy and diff checks passed.
+- **Compatibility/docs:** Previously accepted colliding declarations must be
+  renamed. Public stage signatures and runtime dispatch remain unchanged. Updated
+  spec, function/module lessons, development status and the accepted ADR.
+- **Next:** Assess remaining named-type validation gaps and document any required
+  type-semantics decision before enforcement; private execution remains separate.
+
+## 2026-09-21 — Reject unsupported qualified function values
+
+- **Changed:** A known qualified function name in value position reports E3015
+  at the expression and suggests making a call. Normal builtin/exported calls
+  are unchanged; unknown qualified names retain E3004. This closes acceptance
+  of values with no runtime representation, without implementing function types.
+- **Regression evidence:** `let value = std::len` passed checking as Int before
+  the fix despite lowering to an unresolved variable load. Six negative cases
+  cover builtins/exports in locals, arguments and effect expressions with exact
+  spans. CLI tests verify check/run/IR/JS rejection; existing call/execution tests
+  continue to pass. Updated spec and function lesson.
+- **Validation:** All 102 library and 24 CLI tests passed without skips, including
+  the expanded Unicode-ordering test previously blocked by OS policy. Formatting,
+  compilation, test compilation and strict Clippy passed (after removing one
+  redundant format invocation in the new test); diff checks passed.
+- **Next:** Audit function namespace collisions with builtins and duplicate
+  private module declarations. Named-type resolution remains a separate design
+  boundary; do not introduce function values or inference implicitly.
+
+## 2026-09-21 — Unicode string-ordering parity
+
+- **Changed:** JavaScript ordered string comparisons iterate Unicode scalar
+  values instead of using native UTF-16 ordering. This matches existing Rust
+  UTF-8 ordering, including prefix handling. Equality, concatenation, numeric
+  comparisons and source syntax are unchanged; strings are not normalized.
+- **Regression evidence:** Emoji versus U+E000 reversed ordering before the fix.
+  Differential tests cover all six comparison operators, reversed operands,
+  supplementary-character prefixes, empty/equal strings and composed versus
+  decomposed Unicode. Added specification and course guidance.
+- **Validation:** 101 library tests passed, including the initial 42 comparison
+  cases. All 23 CLI tests passed separately without skips. Three additional pairs
+  (18 assertions) were added afterward; that rebuilt library executable compiled
+  but was blocked by Application Control twice. The empty binary test target was
+  also blocked in the all-target run. Formatting, compilation, test compilation,
+  strict Clippy and diff checks passed; no final full-suite pass is claimed.
+- **Next:** Execute the expanded boundary cases when OS policy permits, then
+  audit remaining accepted-source/runtime mismatches before broader features.
+
+## 2026-09-21 — JavaScript call-depth parity
+
+- **Changed:** Both engines share the existing 256-frame limit. Generated
+  functions check before entry and release their count in `finally`, including
+  early returns, fallthrough and runtime errors. Main counts; builtins do not.
+  Errors name the rejected function using the interpreter's existing message.
+- **Regression evidence:** JavaScript reached a 257th user frame before the fix
+  while the interpreter rejected it. Differential tests cover success with 256
+  frames and a builtin at the deepest frame, and failure on frame 257. Additional
+  Node tests cover 300 sequential early/fallthrough calls and repeated recursion
+  failures followed by successful calls, verifying frame cleanup.
+- **Validation:** 100 library and 23 CLI tests passed without skips. Formatting,
+  compilation, test compilation, strict Clippy and diff checks passed.
+- **Docs:** Updated runtime specification, function lesson and development status.
+  No source syntax or public stage signatures changed; full backend parity is
+  still experimental.
+- **Next:** Test Unicode string ordering parity: Rust string ordering and native
+  JavaScript UTF-16 comparisons may disagree for supplementary characters.
+
+## 2026-09-21 — JavaScript string escaping parity
+
+- **Changed:** JavaScript emission now uses dedicated string escaping rather
+  than Rust Debug formatting. Quotes/backslashes and control characters are
+  escaped for JavaScript; NUL uses fixed-width `\u0000`, and Unicode line/paragraph
+  separators are escaped. Other Unicode scalar values are retained.
+- **Regression evidence:** Node rejected generated `\0123` in strict mode before
+  the fix. Tests compare raw output bytes against the interpreter for all ASCII
+  control characters, NUL followed by digits, quotes/backslashes, non-ASCII text,
+  emoji and Unicode separators. A source-to-IR-to-Node test also verifies lexer
+  escape decoding and emission together.
+- **Validation:** 98 library and 23 CLI tests passed without skips. Formatting,
+  compilation, test compilation, strict Clippy and diff checks passed.
+- **Scope:** No new Sovra escapes or syntax were introduced. Text IR keeps its
+  existing inspection format. Updated the specification and String lesson.
+- **Next:** Reproduce and align generated JavaScript's call-depth behavior with
+  the interpreter's existing 256-frame limit. Full runtime parity remains partial.
+
+## 2026-09-21 — Preserve concatenation's String type
+
+- **Changed:** Arithmetic result typing now returns String for String operands
+  after operator compatibility checks. Previously concatenation returned Unknown,
+  accepting invalid Int contracts and rejecting valid subsequent concatenations.
+  No syntax, stage API, IR instruction or runtime behavior was changed.
+- **Regression evidence:** Both invalid Int annotation acceptance and valid
+  chained-concatenation rejection failed before the fix. Coverage includes
+  binding/return/parameter contracts, inferred locals, length and equality,
+  interpreter/Node output parity, and rejection by check/run/IR/JS commands.
+- **Example/docs:** Added executable `examples/strings/main.svr`, a String course
+  lesson, specification guidance and the invalid-concatenation CLI fixture.
+- **Validation:** All 96 library and 23 CLI tests passed without skips. Formatting,
+  compilation, test compilation, strict Clippy and diff checks passed.
+- **Next:** Test generated JavaScript string escaping against the interpreter;
+  the backend still uses Rust Debug string formatting, whose escapes may differ
+  from JavaScript. Named-type and private-module semantics remain separate work.
+
 ## 2026-09-21 — Separate source and manifest comments
 
 - **Changed:** Source scanning strips unquoted `//`; manifest parsing strips
