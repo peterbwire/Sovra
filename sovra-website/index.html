@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="description" content="Sovra — a modern general-purpose programming language designed for humans and AI agents." />
+  <title>Sovra — Build software for the AI era</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="#top" aria-label="Sovra home"><span class="brand-mark">S</span><span>Sovra</span></a>
+    <button class="menu-btn" aria-label="Toggle navigation" aria-expanded="false">☰</button>
+    <nav class="nav">
+      <a href="#why">Why Sovra</a><a href="#toolchain">Toolchain</a><a href="#learn">Learn</a><a href="#ai">AI</a><a href="#community">Community</a><a href="#roadmap">Roadmap</a>
+      <a class="nav-cta" href="#install">Install Sovra</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="hero section">
+      <div class="hero-copy">
+        <div class="eyebrow"><span class="dot"></span> IN ACTIVE DEVELOPMENT</div>
+        <h1>Build software<br><span>for the AI era.</span></h1>
+        <p class="lead">Sovra is an experimental general-purpose programming language designed for humans and AI agents to build, understand, test, and maintain software through one coherent development ecosystem.</p>
+        <div class="actions"><a class="button primary" href="#learn">Get Started</a><a class="button secondary" href="#community">View on GitHub</a></div>
+        <div class="quick"><span>Readable for humans.</span><span>Structured for machines.</span><span>Built toward production.</span></div>
+      </div>
+      <div class="code-window" aria-label="Sovra code example">
+        <div class="window-bar"><div><i></i><i></i><i></i></div><span>main.svr</span><small>SVR</small></div>
+<pre><code><span class="kw">struct</span> <span class="type">User</span> {
+    name: <span class="type">String</span>
+    email: <span class="type">String</span>
+}
+
+<span class="kw">fn</span> <span class="fn">greet</span>(user: <span class="type">User</span>) -&gt; <span class="type">String</span> {
+    <span class="kw">return</span> <span class="str">"Hello, "</span> + user.name
+}
+
+<span class="kw">fn</span> <span class="fn">main</span>() {
+    <span class="kw">let</span> user = <span class="type">User</span> {
+        name: <span class="str">"Ada"</span>,
+        email: <span class="str">"ada@example.com"</span>
+    }
+
+    <span class="fn">print</span>(<span class="fn">greet</span>(user))
+}</code></pre>
+        <div class="terminal"><span>$</span> svr run main.svr <b>Hello, Ada</b></div>
+      </div>
+    </section>
+
+    <section id="why" class="section block">
+      <p class="kicker">WHY SOVRA</p><h2>One coherent language.<br>Less fragmented development.</h2>
+      <p class="section-intro">Modern software often means stitching together languages, frameworks, build systems, and tools. Sovra is exploring a simpler model.</p>
+      <div class="grid four">
+        <article><div class="icon">{ }</div><h3>Simple</h3><p>Readable, coherent syntax designed to keep complexity under control.</p></article>
+        <article><div class="icon">✓</div><h3>Safe</h3><p>Strong types, predictable behavior, useful diagnostics, and safe defaults.</p></article>
+        <article><div class="icon">⚡</div><h3>Fast</h3><p>A Rust-built toolchain designed toward efficient compilation and execution.</p></article>
+        <article><div class="icon">✦</div><h3>AI-Native</h3><p>Structured tooling that helps AI reason about projects—not merely generate text.</p></article>
+      </div>
+    </section>
+
+    <section id="toolchain" class="section split block">
+      <div><p class="kicker">ONE TOOLCHAIN</p><h2>From new project<br>to production build.</h2><p class="section-intro">The long-term goal is a single CLI for the core development loop.</p></div>
+      <div class="terminal-card"><div class="terminal-title">Terminal</div><pre><span>$</span> svr new marketplace
+<span class="muted">Created Sovra project `marketplace`</span>
+
+<span>$</span> cd marketplace
+<span>$</span> svr run
+<span class="good">✓ Compiled successfully</span>
+<span class="muted">Running src/main.svr</span>
+
+<span>$</span> svr check
+<span class="good">✓ No issues found</span>
+
+<span>$</span> svr test
+<span class="good">✓ 24 tests passed</span>
+
+<span>$</span> svr build --release
+<span class="good">✓ Release build complete</span></pre></div>
+    </section>
+
+    <section class="section block">
+      <p class="kicker">WHAT SOVRA IS BUILDING TOWARD</p><h2>A general-purpose foundation.</h2>
+      <div class="chips"><span>CLI Applications</span><span>Automation</span><span>APIs</span><span>Backend Services</span><span>WebAssembly</span><span>AI Applications</span><span>Cloud Services</span><span>Enterprise Systems</span></div>
+      <p class="note">Capabilities are being implemented progressively. Planned features should not be interpreted as currently production-ready.</p>
+    </section>
+
+    <section id="ai" class="section block ai-block">
+      <div><p class="kicker">AI + SOVRA</p><h2>A language AI can understand,<br>not just generate.</h2><p class="section-intro">Sovra is being designed with predictable semantics, machine-readable diagnostics, project inspection, and language-server intelligence so coding agents can work with software structurally.</p></div>
+      <div class="flow"><span>YOUR IDEA</span><b>↓</b><span>AI AGENT / NOVA</span><b>↓</b><span>SOVRA</span><b>↓</b><span>CHECK + TEST + BUILD</span><b>↓</b><span>SOFTWARE</span></div>
+    </section>
+
+    <section id="learn" class="section block">
+      <p class="kicker">LEARN SOVRA</p><h2>From first program to language internals.</h2>
+      <div class="lessons">
+        <a href="#"><b>01</b><span>Getting Started<small>Install Sovra and run your first .svr program.</small></span><i>→</i></a>
+        <a href="#"><b>02</b><span>Language Fundamentals<small>Variables, types, functions, and control flow.</small></span><i>→</i></a>
+        <a href="#"><b>03</b><span>Data & Type System<small>Structured data, generics, options, and results.</small></span><i>→</i></a>
+        <a href="#"><b>04</b><span>Modules & Packages<small>Organize applications and manage dependencies.</small></span><i>→</i></a>
+        <a href="#"><b>05</b><span>Advanced Sovra<small>Concurrency, performance, runtime, and systems concepts.</small></span><i>→</i></a>
+        <a href="#"><b>06</b><span>Inside the Compiler<small>Lexer, parser, AST, semantics, IR, and code generation.</small></span><i>→</i></a>
+      </div>
+    </section>
+
+    <section id="roadmap" class="section block">
+      <p class="kicker">ROADMAP</p><h2>Building the foundations first.</h2>
+      <div class="roadmap">
+        <div class="done"><b>01</b><h3>Foundation</h3><p>Specification, repository architecture, CLI, documentation.</p><span>ACTIVE</span></div>
+        <div><b>02</b><h3>Language Core</h3><p>Lexer, parser, AST, semantics, interpreter, type system.</p><span>IN DEVELOPMENT</span></div>
+        <div><b>03</b><h3>Toolchain</h3><p>Compiler backend, standard library, package manager, LSP.</p><span>PLANNED</span></div>
+        <div><b>04</b><h3>Ecosystem</h3><p>Application libraries, AI tooling, packages, production workflows.</p><span>PLANNED</span></div>
+      </div>
+    </section>
+
+    <section id="community" class="section block community">
+      <p class="kicker">OPEN DEVELOPMENT</p><h2>Help build Sovra.</h2><p>We're looking for people interested in programming languages, Rust, compilers, runtimes, developer tooling, documentation, and AI-assisted software engineering.</p>
+      <div class="chips"><span>Compiler</span><span>Runtime</span><span>Standard Library</span><span>Tooling</span><span>Documentation</span><span>AI Integration</span><span>Language Design</span></div>
+      <div class="actions"><a class="button primary" href="#">GitHub Repository</a><a class="button secondary" href="#">Join Discussions</a></div>
+    </section>
+
+    <section id="install" class="section install">
+      <div><p class="kicker">START BUILDING</p><h2>Sovra is early.<br>Come shape what it becomes.</h2></div>
+      <div class="install-box"><span>Install command <small>Coming with public release</small></span><code>curl ... | sh</code></div>
+    </section>
+  </main>
+
+  <footer><a class="brand" href="#top"><span class="brand-mark">S</span><span>Sovra</span></a><p>Experimental general-purpose programming language for the AI era.</p><span>© <span id="year"></span> Sovra Project</span></footer>
+  <script src="script.js"></script>
+</body>
+</html>
