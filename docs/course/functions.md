@@ -74,6 +74,12 @@ directory checking remains a manifest and wiring scan; its success does not
 validate function annotations or bodies. User-defined type declarations,
 named-type resolution and general parameter inference remain unfinished.
 
+Only `Unit`, `Bool`, `Int`, `Float` and `String` are valid annotation names today.
+An unknown name such as `Strng`, `Text` or `Any` produces E3017 in a parameter,
+return type or local binding. Correct typos to the intended implemented type;
+user-defined types will require future declaration support. These rules apply
+to executable source checks, not Fielddesk's project wiring scan.
+
 The interpreter and JavaScript backend limit simultaneously active user-function
 calls to 256, counting `main`. Builtins do not add a frame. Recursive calls beyond
 that boundary report a call-depth error; sequential calls release their frames

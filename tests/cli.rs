@@ -213,6 +213,48 @@ fn check_rejects_invalid_format_arguments() {
 }
 
 #[test]
+fn source_commands_reject_unknown_annotations() {
+    let source = format!(
+        "{}/tests/fixtures/unknown-types.svr",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    for args in [
+        vec!["check", source.as_str()],
+        vec!["run", source.as_str()],
+        vec!["build", source.as_str()],
+        vec!["build", "--emit", "js", source.as_str()],
+    ] {
+        let Some(output) = output_or_skip(svr().args(&args)) else {
+            return;
+        };
+        assert_eq!(output.status.code(), Some(1), "{args:?}");
+        assert!(output.stdout.is_empty());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("E3017"));
+    }
+    let Some(output) = output_or_skip(svr().args(["check", "--format=json", &source])) else {
+        return;
+    };
+    assert_eq!(output.status.code(), Some(1));
+    assert_json_report(
+        &output,
+        r#"
+        assert.equal(report.success, false);
+        assert.equal(report.diagnostics.length, 3);
+        const bytes = require('node:fs').readFileSync(report.target);
+        const snippets = report.diagnostics.map(d => {
+            assert.equal(d.code, 'E3017');
+            assert.equal(d.location.file, report.target);
+            assert.ok(d.message.includes('Strng'));
+            return bytes.subarray(d.location.start, d.location.end).toString('utf8');
+        });
+        assert.deepEqual(snippets, ['Strng', 'Strng', 'Strng']);
+        const expected = [...bytes.toString('utf8').matchAll(/Strng/g)].map(m => m.index);
+        assert.deepEqual(report.diagnostics.map(d => d.location.start), expected);
+    "#,
+    );
+}
+
+#[test]
 fn source_commands_reject_builtin_collisions() {
     let source = format!(
         "{}/tests/fixtures/builtin-collision.svr",

@@ -33,6 +33,8 @@ pub struct Function {
     pub parameters: Vec<Parameter>,
     /// Optional declared return type.
     pub return_type: Option<String>,
+    /// Exact return type token range, when an annotation is present.
+    pub return_type_span: Option<Span>,
     /// Function body.
     pub body: Vec<Statement>,
     /// Location of the declaration.
@@ -47,6 +49,8 @@ pub struct Parameter {
     /// Parameter annotation, required by semantic analysis. None preserves
     /// incomplete declarations so the analyzer can diagnose the missing type.
     pub type_name: Option<String>,
+    /// Exact parameter type token range, when an annotation is present.
+    pub type_span: Option<Span>,
     /// Location of the parameter.
     pub span: Span,
 }
@@ -60,6 +64,8 @@ pub enum Statement {
         name: String,
         /// Optional declared binding type.
         type_name: Option<String>,
+        /// Exact binding type token range, when an annotation is present.
+        type_span: Option<Span>,
         /// Initializer expression.
         value: Expression,
         /// Statement location.

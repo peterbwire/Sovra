@@ -41,8 +41,9 @@ The public token parser now rejects malformed EOF boundaries with `E2006`
 instead of panicking, failing to terminate or silently ignoring trailing tokens.
 See the latest development-log entry for this incremental hardening validation.
 
-The builtin-collision slice passed 105 library and 26 CLI tests without
-skips, including all previously blocked Unicode-ordering boundary cases.
+The unresolved-annotation slice passed 108 library and 27 CLI tests without
+skips. The combined all-target run was interrupted by Application Control
+blocking the binary test harness; the CLI suite passed separately.
 Formatting, compilation, test compilation and strict Clippy passed. Windows
 Application Control has intermittently blocked earlier runs; inspect skip/block
 messages rather than trusting counts alone. CI explicitly installs Node 22.
@@ -58,6 +59,11 @@ missing annotations for this semantic error. This rejects formerly accepted
 untyped declarations. See `DEVELOPMENT_LOG.md` for validation of that later slice.
 
 ## Blockers and debt
+
+Accepted ADR 0004 rejects unresolved executable-source annotations with E3017.
+Only Unit, Bool, Int, Float and String currently resolve; user-defined type
+declarations remain planned. Declaration spans identify errors, while precise
+type-token spans remain future work. Project scanning is unaffected.
 
 - Numeric widening, Int bounds/overflow and JS numeric kinds are now fixed and
   tested. Non-finite Float/output policy and structured runtime errors remain.

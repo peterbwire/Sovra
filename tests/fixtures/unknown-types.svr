@@ -1,0 +1,5 @@
+fn identity(value: Strng) -> Strng {
+    let copy: Strng = value
+    return copy
+}
+fn main() {}

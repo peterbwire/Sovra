@@ -1,5 +1,42 @@
 # Development log
 
+## 2026-09-21 — Reject unresolved source annotations
+
+- **Decision:** User directed continuation of ADR 0004's recommended Option A.
+  Executable annotations now accept only the five implemented primitive types;
+  unknown names report E3017. User-defined type declarations remain planned.
+- **Regression evidence:** A focused test reproduced acceptance of Strng before
+  the fix. Coverage includes parameter, return and local annotations in top-level,
+  private and exported functions, Any/Text rejection, declaration-only reporting,
+  primitive acceptance, local inference and numeric widening execution.
+- **Changed:** Annotation declarations validate once, recovering with Unknown to
+  avoid repeated call-site errors and spurious return diagnostics. Existing public
+  stage APIs and the separate project scanner are preserved. CLI regressions
+  cover check/run/IR/JS rejection and JSON file identity/declaration spans.
+- **Validation:** 108 library tests and 27 CLI tests passed without skips.
+  The all-target command stopped when Windows Application Control blocked the
+  binary test harness (4551); the CLI suite passed separately. Formatting,
+  cargo check, test compilation and strict Clippy passed. No policy bypass used.
+- **Docs/limitations:** Updated specification, function course, status and ADR.
+  Locations use parameter-name, function or let-statement spans; precise type
+  token ranges and general named-type resolution remain incomplete.
+- **Next:** Improve annotation diagnostic spans without changing language policy;
+  private-module execution and user-defined types require separate design work.
+
+## 2026-09-21 — Unresolved annotation audit
+
+- **Evidence:** The CLI accepted `fn identity(value: Strng) -> Strng { return
+  value } fn main() {}` with exit 0 and an empty JSON diagnostic array despite
+  Strng having no declaration. Unknown names become unresolved Named types.
+- **Proposal:** ADR 0004 recommends rejecting unknown source annotations with
+  planned E3017 until type declarations exist. Primitive types/local inference
+  and the separate Fielddesk project scanner remain unchanged. The alternative
+  retains nominal placeholders and their unchecked spelling.
+- **Validation/scope:** Documentation-only assessment and one real CLI probe;
+  no compiler behavior changed. Temporary probe removed and diff checks passed.
+- **Next:** Obtain the type/compatibility decision required by AGENTS.md, then
+  implement it with declaration, CLI/JSON and execution regression coverage.
+
 ## 2026-09-21 — Builtin collisions and module declaration uniqueness
 
 - **Decision:** User approved Option 1, recorded as accepted ADR 0003: reject

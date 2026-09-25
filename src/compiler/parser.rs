@@ -121,7 +121,9 @@ impl<'a> TokenParser<'a> {
         while !self.check_punctuation(')') && !self.at_eof() {
             let parameter_start = self.peek().span;
             let parameter_name = self.expect_identifier("parameter name")?;
+            let mut type_span = None;
             let type_name = if self.consume_punctuation(':') {
+                type_span = Some(self.peek().span);
                 self.expect_identifier("parameter type")
             } else {
                 // Preserve the missing annotation for a semantic diagnostic
@@ -131,6 +133,7 @@ impl<'a> TokenParser<'a> {
             parameters.push(Parameter {
                 name: parameter_name,
                 type_name,
+                type_span,
                 span: parameter_start,
             });
             if !self.consume_punctuation(',') {
@@ -138,7 +141,9 @@ impl<'a> TokenParser<'a> {
             }
         }
         self.expect_punctuation(')');
+        let mut return_type_span = None;
         let return_type = if self.consume_operator("->") {
+            return_type_span = Some(self.peek().span);
             self.expect_identifier("return type")
         } else {
             None
@@ -158,6 +163,7 @@ impl<'a> TokenParser<'a> {
             is_exported,
             parameters,
             return_type,
+            return_type_span,
             body,
             span: Span {
                 end: end.end,
@@ -170,7 +176,9 @@ impl<'a> TokenParser<'a> {
         if self.consume_keyword("let") {
             let start = self.previous().span;
             let name = self.expect_identifier("binding name")?;
+            let mut type_span = None;
             let type_name = if self.consume_punctuation(':') {
+                type_span = Some(self.peek().span);
                 Some(self.expect_identifier("binding type")?)
             } else {
                 None
@@ -181,6 +189,7 @@ impl<'a> TokenParser<'a> {
             return Some(Statement::Let {
                 name,
                 type_name,
+                type_span,
                 value,
                 span: Span {
                     end: self.previous().span.end,

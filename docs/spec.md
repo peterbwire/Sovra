@@ -91,9 +91,14 @@ Requiring parameter annotations rejects previously accepted untyped declarations
 see [ADR 0002](adr/0002-function-typing.md), the [function lesson](course/functions.md)
 and [executable example](../examples/functions/main.svr).
 
-Primitive types are `Unit`, `Bool`, `Int`, `Float` and `String`. Other annotation
-names are not yet resolved against type declarations; explicit parameters do not
-complete named-type validation or introduce a general typed HIR.
+Primitive types are `Unit`, `Bool`, `Int`, `Float` and `String`. Until executable
+type declarations are implemented, other explicit parameter, return and local
+annotation names produce E3017, including `Any`, `Text` and misspellings. Every
+function is checked, including unused/private/exported declarations. Names are
+case-sensitive; no implicit aliases are introduced. See approved
+[ADR 0004](adr/0004-unresolved-type-annotations.md). Local inference and default
+Unit returns remain. Diagnostics use parameter-name, function or let-statement
+ranges; this is not a general typed HIR or user-defined type system.
 
 `String + String` produces `String`, including in inferred local bindings and
 chained concatenations. Its result must satisfy ordinary parameter, binding

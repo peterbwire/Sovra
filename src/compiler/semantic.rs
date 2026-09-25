@@ -113,10 +113,9 @@ impl SemanticAnalyzer {
                 ));
             }
             if function.name == "main"
-                && function
-                    .return_type
-                    .as_deref()
-                    .is_some_and(|return_type| type_from_name(return_type) != Type::Unit)
+                && function.return_type.as_deref().is_some_and(|return_type| {
+                    !matches!(type_from_name(return_type), Type::Unit | Type::Unknown)
+                })
             {
                 diagnostics.push(diagnostic(
                     "E3010",
@@ -166,7 +165,11 @@ fn check_function_body(
             ));
         }
         let parameter_type = match parameter.type_name.as_deref() {
-            Some(type_name) => type_from_name(type_name),
+            Some(type_name) => check_annotation(
+                type_name,
+                parameter.type_span.unwrap_or(parameter.span),
+                diagnostics,
+            ),
             None => {
                 diagnostics.push(diagnostic(
                     "E3014",
@@ -185,11 +188,17 @@ fn check_function_body(
     let expected_return = function
         .return_type
         .as_deref()
-        .map(type_from_name)
+        .map(|name| {
+            check_annotation(
+                name,
+                function.return_type_span.unwrap_or(function.span),
+                diagnostics,
+            )
+        })
         .unwrap_or(Type::Unit);
     // The current AST has only straight-line statements. Branches and loops
     // will require control-flow-aware return analysis when they are introduced.
-    if expected_return != Type::Unit
+    if !matches!(expected_return, Type::Unit | Type::Unknown)
         && !function
             .body
             .iter()
@@ -226,13 +235,14 @@ fn check_statement(
         Statement::Let {
             name,
             type_name,
+            type_span,
             value,
             span,
         } => {
             let value_type = check_expression(value, scope, functions, diagnostics);
             let declared_type = type_name
                 .as_deref()
-                .map(type_from_name)
+                .map(|name| check_annotation(name, type_span.unwrap_or(*span), diagnostics))
                 .unwrap_or(value_type.clone());
             if !types_compatible(&declared_type, &value_type) {
                 diagnostics.push(diagnostic(
@@ -491,8 +501,20 @@ fn type_from_name(name: &str) -> Type {
         "Int" => Type::Int,
         "Float" => Type::Float,
         "String" => Type::String,
-        _ => Type::Named(name.to_owned()),
+        _ => Type::Unknown,
     }
+}
+
+fn check_annotation(name: &str, span: Span, diagnostics: &mut Diagnostics) -> Type {
+    let resolved = type_from_name(name);
+    if resolved == Type::Unknown {
+        diagnostics.push(diagnostic(
+            "E3017",
+            format!("unknown type `{name}`; expected Unit, Bool, Int, Float or String"),
+            span,
+        ));
+    }
+    resolved
 }
 
 fn arithmetic_result_type(left: &Type, right: &Type) -> Type {
@@ -558,6 +580,80 @@ fn diagnostic(code: &'static str, message: impl Into<String>, span: Span) -> Dia
 mod tests {
     use super::*;
     use crate::compiler::parser::Parser;
+
+    #[test]
+    fn unknown_annotation_ranges_identify_only_type_tokens() {
+        let source = "// λ\r\nmod sample { export fn identity(value: // parameter\r\n Strng) -> // return\r\n Strng { let copy: // local\r\n Strng = value; return copy } }";
+        let parsed = Parser::new().parse_source(source).unwrap();
+        let errors = SemanticAnalyzer::new().analyze(&parsed).unwrap_err();
+        let expected: Vec<_> = source
+            .match_indices("Strng")
+            .map(|(offset, _)| offset)
+            .collect();
+        assert_eq!(errors.items.len(), expected.len());
+        for (error, start) in errors.items.iter().zip(expected) {
+            assert_eq!(error.code, "E3017");
+            assert_eq!(error.span.start, start);
+            assert_eq!(error.span.end, start + 5);
+            assert_eq!(error.span.line, source[..start].matches('\n').count());
+            assert_eq!(error.span.column, 1);
+        }
+    }
+
+    #[test]
+    fn primitive_annotations_and_local_inference_remain_valid() {
+        let mut source = String::new();
+        for (index, name) in ["Unit", "Bool", "Int", "Float", "String"]
+            .iter()
+            .enumerate()
+        {
+            source.push_str(&format!("fn identity{index}(value: {name}) -> {name} {{ let copy: {name} = value; return copy }}\n"));
+        }
+        source.push_str("fn main() { let inferred = 2; print(identity3(inferred)) }");
+        let parsed = Parser::new().parse_source(&source).unwrap();
+        let typed = SemanticAnalyzer::new().analyze(&parsed).unwrap();
+        assert_eq!(
+            crate::compiler::interpreter::run(&crate::compiler::ir::lower(&typed)).unwrap(),
+            vec!["2"]
+        );
+    }
+
+    #[test]
+    fn unknown_annotations_are_reported_once_at_declarations() {
+        let source = "fn helper(value: Typo) -> Typo { return value } fn main() -> Typo { helper(1); helper(2) } fn missing(value) {}";
+        let parsed = Parser::new().parse_source(source).unwrap();
+        let errors = SemanticAnalyzer::new().analyze(&parsed).unwrap_err();
+        assert_eq!(errors.items.iter().filter(|e| e.code == "E3017").count(), 3);
+        assert_eq!(errors.items.iter().filter(|e| e.code == "E3014").count(), 1);
+        assert_eq!(errors.items.len(), 4, "{errors:?}");
+    }
+
+    #[test]
+    fn rejects_unresolved_annotations_in_every_function() {
+        for declaration in [
+            "fn identity(value: Strng) -> Strng { let copy: Strng = value; return copy }",
+            "fn unused(value: Any) {}",
+            "fn unused(value: Text) {}",
+        ] {
+            for wrapper in ["top", "private", "exported"] {
+                let source = match wrapper {
+                    "top" => declaration.to_owned(),
+                    "private" => format!("mod sample {{ {declaration} }}"),
+                    _ => format!("mod sample {{ export {declaration} }}"),
+                };
+                let parsed = Parser::new().parse_source(&source).unwrap();
+                let errors = SemanticAnalyzer::new()
+                    .analyze(&parsed)
+                    .expect_err("unknown type");
+                let expected = if declaration.contains("Strng") { 3 } else { 1 };
+                assert_eq!(
+                    errors.items.iter().filter(|e| e.code == "E3017").count(),
+                    expected,
+                    "{errors:?}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn rejects_exact_builtin_callable_collisions() {
