@@ -308,6 +308,42 @@ fn check_json_reports_service_contract_declarations() {
 }
 
 #[test]
+fn check_json_exposes_unresolved_service_metadata() {
+    let project = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/service-metadata"
+    );
+    let Some(output) = output_or_skip(svr().args(["check", "--format", "json", project])) else {
+        return;
+    };
+    assert!(output.status.success());
+    assert_json_report(
+        &output,
+        r#"
+        assert.equal(report.kind, 'project');
+        assert.equal(report.success, true);
+        assert.deepEqual(report.diagnostics, []);
+        assert.equal(report.service_operations.length, 2);
+        const [send, ping] = report.service_operations;
+        assert.equal(send.service, 'mail');
+        assert.equal(send.name, 'send');
+        assert.deepEqual(send.parameters, [
+            {name: 'value', annotation: 'Result<Text, Error>'},
+            {name: 'context', annotation: null}
+        ]);
+        assert.equal(send.return_annotation, 'Receipt');
+        assert.equal(send.has_body, false);
+        assert.equal(ping.return_annotation, null);
+        assert.equal(ping.has_body, true);
+        assert.deepEqual(ping.parameters, []);
+        const bytes = require('node:fs').readFileSync(send.location.file);
+        assert.equal(bytes.subarray(send.location.start, send.location.end).toString().trim(),
+            'fn send(value: Result<Text, Error>, context) -> Receipt;');
+    "#,
+    );
+}
+
+#[test]
 fn private_module_access_is_rejected_by_source_commands() {
     let source = concat!(
         env!("CARGO_MANIFEST_DIR"),

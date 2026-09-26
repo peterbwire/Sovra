@@ -59,8 +59,9 @@ execution.
 
 ## Next M12 Slices
 
-1. Service contracts: duplicate operation-name checking and exclusion of service
-   signatures from callable targets are coded for multiline blocks, pending
-   verification. Service-call references and full signature checking remain next.
+1. Service contracts: structured headers/parameters/return text and JSON operation
+   metadata are implemented with passing Windows regressions. Service-call
+   references require the import/scope decision in proposed ADR 0006; signature
+   type resolution remains unfinished.
 2. Page bindings: validate page targets, view references, and data dependencies
    once the application parser can provide structured nodes.

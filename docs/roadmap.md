@@ -55,6 +55,18 @@ Add a native or portable compiled backend over the stable IR.
 
 ## Product experience track
 
+### Third-party package track (planned)
+
+Independent developers must be able to publish reusable Sovra libraries.
+Project-local imports are a first stage, not a permanent ecosystem restriction.
+Preserve package-qualified module identities and public/private exports while
+finishing cross-file resolution. Then deliver local dependencies and lockfiles,
+Git/registry resolution and caching, followed by publishing and ownership flows.
+Integrate package-aware testing and inspection with M13 and M15 without
+renumbering existing milestones. Exact manifest/import syntax and registry
+policies remain open design decisions. See the
+[package/library requirements](design/PACKAGES_AND_LIBRARIES.md).
+
 The next roadmap turns the foundation into the application language shown in
 [`examples/fielddesk`](../examples/fielddesk):
 
@@ -74,7 +86,9 @@ Full service contracts and richer page/model checks remain next.
 The partial multiline service scanner now includes duplicate-operation E4025
 checks and excludes service signatures from route/task callable targets.
 Code and regression cases are added; execution verification is deferred.
-This does not implement service calls, signature typing or application parsing.
+Structured headers, parameter records and return annotations now feed retained
+Rust service-operation metadata. This does not implement service calls, signature
+type resolution or full application parsing.
 
 Before expanding this surface, the handoff assessment recommends hardening the
 existing executable subset. Module bodies, numeric widening/bounds, Int

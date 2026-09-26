@@ -21,3 +21,18 @@ ecosystem tools into Sovra itself, but those pieces should sit on top of the
 Rust implementation boundary until the language has a deliberate self-hosting
 story.
 
+## Planned third-party library architecture
+
+Sovra must support libraries published by independent developers. Package
+selection, module loading and lexical symbol resolution are separate layers;
+resolved module identities include the owning package identity. Imports remain
+contained within each resolved package root, while declared dependencies allow
+access to other authorized package roots. Applications consume public exports,
+not all discovered source declarations.
+
+The current project-local import checker is an initial implementation, not a
+permanent single-project restriction. Package manifests, lockfiles, local/Git/
+registry dependencies and publishing remain planned. See
+[packages and libraries](design/PACKAGES_AND_LIBRARIES.md) for requirements,
+implementation order, unresolved decisions and acceptance criteria.
+

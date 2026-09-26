@@ -1,5 +1,173 @@
 # Development log
 
+## Third-party library architecture requirement
+
+- **Requirement:** User explicitly requires other developers to publish reusable
+  libraries when Sovra reaches full capability. Recorded this as a planned
+  ecosystem requirement rather than a claim about the current toolchain.
+- **Design:** Added package/library requirements covering separate dependency,
+  module and symbol resolution; package-qualified identities; declared dependency
+  roots; public exports; local/Git/registry sources; lockfiles; offline builds;
+  author/consumer workflows and publish/consume acceptance criteria.
+- **Integration:** Updated architecture, roadmap, status and ADR 0006 so current
+  root containment is explicitly local-package scope, not a permanent ban on
+  third-party libraries. No manifest grammar, version policy, registry endpoint
+  or publishing command was silently selected.
+- **Validation:** Documentation-only change; checked diff formatting and local
+  documentation links. No compiler behavior changed or test rerun required.
+- **Next:** Continue application parser/import resolution while preserving the
+  package-identity boundary; implement local library consumption before registry
+  publication. Detailed package syntax/policies require a separate decision.
+
+## Structured application-body receiver inspection
+
+- **Added:** Experimental application::inspect_body parses a bounded body subset
+  using the existing lexer, builds expression nodes and connects traversal to
+  nested scopes. Member-call records contain operation, arity, receiver class and
+  source range. Initializers are inspected before the local binding takes effect.
+- **Coverage:** Parameter/local shadowing, nested block isolation, initializer
+  calls, nested call arguments, comments/strings and unsupported/incomplete input.
+- **Validation:** All 144 library and 32 CLI tests passed (176 total), without
+  skips. Formatting, strict all-target Clippy and diff checks passed.
+- **Boundary:** Callers supply one body, parameters and visible service identities.
+  Unsupported syntax fails the whole inspection. Closures, typed locals, binary
+  operators and general application statements remain unsupported. No project
+  service-call enforcement or full Fielddesk parsing is claimed.
+- **Next:** Add structured function/task extraction and import-service wiring,
+  preserving explicit partial results until supported bodies can be checked.
+
+## Experimental application receiver-scope resolver
+
+- **Added:** Rust project::scope API with nested scopes, visibility-offset bindings
+  and module-qualified service identities. Receiver lookup distinguishes Local,
+  Service, Ambiguous and Unresolved. Locals/parameters/closure bindings shadow
+  service names; repeated imports of one identity do not create ambiguity.
+- **Coverage:** Declaration-order visibility, nested inheritance, sibling/parent
+  isolation, duplicate imports, conflicting service identities and unknown names.
+- **Validation:** All 141 library and 32 CLI tests passed (173 total), without
+  skips. Formatting, strict all-target Clippy and diff checks passed.
+- **Status:** Experimental foundation, not completed application parsing. No
+  source scanner feeds this API yet, so project acceptance and service-call
+  diagnostics are unchanged. Parser-produced binding/member-call nodes remain
+  necessary before enforcing ADR 0006 on application source.
+- **Next:** Connect structured application nodes to the resolver with explicit
+  partial-syntax handling, then validate resolved service operations.
+
+## ADR 0006 import-validation foundation
+
+- **Decision:** User directed continuation after recommended ADR 0006 Option A.
+  Recorded acceptance with partial implementation status.
+- **Changed:** Structured top-level use declarations map identifier-separated
+  module paths to project-relative .svr files. E4090/E4091/E4092 distinguish
+  malformed syntax, inaccessible targets and canonical root escapes. Retained
+  ProjectImport records include source, target and location; duplicate imports
+  are idempotent per source file. Discovery-based indexing terminates cycles.
+- **Coverage:** Import syntax, malformed/missing targets, repeated imports,
+  cyclic references and source locations. Existing Fielddesk imports are checked.
+- **Validation:** All 138 library and 32 CLI tests passed (170 total), without
+  skips. Formatting, strict all-target Clippy and diff checks passed.
+- **Boundary:** This adds file-reference validation, not lexical scope or service
+  receiver resolution. ProjectCheck literals must supply the new imports field.
+- **Next:** Build application binding/member-call nodes before enforcing imported
+  service visibility or argument checks. No heuristic dotted-call matching.
+
+## Service-reference resolution design boundary
+
+- **Inspected:** Fielddesk imports app.services and calls maps.travel_minutes and
+  payments.draft_invoice. Current project indexes contain no import or lexical
+  binding resolution, so dotted-text matching would misclassify shadowed names.
+- **Prepared:** ADR 0006 recommends explicit project-relative imports, lexical
+  shadowing and service checks only for resolved receivers. Includes examples,
+  parser/resolver implementation order, verification cases and a defer alternative.
+- **Boundary:** No new call enforcement or application execution was added.
+  AGENTS.md requires a decision before introducing these name-resolution rules.
+- **Validation:** Documentation/source review only; prior 167-test baseline stands.
+- **Next:** Obtain the ADR 0006 decision, then implement the application syntax
+  and import/scope foundations before service-call diagnostics.
+
+## Service contract metadata in project JSON reports
+
+- **Changed:** Successful project JSON checks expose service_operations with
+  names, parameter/return annotation text, body flags and source locations.
+  Source/error reports and human output retain their existing behavior.
+- **Contract:** Additive schema-version-one field; source/error reports omit it.
+  Empty arrays mean no operations were found. Annotation nulls mean absent,
+  never inferred/resolved types. Documented unknown-field tolerance and scope.
+- **Coverage:** Added a CLI fixture checking nested type text, omitted annotations,
+  body flags and byte ranges through real JSON parsing.
+- **Validation:** All 135 library and 32 CLI tests passed (167 total), with no
+  skips. Formatting, strict all-target Clippy and diff checks passed.
+- **Next:** Service-call resolution needs structured application expressions;
+  this inspection output supplies declarations, not executable contracts.
+
+## Service return-annotation delimiter checks
+
+- **Changed:** E4027 rejects unclosed/mismatched return-annotation groups and
+  top-level commas. Nested generic/tuple/array-like text remains preserved;
+  function-type arrows do not consume closing angle brackets. Names remain
+  unresolved and these checks do not add executable type features.
+- **Coverage:** Added invalid grouping cases and positive nested/arrow/unknown-name
+  cases. Existing metadata and project checks continue through the same parser.
+- **Validation:** All 135 library and 31 CLI tests passed (166 total), without
+  skips. Formatting, strict all-target Clippy and diff checks passed.
+- **Next:** Retain the distinction between structurally valid contracts and
+  resolved service types when adding service-reference analysis.
+
+## Service return annotations and operation metadata
+
+- **Changed:** Parsed optional return annotations, terminators and same-line body
+  markers separately. E4027 rejects missing return text and unsupported suffixes.
+  Return types stay unresolved; body contents and default expressions are not
+  validated by this structural parser.
+- **Inspection:** Added documented ServiceOperation/ServiceParameter records to
+  ProjectCheck, preserving service/name, ordered parameter annotations, optional
+  return annotation, body flag and source file/span. Public function signatures
+  and CLI diagnostic JSON schema remain unchanged. Rust callers constructing
+  ProjectCheck literals must now supply service_operations.
+- **Coverage:** Return forms/errors plus an end-to-end project metadata regression
+  covering application types, absent annotations, body markers and exact ranges.
+- **Validation:** Full run passed 133 library and 31 CLI tests without skips;
+  the final metadata regression passed separately (165 distinct passing tests
+  across both runs). Formatting, strict all-target Clippy and diff checks passed.
+- **Next:** Use retained contracts for structured service-reference checking;
+  do not infer runtime implementations from metadata alone.
+
+## Structured service parameter declarations
+
+- **Changed:** Operations retain ordered parameter records with names and
+  optional annotation slices. Top-level commas delimit parameters; nested
+  generic/tuple/array-like delimiters and quoted text remain intact. Duplicate
+  names, empty annotations/items and mismatched delimiters report E4027.
+- **Compatibility boundary:** Empty lists and one trailing comma are accepted.
+  Unannotated parameters remain representable; no executable primitive-only
+  annotation policy is applied to application contracts. Type/default-expression
+  resolution and return/body parsing remain unfinished.
+- **Validation:** All 132 library and 31 CLI tests passed without skips (163 total),
+  including existing Fielddesk checks. Added positive nested-type extraction and
+  malformed-list regressions. No Application Control block occurred.
+- **Next:** Structure return annotations and retain operation metadata for
+  service-reference validation without claiming executable application support.
+
+## Windows baseline and structured operation recognition
+
+- **Baseline:** User reports Windows Application Control resolved and cargo test
+  passing with rustc/cargo 1.98.1: 127 library tests plus 31 CLI tests, 158 total,
+  zero failures; binary and documentation stages also completed. This records
+  the user's run, not a newly executed agent verification.
+- **Changed:** Service operations now have structured name, parameter-text and
+  suffix fields. E4027 diagnoses missing/invalid names and absent or unclosed
+  single-line parameter lists. Duplicate checking consumes the parsed name.
+- **Boundary:** Application parameter types and trailing return/body syntax
+  remain opaque. Balanced nested parentheses and quoted parentheses are retained;
+  this does not introduce executable generics or service type resolution.
+- **Coverage added:** Structured extraction, malformed declarations and project
+  diagnostic source locations. Next: parse parameter declarations incrementally
+  without conflating application types with executable primitive annotations.
+- **Verified:** All-target run passed 129 library and 31 CLI tests without skips.
+  The subsequently added location regression also passed separately, bringing
+  exercised coverage to 130 library plus 31 CLI tests. Formatting and strict
+  all-target Clippy passed. Windows execution is working in this agent session.
+
 ## 2026-09-26 — Structured service-header parser
 
 - **Changed:** Extracted service header recognition into a private project parser

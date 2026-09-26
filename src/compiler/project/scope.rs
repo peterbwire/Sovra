@@ -1,0 +1,163 @@
+//! Scope resolution foundation for application service receivers.
+//!
+//! Callers must supply scopes and bindings from structured syntax. This module
+//! does not scan source text or establish that an application body was parsed.
+
+use std::collections::BTreeSet;
+
+/// Identity of a service declaration, qualified by its source module.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ServiceIdentity {
+    /// Stable module identity chosen by the import resolver.
+    pub module: String,
+    /// Declared service name.
+    pub name: String,
+}
+
+/// Result of resolving the receiver of an application member call.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Receiver {
+    /// A parameter, local, or closure binding shadows service candidates.
+    Local,
+    /// Exactly one visible service declaration.
+    Service(ServiceIdentity),
+    /// Multiple distinct service declarations share the visible name.
+    Ambiguous(Vec<ServiceIdentity>),
+    /// No visible binding or service; no service-call rule may be inferred.
+    Unresolved,
+}
+
+/// A lexical scope for one source module's application syntax.
+///
+/// Child scopes borrow their enclosing scope. Bindings are visible from a byte
+/// offset supplied by the parser (after a local initializer, or at body entry
+/// for parameters). Service identities are available throughout their scope.
+#[derive(Debug, Default)]
+pub struct Scope<'a> {
+    parent: Option<&'a Scope<'a>>,
+    bindings: Vec<(String, usize)>,
+    services: BTreeSet<ServiceIdentity>,
+}
+
+impl<'a> Scope<'a> {
+    /// Create a root scope with no implicit service imports.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Create a nested scope. Its bindings cannot leak back into the parent.
+    pub fn child(&'a self) -> Scope<'a> {
+        Scope {
+            parent: Some(self),
+            bindings: Vec::new(),
+            services: BTreeSet::new(),
+        }
+    }
+
+    /// Record a parameter/local/closure binding and its visibility start offset.
+    pub fn bind(&mut self, name: impl Into<String>, visible_from: usize) {
+        self.bindings.push((name.into(), visible_from));
+    }
+
+    /// Make an explicitly resolved service declaration visible in this scope.
+    /// Repeated imports of the same declaration are idempotent.
+    pub fn add_service(&mut self, service: ServiceIdentity) {
+        self.services.insert(service);
+    }
+
+    /// Resolve a receiver at a source byte offset. Lexical bindings take
+    /// precedence over all service candidates, including ancestor bindings.
+    pub fn resolve(&self, name: &str, offset: usize) -> Receiver {
+        if self.has_binding(name, offset) {
+            return Receiver::Local;
+        }
+        let mut candidates = BTreeSet::new();
+        self.collect_services(name, &mut candidates);
+        match candidates.len() {
+            0 => Receiver::Unresolved,
+            1 => Receiver::Service(candidates.into_iter().next().expect("one candidate")),
+            _ => Receiver::Ambiguous(candidates.into_iter().collect()),
+        }
+    }
+
+    fn has_binding(&self, name: &str, offset: usize) -> bool {
+        self.bindings
+            .iter()
+            .any(|(binding, start)| binding == name && *start <= offset)
+            || self
+                .parent
+                .is_some_and(|parent| parent.has_binding(name, offset))
+    }
+
+    fn collect_services(&self, name: &str, candidates: &mut BTreeSet<ServiceIdentity>) {
+        candidates.extend(
+            self.services
+                .iter()
+                .filter(|service| service.name == name)
+                .cloned(),
+        );
+        if let Some(parent) = self.parent {
+            parent.collect_services(name, candidates);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn maps(module: &str) -> ServiceIdentity {
+        ServiceIdentity {
+            module: module.into(),
+            name: "maps".into(),
+        }
+    }
+
+    #[test]
+    fn locals_shadow_only_after_their_visibility_boundary() {
+        let mut module = Scope::new();
+        module.add_service(maps("app.services"));
+        let mut body = module.child();
+        body.bind("maps", 50);
+        assert_eq!(
+            body.resolve("maps", 49),
+            Receiver::Service(maps("app.services"))
+        );
+        assert_eq!(body.resolve("maps", 50), Receiver::Local);
+        assert_eq!(body.child().resolve("maps", 60), Receiver::Local);
+        assert_eq!(
+            module.resolve("maps", 60),
+            Receiver::Service(maps("app.services"))
+        );
+    }
+
+    #[test]
+    fn parameter_and_closure_bindings_do_not_leak_to_siblings() {
+        let mut module = Scope::new();
+        module.add_service(maps("app.services"));
+        let mut closure = module.child();
+        closure.bind("maps", 0);
+        assert_eq!(closure.resolve("maps", 10), Receiver::Local);
+        assert_eq!(
+            module.child().resolve("maps", 10),
+            Receiver::Service(maps("app.services"))
+        );
+        assert_eq!(module.resolve("unknown", 10), Receiver::Unresolved);
+    }
+
+    #[test]
+    fn repeated_imports_are_idempotent_and_conflicts_are_explicit() {
+        let mut module = Scope::new();
+        module.add_service(maps("a"));
+        module.add_service(maps("a"));
+        assert_eq!(module.resolve("maps", 0), Receiver::Service(maps("a")));
+        module.add_service(maps("b"));
+        assert_eq!(
+            module.resolve("maps", 0),
+            Receiver::Ambiguous(vec![maps("a"), maps("b")])
+        );
+        let mut body = module.child();
+        body.bind("maps", 0);
+        assert_eq!(body.resolve("maps", 1), Receiver::Local);
+    }
+}

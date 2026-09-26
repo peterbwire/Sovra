@@ -83,6 +83,57 @@ fn has_location(span: Span) -> bool {
     span.start != 0 || span.end != 0 || span.line != 0 || span.column != 0
 }
 
+/// Render a successful project check with unresolved service-contract metadata.
+/// Source and failed check reports continue to use [`render`].
+pub fn render_project(target: &str, project: &crate::compiler::project::ProjectCheck) -> String {
+    let mut output = render(target, Some(CheckKind::Project), &Diagnostics::new());
+    output.pop(); // Extend the report object; the diagnostic array is complete.
+    output.push_str(",\"service_operations\":[");
+    for (index, operation) in project.service_operations.iter().enumerate() {
+        if index > 0 {
+            output.push(',');
+        }
+        output.push_str("{\"service\":");
+        push_string(&mut output, &operation.service);
+        output.push_str(",\"name\":");
+        push_string(&mut output, &operation.name);
+        output.push_str(",\"parameters\":[");
+        for (index, parameter) in operation.parameters.iter().enumerate() {
+            if index > 0 {
+                output.push(',');
+            }
+            output.push_str("{\"name\":");
+            push_string(&mut output, &parameter.name);
+            output.push_str(",\"annotation\":");
+            push_optional_string(&mut output, parameter.annotation.as_deref());
+            output.push('}');
+        }
+        output.push_str("],\"return_annotation\":");
+        push_optional_string(&mut output, operation.return_annotation.as_deref());
+        let _ = write!(
+            output,
+            ",\"has_body\":{},\"location\":{{\"file\":",
+            operation.has_body
+        );
+        push_string(&mut output, &operation.source_file.to_string_lossy());
+        let span = operation.span;
+        let _ = write!(
+            output,
+            ",\"start\":{},\"end\":{},\"line\":{},\"column\":{}}}}}",
+            span.start, span.end, span.line, span.column
+        );
+    }
+    output.push_str("]}");
+    output
+}
+
+fn push_optional_string(output: &mut String, value: Option<&str>) {
+    match value {
+        Some(value) => push_string(output, value),
+        None => output.push_str("null"),
+    }
+}
+
 fn push_string(output: &mut String, value: &str) {
     output.push('"');
     for character in value.chars() {

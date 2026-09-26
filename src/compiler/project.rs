@@ -1,5 +1,8 @@
 //! Project-level validation for `svr check`.
 
+pub mod application;
+mod imports;
+pub mod scope;
 mod service_contract;
 
 use service_contract::BodyStart;
@@ -30,6 +33,10 @@ pub struct ProjectCheck {
     pub source_files: Vec<PathBuf>,
     /// External service names declared in Sovra source.
     pub declared_services: Vec<String>,
+    /// Parsed service operation declarations; application types remain unresolved.
+    pub service_operations: Vec<ServiceOperation>,
+    /// Validated project-relative application imports, without service-call resolution.
+    pub imports: Vec<ProjectImport>,
     /// External service names requested by the application entry, if present.
     pub app_services: Vec<String>,
     /// API routes declared by the application entry.
@@ -44,6 +51,47 @@ pub struct ProjectCheck {
     pub data_models: Vec<String>,
     /// Scheduled tasks declared by the application entry.
     pub scheduled_tasks: Vec<AppTask>,
+}
+
+/// An explicit application import whose target source exists inside the project.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectImport {
+    /// Source file containing the import.
+    pub source_file: PathBuf,
+    /// Dotted module name as declared.
+    pub module: String,
+    /// Canonical target source path contained within the project root.
+    pub target_file: PathBuf,
+    /// Location of the import declaration.
+    pub span: Span,
+}
+
+/// A service parameter with an optional unresolved application annotation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServiceParameter {
+    /// Parameter name.
+    pub name: String,
+    /// Annotation text, without type resolution or inference.
+    pub annotation: Option<String>,
+}
+
+/// A structurally parsed service operation and its declaration location.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServiceOperation {
+    /// Owning service name.
+    pub service: String,
+    /// Operation name.
+    pub name: String,
+    /// Parameters in declaration order.
+    pub parameters: Vec<ServiceParameter>,
+    /// Explicit unresolved return annotation; absence does not infer a type.
+    pub return_annotation: Option<String>,
+    /// Whether a body begins on the operation line; its contents are not validated.
+    pub has_body: bool,
+    /// Source file containing the operation.
+    pub source_file: PathBuf,
+    /// Full declaration-line byte range and zero-based line/column.
+    pub span: Span,
 }
 
 /// API route declared by an application entry file.
@@ -133,6 +181,7 @@ pub fn check_project(path: impl AsRef<Path>) -> Result<ProjectCheck, Diagnostics
         );
     }
     let source_index = scan_project_sources(&source_files, &entry_path, &mut diagnostics);
+    let imports = validate_imports(root, &source_index.imports, &mut diagnostics);
     validate_services(&parsed, &source_index, &mut diagnostics);
 
     if diagnostics.is_empty() {
@@ -142,6 +191,8 @@ pub fn check_project(path: impl AsRef<Path>) -> Result<ProjectCheck, Diagnostics
             entry_path,
             runtime_target,
             source_files,
+            service_operations: source_index.service_operations,
+            imports,
             declared_services: source_index
                 .declared_services
                 .into_iter()
@@ -346,6 +397,8 @@ fn collect_source_files_inner(
 
 #[derive(Debug, Default)]
 struct ProjectSourceIndex {
+    imports: Vec<Located<Vec<String>>>,
+    service_operations: Vec<ServiceOperation>,
     declared_services: Vec<Located<String>>,
     app_services: Vec<Located<String>>,
     callable_symbols: BTreeSet<String>,
@@ -490,17 +543,47 @@ fn scan_source_file(
             }
         }
         let inside_service = service_contract.is_some();
+        if brace_depth == 0 && !inside_service {
+            match imports::parse(trimmed) {
+                Ok(Some(segments)) => index.imports.push(location.clone().locate(segments)),
+                Ok(None) => {}
+                Err(message) => push_manifest_error(diagnostics, line_index, "E4090", message),
+            }
+        }
         if brace_depth == 1 {
             if let Some((service, operations, _)) = &mut service_contract {
-                if let Some(operation) = parse_prefixed_identifier(trimmed, "fn") {
-                    if !operations.insert(operation.clone()) {
-                        push_manifest_error(
-                            diagnostics,
-                            line_index,
-                            "E4025",
-                            format!("duplicate operation `{operation}` in service `{service}`"),
-                        );
+                match service_contract::parse_operation(trimmed) {
+                    Ok(Some(operation)) => {
+                        index.service_operations.push(ServiceOperation {
+                            service: service.clone(),
+                            name: operation.name.to_owned(),
+                            parameters: operation
+                                .declarations
+                                .iter()
+                                .map(|parameter| ServiceParameter {
+                                    name: parameter.name.to_owned(),
+                                    annotation: parameter.annotation.map(str::to_owned),
+                                })
+                                .collect(),
+                            return_annotation: operation.return_annotation.map(str::to_owned),
+                            has_body: operation.body.is_some(),
+                            source_file: source_file.to_path_buf(),
+                            span: spans[line_index],
+                        });
+                        if !operations.insert(operation.name.to_owned()) {
+                            push_manifest_error(
+                                diagnostics,
+                                line_index,
+                                "E4025",
+                                format!(
+                                    "duplicate operation `{}` in service `{service}`",
+                                    operation.name
+                                ),
+                            );
+                        }
                     }
+                    Ok(None) => {}
+                    Err(message) => push_manifest_error(diagnostics, line_index, "E4027", message),
                 }
             }
         }
@@ -943,6 +1026,53 @@ fn parse_arrow_target(value: &str) -> Option<String> {
     } else {
         None
     }
+}
+
+fn validate_imports(
+    root: &Path,
+    declarations: &[Located<Vec<String>>],
+    diagnostics: &mut Diagnostics,
+) -> Vec<ProjectImport> {
+    let canonical_root = root.canonicalize();
+    let mut resolved = Vec::new();
+    let mut seen = BTreeSet::new();
+    for declaration in declarations {
+        let module = declaration.value.join(".");
+        let mut target = root.to_path_buf();
+        for segment in &declaration.value {
+            target.push(segment);
+        }
+        target.set_extension("svr");
+        let first = diagnostics.items.len();
+        match (&canonical_root, target.canonicalize()) {
+            (Ok(root), Ok(target)) if !target.starts_with(root) => {
+                push_error(
+                    diagnostics,
+                    "E4092",
+                    format!("import `{module}` resolves outside the project root"),
+                );
+            }
+            (Ok(_), Ok(target)) if target.is_file() => {
+                let source = PathBuf::from(&declaration.location.file);
+                // Cycles require no recursion: discovery scans each file once.
+                if seen.insert((source.clone(), target.clone())) {
+                    resolved.push(ProjectImport {
+                        source_file: source,
+                        module,
+                        target_file: target,
+                        span: declaration.location.span,
+                    });
+                }
+            }
+            _ => push_error(
+                diagnostics,
+                "E4091",
+                format!("import `{module}` does not resolve to an accessible project source file"),
+            ),
+        }
+        declaration.location.attach(&mut diagnostics.items[first..]);
+    }
+    resolved
 }
 
 fn validate_services(
@@ -1535,6 +1665,101 @@ fn push_manifest_error(
 mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn project_imports_resolve_once_and_allow_cycles() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"sample\"\nentry = \"main.svr\"",
+        );
+        project.write_file(
+            "main.svr",
+            "use app.helper\nuse app.helper; // repeated\nfn main() {}\n",
+        );
+        project.write_file("app/helper.svr", "use main\nfn helper() {}\n");
+        let checked = check_project(project.path()).unwrap();
+        assert_eq!(checked.imports.len(), 2);
+        let import = checked
+            .imports
+            .iter()
+            .find(|item| item.module == "app.helper")
+            .unwrap();
+        assert_eq!(
+            import.target_file,
+            project
+                .path()
+                .join("app/helper.svr")
+                .canonicalize()
+                .unwrap()
+        );
+        assert_eq!(import.span.line, 0);
+    }
+
+    #[test]
+    fn project_import_errors_identify_the_declaration() {
+        for (source, code) in [("use app.missing", "E4091"), ("use ../outside", "E4090")] {
+            let project = TestProject::new();
+            project.write_file(
+                "sovra.toml",
+                "[project]\nname = \"sample\"\nentry = \"main.svr\"",
+            );
+            project.write_file("main.svr", source);
+            let errors = check_project(project.path()).unwrap_err();
+            assert_eq!(errors.items.len(), 1);
+            assert_eq!(errors.items[0].code, code);
+            assert_eq!(errors.items[0].span.end, source.len());
+            assert!(errors.items[0].source_file.is_some());
+        }
+    }
+
+    #[test]
+    fn project_result_retains_service_operation_metadata() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"sample\"\nentry = \"main.svr\"\n[services]\nmail = \"external\"",
+        );
+        let source = "service mail {\n fn send(value: Result<Text, Error>, context) -> Receipt;\n fn ping() {}\n}\n";
+        project.write_file("main.svr", source);
+        let checked = check_project(project.path()).unwrap();
+        assert_eq!(checked.service_operations.len(), 2);
+        let operation = &checked.service_operations[0];
+        assert_eq!(operation.service, "mail");
+        assert_eq!(operation.name, "send");
+        assert_eq!(operation.return_annotation.as_deref(), Some("Receipt"));
+        assert_eq!(
+            operation.parameters[0].annotation.as_deref(),
+            Some("Result<Text, Error>")
+        );
+        assert_eq!(operation.parameters[1].name, "context");
+        assert_eq!(operation.parameters[1].annotation, None);
+        assert!(!operation.has_body);
+        assert_eq!(operation.source_file, project.path().join("main.svr"));
+        assert_eq!(
+            &source[operation.span.start..operation.span.end],
+            " fn send(value: Result<Text, Error>, context) -> Receipt;"
+        );
+        assert!(checked.service_operations[1].has_body);
+        assert_eq!(checked.service_operations[1].return_annotation, None);
+    }
+
+    #[test]
+    fn malformed_service_operation_retains_source_location() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"sample\"\nentry = \"main.svr\"\n[services]\nmail = \"external\"",
+        );
+        let source = "service mail {\n    fn send\n}\n";
+        project.write_file("main.svr", source);
+        let errors = check_project(project.path()).unwrap_err();
+        assert_eq!(errors.items.len(), 1);
+        assert_eq!(errors.items[0].code, "E4027");
+        let span = errors.items[0].span;
+        assert_eq!(&source[span.start..span.end], "    fn send");
+        assert!(errors.items[0].source_file.is_some());
+    }
 
     #[test]
     fn invalid_service_names_are_diagnosed_without_indexing() {

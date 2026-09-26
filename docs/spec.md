@@ -265,6 +265,44 @@ including comments. This scanner fix does not provide full lexical validation.
 
 ## Application-language direction
 
+### Application import records (partial)
+
+Under ADR 0006, top-level `use app.services` resolves to `app/services.svr`
+relative to the project root; a trailing semicolon and source comment are
+permitted. Path segments must be identifiers. E4090 reports malformed imports,
+E4091 inaccessible or missing source targets, and E4092 canonical targets outside
+the project root. Diagnostics identify the importing source line. Repeated
+imports of the same target in one file retain one record; cycles terminate
+because file discovery scans sources once rather than recursively following imports.
+
+Rust `ProjectCheck.imports` retains the source, module spelling, canonical target
+and span. This validates file references only. Import visibility, binding scopes,
+service-call resolution and application execution are not yet implemented.
+Imports inside bodies are outside this top-level scanner's scope. Executable
+source parsing and inline `module::function` semantics remain unchanged.
+
+An experimental Rust `project::scope` API resolves explicitly supplied receiver
+names against nested bindings and service identities. A parser supplies each
+binding's visibility start byte offset: parameters at body entry and locals
+after their initializer. Bindings shadow services, duplicate service identities
+are idempotent, and distinct same-name candidates are ambiguous. Nested scopes
+do not leak bindings to parents or siblings. This API does not itself parse
+application source or emit project service-call diagnostics; callers must
+not treat its existence as validation of scanned application bodies.
+
+Experimental `project::application::inspect_body` now connects lexer-produced
+body expressions to the scope resolver. It accepts a braced body plus explicitly
+supplied parameter names and visible service identities. Supported forms are
+unannotated local bindings, nested blocks, returns, literals, grouping, positional
+calls and member access. Results retain operation names, argument counts,
+receiver classifications and member-expression ranges relative to the supplied
+body. Local initializers resolve before their binding becomes visible.
+Comments and strings do not create call references. Complex receiver expressions
+remain unresolved. Unsupported forms (including closures, conditionals, binary
+operators and typed locals) fail the whole inspection rather than returning a
+partial list. This API is not wired into project-check enforcement yet and does
+not imply that Fielddesk bodies parse or execute.
+
 ### Partial service-contract scan
 
 For top-level multiline service blocks whose opening brace is on the service
@@ -287,6 +325,33 @@ Service headers are parsed into explicit pending, open or empty body forms.
 Missing or invalid service names produce E4026. Invalid headers do not create
 service declarations in the index; a corresponding manifest binding can also
 report a missing declaration. This header parser does not yet parse signatures.
+Direct operation lines now retain a name, parameter-list text and trailing
+return/body text as separate fields. Missing/invalid names or missing/unclosed
+parameter parentheses produce E4027 at the operation line. Parentheses inside
+quoted strings do not close the list. This is single-line structural validation:
+parameters retain a name and optional annotation text. Empty annotations,
+invalid or duplicate parameter names, empty interior list items and mismatched
+delimiters produce E4027. Commas inside balanced angle brackets, parentheses,
+square brackets or quoted strings do not split parameters. Empty lists and a
+single trailing comma are accepted. Omitted annotations remain represented as
+absent; this project check does not apply executable-source E3014 rules or infer
+their types. Annotation text and the trailing return/body text remain unresolved.
+No signature type resolution or default-expression checking is implied.
+Return annotations are separated from a trailing semicolon or opening body
+brace. Missing text after `->`, unsupported suffixes and text after a terminator
+produce E4027. Return type text remains unresolved, and bodies are not parsed.
+Return annotation delimiters (`<>`, `()` and `[]`) must balance and match;
+commas must be nested inside those groups. Function-type arrow spelling does
+not close an angle bracket. These structural checks also report E4027 and do
+not establish that a named, tuple, array or function type is implemented.
+An omitted return annotation is retained as absent rather than inferred.
+
+The Rust `ProjectCheck.service_operations` result retains each operation's
+owning service, name, ordered parameter names/annotations, optional return
+annotation, same-line body flag and source file/line span. Empty services remain
+in `declared_services`. Successful project JSON checks expose these records as
+the additive `service_operations` field in schema version 1. Source/error
+reports retain their existing shape. This does not implement service execution.
 Functions inside these service blocks are excluded from the global callable
 index, so operation signatures alone cannot satisfy route or scheduled-task
 targets. A separate ordinary function with the same name remains a valid target.

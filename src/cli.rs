@@ -220,10 +220,7 @@ fn check_command(args: &[String]) -> ExitCode {
         match compiler::project::check_project(path) {
             Ok(project) => {
                 if format == CheckFormat::Json {
-                    println!(
-                        "{}",
-                        check_report::render(path, Some(CheckKind::Project), &Diagnostics::new())
-                    );
+                    println!("{}", check_report::render_project(path, &project));
                     return ExitCode::SUCCESS;
                 }
                 println!(

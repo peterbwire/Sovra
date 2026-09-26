@@ -37,6 +37,16 @@ foundation model is planned in this development pass.
 
 ## Verification and documentation
 
+The structured service-parameter slice passed 132 library and 31 CLI tests on
+Windows (163 total, no skips/failures). Service parameter names and annotation
+text are now parsed structurally; application types remain unresolved.
+
+The user reports a successful Windows baseline after resolving Application
+Control: 127 library tests and 31 CLI tests passed (158 total, zero failures),
+plus successful binary/doc-test stages, using rustc/cargo 1.98.1. This supersedes
+the historical Windows blocking notes below for that baseline. Later changes
+require their own validation results.
+
 The annotation-location follow-up adds exact-token and missing-span fallback
 coverage. Its latest local compilation/test attempts were blocked by Windows
 Application Control (rustc, 4551); execution verification remains pending.
@@ -109,6 +119,12 @@ Project scanning is unaffected.
   as validation.
 
 ## Development sequence
+
+Third-party library publishing and consumption are explicit planned requirements.
+The current local import boundary must evolve into per-package containment with
+declared dependencies, package-qualified identities and public exports. See
+`design/PACKAGES_AND_LIBRARIES.md`. There is no package resolver, lockfile,
+registry client or publisher yet; existing import checks do not provide them.
 
 1. Completed: numeric widening/Int correctness, real differential tests, token
    ranges, straight-line return completeness and explicit function parameter

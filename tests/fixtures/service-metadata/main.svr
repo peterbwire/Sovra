@@ -1,0 +1,4 @@
+service mail {
+    fn send(value: Result<Text, Error>, context) -> Receipt;
+    fn ping() {}
+}

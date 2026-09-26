@@ -84,7 +84,20 @@ Entirely missing required keys, discovery and I/O errors still have
 `location: null`; the formatter does not invent a source range for them.
 
 Successful JSON checks return the same envelope with `success: true` and an
-empty diagnostics array. Project statistics and symbols are not in version 1.
+empty diagnostics array. Successful project checks additionally include
+`service_operations`, an array (empty when no operations were found). This is
+an additive version-one field; consumers should ignore unknown object members.
+Failed project checks and source checks omit it; absence does not mean an empty
+successful scan.
+
+Each operation contains `service`, `name`, ordered `parameters` (each with `name`
+and nullable `annotation`), nullable `return_annotation`, boolean `has_body`,
+and `location` with file/start/end/line/column fields. Annotations are unresolved
+source text. Null means omitted, not inferred Unit or Any. `has_body` means a
+body starts on the declaration line, not that it was checked or can execute.
+Operations follow sorted source-file discovery and declaration order. Empty
+services have no entries. General statistics and resolved symbols remain planned.
+
 Rust diagnostics carry optional `source_file` provenance; stage function
 signatures and the version-one JSON envelope remain unchanged. Serialization
 lives in `src/compiler/check_report.rs`. Related-location notes and richer
