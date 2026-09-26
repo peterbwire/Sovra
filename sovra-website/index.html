@@ -8,10 +8,11 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <a class="skip-link" href="#top">Skip to content</a>
   <header class="site-header">
     <a class="brand" href="#top" aria-label="Sovra home"><span class="brand-mark">S</span><span>Sovra</span></a>
-    <button class="menu-btn" aria-label="Toggle navigation" aria-expanded="false">☰</button>
-    <nav class="nav">
+    <button class="menu-btn" aria-label="Toggle navigation" aria-expanded="false" aria-controls="site-nav" hidden>☰</button>
+    <nav class="nav" id="site-nav" aria-label="Main navigation">
       <a href="#why">Why Sovra</a><a href="#toolchain">Toolchain</a><a href="#learn">Learn</a><a href="#ai">AI</a><a href="#community">Community</a><a href="#roadmap">Roadmap</a>
       <a class="nav-cta" href="#install">Install Sovra</a>
     </nav>
@@ -23,29 +24,20 @@
         <div class="eyebrow"><span class="dot"></span> IN ACTIVE DEVELOPMENT</div>
         <h1>Build software<br><span>for the AI era.</span></h1>
         <p class="lead">Sovra is an experimental general-purpose programming language designed for humans and AI agents to build, understand, test, and maintain software through one coherent development ecosystem.</p>
-        <div class="actions"><a class="button primary" href="#learn">Get Started</a><a class="button secondary" href="#community">View on GitHub</a></div>
+        <div class="actions"><a class="button primary" href="#install">Get Started</a><a class="button secondary" href="https://github.com/peterbwire/Sovra">View on GitHub</a></div>
         <div class="quick"><span>Readable for humans.</span><span>Structured for machines.</span><span>Built toward production.</span></div>
       </div>
       <div class="code-window" aria-label="Sovra code example">
         <div class="window-bar"><div><i></i><i></i><i></i></div><span>main.svr</span><small>SVR</small></div>
-<pre><code><span class="kw">struct</span> <span class="type">User</span> {
-    name: <span class="type">String</span>
-    email: <span class="type">String</span>
+<pre><code id="hello-source">fn greet(name: String) -&gt; String {
+    return "Hello, " + name
 }
 
-<span class="kw">fn</span> <span class="fn">greet</span>(user: <span class="type">User</span>) -&gt; <span class="type">String</span> {
-    <span class="kw">return</span> <span class="str">"Hello, "</span> + user.name
-}
-
-<span class="kw">fn</span> <span class="fn">main</span>() {
-    <span class="kw">let</span> user = <span class="type">User</span> {
-        name: <span class="str">"Ada"</span>,
-        email: <span class="str">"ada@example.com"</span>
-    }
-
-    <span class="fn">print</span>(<span class="fn">greet</span>(user))
+fn main() {
+    print(greet("Ada"))
 }</code></pre>
         <div class="terminal"><span>$</span> svr run main.svr <b>Hello, Ada</b></div>
+<div class="example-actions"><button class="button secondary" data-copy="hello-source" hidden>Copy example</button><a class="button secondary" href="examples/hello.svr" download="main.svr">Download main.svr</a></div>
       </div>
     </section>
 
@@ -61,23 +53,21 @@
     </section>
 
     <section id="toolchain" class="section split block">
-      <div><p class="kicker">ONE TOOLCHAIN</p><h2>From new project<br>to production build.</h2><p class="section-intro">The long-term goal is a single CLI for the core development loop.</p></div>
-      <div class="terminal-card"><div class="terminal-title">Terminal</div><pre><span>$</span> svr new marketplace
-<span class="muted">Created Sovra project `marketplace`</span>
+      <div><p class="kicker">ONE TOOLCHAIN</p><h2>Check, run,<br>and inspect your code.</h2><p class="section-intro">Use the implemented source-file workflow today. Project creation, a Sovra test runner, packages, and native builds are planned.</p></div>
+      <div class="terminal-card"><div class="terminal-title">Available today &middot; after installation</div><pre><span>$</span> svr check main.svr
+<span class="muted">Validate source types and names</span>
 
-<span>$</span> cd marketplace
-<span>$</span> svr run
-<span class="good">✓ Compiled successfully</span>
-<span class="muted">Running src/main.svr</span>
+<span>$</span> svr run main.svr
+<span class="good">Hello, Ada</span>
 
-<span>$</span> svr check
-<span class="good">✓ No issues found</span>
+<span>$</span> svr check --format json main.svr
+<span class="muted">Machine-readable diagnostics</span>
 
-<span>$</span> svr test
-<span class="good">✓ 24 tests passed</span>
+<span>$</span> svr build main.svr
+<span class="muted">Inspect intermediate representation</span>
 
-<span>$</span> svr build --release
-<span class="good">✓ Release build complete</span></pre></div>
+<span>$</span> svr build --emit js main.svr
+<span class="muted">Emit JavaScript to standard output</span></pre></div>
     </section>
 
     <section class="section block">
@@ -87,43 +77,45 @@
     </section>
 
     <section id="ai" class="section block ai-block">
-      <div><p class="kicker">AI + SOVRA</p><h2>A language AI can understand,<br>not just generate.</h2><p class="section-intro">Sovra is being designed with predictable semantics, machine-readable diagnostics, project inspection, and language-server intelligence so coding agents can work with software structurally.</p></div>
+      <div><p class="kicker">AI + SOVRA</p><h2>A language AI can understand,<br>not just generate.</h2><p class="section-intro">Versioned JSON diagnostics are available today. Broader project inspection, a language server, and Nova are planned. The diagram shows the long-term direction.</p></div>
       <div class="flow"><span>YOUR IDEA</span><b>↓</b><span>AI AGENT / NOVA</span><b>↓</b><span>SOVRA</span><b>↓</b><span>CHECK + TEST + BUILD</span><b>↓</b><span>SOFTWARE</span></div>
     </section>
 
     <section id="learn" class="section block">
       <p class="kicker">LEARN SOVRA</p><h2>From first program to language internals.</h2>
-      <div class="lessons">
-        <a href="#"><b>01</b><span>Getting Started<small>Install Sovra and run your first .svr program.</small></span><i>→</i></a>
-        <a href="#"><b>02</b><span>Language Fundamentals<small>Variables, types, functions, and control flow.</small></span><i>→</i></a>
-        <a href="#"><b>03</b><span>Data & Type System<small>Structured data, generics, options, and results.</small></span><i>→</i></a>
-        <a href="#"><b>04</b><span>Modules & Packages<small>Organize applications and manage dependencies.</small></span><i>→</i></a>
-        <a href="#"><b>05</b><span>Advanced Sovra<small>Concurrency, performance, runtime, and systems concepts.</small></span><i>→</i></a>
-        <a href="#"><b>06</b><span>Inside the Compiler<small>Lexer, parser, AST, semantics, IR, and code generation.</small></span><i>→</i></a>
-      </div>
+      <div class="lessons"><a href="#install"><b>01</b><span>Getting Started<small>Build Sovra and run your first .svr program.</small></span><i aria-hidden="true">&rarr;</i></a>
+<a href="https://github.com/peterbwire/Sovra/blob/HEAD/docs/course/functions.md"><b>02</b><span>Functions &amp; Types<small>Parameters, return types, and local inference.</small></span><i aria-hidden="true">&rarr;</i></a>
+<a href="https://github.com/peterbwire/Sovra/blob/HEAD/docs/course/numbers.md"><b>03</b><span>Numbers<small>Integer arithmetic, floats, and numeric widening.</small></span><i aria-hidden="true">&rarr;</i></a>
+<a href="https://github.com/peterbwire/Sovra/blob/HEAD/docs/course/modules.md"><b>04</b><span>Inline Modules<small>Exports, qualified calls, and current limitations.</small></span><i aria-hidden="true">&rarr;</i></a>
+<a href="https://github.com/peterbwire/Sovra/blob/HEAD/docs/course/strings.md"><b>05</b><span>Strings<small>Concatenation, Unicode, and standard-library functions.</small></span><i aria-hidden="true">&rarr;</i></a>
+<a href="https://github.com/peterbwire/Sovra/blob/HEAD/docs/architecture.md"><b>06</b><span>Inside the Compiler<small>Lexer, parser, AST, semantics, IR, and code generation.</small></span><i aria-hidden="true">&rarr;</i></a></div>
     </section>
 
     <section id="roadmap" class="section block">
       <p class="kicker">ROADMAP</p><h2>Building the foundations first.</h2>
       <div class="roadmap">
-        <div class="done"><b>01</b><h3>Foundation</h3><p>Specification, repository architecture, CLI, documentation.</p><span>ACTIVE</span></div>
-        <div><b>02</b><h3>Language Core</h3><p>Lexer, parser, AST, semantics, interpreter, type system.</p><span>IN DEVELOPMENT</span></div>
-        <div><b>03</b><h3>Toolchain</h3><p>Compiler backend, standard library, package manager, LSP.</p><span>PLANNED</span></div>
-        <div><b>04</b><h3>Ecosystem</h3><p>Application libraries, AI tooling, packages, production workflows.</p><span>PLANNED</span></div>
-      </div>
+<div class="done"><b>M0&ndash;M11</b><h3>Compiler Foundation</h3><p>Executable subset, interpreter, Rust-owned builtins, and JavaScript output.</p><span>IMPLEMENTED SUBSET</span></div>
+<div><b>M12</b><h3>Project Checking</h3><p>Manifest and wiring scans. Full application parsing and execution remain incomplete.</p><span>PARTIAL</span></div>
+<div><b>M13&ndash;M14</b><h3>Tests & Runtime</h3><p>A Sovra test runner and application runtime on verified language foundations.</p><span>PLANNED</span></div>
+<div><b>M15</b><h3>Agent Inspection</h3><p>Structured project metadata and tooling for AI engineering workflows.</p><span>PLANNED</span></div>
+</div><p><a class="text-link" href="https://github.com/peterbwire/Sovra/blob/HEAD/docs/FULL_DEVELOPMENT_STATUS.md">Read the detailed development status &rarr;</a></p>
     </section>
 
     <section id="community" class="section block community">
       <p class="kicker">OPEN DEVELOPMENT</p><h2>Help build Sovra.</h2><p>We're looking for people interested in programming languages, Rust, compilers, runtimes, developer tooling, documentation, and AI-assisted software engineering.</p>
       <div class="chips"><span>Compiler</span><span>Runtime</span><span>Standard Library</span><span>Tooling</span><span>Documentation</span><span>AI Integration</span><span>Language Design</span></div>
-      <div class="actions"><a class="button primary" href="#">GitHub Repository</a><a class="button secondary" href="#">Join Discussions</a></div>
+      <div class="actions"><a class="button primary" href="https://github.com/peterbwire/Sovra">GitHub Repository</a><a class="button secondary" href="https://github.com/peterbwire/Sovra/blob/HEAD/CONTRIBUTING.md">Contribute to Sovra</a></div>
     </section>
 
     <section id="install" class="section install">
-      <div><p class="kicker">START BUILDING</p><h2>Sovra is early.<br>Come shape what it becomes.</h2></div>
-      <div class="install-box"><span>Install command <small>Coming with public release</small></span><code>curl ... | sh</code></div>
-    </section>
+      <div><p class="kicker">START BUILDING</p><h2>Your first<br>Sovra program.</h2><p class="section-intro">Install Git and Rust (1.74 or newer), then run these commands in your terminal. This builds the experimental CLI from source; no public binary installer is available yet.</p><p>After installation, download the example above as <code>main.svr</code> and run <code>svr run main.svr</code> from its directory.</p></div>
+<div class="install-box"><span>Build from source <small>Windows &middot; macOS &middot; Linux</small></span><pre><code id="install-commands">git clone https://github.com/peterbwire/Sovra.git
+cd Sovra
+cargo install --path . --locked
+svr run examples/hello-world/main.svr</code></pre><button class="button primary" data-copy="install-commands" hidden>Copy commands</button><p class="note">Expected output: Hello, Sovra! If your shell cannot find svr, restart your terminal and check that Cargo's bin directory is on PATH.</p></div>
+</section>
   </main>
+<p id="copy-status" class="copy-status" role="status" aria-live="polite"></p>
 
   <footer><a class="brand" href="#top"><span class="brand-mark">S</span><span>Sovra</span></a><p>Experimental general-purpose programming language for the AI era.</p><span>© <span id="year"></span> Sovra Project</span></footer>
   <script src="script.js"></script>

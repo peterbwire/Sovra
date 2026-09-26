@@ -1,5 +1,201 @@
 # Development log
 
+## 2026-09-26 — Structured service-header parser
+
+- **Changed:** Extracted service header recognition into a private project parser
+  module with explicit Header and BodyStart representations. The scanner consumes
+  pending/open/empty forms instead of interpreting suffixes inline. Public
+  compiler and project APIs remain unchanged.
+- **Correctness:** Missing/invalid names report E4026 instead of disappearing.
+  Invalid headers no longer create service index entries. Existing binding checks
+  may additionally identify a manifest binding without a valid declaration.
+- **Coverage added:** Header forms, keyword boundaries, invalid identifiers,
+  unsupported inline bodies and scanner rejection without indexing.
+- **Boundary:** Only headers are structured. Body tracking, operation signatures
+  and application wiring remain incremental scanner work; full service parsing
+  and type checking are not claimed.
+- **Validation:** Formatting, strict all-target Clippy and diff checks passed.
+  The all-target test attempt was blocked at rustc startup by Windows Application
+  Control (4551); regression execution remains pending.
+- **Next:** Extend structured parsing to operation signatures while preserving
+  the separation between project wiring checks and executable type checking.
+
+## 2026-09-26 — Address scanner review findings
+
+- **Fixed:** Task names followed by spaces/tabs before parentheses now enter the
+  callable index. Service headers with unexpected suffixes or nonempty inline
+  bodies report E4026 instead of bypassing contract checks. Empty inline blocks
+  still accept internal whitespace. Updated the stale header-recovery regression.
+- **Coverage:** Added task-spacing and malformed/inline service-header cases.
+  Removed vertical tab from the ASCII-whitespace acceptance matrix because Rust's
+  is_ascii_whitespace excludes it; this does not broaden scanner grammar.
+- **Validation:** Formatting and strict all-target Clippy passed. The requested
+  all-target test attempt was blocked by Windows Application Control before
+  rustc's version query executed (4551). Accumulated runtime regressions remain
+  unverified; no OS-policy bypass attempted.
+- **Next:** Run the accumulated regression suite in an allowed environment,
+  then replace service scanning incrementally with structured application parsing.
+
+## 2026-09-26 — Isolate service contents from application wiring
+
+- **Changed:** Recognized service bodies now contribute only direct operation
+  duplicate checks and brace tracking. Nested declaration-looking lines no
+  longer create global task/model/service/page/auth symbols or entry-file wiring.
+  Closing the service resumes ordinary declaration indexing.
+- **Coverage added:** Both supported header layouts, nested function bodies,
+  fake declarations and wiring entries, and valid functions/models/routes after
+  the block. Isolation does not imply validation of service-body syntax.
+- **Validation:** Formatting/diff checks only; compilation and test execution
+  remain deferred at the user's request.
+- **Next:** Service signature/call checking still requires structured parsing;
+  retain these scope boundaries when replacing the line-based scanner.
+
+## 2026-09-26 — Whitespace-consistent service indexing and JSON coverage
+
+- **Changed:** Declaration scanning now splits names on all ASCII whitespace,
+  instead of literal spaces alone. Tabs before parentheses/braces no longer
+  hide service names, operations or ordinary callable declarations.
+- **Coverage added:** Keyword boundaries and invalid identifiers, tabbed service
+  operation duplicates and following functions. Added a project CLI fixture
+  asserting E4025/E4026 file identities and exact diagnostic source lines in JSON.
+- **Validation:** Formatting and diff checks only; compilation and test execution
+  remain deferred at the user's request. Updated scanner/report documentation.
+- **Next:** Execute accumulated compiler/project regressions when requested;
+  further service-call analysis requires structured application parsing.
+
+## 2026-09-26 — Incomplete service-block diagnostics
+
+- **Changed:** E4026 identifies recognized service declarations missing their
+  opening brace, and tracked service blocks left open at EOF. Locations retain
+  the original service declaration file/line/range. Recovery from a missing
+  opening brace continues scanning the following ordinary declaration.
+- **Coverage added:** EOF after a header, intervening comments, missing closing
+  braces with both supported header layouts, CRLF provenance and recovery.
+  Inline or otherwise unrecognized contract syntax remains outside this rule.
+- **Validation:** Formatting/diff checks only. Compilation and tests remain
+  deferred as requested; the implementation is not yet execution-verified.
+- **Next:** Verify the accumulated M12 cases before broader service parsing.
+
+## 2026-09-26 — Service headers across lines
+
+- **Changed:** Recognize a standalone opening brace after a service name, with
+  blank lines and source comments permitted between them. Duplicate-operation
+  checking and callable exclusion now apply to that layout too. An intervening
+  declaration cancels the pending header, preventing unrelated blocks from
+  being mistaken for service bodies. Same-line headers require an exact brace
+  suffix rather than accepting arbitrary text before a trailing brace.
+- **Coverage added:** LF/CRLF layouts, comments, duplicate signatures, following
+  free functions and abandoned/malformed header isolation. Full syntax errors
+  remain outside this scanner rule; no new language grammar is introduced.
+- **Validation:** Formatting/diff checks only; compilation and test execution
+  remain deferred at the user's request.
+- **Next:** Full application parsing is still needed for reliable service-call
+  reference and signature validation; verify accumulated scanner regressions.
+
+## 2026-09-26 — M12 service operation scope
+
+- **Changed:** Track top-level multiline service blocks and direct operation
+  names; repeated names within one service report E4025 at the repeated source
+  line. Service signatures no longer enter the ordinary callable target index.
+  Braces in strings/comments do not change scope; following free functions
+  remain indexed. Existing manifest binding rules remain in place.
+- **Scope:** Supports the checked-in Fielddesk contract layout. Inline operations,
+  later-line opening braces, complete syntax/type validation and service-call
+  reference resolution remain unsupported. This is a partial scanner extension.
+- **Coverage added:** Per-service duplicates, same names across services, source
+  provenance, route-target exclusion, quoted/comment braces and later functions.
+- **Validation:** User explicitly requested writing code and testing later.
+  Ran formatting only; no compilation or tests were attempted for this slice.
+- **Next:** Verify accumulated changes, then add service-call reference validation
+  when scope-aware application nodes can distinguish calls reliably.
+
+## 2026-09-26 — Check expressions in excess call arguments
+
+- **Finding:** User and builtin calls zipped arguments with parameters, leaving
+  excess argument expressions unchecked after the arity error. Source inspection
+  identified the gap; the pre-fix regression attempt was blocked by OS policy.
+- **Changed:** Visit excess expressions after checking matched arguments. Keep
+  E3006 and all existing type rules; report nested expression errors at their
+  own spans. This does not change which source programs are accepted.
+- **Coverage:** Added user/builtin/print-alias cases with undefined extra values,
+  a zero-parameter function with an invalid nested call, and JSON code/span checks.
+- **Validation:** Formatting and strict all-target Clippy passed. Focused and full
+  tests, including the pending private-helper suite, were blocked at rustc startup
+  by Application Control (4551). No test execution is claimed or bypass attempted.
+- **Next:** Run the accumulated regression suite on an allowed environment before
+  broadening language semantics; preserve the existing website work.
+
+## 2026-09-26 — Implement qualified private module helpers
+
+- **Decision:** User directed roadmap implementation after the ADR 0005 Option A
+  proposal. Added same-module private calls using existing qualified syntax.
+- **Code:** Module checking extends the public callable map with only that
+  module's private declarations. IR emits all module functions. Bare lookup
+  remains top-level/builtin; outside access retains E3004. E3016 now includes
+  private builtin collisions, superseding ADR 0003's exemption.
+- **Coverage added:** Visibility boundaries, arity/type errors, function values,
+  private builtin collisions, bare-name stability, helper chains, numeric widening,
+  self/mutual recursion, interpreter/Node parity, CLI acceptance/rejection and
+  JSON callee ranges. The module example now uses a private add helper.
+- **Validation:** Initial regression and subsequent check/test attempts were
+  blocked by Application Control at rustc startup (4551). Strict all-target
+  Clippy passed after implementation. Tests are added but execution is pending;
+  no policy bypass used. Updated ADRs, specification and module lesson.
+- **Next:** Execute regression suites in an allowed environment before expanding
+  module loading. Cross-file imports and implicit local lookup remain planned.
+
+## 2026-09-26 — Private-module execution design
+
+- **Verification:** Retried the pending all-target tests. Application Control
+  blocked rustc's version query (4551); no compilation or tests executed.
+- **Inspection:** Private module declarations are absent from both the semantic
+  callable map and IR output. Builtin-first call resolution makes private std
+  collisions an explicit compatibility issue when private calls are introduced.
+- **Proposal:** ADR 0005 specifies qualified same-module private calls, continued
+  external rejection and unchanged bare-name resolution. It recommends extending
+  E3016 to private builtin collisions and records the necessary ADR 0003 revision.
+  Includes a concrete example and compiler/backend/CLI verification plan.
+- **Next:** Obtain the compatibility decision required by AGENTS.md before
+  implementation. Existing compiler and website changes remain preserved.
+
+## 2026-09-26 — Complete annotation-location hardening coverage
+
+- **Resumed:** The type-span implementation and CLI JSON assertions were already
+  present from the interrupted compiler slice. Reviewed parser-to-AST-to-semantic
+  propagation and synchronized the specification, ADR, course and status.
+- **Coverage:** Exact-token regression covers parameter, return and local types
+  across comments, CRLF and preceding UTF-8 text. Added assertions for absent
+  parameter/return spans and a regression for declaration-location fallback in
+  manually constructed ASTs without annotation spans. E3014 remains at the name.
+- **Validation limitation:** Windows Application Control blocked rustc (4551)
+  during cargo check, test compilation and all-target tests. No new Rust tests
+  executed and no policy bypass was attempted. This slice remains pending
+  executable verification on an allowed toolchain or CI. Formatting, strict
+  all-target Clippy and diff checks did pass; Clippy completed after the blocked
+  rustc invocations, but does not establish test execution.
+- **Next:** Run compiler checks on an allowed environment, then assess remaining
+  correctness gaps before private-module/cross-file design. Website work remains
+  preserved separately in the working tree.
+
+## 2026-09-26 — Functional Sovra website
+
+- **Changed:** Replaced placeholder links with repository/course destinations,
+  added actual Cargo installation commands, and replaced proposed struct syntax
+  and reserved CLI demonstrations with implemented source-file workflows.
+  Roadmap cards retain M0–M15 labels and distinguish partial/planned features.
+- **Interactions:** Added example download and copy controls with manual-copy
+  fallback, Escape/outside-click menu dismissal, focus indicators, skip link,
+  reduced-motion support, and navigation without JavaScript. Preserved the
+  existing visual design and static hosting model.
+- **Local workflow:** Added a dependency-free Node preview server, npm start/test
+  commands, and hosting instructions. No website deployment was performed.
+- **Validation:** Three Node tests passed for links/assets, HTTP delivery/errors,
+  and navigation/clipboard interaction logic. Linked repository documents exist
+  locally; external availability and visual browser layout were not verified.
+  The downloadable example matches the displayed code. Cargo compiled the CLI,
+  but Windows Application Control blocked execution (4551); no bypass attempted.
+- **Next:** Visual desktop/mobile browser review and deployment to the chosen host.
+
 ## 2026-09-21 — Reject unresolved source annotations
 
 - **Decision:** User directed continuation of ADR 0004's recommended Option A.

@@ -71,9 +71,7 @@ pub fn lower(program: &TypedProgram) -> IrProgram {
     }
     for module in &program.program.modules {
         for function in &module.functions {
-            if function.is_exported {
-                functions.push(lower_namespaced_function(&module.name, function));
-            }
+            functions.push(lower_namespaced_function(&module.name, function));
         }
     }
     IrProgram { functions }

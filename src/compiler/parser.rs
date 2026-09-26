@@ -558,7 +558,11 @@ mod tests {
             .expect("recoverable declaration");
         let parameters = &program.functions[0].parameters;
         assert_eq!(parameters[0].type_name, None);
+        assert_eq!(parameters[0].type_span, None);
+        assert_eq!(program.functions[0].return_type_span, None);
         assert_eq!(parameters[1].type_name.as_deref(), Some("Int"));
+        let type_span = parameters[1].type_span.unwrap();
+        assert_eq!(&source[type_span.start..type_span.end], "Int");
         let span = parameters[0].span;
         assert_eq!(&source[span.start..span.end], "value");
     }

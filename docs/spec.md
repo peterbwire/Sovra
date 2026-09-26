@@ -75,6 +75,10 @@ range. Binding/return contract errors still identify the statement, and
 declaration errors identify the declaration. These ranges also appear in JSON
 source-check reports without changing diagnostic codes or the report schema.
 
+Calls with excess arguments report E3006 and still check every argument
+expression. Errors inside excess arguments retain their own expression spans;
+this applies to user functions, builtins and the bare print alias.
+
 Every function parameter must declare its type, for example `value: String`.
 This includes unused parameters and every top-level, exported module and
 non-exported module function. A missing annotation produces `E3014` at the
@@ -97,8 +101,10 @@ annotation names produce E3017, including `Any`, `Text` and misspellings. Every
 function is checked, including unused/private/exported declarations. Names are
 case-sensitive; no implicit aliases are introduced. See approved
 [ADR 0004](adr/0004-unresolved-type-annotations.md). Local inference and default
-Unit returns remain. Diagnostics use parameter-name, function or let-statement
-ranges; this is not a general typed HIR or user-defined type system.
+Unit returns remain. E3017 identifies the exact annotation token, including
+its byte range and line/column in JSON reports. Missing annotations still use
+the parameter name (E3014). This is not a general typed HIR or user-defined
+type system.
 
 `String + String` produces `String`, including in inferred local bindings and
 chained concatenations. Its result must satisfy ordinary parameter, binding
@@ -121,9 +127,11 @@ through. Branch-sensitive return analysis will accompany future control flow.
 
 In the current subset, calls resolve top-level functions by bare name and
 exported module functions by `module::function`, including from inside that
-module. Non-exported module functions are checked but are not callable or
-lowered. Implicit module-local lookup and private helper execution remain
-unsupported. See [the module lesson](course/modules.md) and
+module. Under ADR 0005, private functions are callable by qualified name only
+within their declaring module. External access produces E3004. All module
+functions are lowered; source checking enforces visibility. Bare names retain
+top-level/builtin lookup; implicit module-local lookup remains unsupported.
+See [the module lesson](course/modules.md) and
 [executable example](../examples/modules/main.svr).
 
 Functions are not first-class values in this subset. A resolved qualified name
@@ -177,8 +185,8 @@ Under approved [ADR 0003](adr/0003-builtin-name-collisions.md), user declaration
 cannot collide with exact builtin callable names. E3016 rejects top-level
 `fn print` and exported functions matching registered `std` members. Other
 exports in `std`, top-level `len`, and `other::print` remain valid. Private module
-functions do not enter the callable namespace and are exempt from this collision
-check, but still obey declaration uniqueness and body validation. The bare
+functions also receive this collision check under ADR 0005; previously accepted
+private builtin collisions must be renamed. The bare
 `print` call remains a compatibility alias. This rejects previously accepted
 colliding declarations; rename those functions to migrate.
 
@@ -256,6 +264,43 @@ use `//` in `.svr` files. Diagnostic ranges still cover the original full line,
 including comments. This scanner fix does not provide full lexical validation.
 
 ## Application-language direction
+
+### Partial service-contract scan
+
+For top-level multiline service blocks whose opening brace is on the service
+declaration line or alone on the next nonempty, non-comment line, the project
+scanner tracks brace nesting and checks direct
+`fn` operation names. Duplicate names within one service produce E4025 at the
+repeated signature's source line; different services may reuse operation names.
+Braces in quoted strings and line comments do not change this tracking.
+Declaration-name scanning accepts ASCII whitespace, including tabs, between
+keywords, names and their opening delimiters; indentation does not affect
+operation-name uniqueness.
+Recognized service headers missing an opening brace before the next declaration
+or end of file, and tracked service blocks missing their closing brace at end
+of file, produce E4026 at the original service declaration. An abandoned header
+does not consume the following ordinary function during scanner recovery.
+Unexpected header suffixes and nonempty inline service bodies also produce
+E4026 rather than silently skipping operation checks. Use the multiline form
+for operations; empty `{}` blocks allow whitespace between the braces.
+Service headers are parsed into explicit pending, open or empty body forms.
+Missing or invalid service names produce E4026. Invalid headers do not create
+service declarations in the index; a corresponding manifest binding can also
+report a missing declaration. This header parser does not yet parse signatures.
+Functions inside these service blocks are excluded from the global callable
+index, so operation signatures alone cannot satisfy route or scheduled-task
+targets. A separate ordinary function with the same name remains a valid target.
+Other service-body lines are also excluded from application indexes: nested
+models, tasks, services, pages, auth declarations and wiring entries do not
+become project-level symbols or bindings. This isolation does not validate
+whether those body constructs are legal service syntax.
+
+Task declaration indexing accepts whitespace between the task name and its
+opening parenthesis, consistently with function declaration indexing.
+
+This is partial wiring validation. Signature types, implementations and service-call
+resolution are not validated by this rule. Full application parsing remains
+planned. Existing manifest binding checks still apply to service declarations.
 
 The Fielddesk example documents the intended full application surface: typed
 models, service declarations, auth policies, routes, pages, background tasks,

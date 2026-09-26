@@ -2,6 +2,13 @@
 
 Status: Implemented report format for the current source checker and partial
 project checker. Use `svr check --format json <source.svr|project-directory>`.
+
+For recognized service contracts, E4025 identifies the repeated operation's
+full source line. E4026 identifies the service declaration when a required
+opening or closing brace is missing, or its header has unsupported trailing
+syntax (including nonempty inline bodies). Both retain the `.svr` file identity,
+using the existing location schema. These checks remain a partial scan, not
+service signature typing or execution validation.
 `--format=json` also works; the option may appear before or after the path.
 The default is `human`, and `--format human` selects it explicitly.
 Use `--` before a path that starts with `-`; subsequent text is treated as a

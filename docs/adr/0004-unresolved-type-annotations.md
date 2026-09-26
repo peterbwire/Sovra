@@ -30,8 +30,9 @@ scan; Fielddesk's proposed application types remain outside executable validatio
 
 Tests cover positive/negative annotations in all declaration contexts, source
 check/run/IR/JS rejection, JSON locations and existing execution behavior.
-Diagnostics retain parameter-name, function (return annotation), or let-statement
-spans; precise type-token spans remain future diagnostic work.
+E3017 diagnostics identify the exact type token for parsed source. AST values
+constructed without annotation spans fall back to parameter-name, function
+(return annotation), or let-statement spans.
 
 ## Alternative: Keep placeholders until type declarations exist
 

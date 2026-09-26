@@ -59,7 +59,8 @@ execution.
 
 ## Next M12 Slices
 
-1. Service contracts: validate duplicate operation names and references to
-   bound services.
+1. Service contracts: duplicate operation-name checking and exclusion of service
+   signatures from callable targets are coded for multiline blocks, pending
+   verification. Service-call references and full signature checking remain next.
 2. Page bindings: validate page targets, view references, and data dependencies
    once the application parser can provide structured nodes.

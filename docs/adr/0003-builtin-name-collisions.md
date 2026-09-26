@@ -14,13 +14,13 @@ remain supported.
 
 Reject exact callable-name collisions with the builtin registry using E3016 at
 the conflicting function declaration. Check every top-level function name and
-every qualified exported module function name, even when unused. This includes
+every qualified module function name, even when unused. ADR 0005 extends
+this rule to callable private helpers. This includes
 bare `print`, `std::print`, `std::println`, `std::len` and `std::to_string` today.
 The registry is authoritative rather than a second hard-coded reservation list.
 
-Noncolliding user exports in `std` remain permitted. Private module functions
-do not enter the callable namespace today and are not rejected solely for
-matching a builtin member name. Unrelated names such as top-level `len` and
+Noncolliding user functions in `std` remain permitted. ADR 0005 supersedes
+the original private-function exemption: private builtin collisions now fail. Unrelated names such as top-level `len` and
 `other::print` remain valid. Existing builtin calls and bare print calls retain
 their behavior.
 

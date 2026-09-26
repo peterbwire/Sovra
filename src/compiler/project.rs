@@ -1,5 +1,8 @@
 //! Project-level validation for `svr check`.
 
+mod service_contract;
+
+use service_contract::BodyStart;
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
@@ -466,6 +469,9 @@ fn scan_source_file(
     diagnostics: &mut Diagnostics,
 ) {
     let mut seen_services = BTreeSet::new();
+    let mut service_contract: Option<(String, BTreeSet<String>, usize)> = None;
+    let mut pending_service: Option<(String, usize)> = None;
+    let mut brace_depth = 0usize;
     let spans = source_line_spans(source);
     for (line_index, line) in source.lines().enumerate() {
         let trimmed = strip_line_comment(line, "//").trim();
@@ -473,7 +479,59 @@ fn scan_source_file(
             file: source_file.to_string_lossy().into_owned(),
             span: spans[line_index],
         };
-        if let Some(name) = parse_prefixed_identifier(trimmed, "service") {
+        if !trimmed.is_empty() {
+            if let Some((name, declaration_line)) = pending_service.take() {
+                if brace_depth == 0 && trimmed == "{" {
+                    service_contract = Some((name, BTreeSet::new(), declaration_line));
+                } else {
+                    push_manifest_error(diagnostics, declaration_line, "E4026",
+                        format!("service `{name}` requires an opening brace before the next declaration"));
+                }
+            }
+        }
+        let inside_service = service_contract.is_some();
+        if brace_depth == 1 {
+            if let Some((service, operations, _)) = &mut service_contract {
+                if let Some(operation) = parse_prefixed_identifier(trimmed, "fn") {
+                    if !operations.insert(operation.clone()) {
+                        push_manifest_error(
+                            diagnostics,
+                            line_index,
+                            "E4025",
+                            format!("duplicate operation `{operation}` in service `{service}`"),
+                        );
+                    }
+                }
+            }
+        }
+        if inside_service {
+            // Service contents belong to their contract, not to application
+            // wiring. Keep tracking braces, but do not index nested declarations
+            // or interpret body lines as entry-file routes, lists or policies.
+            update_brace_depth(trimmed, &mut brace_depth);
+            if brace_depth == 0 {
+                service_contract = None;
+            }
+            continue;
+        }
+        let header = match service_contract::parse_header(trimmed) {
+            Ok(header) => header,
+            Err(message) => {
+                push_manifest_error(diagnostics, line_index, "E4026", message);
+                None
+            }
+        };
+        if let Some(header) = header {
+            let name = header.name;
+            if brace_depth == 0 {
+                match header.body {
+                    BodyStart::Open => {
+                        service_contract = Some((name.clone(), BTreeSet::new(), line_index))
+                    }
+                    BodyStart::Pending => pending_service = Some((name.clone(), line_index)),
+                    BodyStart::Empty => {}
+                }
+            }
             if !seen_services.insert(name.clone())
                 || index
                     .declared_services
@@ -498,7 +556,8 @@ fn scan_source_file(
         if let Some(name) = parse_prefixed_identifier(trimmed, "task") {
             if trimmed
                 .strip_prefix("task")
-                .is_some_and(|rest| rest.trim_start().starts_with(&format!("{name}(")))
+                .and_then(|rest| rest.trim_start().strip_prefix(&name))
+                .is_some_and(|rest| rest.trim_start().starts_with('('))
             {
                 index.callable_symbols.insert(name.clone());
                 index
@@ -532,6 +591,10 @@ fn scan_source_file(
         if let Some(name) = parse_prefixed_identifier(trimmed, "view") {
             index.page_symbols.insert(name.clone());
             index.page_symbols.insert(format!("{module_name}.{name}"));
+        }
+        update_brace_depth(trimmed, &mut brace_depth);
+        if brace_depth == 0 {
+            service_contract = None;
         }
         if is_entry {
             for (key, code, values) in [
@@ -614,6 +677,47 @@ fn scan_source_file(
             }
         }
     }
+    if let Some((name, declaration_line)) = pending_service {
+        push_manifest_error(
+            diagnostics,
+            declaration_line,
+            "E4026",
+            format!("service `{name}` is missing its opening brace"),
+        );
+    }
+    if let Some((name, _, declaration_line)) = service_contract {
+        push_manifest_error(
+            diagnostics,
+            declaration_line,
+            "E4026",
+            format!("service `{name}` is missing its closing brace"),
+        );
+    }
+}
+
+// Input already has source line comments removed. Quoted braces and escaped
+// quotes must not close a service contract or hide subsequent free functions.
+fn update_brace_depth(line: &str, depth: &mut usize) {
+    let mut quoted = false;
+    let mut escaped = false;
+    for character in line.chars() {
+        if quoted {
+            if escaped {
+                escaped = false;
+            } else if character == '\\' {
+                escaped = true;
+            } else if character == '"' {
+                quoted = false;
+            }
+        } else {
+            match character {
+                '"' => quoted = true,
+                '{' => *depth += 1,
+                '}' => *depth = depth.saturating_sub(1),
+                _ => {}
+            }
+        }
+    }
 }
 
 fn starts_keyword(line: &str, keyword: &str) -> bool {
@@ -640,7 +744,10 @@ fn parse_prefixed_identifier(line: &str, keyword: &str) -> Option<String> {
     {
         return None;
     }
-    let name = rest.trim_start().split([' ', '{', '(']).next()?;
+    let name = rest
+        .trim_start()
+        .split(|character: char| character.is_ascii_whitespace() || matches!(character, '{' | '('))
+        .next()?;
     if is_identifier(name) {
         Some(name.to_owned())
     } else {
@@ -1428,6 +1535,263 @@ fn push_manifest_error(
 mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn invalid_service_names_are_diagnosed_without_indexing() {
+        for declaration in [
+            "service",
+            "service {}",
+            "service bad-name {}",
+            "service 123 {}",
+        ] {
+            let mut index = ProjectSourceIndex::default();
+            let mut diagnostics = Diagnostics::new();
+            scan_source_file(
+                declaration,
+                Path::new("main.svr"),
+                "main",
+                false,
+                &mut index,
+                &mut diagnostics,
+            );
+            assert_eq!(diagnostics.items.len(), 1);
+            assert_eq!(diagnostics.items[0].code, "E4026");
+            assert!(index.declared_services.is_empty());
+        }
+    }
+
+    #[test]
+    fn task_indexing_allows_spacing_before_parameters() {
+        for spacing in ["", " ", "\t", " \t "] {
+            let source = format!("task worker{spacing}() {{}}\n");
+            let mut index = ProjectSourceIndex::default();
+            let mut diagnostics = Diagnostics::new();
+            scan_source_file(
+                &source,
+                Path::new("jobs.svr"),
+                "jobs",
+                false,
+                &mut index,
+                &mut diagnostics,
+            );
+            assert!(index.callable_symbols.contains("jobs.worker"));
+            assert!(diagnostics.items.is_empty());
+        }
+    }
+
+    #[test]
+    fn service_header_rejects_unscanned_inline_operations() {
+        for (suffix, valid) in [
+            ("{}", true),
+            ("{ \t }", true),
+            ("unexpected", false),
+            ("{ fn send() }", false),
+        ] {
+            let source = format!("service mail {suffix}\n");
+            let mut index = ProjectSourceIndex::default();
+            let mut diagnostics = Diagnostics::new();
+            scan_source_file(
+                &source,
+                Path::new("main.svr"),
+                "main",
+                false,
+                &mut index,
+                &mut diagnostics,
+            );
+            if valid {
+                assert!(diagnostics.items.is_empty());
+            } else {
+                assert_eq!(diagnostics.items.len(), 1);
+                assert_eq!(diagnostics.items[0].code, "E4026");
+            }
+        }
+    }
+
+    #[test]
+    fn service_contents_do_not_leak_into_application_indexes() {
+        for header in ["service mail {", "service mail\n{"] {
+            let source = format!("{header}\nfn send() {{\ntask hidden() {{}}\nmodel Hidden {{}}\nservice nested {{}}\nauth hidden {{}}\npage hidden {{}}\nview hidden {{}}\nroute GET \"/hidden\" -> hidden\nservices: [nested]\ndata: [Hidden]\nallow invalid\n}}\n}}\nfn handler() {{}}\nmodel Visible {{}}\nroute GET \"/visible\" -> handler\n");
+            let mut index = ProjectSourceIndex::default();
+            let mut diagnostics = Diagnostics::new();
+            scan_source_file(
+                &source,
+                Path::new("main.svr"),
+                "main",
+                true,
+                &mut index,
+                &mut diagnostics,
+            );
+            assert!(diagnostics.items.is_empty(), "{diagnostics:?}");
+            assert_eq!(index.declared_services.len(), 1);
+            assert_eq!(index.declared_services[0].value, "mail");
+            assert_eq!(
+                index.callable_symbols,
+                BTreeSet::from(["handler".to_owned(), "main.handler".to_owned()])
+            );
+            assert_eq!(
+                index.model_symbols,
+                BTreeSet::from(["Visible".to_owned(), "main.Visible".to_owned()])
+            );
+            assert!(index.page_symbols.is_empty());
+            assert!(index.auth_symbols.is_empty());
+            assert!(index.auth_policies.is_empty());
+            assert!(index.app_services.is_empty());
+            assert!(index.data_models.is_empty());
+            assert_eq!(index.routes.len(), 1);
+            assert_eq!(index.routes[0].value.target, "handler");
+        }
+    }
+
+    #[test]
+    fn declaration_names_accept_ascii_whitespace_before_delimiters() {
+        for whitespace in [" ", "\t", " \t ", "\u{000c}"] {
+            for (keyword, suffix) in [("service", "{"), ("fn", "()"), ("model", "{")] {
+                let line = format!("{keyword}{whitespace}sample{whitespace}{suffix}");
+                assert_eq!(
+                    parse_prefixed_identifier(&line, keyword).as_deref(),
+                    Some("sample")
+                );
+            }
+        }
+        assert_eq!(
+            parse_prefixed_identifier("service_extra {}", "service"),
+            None
+        );
+        assert_eq!(parse_prefixed_identifier("fn invalid-name()", "fn"), None);
+    }
+
+    #[test]
+    fn tabbed_service_operations_still_receive_duplicate_checks() {
+        let source = "service\tmail\t{\n\tfn\tsend\t()\n\tfn send ()\n}\nfn\thandler\t() {}\n";
+        let mut index = ProjectSourceIndex::default();
+        let mut diagnostics = Diagnostics::new();
+        scan_source_file(
+            source,
+            Path::new("main.svr"),
+            "main",
+            false,
+            &mut index,
+            &mut diagnostics,
+        );
+        assert_eq!(diagnostics.items.len(), 1);
+        assert_eq!(diagnostics.items[0].code, "E4025");
+        assert_eq!(diagnostics.items[0].span.line, 2);
+        assert_eq!(index.declared_services[0].value, "mail");
+        assert!(!index.callable_symbols.contains("send"));
+        assert!(index.callable_symbols.contains("handler"));
+    }
+
+    #[test]
+    fn service_opening_brace_can_follow_comments_and_blank_lines() {
+        for separator in ["\n", "\r\n\r\n// contract follows\r\n"] {
+            let source = format!(
+                "service mail{separator}{{ // open\nfn send()\nfn send()\n}}\nfn handler() {{}}\n"
+            );
+            let mut index = ProjectSourceIndex::default();
+            let mut diagnostics = Diagnostics::new();
+            scan_source_file(
+                &source,
+                Path::new("main.svr"),
+                "main",
+                false,
+                &mut index,
+                &mut diagnostics,
+            );
+            assert_eq!(diagnostics.items.len(), 1);
+            assert_eq!(diagnostics.items[0].code, "E4025");
+            assert!(!index.callable_symbols.contains("send"));
+            assert!(index.callable_symbols.contains("handler"));
+        }
+    }
+
+    #[test]
+    fn pending_service_does_not_capture_an_unrelated_block() {
+        for declaration in ["service mail", "service mail unexpected"] {
+            let source = format!("{declaration}\nfn handler() {{}}\n{{\nfn send()\n}}\n");
+            let mut index = ProjectSourceIndex::default();
+            let mut diagnostics = Diagnostics::new();
+            scan_source_file(
+                &source,
+                Path::new("main.svr"),
+                "main",
+                false,
+                &mut index,
+                &mut diagnostics,
+            );
+            assert!(index.callable_symbols.contains("handler"));
+            assert!(index.callable_symbols.contains("send"));
+            assert_eq!(diagnostics.items.len(), 1);
+            assert_eq!(diagnostics.items[0].code, "E4026");
+        }
+    }
+
+    #[test]
+    fn service_operations_are_scoped_and_not_route_targets() {
+        let project = TestProject::new();
+        project.write_file("sovra.toml", "[project]\nname = \"sample\"\nentry = \"main.svr\"\n[services]\nmail = \"external\"\nsms = \"external\"");
+        project.write_file("main.svr", "service mail {\n    fn send(value: Text) -> Text\n    fn send(other: Int) -> Text\n}\nservice sms {\n    fn send(value: Text) -> Text\n}\nroute POST \"/send\" -> send\n");
+        let errors = check_project(project.path()).unwrap_err();
+        let duplicates: Vec<_> = errors
+            .items
+            .iter()
+            .filter(|error| error.code == "E4025")
+            .collect();
+        assert_eq!(duplicates.len(), 1);
+        assert!(duplicates[0].message.contains("mail"));
+        assert_eq!(duplicates[0].span.line, 2);
+        assert_eq!(
+            duplicates[0].source_file.as_deref(),
+            Some(project.path().join("main.svr").to_string_lossy().as_ref())
+        );
+        assert!(errors.items.iter().any(|error| error.code == "E4033"));
+    }
+
+    #[test]
+    fn incomplete_service_blocks_report_the_declaration_location() {
+        for body in [
+            "service mail",
+            "service mail\n// waiting\n",
+            "service mail {\nfn send()\n",
+            "service mail\n{\nfn send()\n",
+        ] {
+            let project = TestProject::new();
+            project.write_file("sovra.toml", "[project]\nname = \"sample\"\nentry = \"main.svr\"\n[services]\nmail = \"external\"");
+            let source = format!("// header\r\n{body}");
+            project.write_file("main.svr", &source);
+            let errors = check_project(project.path()).unwrap_err();
+            assert_eq!(errors.items.len(), 1, "{errors:?}");
+            let error = &errors.items[0];
+            assert_eq!(error.code, "E4026");
+            assert_eq!(error.span.line, 1);
+            assert!(source[error.span.start..error.span.end].starts_with("service mail"));
+            assert_eq!(
+                error.source_file.as_deref(),
+                Some(project.path().join("main.svr").to_string_lossy().as_ref())
+            );
+        }
+    }
+
+    #[test]
+    fn service_scanning_respects_strings_comments_and_following_functions() {
+        let source = "service mail {\n fn send(value: Text) -> Text // }\n fn nested() {\n print(\"}\\\"{\")\n }\n fn send(value: Text) -> Text\n}\nfn handler() {}\nservice sms {\n fn send(value: Text) -> Text\n}\n";
+        let mut index = ProjectSourceIndex::default();
+        let mut diagnostics = Diagnostics::new();
+        scan_source_file(
+            source,
+            Path::new("main.svr"),
+            "main",
+            false,
+            &mut index,
+            &mut diagnostics,
+        );
+        assert_eq!(diagnostics.items.len(), 1);
+        assert_eq!(diagnostics.items[0].code, "E4025");
+        assert_eq!(diagnostics.items[0].span.line, 5);
+        assert!(index.callable_symbols.contains("handler"));
+        assert!(index.callable_symbols.contains("main.handler"));
+        assert!(!index.callable_symbols.contains("send"));
+        assert!(!index.callable_symbols.contains("main.send"));
+    }
 
     #[test]
     fn distinguishes_manifest_and_source_comment_markers() {

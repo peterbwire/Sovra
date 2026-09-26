@@ -63,13 +63,11 @@ impl SemanticAnalyzer {
         for module in &program.modules {
             let mut seen = HashMap::new();
             for function in &module.functions {
-                if function.is_exported {
-                    check_builtin_collision(
-                        &format!("{}::{}", module.name, function.name),
-                        function.span,
-                        &mut diagnostics,
-                    );
-                }
+                check_builtin_collision(
+                    &format!("{}::{}", module.name, function.name),
+                    function.span,
+                    &mut diagnostics,
+                );
                 if seen.insert(function.name.clone(), function.span).is_some() {
                     diagnostics.push(diagnostic(
                         "E3008",
@@ -126,8 +124,12 @@ impl SemanticAnalyzer {
             check_function_body(function, &functions, &mut diagnostics);
         }
         for module in &program.modules {
+            let mut visible_functions = functions.clone();
             for function in &module.functions {
-                check_function_body(function, &functions, &mut diagnostics);
+                visible_functions.insert(format!("{}::{}", module.name, function.name), function);
+            }
+            for function in &module.functions {
+                check_function_body(function, &visible_functions, &mut diagnostics);
             }
         }
         if diagnostics.is_empty() {
@@ -376,6 +378,9 @@ fn check_expression(
                         }
                     }
                 }
+                for argument in arguments.iter().skip(function.parameters.len()) {
+                    check_expression(argument, scope, functions, diagnostics);
+                }
                 function
                     .return_type
                     .as_deref()
@@ -492,6 +497,9 @@ fn check_std_call(
             ));
         }
     }
+    for argument in arguments.iter().skip(function.parameters.len()) {
+        check_expression(argument, scope, functions, diagnostics);
+    }
 }
 
 fn type_from_name(name: &str) -> Type {
@@ -582,6 +590,68 @@ mod tests {
     use crate::compiler::parser::Parser;
 
     #[test]
+    fn checks_excess_arguments_for_user_and_builtin_calls() {
+        for call in [
+            "helper(1, missing)",
+            "std::len(\"ok\", missing)",
+            "print(1, missing)",
+        ] {
+            let source = format!("fn helper(value: Int) {{}} fn main() {{ {call} }}");
+            let parsed = Parser::new().parse_source(&source).unwrap();
+            let errors = SemanticAnalyzer::new().analyze(&parsed).unwrap_err();
+            assert_eq!(errors.items.len(), 2, "{errors:?}");
+            assert_eq!(errors.items[0].code, "E3006");
+            assert_eq!(errors.items[1].code, "E3001");
+            let span = errors.items[1].span;
+            assert_eq!(&source[span.start..span.end], "missing");
+        }
+        let parsed = Parser::new()
+            .parse_source("fn helper() {} fn main() { helper(std::len(1)) }")
+            .unwrap();
+        let errors = SemanticAnalyzer::new().analyze(&parsed).unwrap_err();
+        assert_eq!(
+            errors
+                .items
+                .iter()
+                .map(|error| error.code)
+                .collect::<Vec<_>>(),
+            ["E3006", "E3007"]
+        );
+    }
+
+    #[test]
+    fn private_helpers_are_visible_only_in_their_module() {
+        let declarations = "mod math { fn helper(value: Int) -> Int { return value } export fn answer() -> Int { return math::helper(42) } }";
+        let parsed = Parser::new().parse_source(declarations).unwrap();
+        assert!(SemanticAnalyzer::new().analyze(&parsed).is_ok());
+        for caller in [
+            "fn main() { math::helper(1) }",
+            "mod other { export fn call() { math::helper(1) } }",
+            "mod other { fn call() { math::helper(1) } }",
+        ] {
+            let parsed = Parser::new()
+                .parse_source(&format!("{declarations} {caller}"))
+                .unwrap();
+            let errors = SemanticAnalyzer::new().analyze(&parsed).unwrap_err();
+            assert!(errors.items.iter().any(|error| error.code == "E3004"));
+        }
+        for (body, code) in [
+            ("math::helper()", "E3006"),
+            ("math::helper(true)", "E3007"),
+            ("let value = math::helper", "E3015"),
+            ("helper(1)", "E3004"),
+        ] {
+            let source = format!("mod math {{ fn helper(value: Int) -> Int {{ return value }} export fn call() {{ {body} }} }}");
+            let parsed = Parser::new().parse_source(&source).unwrap();
+            let errors = SemanticAnalyzer::new().analyze(&parsed).unwrap_err();
+            assert!(
+                errors.items.iter().any(|error| error.code == code),
+                "{errors:?}"
+            );
+        }
+    }
+
+    #[test]
     fn unknown_annotation_ranges_identify_only_type_tokens() {
         let source = "// λ\r\nmod sample { export fn identity(value: // parameter\r\n Strng) -> // return\r\n Strng { let copy: // local\r\n Strng = value; return copy } }";
         let parsed = Parser::new().parse_source(source).unwrap();
@@ -597,6 +667,32 @@ mod tests {
             assert_eq!(error.span.end, start + 5);
             assert_eq!(error.span.line, source[..start].matches('\n').count());
             assert_eq!(error.span.column, 1);
+        }
+    }
+
+    #[test]
+    fn annotation_diagnostics_fall_back_for_ast_without_type_spans() {
+        let mut parsed = Parser::new()
+            .parse_source(
+                "fn identity(value: Typo) -> Typo { let copy: Typo = value; return copy }",
+            )
+            .unwrap();
+        let function = &mut parsed.functions[0];
+        function.parameters[0].type_span = None;
+        function.return_type_span = None;
+        let mut expected = vec![function.parameters[0].span, function.span];
+        if let Statement::Let {
+            type_span, span, ..
+        } = &mut function.body[0]
+        {
+            *type_span = None;
+            expected.push(*span);
+        }
+        let errors = SemanticAnalyzer::new().analyze(&parsed).unwrap_err();
+        assert_eq!(errors.items.len(), 3);
+        for (error, span) in errors.items.iter().zip(expected) {
+            assert_eq!(error.code, "E3017");
+            assert_eq!(error.span, span);
         }
     }
 
@@ -664,6 +760,10 @@ mod tests {
                 format!("mod std {{ export fn {member}() {{}} }} fn main() {{}}"),
                 builtin.name.to_owned(),
             ));
+            sources.push((
+                format!("mod std {{ fn {member}() {{}} }} fn main() {{}}"),
+                builtin.name.to_owned(),
+            ));
         }
         for (source, name) in sources {
             let parsed = Parser::new().parse_source(&source).unwrap();
@@ -680,7 +780,7 @@ mod tests {
     #[test]
     fn allows_noncolliding_std_members_and_private_names() {
         let parsed = Parser::new().parse_source(
-            "mod std { fn len() {} export fn extra() -> Int { return 7 } }
+            "mod std { fn helper() {} export fn extra() -> Int { return 7 } }
              mod other { export fn print() -> Int { return 8 } }
              fn len() -> Int { return 9 }
              fn main() { print(std::extra()); print(other::print()); print(len()); print(std::len(\"hi\")) }"

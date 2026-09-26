@@ -1,0 +1,4 @@
+service mail
+{
+    fn send(value: Text) -> Text
+    fn send(other: Text) -> Text

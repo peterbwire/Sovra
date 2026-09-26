@@ -1,0 +1,4 @@
+mod math {
+    fn helper() -> Int { return 42 }
+}
+fn main() { print(math::helper()) }

@@ -71,6 +71,11 @@ entry, app route and page path/target bindings, auth target wiring, app data
 model references, scheduled task targets, and auth policy model references.
 Full service contracts and richer page/model checks remain next.
 
+The partial multiline service scanner now includes duplicate-operation E4025
+checks and excludes service signatures from route/task callable targets.
+Code and regression cases are added; execution verification is deferred.
+This does not implement service calls, signature typing or application parsing.
+
 Before expanding this surface, the handoff assessment recommends hardening the
 existing executable subset. Module bodies, numeric widening/bounds, Int
 overflow, token ranges and straight-line return completeness are now covered.

@@ -1,0 +1,6 @@
+[project]
+name = "service-contract-diagnostics"
+entry = "main.svr"
+
+[services]
+mail = "external"

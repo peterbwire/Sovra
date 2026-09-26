@@ -1,0 +1,2 @@
+fn helper(value: Int) {}
+fn main() { helper(1, missing) }

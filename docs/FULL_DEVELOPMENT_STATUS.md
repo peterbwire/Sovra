@@ -16,7 +16,7 @@ No restart or crate/layout migration is needed.
 | Area | Status | Working scope / remaining work |
 | --- | --- | --- |
 | Lexer/parser/AST | Implemented subset | Functions, locals, literals, binary operations, inline modules; no control flow or structured data. |
-| Name/type analysis | Partial | All function bodies, required parameter annotations and straight-line return completeness checked; named-type and private resolution remain incomplete. |
+| Name/type analysis | Partial | All bodies, annotations and straight-line returns checked; qualified same-module private lookup added, execution verification pending; user-defined types remain planned. |
 | Typed representation/IR | Partial | Validated AST wrapper, linear stack IR and explicit Float widening; no general typed HIR, branches, optimizer or native ABI. |
 | Interpreter/runtime | Partial | Primitive values, functions, builtins, depth bound, numeric widening and checked Int arithmetic. |
 | Backend | Experimental | Text IR and JavaScript emission with tested numeric parity; full Float formatting and general runtime parity remain incomplete. No native/WASM target. |
@@ -36,6 +36,10 @@ Nova integration follows inspectable compiler/tooling interfaces; no custom
 foundation model is planned in this development pass.
 
 ## Verification and documentation
+
+The annotation-location follow-up adds exact-token and missing-span fallback
+coverage. Its latest local compilation/test attempts were blocked by Windows
+Application Control (rustc, 4551); execution verification remains pending.
 
 The public token parser now rejects malformed EOF boundaries with `E2006`
 instead of panicking, failing to terminate or silently ignoring trailing tokens.
@@ -62,8 +66,9 @@ untyped declarations. See `DEVELOPMENT_LOG.md` for validation of that later slic
 
 Accepted ADR 0004 rejects unresolved executable-source annotations with E3017.
 Only Unit, Bool, Int, Float and String currently resolve; user-defined type
-declarations remain planned. Declaration spans identify errors, while precise
-type-token spans remain future work. Project scanning is unaffected.
+declarations remain planned. E3017 identifies precise type-token spans in parsed
+source; manually constructed ASTs without those spans use declaration locations.
+Project scanning is unaffected.
 
 - Numeric widening, Int bounds/overflow and JS numeric kinds are now fixed and
   tested. Non-finite Float/output policy and structured runtime errors remain.
@@ -71,6 +76,8 @@ type-token spans remain future work. Project scanning is unaffected.
   typed calls and returns; invalid numeric annotations no longer pass checking.
 - Qualified function references used as values now report E3015 instead of
   being typed as the function's return value and failing at runtime.
+- Excess call arguments are now checked after E3006, retaining nested expression
+  diagnostics. Regression execution remains pending due to local Windows policy.
 - Approved ADR 0003 rejects exact callable builtin collisions with E3016,
   preserving the print alias and noncolliding std members. E3008 now covers
   duplicate module functions regardless of visibility.
@@ -85,7 +92,9 @@ type-token spans remain future work. Project scanning is unaffected.
   retain these ranges. Project parsing, scanning and declaration-based value/wiring
   errors retain file/line ranges. Missing keys, discovery and I/O errors still
   use null JSON locations; related-location notes remain unimplemented.
-- Private module functions are checked but not lowered/callable; no import graph.
+- ADR 0005 adds qualified private calls within the declaring module and lowers
+  private functions. External access remains rejected. Execution verification
+  is pending due to Windows policy; cross-file loading remains planned.
 - Straight-line non-Unit fallthrough and missing parameter annotations are
   rejected. ADR 0002 is approved and implemented; named-type resolution and a
   general typed HIR remain incomplete.

@@ -255,6 +255,124 @@ fn source_commands_reject_unknown_annotations() {
 }
 
 #[test]
+fn check_json_reports_errors_inside_excess_arguments() {
+    let source = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/excess-argument.svr"
+    );
+    let Some(output) = output_or_skip(svr().args(["check", "--format", "json", source])) else {
+        return;
+    };
+    assert_eq!(output.status.code(), Some(1));
+    assert_json_report(
+        &output,
+        r#"
+        assert.equal(report.success, false);
+        assert.deepEqual(report.diagnostics.map(d => d.code), ['E3006', 'E3001']);
+        const diagnostic = report.diagnostics[1];
+        assert.equal(diagnostic.location.file, report.target);
+        const bytes = require('node:fs').readFileSync(report.target);
+        assert.equal(bytes.subarray(diagnostic.location.start, diagnostic.location.end).toString(), 'missing');
+    "#,
+    );
+}
+
+#[test]
+fn check_json_reports_service_contract_declarations() {
+    let project = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/service-contract"
+    );
+    let Some(output) = output_or_skip(svr().args(["check", "--format", "json", project])) else {
+        return;
+    };
+    assert_eq!(output.status.code(), Some(1));
+    assert_json_report(
+        &output,
+        r#"
+        assert.equal(report.success, false);
+        assert.equal(report.kind, 'project');
+        assert.equal(report.diagnostics.length, 2);
+        const duplicate = report.diagnostics.find(d => d.code === 'E4025');
+        const unclosed = report.diagnostics.find(d => d.code === 'E4026');
+        assert.ok(duplicate);
+        assert.ok(unclosed);
+        for (const diagnostic of [duplicate, unclosed]) {
+            assert.ok(diagnostic.location.file.replaceAll('\\', '/').endsWith('/main.svr'));
+        }
+        const bytes = require('node:fs').readFileSync(duplicate.location.file);
+        assert.equal(bytes.subarray(duplicate.location.start, duplicate.location.end).toString().trim(), 'fn send(other: Text) -> Text');
+        assert.equal(bytes.subarray(unclosed.location.start, unclosed.location.end).toString(), 'service mail');
+    "#,
+    );
+}
+
+#[test]
+fn private_module_access_is_rejected_by_source_commands() {
+    let source = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/private-access.svr"
+    );
+    for args in [
+        vec!["check", source],
+        vec!["run", source],
+        vec!["build", source],
+        vec!["build", "--emit", "js", source],
+    ] {
+        let Some(output) = output_or_skip(svr().args(args)) else {
+            return;
+        };
+        assert_eq!(output.status.code(), Some(1));
+        assert!(output.stdout.is_empty());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("E3004"));
+    }
+    let Some(output) = output_or_skip(svr().args(["check", "--format", "json", source])) else {
+        return;
+    };
+    assert_eq!(output.status.code(), Some(1));
+    assert_json_report(
+        &output,
+        r#"
+        assert.equal(report.success, false);
+        assert.equal(report.diagnostics.length, 1);
+        const diagnostic = report.diagnostics[0];
+        assert.equal(diagnostic.code, 'E3004');
+        assert.equal(diagnostic.location.file, report.target);
+        const bytes = require('node:fs').readFileSync(report.target);
+        assert.equal(bytes.subarray(diagnostic.location.start, diagnostic.location.end).toString(), 'math::helper');
+    "#,
+    );
+}
+
+#[test]
+fn module_example_executes_private_helper() {
+    let source = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/modules/main.svr");
+    let Some(output) = output_or_skip(svr().args(["run", source])) else {
+        return;
+    };
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(String::from_utf8(output.stdout).unwrap().trim(), "42");
+    for args in [
+        vec!["check", source],
+        vec!["build", source],
+        vec!["build", "--emit", "js", source],
+    ] {
+        let Some(output) = output_or_skip(svr().args(args)) else {
+            return;
+        };
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
+#[test]
 fn source_commands_reject_builtin_collisions() {
     let source = format!(
         "{}/tests/fixtures/builtin-collision.svr",

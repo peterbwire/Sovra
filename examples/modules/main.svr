@@ -1,5 +1,5 @@
 mod math {
-    export fn add(left: Int, right: Int) -> Int {
+    fn add(left: Int, right: Int) -> Int {
         return left + right
     }
 

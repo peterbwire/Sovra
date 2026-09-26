@@ -294,6 +294,59 @@ mod tests {
     }
 
     #[test]
+    fn private_helpers_match_interpreter_and_preserve_bare_calls() {
+        let source = "fn value() -> Int { return 7 }
+            mod math {
+                fn value() -> Int { return 42 }
+                fn helper() -> Float { return math::value() }
+                export fn answer() -> Float { print(value()); return math::helper() }
+            }
+            fn main() { print(math::answer()) }";
+        let parsed = crate::compiler::parser::Parser::new()
+            .parse_source(source)
+            .unwrap();
+        let ir = crate::compiler::ir::lower_program(&parsed).unwrap();
+        assert!(ir
+            .functions
+            .iter()
+            .any(|function| function.name == "math::helper"));
+        let expected = crate::compiler::interpreter::run(&ir).unwrap();
+        assert_eq!(expected, ["7", "42"]);
+        let output = execute_javascript(&render_javascript(&ir));
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .lines()
+                .collect::<Vec<_>>(),
+            expected
+        );
+    }
+
+    #[test]
+    fn private_recursion_obeys_both_engine_depth_limits() {
+        for body in [
+            "fn first() { math::first() }",
+            "fn first() { math::second() } fn second() { math::first() }",
+        ] {
+            let source = format!("mod math {{ {body} export fn start() {{ math::first() }} }} fn main() {{ math::start() }}");
+            let parsed = crate::compiler::parser::Parser::new()
+                .parse_source(&source)
+                .unwrap();
+            let ir = crate::compiler::ir::lower_program(&parsed).unwrap();
+            let expected = crate::compiler::interpreter::run(&ir).unwrap_err();
+            let script = format!("try {{ (function() {{ {} }})(); }} catch (error) {{ console.log(error.message); }}", render_javascript(&ir));
+            let output = execute_javascript(&script);
+            assert!(output.status.success());
+            assert_eq!(String::from_utf8(output.stdout).unwrap().trim(), expected);
+        }
+    }
+
+    #[test]
     fn javascript_depth_recovers_after_returns_and_errors() {
         let source =
             "fn main() {} fn recurse() { recurse() } fn early() { return } fn fallthrough() {}";

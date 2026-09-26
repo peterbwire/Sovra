@@ -76,7 +76,8 @@ named-type resolution and general parameter inference remain unfinished.
 
 Only `Unit`, `Bool`, `Int`, `Float` and `String` are valid annotation names today.
 An unknown name such as `Strng`, `Text` or `Any` produces E3017 in a parameter,
-return type or local binding. Correct typos to the intended implemented type;
+return type or local binding, pointing to the type name itself. JSON reports
+retain that exact token's byte range and line/column. Correct typos to the intended implemented type;
 user-defined types will require future declaration support. These rules apply
 to executable source checks, not Fielddesk's project wiring scan.
 

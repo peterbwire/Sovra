@@ -16,7 +16,7 @@ Function names must be unique within a module, including private/exported
 combinations. A repeated name produces E3008 at the repeated declaration.
 Exported names must also avoid exact builtin collisions: exporting `std::len`
 produces E3016, while `std::extra` or `other::len` are allowed. Private module
-functions remain uncallable and do not enter this builtin collision check.
+functions also obey this collision check under ADR 0005.
 
 Every function body is checked, including unused and non-exported module
 functions. For example, this is invalid:
@@ -41,7 +41,9 @@ For example, `fn answer() -> Int { 42 }` fails with `E3013`; write
 
 Only top-level `main` is the entry point and must take no parameters and return
 `Unit`. An exported `math::main(value: Int) -> Int` is an ordinary function.
-Non-exported module functions are currently validated but not callable or
-emitted into IR. Private helpers and implicit module-local lookup require
-future work. Project-directory checks use a separate, partial application
+Private functions are callable from their own module using qualified names,
+such as `math::add`; external calls receive E3004. They are emitted into IR.
+Privacy is enforced by source checking, not by hiding generated symbols.
+Bare names still refer to top-level functions or builtins. Recursion uses the
+existing 256-frame limit. Cross-file loading remains planned. Project-directory checks use a separate, partial application
 scanner; they do not provide these source-file semantic guarantees.
