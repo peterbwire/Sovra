@@ -41,6 +41,14 @@ function svrBinary(operator, left, right) {
   if (operator === "/" && (right === 0 || right === 0n)) {
     throw new Error("division by zero");
   }
+  // IR is public: reject host-language coercions even when source typing is bypassed.
+  const numeric = typeof left === typeof right &&
+    (typeof left === "bigint" || typeof left === "number");
+  const concatenation = operator === "+" &&
+    typeof left === "string" && typeof right === "string";
+  if (operator !== "==" && operator !== "!=" && !numeric && !concatenation) {
+    throw new Error("unsupported runtime operation `" + operator + "`");
+  }
   let result;
   switch (operator) {
     case "+": result = left + right; break;

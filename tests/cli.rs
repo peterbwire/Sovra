@@ -10,7 +10,10 @@ fn svr() -> Command {
 fn output_or_skip(command: &mut Command) -> Option<Output> {
     match command.output() {
         Ok(output) => Some(output),
-        Err(error) if is_application_control_block(&error) => {
+        Err(error)
+            if is_application_control_block(&error)
+                && std::env::var_os("SOVRA_REQUIRE_CLI_EXECUTION").is_none() =>
+        {
             eprintln!(
                 "skipping CLI integration assertion: Windows Application Control blocked svr.exe"
             );
@@ -344,6 +347,77 @@ fn check_json_exposes_unresolved_service_metadata() {
 }
 
 #[test]
+fn service_call_cli_reports_errors_and_incomplete_coverage() {
+    let root = env!("CARGO_MANIFEST_DIR");
+    for (relative, exit, codes, complete) in [
+        ("tests/fixtures/service-metadata", 0, "[]", true),
+        (
+            "tests/fixtures/service-body-coverage",
+            1,
+            "['E4096']",
+            false,
+        ),
+        (
+            "tests/fixtures/service-call-errors",
+            1,
+            "['E4094', 'E4093']",
+            true,
+        ),
+        ("examples/fielddesk", 1, "null", false),
+    ] {
+        let project = format!("{root}/{relative}");
+        let Some(output) =
+            output_or_skip(svr().args(["check", "--service-calls", "--format=json", &project]))
+        else {
+            return;
+        };
+        assert_eq!(output.status.code(), Some(exit));
+        assert_json_report(
+            &output,
+            &format!(
+                r#"
+            assert.equal(report.success, {success});
+            assert.equal(report.service_coverage.complete, {complete});
+            assert.ok(report.service_coverage.files.length > 0);
+            assert.ok(Array.isArray(report.member_calls));
+            for (const call of report.member_calls) {{
+                assert.ok(report.service_coverage.files.some(f => f.file === call.location.file && f.inspected));
+                assert.equal(typeof call.operation, 'string');
+            }}
+            if ({complete}) assert.ok(report.member_calls.some(c => c.receiver.kind === 'service'));
+            if ({codes} !== null) assert.deepEqual(report.diagnostics.map(d => d.code), {codes});
+            else {{
+                assert.ok(report.diagnostics.some(d => d.code === 'E4096'));
+                assert.ok(report.service_coverage.files.some(f => !f.inspected && typeof f.reason === 'string'));
+            }}
+        "#,
+                success = exit == 0
+            ),
+        );
+        let Some(human) = output_or_skip(svr().args(["check", "--service-calls", &project])) else {
+            return;
+        };
+        assert_eq!(human.status.code(), Some(exit));
+        assert!(String::from_utf8_lossy(&human.stdout).contains("file(s) covered"));
+    }
+}
+
+#[test]
+fn service_call_option_rejects_source_files_and_duplicate_flags() {
+    let source = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/hello-world/main.svr");
+    for args in [
+        vec!["check", "--service-calls", source],
+        vec!["check", "--service-calls", "--service-calls", source],
+    ] {
+        let Some(output) = output_or_skip(svr().args(args)) else {
+            return;
+        };
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
+    }
+}
+
+#[test]
 fn private_module_access_is_rejected_by_source_commands() {
     let source = concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -594,7 +668,7 @@ fn check_help_describes_current_usage() {
     assert!(output.status.success());
     assert_eq!(
         String::from_utf8_lossy(&output.stdout).trim(),
-        "Usage: svr check [--format human|json] <source.svr|project-directory>"
+        "Usage: svr check [--format human|json] [--service-calls] <source.svr|project-directory>\n  --service-calls  Experimental project-only contract checks; incomplete coverage fails."
     );
 }
 

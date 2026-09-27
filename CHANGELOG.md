@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add production-readiness gates, cross-platform CI, a Rust 1.74 check,
+  source-package boundaries and manual verification artifacts. The earlier
+  developer-preview publication plan is superseded.
+- Add experimental opt-in service-call checking with coverage errors and
+  machine-readable member-call references. Application execution remains planned.
+
 - Add versioned JSON reports with `svr check --format json` for source/project
   validation and input I/O errors, preserving default human output.
 

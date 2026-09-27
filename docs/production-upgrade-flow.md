@@ -3,6 +3,11 @@
 This is the handoff flow for continuing the production-grade Sovra upgrade.
 Use it when picking up M12 and later project/runtime work.
 
+The current release target is production readiness, not a developer preview.
+Follow [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md) for audited gaps,
+dependency order and acceptance gates. Keep verification-artifact infrastructure;
+do not treat successful packaging as release approval.
+
 ## Current Spine
 
 1. Harden `svr check <project>` before `svr test` or project runtime work.

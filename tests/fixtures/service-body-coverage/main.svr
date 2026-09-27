@@ -1,0 +1,7 @@
+service mail {
+    fn send() {
+        mail.missing()
+    }
+}
+
+fn main() { mail.send(); }

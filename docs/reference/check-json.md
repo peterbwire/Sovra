@@ -1,5 +1,30 @@
 # JSON check reports
 
+## Experimental service-call checking
+
+Use `svr check --service-calls --format json <project-directory>` to request
+service operation/positional-arity validation after ordinary project validation.
+The flag is project-only; source-file use or repeated flags return usage exit 2.
+Normal checks are unchanged. Once inspection runs, the version-one report adds:
+
+```json
+"service_coverage": {
+  "complete": false,
+  "files": [{"file": "app/jobs.svr", "inspected": false, "reason": "unsupported application syntax"}]
+}
+```
+
+Each file has an inspected boolean and nullable reason. Complete means all files
+fit the supported inspection syntax, not that application types or all ordinary
+member calls were validated. E4093/E4094/E4095 report resolved service-call errors.
+Unsupported files add E4096 with null diagnostic location; their paths/reasons
+appear in coverage. Incomplete inspection returns exit 1 and success false even
+when no service-call errors were found. Successful complete inspection exits 0.
+If initial manifest/import/wiring validation fails, inspection does not run and
+the ordinary diagnostic report has no service_coverage field. Service-call reports
+do not currently include service_operations; use ordinary project JSON for metadata.
+Human output reports inspected/total files and prints errors to stderr.
+
 Status: Implemented report format for the current source checker and partial
 project checker. Use `svr check --format json <source.svr|project-directory>`.
 
@@ -97,6 +122,28 @@ source text. Null means omitted, not inferred Unit or Any. `has_body` means a
 body starts on the declaration line, not that it was checked or can execute.
 Operations follow sorted source-file discovery and declaration order. Empty
 services have no entries. General statistics and resolved symbols remain planned.
+
+Opt-in `check --service-calls --format json <project>` reports also expose
+`member_calls`, an additive version-one array from fully inspected files only.
+Each record contains `function` (enclosing declaration name), `is_task`,
+`operation`, `arguments` (positional count), `location` (member-expression range),
+and `receiver`. The receiver has a `kind` of `service`, `local`, `unresolved`, or
+`ambiguous`, and a `candidates` array of `{module, name}` service identities.
+A service receiver has one candidate, ambiguity retains all candidates, and
+local/unresolved receivers have none. Module identities currently use canonical
+local file paths; they are not portable package identifiers.
+
+Member locations cover the complete receiver through the member name, excluding
+the outer call's argument list. For `mail.create().send(value)`, the range is
+`mail.create().send`; grouping parentheses are retained. This includes literal,
+binary and chained receivers even when their classification is unresolved.
+
+Calls follow file/function inspection order and expression traversal order
+(nested argument calls precede their containing member call). Qualified namespace
+calls are not member-call records, but member calls in their arguments are.
+These records describe resolution, not successful type checking or execution.
+Always consult `service_coverage`: missing call records from an unsupported file
+do not imply that it contains no calls. Ordinary checks omit `member_calls`.
 
 Rust diagnostics carry optional `source_file` provenance; stage function
 signatures and the version-one JSON envelope remain unchanged. Serialization

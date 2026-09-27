@@ -1,0 +1,102 @@
+name: Release candidate verification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  SOVRA_REQUIRE_CLI_EXECUTION: '1'
+
+jobs:
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.74.0
+      - run: cargo check --locked --all-targets
+
+  candidate:
+    needs: msrv
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --locked --all-targets --all-features -- -D warnings
+      - run: cargo test --locked --all-targets
+      - run: cargo test --locked --doc
+      - run: cargo package --locked
+      - run: cargo build --locked --release
+      - name: Smoke test and package the candidate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $binary = if ($IsWindows) { 'svr.exe' } else { 'svr' }
+          $executable = Join-Path 'target/release' $binary
+          & $executable --version
+          if ($LASTEXITCODE -ne 0) { throw 'Version smoke test failed' }
+          & $executable run examples/hello-world/main.svr
+          if ($LASTEXITCODE -ne 0) { throw 'Interpreter smoke test failed' }
+          $hostLine = rustc -vV | Select-String '^host: '
+          $targetTriple = $hostLine.ToString().Substring(6)
+          $metadata = cargo metadata --no-deps --format-version 1 | ConvertFrom-Json
+          $version = $metadata.packages[0].version
+          $name = "sovra-$version-$targetTriple"
+          $stage = Join-Path 'target/candidate' $name
+          New-Item -ItemType Directory -Path $stage -Force | Out-Null
+          Copy-Item -LiteralPath $executable -Destination $stage
+          Copy-Item -Path LICENSE,LICENSE-MIT,LICENSE-APACHE -Destination $stage
+          Copy-Item -LiteralPath docs/RELEASE_NOTES.md -Destination (Join-Path $stage 'README.md')
+          Copy-Item -LiteralPath examples/hello-world/main.svr -Destination (Join-Path $stage 'hello.svr')
+          $archive = "target/candidate/$name.tar.gz"
+          tar -czf $archive -C target/candidate $name
+          if ($LASTEXITCODE -ne 0) { throw 'Archive creation failed' }
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant()
+          "$hash  $name.tar.gz" | Set-Content -Encoding ascii "$archive.sha256"
+          "commit=$env:GITHUB_SHA`ntarget=$targetTriple`nversion=$version" | Set-Content "target/candidate/$name.build.txt"
+          # Test the archive contents, not just the original build directory.
+          $unpack = Join-Path 'target' "smoke-$name-$([guid]::NewGuid().ToString('N'))"
+          New-Item -ItemType Directory -Path $unpack | Out-Null
+          tar -xzf $archive -C $unpack
+          if ($LASTEXITCODE -ne 0) { throw 'Archive extraction failed' }
+          $installed = Join-Path $unpack $name
+          $installedBinary = Join-Path $installed $binary
+          $example = Join-Path $installed 'hello.svr'
+          $actualVersion = & $installedBinary --version
+          if ($LASTEXITCODE -ne 0 -or $actualVersion -ne "svr $version") { throw 'Packaged version mismatch' }
+          $greeting = & $installedBinary run $example
+          if ($LASTEXITCODE -ne 0 -or $greeting -ne 'Hello, Sovra!') { throw 'Packaged interpreter failed' }
+          $jsonText = & $installedBinary check --format json $example
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged JSON check failed' }
+          $report = $jsonText | ConvertFrom-Json
+          if ($report.schema_version -ne 1 -or $report.success -ne $true -or $report.kind -ne 'source' -or $report.diagnostics.Count -ne 0) {
+            throw 'Unexpected packaged JSON report'
+          }
+          $javascript = & $installedBinary build --emit js $example
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged JavaScript build failed' }
+          $jsFile = Join-Path $installed 'hello.js'
+          [System.IO.File]::WriteAllLines($jsFile, [string[]]$javascript, [System.Text.UTF8Encoding]::new($false))
+          $jsGreeting = node $jsFile
+          if ($LASTEXITCODE -ne 0 -or $jsGreeting -ne 'Hello, Sovra!') { throw 'Packaged JavaScript execution failed' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: candidate-${{ matrix.os }}
+          path: |
+            target/candidate/*.tar.gz
+            target/candidate/*.sha256
+            target/candidate/*.build.txt
+            target/package/*.crate
+          if-no-files-found: error

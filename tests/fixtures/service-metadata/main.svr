@@ -2,3 +2,16 @@ service mail {
     fn send(value: Result<Text, Error>, context) -> Receipt;
     fn ping() {}
 }
+
+fn typed_local() {
+    let mail: Client = mail.send("hello", 1)
+    mail.local_operation()
+}
+
+fn binary_calls() {
+    return mail.send("hello", 1 + 2 * 3) == mail.send("world", 4)
+}
+
+fn qualified_call() {
+    std::println(mail.send("hello", 1))
+}

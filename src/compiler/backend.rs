@@ -80,6 +80,16 @@ fn render_js_function(output: &mut String, index: usize, function: &IrFunction) 
             function.name
         ))
     );
+    let _ = writeln!(
+        output,
+        "  if (arguments.length !== {}) throw new Error({} + arguments.length);",
+        function.parameters.len(),
+        js_string(&format!(
+            "function `{}` expects {} argument(s), found ",
+            function.name,
+            function.parameters.len()
+        ))
+    );
     let _ = writeln!(output, "  svrCallDepth++;");
     let _ = writeln!(output, "  try {{");
     let _ = writeln!(output, "  const stack = [];");
@@ -107,15 +117,24 @@ fn render_js_instruction(output: &mut String, instruction: &Instruction) {
             let _ = writeln!(output, "  stack.push({});", js_literal(value));
         }
         Instruction::LoadName(name) => {
+            let _ = writeln!(
+                output,
+                "  if (!Object.prototype.hasOwnProperty.call(names, {})) throw new Error({});",
+                js_string(name),
+                js_string(&format!("runtime name `{name}` was not found"))
+            );
             let _ = writeln!(output, "  stack.push(names[{}]);", js_string(name));
         }
         Instruction::StoreName(name) => {
+            render_stack_guard(output, 1, "store");
             let _ = writeln!(output, "  names[{}] = stack.pop();", js_string(name));
         }
         Instruction::WidenFloat => {
+            render_stack_guard(output, 1, "widening");
             let _ = writeln!(output, "  stack.push(svrWidenFloat(stack.pop()));");
         }
         Instruction::Binary(operator) => {
+            render_stack_guard(output, 2, "binary operator");
             let _ = writeln!(output, "  {{");
             let _ = writeln!(output, "    const right = stack.pop();");
             let _ = writeln!(output, "    const left = stack.pop();");
@@ -131,12 +150,27 @@ fn render_js_instruction(output: &mut String, instruction: &Instruction) {
             let _ = writeln!(output, "  return stack.length ? stack.pop() : undefined;");
         }
         Instruction::Pop => {
+            render_stack_guard(output, 1, "pop");
             let _ = writeln!(output, "  stack.pop();");
         }
     }
 }
 
 fn render_js_call(output: &mut String, name: &str, arguments: usize) {
+    render_stack_guard(output, arguments, "call");
+    if let Some(function) = crate::compiler::stdlib::lookup(name) {
+        if arguments != function.parameters.len() {
+            let _ = writeln!(
+                output,
+                "  throw new Error({});",
+                js_string(&format!(
+                    "{name} expects exactly {} argument(s)",
+                    function.parameters.len()
+                ))
+            );
+            return;
+        }
+    }
     let _ = writeln!(output, "  {{");
     let _ = writeln!(
         output,
@@ -148,6 +182,7 @@ fn render_js_call(output: &mut String, name: &str, arguments: usize) {
             let _ = writeln!(output, "    stack.push(undefined);");
         }
         "std::len" => {
+            let _ = writeln!(output, "    if (typeof args[0] !== \"string\") throw new Error(\"std::len expects a String argument\");");
             let _ = writeln!(
                 output,
                 "    stack.push(BigInt(new TextEncoder().encode(args[0]).length));"
@@ -175,6 +210,14 @@ fn render_js_call(output: &mut String, name: &str, arguments: usize) {
     let _ = writeln!(output, "  }}");
 }
 
+fn render_stack_guard(output: &mut String, required: usize, operation: &str) {
+    let _ = writeln!(
+        output,
+        "  if (stack.length < {required}) throw new Error({});",
+        js_string(&format!("stack underflow on {operation}"))
+    );
+}
+
 fn literal_text(value: &Literal) -> String {
     match value {
         Literal::Integer(value) | Literal::Float(value) => value.clone(),
@@ -185,11 +228,25 @@ fn literal_text(value: &Literal) -> String {
 
 fn js_literal(value: &Literal) -> String {
     match value {
-        Literal::Integer(value) => format!("svrCheckedInt(BigInt({}))", js_string(value)),
-        Literal::Float(value) => format!("Number({})", js_string(value)),
+        Literal::Integer(value) => match value.parse::<i64>() {
+            Ok(value) => format!("BigInt({})", js_string(&value.to_string())),
+            Err(_) => js_literal_error("invalid or out-of-range integer literal"),
+        },
+        Literal::Float(value) => match value.parse::<f64>() {
+            Ok(value) if value.is_nan() => "NaN".into(),
+            Ok(value) if value == f64::INFINITY => "Infinity".into(),
+            Ok(value) if value == f64::NEG_INFINITY => "-Infinity".into(),
+            Ok(value) => format!("Number({})", js_string(&value.to_string())),
+            Err(_) => js_literal_error("invalid float literal"),
+        },
         Literal::Boolean(value) => value.to_string(),
         Literal::String(value) => js_string(value),
     }
+}
+
+// Keep invalid IR errors at execution time; unreachable literals must not fail emission.
+fn js_literal_error(message: &str) -> String {
+    format!("(() => {{ throw new Error({}); }})()", js_string(message))
 }
 
 fn js_function_name(index: usize) -> String {
@@ -231,6 +288,264 @@ fn js_string(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn binary_runtime_type_matrix_matches_interpreter() {
+        let values = [
+            Some(Literal::Integer("2".into())),
+            Some(Literal::Float("3.0".into())),
+            Some(Literal::Boolean(true)),
+            Some(Literal::String("x".into())),
+            None,
+            Some(Literal::Integer("0".into())),
+        ];
+        let mut script = include_str!("numeric_runtime.js").to_owned();
+        for operator in [
+            "+", "-", "*", "/", "==", "!=", "<", "<=", ">", ">=", "unknown",
+        ] {
+            for left in &values {
+                for right in &values {
+                    let mut instructions = Vec::new();
+                    for value in [left, right] {
+                        instructions.push(match value {
+                            Some(value) => Instruction::LoadLiteral(value.clone()),
+                            None => Instruction::Call {
+                                name: "unit".into(),
+                                arguments: 0,
+                            },
+                        });
+                    }
+                    instructions.push(Instruction::Binary(operator.into()));
+                    instructions.push(Instruction::Call {
+                        name: "print".into(),
+                        arguments: 1,
+                    });
+                    let program = IrProgram {
+                        functions: vec![
+                            IrFunction {
+                                name: "main".into(),
+                                parameters: vec![],
+                                instructions,
+                            },
+                            IrFunction {
+                                name: "unit".into(),
+                                parameters: vec![],
+                                instructions: vec![],
+                            },
+                        ],
+                    };
+                    let (expected, failure) = match crate::compiler::interpreter::run(&program) {
+                        Ok(output) => (output[0].clone(), false),
+                        Err(error) => (error, true),
+                    };
+                    let operand = |value: &Option<Literal>| {
+                        value.as_ref().map(js_literal).unwrap_or("undefined".into())
+                    };
+                    let _ = writeln!(script, "{{ let actual, failed = false; try {{ actual = String(svrBinary({}, {}, {})); }} catch (error) {{ failed = true; actual = error.message; }} if (failed !== {failure} || actual !== {}) throw Error({}); }}",
+                        js_string(operator), operand(left), operand(right), js_string(&expected),
+                        js_string(&format!("mismatch: {left:?} {operator} {right:?}")));
+                }
+            }
+        }
+        let output = execute_javascript(&script);
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[test]
+    fn malformed_numeric_ir_literals_match_interpreter() {
+        for value in [
+            "",
+            " ",
+            "1.5",
+            "0x10",
+            "1_000",
+            "9223372036854775808",
+            "-9223372036854775809",
+        ] {
+            assert_ir_failure_matches(vec![Instruction::LoadLiteral(Literal::Integer(
+                value.into(),
+            ))]);
+        }
+        for value in ["", " ", "0x10", "1_000", "1.2.3", "hello"] {
+            assert_ir_failure_matches(vec![Instruction::LoadLiteral(Literal::Float(value.into()))]);
+        }
+    }
+
+    #[test]
+    fn valid_numeric_ir_literals_preserve_rust_parsing() {
+        for (value, expected) in [
+            ("+001", "1"),
+            ("-9223372036854775808", "-9223372036854775808"),
+        ] {
+            let output = execute_javascript(&format!(
+                "console.log(String({}));",
+                js_literal(&Literal::Integer(value.into()))
+            ));
+            assert!(output.status.success());
+            assert_eq!(String::from_utf8(output.stdout).unwrap().trim(), expected);
+        }
+        for (value, predicate) in [
+            ("inf", "value === Infinity"),
+            ("-inf", "value === -Infinity"),
+            ("NaN", "Number.isNaN(value)"),
+            ("-0.0", "Object.is(value, -0)"),
+            ("1e2", "value === 100"),
+        ] {
+            let output = execute_javascript(&format!(
+                "const value = {}; if (!({predicate})) throw Error('wrong value');",
+                js_literal(&Literal::Float(value.into()))
+            ));
+            assert!(
+                output.status.success(),
+                "{value}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+    }
+
+    #[test]
+    fn builtin_ir_arity_and_len_types_match_interpreter() {
+        for name in [
+            "print",
+            "std::print",
+            "std::println",
+            "std::len",
+            "std::to_string",
+        ] {
+            for count in [0, 2] {
+                let mut instructions =
+                    vec![Instruction::LoadLiteral(Literal::String("x".into())); count];
+                instructions.push(Instruction::Call {
+                    name: name.into(),
+                    arguments: count,
+                });
+                assert_ir_failure_matches(instructions);
+            }
+        }
+        for value in [
+            Literal::Integer("1".into()),
+            Literal::Float("1.0".into()),
+            Literal::Boolean(true),
+        ] {
+            assert_ir_failure_matches(vec![
+                Instruction::LoadLiteral(value),
+                Instruction::Call {
+                    name: "std::len".into(),
+                    arguments: 1,
+                },
+            ]);
+        }
+        assert_ir_failure_matches(vec![
+            Instruction::LoadLiteral(Literal::String("x".into())),
+            Instruction::Call {
+                name: "print".into(),
+                arguments: 1,
+            },
+            Instruction::Call {
+                name: "std::len".into(),
+                arguments: 1,
+            },
+        ]);
+    }
+
+    fn assert_ir_failure_matches(instructions: Vec<Instruction>) {
+        let program = IrProgram {
+            functions: vec![IrFunction {
+                name: "main".into(),
+                parameters: vec![],
+                instructions,
+            }],
+        };
+        let expected = crate::compiler::interpreter::run(&program).unwrap_err();
+        let output = execute_javascript(&render_javascript(&program));
+        assert!(!output.status.success(), "expected: {expected}");
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains(&expected),
+            "expected: {expected}"
+        );
+    }
+
+    #[test]
+    fn malformed_ir_stack_and_name_errors_match_interpreter() {
+        for instructions in [
+            vec![Instruction::Pop],
+            vec![Instruction::StoreName("value".into())],
+            vec![Instruction::WidenFloat],
+            vec![Instruction::Binary("+".into())],
+            vec![
+                Instruction::LoadLiteral(Literal::Integer("1".into())),
+                Instruction::Binary("+".into()),
+            ],
+            vec![Instruction::Call {
+                name: "print".into(),
+                arguments: 1,
+            }],
+            vec![Instruction::LoadName("missing".into())],
+        ] {
+            let program = IrProgram {
+                functions: vec![IrFunction {
+                    name: "main".into(),
+                    parameters: vec![],
+                    instructions,
+                }],
+            };
+            let expected = crate::compiler::interpreter::run(&program).unwrap_err();
+            let output = execute_javascript(&render_javascript(&program));
+            assert!(!output.status.success(), "expected: {expected}");
+            assert!(
+                String::from_utf8_lossy(&output.stderr).contains(&expected),
+                "expected: {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn javascript_rejects_ir_call_arity_like_interpreter() {
+        for count in [0, 2] {
+            let mut instructions =
+                vec![Instruction::LoadLiteral(Literal::Integer("1".into())); count];
+            instructions.push(Instruction::Call {
+                name: "identity".into(),
+                arguments: count,
+            });
+            let program = IrProgram {
+                functions: vec![
+                    IrFunction {
+                        name: "main".into(),
+                        parameters: vec![],
+                        instructions,
+                    },
+                    IrFunction {
+                        name: "identity".into(),
+                        parameters: vec!["value".into()],
+                        instructions: vec![
+                            Instruction::LoadName("value".into()),
+                            Instruction::Return,
+                        ],
+                    },
+                ],
+            };
+            let expected = crate::compiler::interpreter::run(&program).unwrap_err();
+            let output = execute_javascript(&render_javascript(&program));
+            assert!(!output.status.success(), "invalid arity must fail: {count}");
+            assert!(String::from_utf8_lossy(&output.stderr).contains(&expected));
+        }
+        let program = IrProgram {
+            functions: vec![IrFunction {
+                name: "main".into(),
+                parameters: vec!["value".into()],
+                instructions: vec![],
+            }],
+        };
+        let expected = crate::compiler::interpreter::run(&program).unwrap_err();
+        let output = execute_javascript(&render_javascript(&program));
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains(&expected));
+    }
 
     fn execute_javascript(source: &str) -> std::process::Output {
         use std::io::Write as _;

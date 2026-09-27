@@ -9,6 +9,12 @@ readme = "README.md"
 repository = "https://github.com/sovra-lang/sovra"
 keywords = ["compiler", "programming-language", "sovra"]
 categories = ["compilers", "command-line-utilities"]
+include = [
+    "/src/**", "/tests/**", "/examples/**", "/docs/**",
+    "/Cargo.toml", "/Cargo.lock", "/rustfmt.toml",
+    "/README.md", "/CHANGELOG.md", "/LICENSE", "/LICENSE-MIT", "/LICENSE-APACHE",
+    "/ARCHITECTURE.md", "/CONTRIBUTING.md",
+]
 
 [[bin]]
 name = "svr"

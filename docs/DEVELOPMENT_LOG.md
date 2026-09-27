@@ -1,5 +1,292 @@
 # Development log
 
+## 2026-09-27 — Numeric IR literal parity
+
+- **Fixed:** JavaScript numeric conversion accepted malformed IR spellings that
+  Rust rejected. Emission now parses i64/f64 with Rust, normalizes valid values,
+  and emits execution-time errors matching the interpreter for invalid literals.
+  Stage APIs and source literal syntax are unchanged.
+- **Coverage:** Reproduced malformed empty-literal acceptance. Differential cases
+  cover whitespace, hexadecimal/underscore spellings, Int bounds and malformed
+  floats. Node value assertions cover signed/zero-padded integers, i64 minimum,
+  infinity, NaN, signed zero and exponent spellings accepted by public IR.
+- **Validation:** 164 library and 34 CLI tests passed (198 total), with strict CLI
+  execution and no skips. Formatting and strict Clippy passed.
+- **Next:** Audit binary runtime-kind compatibility and error parity. Non-finite
+  Float/output policy and broader resource limits remain open production gates.
+
+## 2026-09-27 — Builtin validation and call allocation guard
+
+- **Fixed:** Generated JavaScript checks builtin arity using the Rust registry
+  and rejects non-String `std::len` inputs instead of JavaScript coercion. The
+  interpreter validates available stack arguments before allocating storage.
+- **Reproduced:** Missing builtin arguments silently succeeded in JavaScript;
+  `usize::MAX` IR argument count caused a capacity-overflow panic in Rust.
+- **Coverage:** Differential cases cover zero/excess arguments for all builtins
+  and the print alias, plus Int/Float/Bool/Unit inputs to len. An interpreter
+  regression verifies extreme counts return stack-underflow errors without panic.
+- **Validation:** 162 library and 34 CLI tests passed (196 total), with strict CLI
+  execution and no skips; formatting and strict Clippy passed.
+- **Next:** Malformed literal/runtime-kind parity and broader resource bounds.
+  These fixes do not establish full IR validation or production readiness.
+
+## 2026-09-27 — IR stack and name parity
+
+- **Fixed:** Generated JavaScript now rejects empty/insufficient stacks for store,
+  widening, binary, call and pop instructions with interpreter-compatible errors.
+  Missing-name loads check property existence rather than silently yielding Unit.
+  Empty-stack returns retain their existing Unit behavior.
+- **Coverage:** Reproduced silent empty-stack pop success before the fix. A
+  differential regression covers each affected instruction, a binary expression
+  with only one operand, and a missing variable.
+- **Validation:** 160 library and 34 CLI tests passed (194 total), with strict CLI
+  execution enabled and no skips. Formatting and strict Clippy passed.
+- **Next:** Audit builtin arity/runtime kinds, malformed IR literals and allocation
+  bounds. These corrections do not constitute full public-IR validation or
+  production readiness; source syntax and stage APIs are unchanged.
+
+## 2026-09-27 — Production audit and first runtime invariant fix
+
+- **Direction:** User requires production readiness; superseded the preview
+  publication plan in README, release checklist/notes and current planning docs.
+  Existing verification workflows remain useful but confer no release readiness.
+- **Audit:** Added PRODUCTION_READINESS.md with code evidence, blockers,
+  dependency-ordered work and testable acceptance gates. Preserve milestone
+  numbering, implementation and truthful Partial/Experimental labels. Application
+  typing/runtime and independent library publication are still substantial gaps.
+- **Fixed:** JavaScript emitted from public IR silently accepted missing/excess
+  user-function arguments that the interpreter rejected. Reproduced the missing
+  argument bug before adding entry arity guards; no source-language semantics or
+  public compiler APIs changed. Guards run before frame entry/parameter setup.
+- **Validation:** 159 library and 34 CLI tests passed (193 total), with strict CLI
+  execution enabled and no skips. Regression tests cover missing/excess arguments
+  and invalid main arity, comparing interpreter and Node failure messages.
+  Formatting, strict Clippy and the doc-test stage passed (zero doc tests).
+- **Next:** Continue public-IR/backend invariant parity (stack underflow, missing
+  names and runtime kinds), then resource-bound analysis and structured project
+  typing. Float policies, service-body scope, new syntax and package contracts
+  require concrete design review before semantic changes. Production is not yet
+  achieved; hosted platform/MSRV evidence remains outstanding.
+
+## 2026-09-27 — Candidate acceptance gates
+
+- **Changed:** Candidate platform jobs now depend on a Rust 1.74 compile job.
+  After archive creation, each job extracts a fresh copy and checks exact version,
+  hello-world output, source JSON schema/success/diagnostics and generated
+  JavaScript execution before uploading artifacts.
+- **Validation:** Rehearsed the expanded packaging block on Windows against the
+  optimized binary, with all assertions passing. The local rehearsal substitutes
+  the Windows selector for PowerShell 5 and labels metadata local-dirty-rehearsal.
+  No Rust source changed; the prior 192-test baseline remains applicable.
+- **Unverified:** Hosted matrix/MSRV runs still require committed workflows.
+  Remote repository/release-history reads were unsuccessful, so version and URL
+  decisions remain open; no remote publication state has been inferred.
+- **Next:** Confirm public repository and release version, then commit/review the
+  candidate and execute hosted checks. No tag, push or publication was performed.
+
+## 2026-09-27 — First developer-preview release preparation
+
+- **Scope:** User selected a developer preview. Added explicit README limitations,
+  draft standalone release notes and a release checklist; no publication occurred.
+- **Infrastructure:** CI now configures Linux/Windows/macOS and Rust 1.74 checks.
+  Strict CLI execution is enabled in CI so OS-blocked tests cannot silently pass.
+  A manual candidate workflow runs checks, verifies Cargo packaging and creates
+  target-named archives, checksums and commit metadata without publishing.
+- **Packaging:** Explicit Cargo include rules exclude the website and repository
+  administration while retaining source, fixtures, examples, docs and licenses.
+- **Validation:** 192 tests ran successfully with strict CLI execution enabled;
+  formatting, strict Clippy and the doc-test stage passed. Offline Cargo package
+  verification passed with --allow-dirty. Windows GNU optimized build passed;
+  packaging script syntax/rehearsal, archive extraction and hello-world smoke
+  execution passed. PowerShell 5 used a local Windows-selector substitution;
+  the hosted PowerShell 7 workflow itself remains unexecuted.
+- **Release blockers:** Hosted platform/MSRV jobs and clean-commit candidates
+  remain unverified. Cargo repository metadata differs from origin. Version
+  0.1.0 conflicts with the existing dated changelog history; confirm identity,
+  remote release history and distribution/version before tagging or publishing.
+- **Next:** Resolve those release decisions, review accumulated changes and run
+  the candidate workflow on the exact committed release revision.
+
+## 2026-09-27 — Complete complex-receiver ranges
+
+- **Fixed:** Member references on call results, literals and grouped/binary
+  expressions previously lost the receiver and could point only at the member
+  name. Every inspected expression now retains its span, so chained member
+  locations cover the full receiver through the operation name. Grouping is
+  retained without changing receiver resolution.
+- **Coverage:** Reproduced the truncated range before the fix. Regression cases
+  cover chained/grouped calls, binary and literal receivers, grouped service
+  names, CRLF and a preceding Unicode comment.
+- **Validation:** 158 library and 34 CLI tests passed (192 total), without skips.
+  Formatting and strict all-target Clippy passed.
+- **Next:** Continue structural inspection hardening; full application semantics,
+  service implementation scopes and package loading remain unfinished.
+
+## 2026-09-27 — Machine-readable member-call references
+
+- **Added:** Opt-in JSON reports expose additive `member_calls` records with
+  enclosing function/task, operation, argument count, source range and receiver
+  classification. Service identities and ambiguous candidates are retained;
+  local/unresolved receivers have no service candidates.
+- **Coverage:** A failing JSON regression preceded implementation. Tests cover
+  all four receiver classifications, candidate lists, argument count, locations
+  and exclusion of unsupported files. CLI tests verify records only reference
+  successfully inspected files, including when contract checks fail.
+- **Validation:** 157 library and 34 CLI tests passed (191 total), without skips.
+  Formatting and strict all-target Clippy passed.
+- **Limitations/next:** Records describe inspection rather than application type
+  checking or execution. Canonical local module paths are temporary identities;
+  package-qualified identities remain planned. Continue improving supported
+  inspection coverage before implementing service bodies or package loading.
+
+## 2026-09-27 — Qualified calls in application inspection
+
+- **Added:** Recognition of the existing two-component `module::function` syntax
+  in experimental application expressions. Nested call arguments are traversed;
+  namespace names cannot accidentally resolve as dotted service receivers.
+  Member ranges retain the qualified receiver's full source range.
+- **Coverage:** Reproduced rejection of qualified calls before implementation.
+  Added namespace/service distinction, nested argument and malformed-path tests.
+  CLI success and error fixtures now wrap service calls in `std::println`.
+- **Validation:** 156 library and 34 CLI tests passed (190 total), without skips.
+  Formatting and strict all-target Clippy passed.
+- **Limitations/next:** Recognition does not resolve namespace exports or validate
+  qualified call types. Longer paths remain unsupported, matching the executable
+  parser's current limit. Continue supported-expression coverage; service-body
+  scope and application execution still require separate work.
+
+## 2026-09-27 — Shared coverage diagnostics
+
+- **Changed:** Moved incomplete-inspection E4096 generation from CLI orchestration
+  into the experimental Rust service checker. Library and CLI consumers now get
+  the same contract and coverage diagnostics. Existing CLI output/order is retained.
+- **Coverage:** Updated the mixed complete/partial project regression and observed
+  its failure before the fix. It verifies the coverage code, affected filename
+  and absence of a fabricated source location alongside precise contract errors.
+- **Validation:** 154 library and 34 CLI tests passed (188 total), without skips;
+  formatting and strict all-target Clippy passed.
+- **Next:** Define service implementation scope rules before extending inspection
+  to those bodies. Application type checking and package publication remain planned.
+
+## 2026-09-27 — Honest service implementation coverage
+
+- **Fixed:** File inspection previously skipped nonempty service implementation
+  bodies while reporting complete coverage. These files now return an explicit
+  unsupported-body reason; opt-in CLI checking reports E4096 and exits 1.
+  Service signatures and empty/comment-only bodies remain inspectable.
+- **Coverage:** Reproduced the false success with a failing regression. Added
+  cases for hidden calls, returns, nested blocks and comment-only bodies, plus
+  a project fixture checked through human and JSON CLI output.
+- **Validation:** All 154 library and 34 CLI tests passed (188 total), with no
+  skips. Formatting and strict all-target Clippy passed.
+- **Limitations/next:** Service implementation scope and call inspection remain
+  unimplemented. Define those rules before claiming coverage of those bodies;
+  ordinary project wiring checks retain their existing partial scope.
+
+## 2026-09-27 — Binary expressions in application inspection
+
+- **Changed:** Experimental service-call inspection accepts arithmetic and
+  comparison expressions with the executable subset's precedence and left
+  associativity. Calls in both operands and nested arguments are inspected;
+  initializer calls still resolve before the new binding shadows a service.
+- **Coverage:** Reproduced the previous arithmetic rejection with a failing
+  regression, then added operand traversal, argument count, shadowing and
+  malformed-expression coverage. The successful CLI fixture now contains calls
+  inside a comparison and arithmetic inside a call argument.
+- **Validation:** All 152 library and 34 CLI tests passed (186 total), without
+  skips. Formatting and strict all-target Clippy passed.
+- **Limitations:** Structural inspection only; no application execution or type
+  checking. Logical operators, conditionals and closures remain unsupported and
+  cause incomplete coverage rather than partial successful inspection.
+- **Next:** Continue expanding structured application inspection; package loading
+  and publishing remain planned separate work.
+
+## 2026-09-27 — Typed locals in application inspection
+
+- **Changed:** Optional local annotations are structurally consumed before the
+  initializer. Balanced generic/tuple/function-like/array-like forms are accepted
+  without resolving types. Malformed annotations reject the entire file inspection.
+- **Scope:** Initializer receivers still resolve before the new local shadows the
+  service name. Subsequent member calls on that binding are ordinary local calls.
+- **Coverage:** Nested annotation forms, malformed delimiter/list syntax and
+  initializer/shadowing order. Expanded the successful CLI service-metadata fixture
+  with a typed local whose later member must not be validated as a service call.
+- **Validation:** All 150 library and 34 CLI tests passed (184 total), without
+  skips. CLI tests passed again after expanding the fixture. Formatting, strict
+  all-target Clippy and diff checks passed.
+- **Next:** Expand expression support while keeping scope and coverage guarantees;
+  full application type checking and package loading remain separate work.
+
+## 2026-09-27 — Opt-in CLI service-call checking
+
+- **Added:** check --service-calls for project directories, with human/JSON output.
+  Runs after successful manifest/import/wiring validation. Contract errors fail;
+  incomplete file inspection adds E4096 and fails rather than claiming success.
+- **Coverage reporting:** JSON service_coverage retains complete status and every
+  file's inspected flag/reason. Completeness refers to supported syntax, not full
+  application type checking. Ordinary check reports and execution are unchanged.
+- **Tests added:** Complete success, operation/arity failures, partial Fielddesk,
+  human summaries, JSON coverage and source/duplicate-option usage errors.
+- **Validation:** 148 library tests passed. Updated the existing exact help-text
+  assertion for the new flag, then all 34 CLI tests passed (182 total), without
+  skips. Formatting, strict all-target Clippy and diff checks passed.
+- **Next:** Expand supported application syntax incrementally while preserving
+  explicit partial coverage. Third-party package resolution remains planned.
+
+## 2026-09-27 — Resolved service-call contract checks
+
+- **Added:** Opt-in check_service_calls API consumes successful project metadata
+  and per-file structured inspection. E4093 reports unknown operations, E4094
+  positional arity mismatches and E4095 ambiguous receivers at member-call spans.
+  Only receivers resolved as services are compared with retained contracts.
+- **Coverage:** Imported service calls with wrong/matching arity, missing members,
+  parameter shadowing, unresolved receivers and discarded partial-file results.
+- **Validation:** All 148 library and 32 CLI tests passed (180 total), without
+  skips. Formatting, strict all-target Clippy and diff checks passed.
+- **Boundary:** ServiceCheck retains file outcomes and diagnostics separately;
+  empty diagnostics never establish full coverage. Ordinary CLI check is unchanged,
+  application types remain unresolved, and unsupported files are not enforced.
+- **Next:** Expose opt-in service checking with machine-readable coverage so CLI
+  consumers cannot confuse a partial inspection with complete application checks.
+
+## 2026-09-27 — Import-aware per-file application inspection
+
+- **Connected:** inspect_project supplies same-file/direct-import service identities
+  to structured function inspection. Retained service declarations now include
+  empty contracts and source identity. Repeated imports remain idempotent and
+  transitive imports do not implicitly expose service names.
+- **Parsing:** Recognizes import declarations and balanced service blocks while
+  inspecting supported function/task bodies. Each file returns records or an
+  explicit error for unsupported syntax; project checking is not made stricter
+  based on partial inspection. Operation existence/arity checks remain next.
+- **Coverage:** Direct imports, same-file/empty services, parameter shadowing,
+  transitive exclusion and partial-file outcomes. The identity adapter uses local
+  canonical paths temporarily; future package identities remain a separate boundary.
+- **Compatibility:** ProjectCheck literals now need service_declarations. No CLI
+  JSON additions or source execution changes were made in this slice.
+- **Validation:** Full suite passed 147 library and 32 CLI tests (179 total),
+  without skips. The expanded transitive-import regression also passed separately.
+  Formatting, strict all-target Clippy and diff checks passed.
+- **Next:** Validate operation existence and positional arity only for receivers
+  resolved as services, while retaining explicit partial coverage for other files.
+
+## 2026-09-27 — Whole-file function/task receiver inspection
+
+- **Added:** Experimental inspect_functions extracts top-level function/task
+  signatures and bodies from lexer tokens, uses the structured signature parser
+  for parameter bindings, and invokes scoped body inspection. It returns ordered
+  FunctionCalls records with original source spans rather than substring offsets.
+- **Coverage:** Parameter shadowing, independent function/task scopes, multiline
+  signatures/comments, CRLF and UTF-8 locations, missing bodies, stray terminators
+  and unsupported declarations/bodies. Unsupported files return no partial list.
+- **Validation:** All 146 library and 32 CLI tests passed (178 total), without
+  skips. Formatting, strict all-target Clippy and diff checks passed.
+- **Boundary:** Visible service identities remain an explicit caller input;
+  imports and other application top-level forms are not accepted by this API yet.
+  Project checking and library/package resolution are unchanged.
+- **Next:** Connect validated imports and per-file service declarations to the
+  inspector, with explicit partial coverage for unsupported application constructs.
+
 ## Third-party library architecture requirement
 
 - **Requirement:** User explicitly requires other developers to publish reusable

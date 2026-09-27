@@ -1,5 +1,10 @@
 # Roadmap
 
+Production readiness is the release target; the developer-preview publication
+plan is superseded. Follow [the production audit and gates](PRODUCTION_READINESS.md)
+without renumbering these milestones. Completed foundation slices do not imply
+that the full language or application platform is production-ready.
+
 ## M0 — Repository Foundation (complete)
 
 Cargo package, canonical `svr` binary, repository documentation, and CI.
@@ -85,10 +90,14 @@ Full service contracts and richer page/model checks remain next.
 
 The partial multiline service scanner now includes duplicate-operation E4025
 checks and excludes service signatures from route/task callable targets.
-Code and regression cases are added; execution verification is deferred.
+Code and regression cases have been executed successfully on Windows.
 Structured headers, parameter records and return annotations now feed retained
 Rust service-operation metadata. This does not implement service calls, signature
-type resolution or full application parsing.
+type resolution or full application parsing. Experimental opt-in
+`check --service-calls` now checks operation existence and argument counts in
+supported function/task bodies, with explicit per-file coverage. Unsupported
+syntax, including nonempty service implementation bodies, produces E4096;
+complete coverage does not mean full application type checking.
 
 Before expanding this surface, the handoff assessment recommends hardening the
 existing executable subset. Module bodies, numeric widening/bounds, Int

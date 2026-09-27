@@ -1,0 +1,6 @@
+[project]
+name = "service-body-coverage"
+entry = "main.svr"
+
+[services]
+mail = "external"

@@ -33,6 +33,8 @@ pub struct ProjectCheck {
     pub source_files: Vec<PathBuf>,
     /// External service names declared in Sovra source.
     pub declared_services: Vec<String>,
+    /// Service declarations with file identity, including services with no operations.
+    pub service_declarations: Vec<ServiceDeclaration>,
     /// Parsed service operation declarations; application types remain unresolved.
     pub service_operations: Vec<ServiceOperation>,
     /// Validated project-relative application imports, without service-call resolution.
@@ -51,6 +53,17 @@ pub struct ProjectCheck {
     pub data_models: Vec<String>,
     /// Scheduled tasks declared by the application entry.
     pub scheduled_tasks: Vec<AppTask>,
+}
+
+/// A source service declaration retained for module visibility resolution.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServiceDeclaration {
+    /// Declared service name.
+    pub name: String,
+    /// Source file owning this declaration.
+    pub source_file: PathBuf,
+    /// Declaration line location.
+    pub span: Span,
 }
 
 /// An explicit application import whose target source exists inside the project.
@@ -191,6 +204,15 @@ pub fn check_project(path: impl AsRef<Path>) -> Result<ProjectCheck, Diagnostics
             entry_path,
             runtime_target,
             source_files,
+            service_declarations: source_index
+                .declared_services
+                .iter()
+                .map(|item| ServiceDeclaration {
+                    name: item.value.clone(),
+                    source_file: PathBuf::from(&item.location.file),
+                    span: item.location.span,
+                })
+                .collect(),
             service_operations: source_index.service_operations,
             imports,
             declared_services: source_index
@@ -1665,6 +1687,97 @@ fn push_manifest_error(
 mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn service_call_checks_respect_resolution_and_partial_coverage() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"sample\"\nentry = \"main.svr\"\n[services]\nmail = \"external\"",
+        );
+        project.write_file(
+            "services.svr",
+            "service mail {\nfn send(value: Text) -> Receipt\n}\n",
+        );
+        let source = "use services\nfn main() { mail.send(); mail.missing(1); mail.send(1); }\nfn local(mail: Object) { mail.missing(); }\n";
+        project.write_file("main.svr", source);
+        project.write_file("unresolved.svr", "fn caller() { mail.missing(); }");
+        project.write_file(
+            "partial.svr",
+            "use services\nfn caller() { mail.missing(); if true {} }",
+        );
+        let checked = check_project(project.path()).unwrap();
+        let report = application::check_service_calls(&checked);
+        assert_eq!(report.diagnostics.items.len(), 3);
+        assert_eq!(report.diagnostics.items[0].code, "E4094");
+        assert_eq!(report.diagnostics.items[1].code, "E4093");
+        assert_eq!(report.diagnostics.items[2].code, "E4096");
+        assert!(report.diagnostics.items[2].message.contains("partial.svr"));
+        assert!(report.diagnostics.items[2].source_file.is_none());
+        for (error, expected) in report
+            .diagnostics
+            .items
+            .iter()
+            .zip(["mail.send", "mail.missing"])
+        {
+            assert_eq!(&source[error.span.start..error.span.end], expected);
+            assert_eq!(
+                error.source_file.as_deref(),
+                Some(project.path().join("main.svr").to_string_lossy().as_ref())
+            );
+        }
+        assert_eq!(
+            report
+                .files
+                .iter()
+                .filter(|file| file.functions.is_err())
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn project_inspection_uses_direct_imports_and_reports_partial_files() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"sample\"\nentry = \"main.svr\"\n[services]\nmail = \"external\"",
+        );
+        project.write_file(
+            "main.svr",
+            "use services;\nfn main() { mail.send(); }\nfn shadow(mail: Object) { mail.send(); }",
+        );
+        project.write_file(
+            "services.svr",
+            "service mail {}\nfn local() { mail.send(); }",
+        );
+        project.write_file("bridge.svr", "use services\n");
+        project.write_file("unimported.svr", "use bridge\nfn other() { mail.send(); }");
+        project.write_file("partial.svr", "fn unsupported() { if true {} }");
+        let checked = check_project(project.path()).unwrap();
+        let inspections = application::inspect_project(&checked);
+        let get = |name: &str| {
+            inspections
+                .iter()
+                .find(|item| item.source_file == project.path().join(name))
+                .unwrap()
+        };
+        let main = get("main.svr").functions.as_ref().unwrap();
+        assert!(matches!(
+            main[0].calls[0].receiver,
+            scope::Receiver::Service(_)
+        ));
+        assert_eq!(main[1].calls[0].receiver, scope::Receiver::Local);
+        assert!(matches!(
+            get("services.svr").functions.as_ref().unwrap()[0].calls[0].receiver,
+            scope::Receiver::Service(_)
+        ));
+        assert_eq!(
+            get("unimported.svr").functions.as_ref().unwrap()[0].calls[0].receiver,
+            scope::Receiver::Unresolved
+        );
+        assert!(get("partial.svr").functions.is_err());
+    }
 
     #[test]
     fn project_imports_resolve_once_and_allow_cycles() {

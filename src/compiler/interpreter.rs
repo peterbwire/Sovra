@@ -104,6 +104,9 @@ fn execute_function(
                 stack.push(binary(operator, left, right)?);
             }
             Instruction::Call { name, arguments } => {
+                if *arguments > stack.len() {
+                    return Err("stack underflow on call".to_owned());
+                }
                 let mut call_arguments = Vec::with_capacity(*arguments);
                 for _ in 0..*arguments {
                     call_arguments.push(
@@ -252,6 +255,21 @@ fn checked_integer(value: Option<i64>) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn excessive_ir_argument_count_fails_before_allocation() {
+        let program = IrProgram {
+            functions: vec![IrFunction {
+                name: "main".into(),
+                parameters: vec![],
+                instructions: vec![Instruction::Call {
+                    name: "print".into(),
+                    arguments: usize::MAX,
+                }],
+            }],
+        };
+        assert_eq!(run(&program).unwrap_err(), "stack underflow on call");
+    }
     use crate::compiler::{ir, parser::Parser, semantic::SemanticAnalyzer};
 
     #[test]

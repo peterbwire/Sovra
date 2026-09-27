@@ -1,11 +1,166 @@
 //! Experimental structured body parsing and receiver inspection.
 //!
-//! Only bindings, nested blocks, returns, literals and calls are supported.
+//! Supports bindings, nested blocks, returns, literals, qualified/member calls,
+//! and arithmetic/comparison expressions without application type checking.
 //! Unsupported syntax fails the whole inspection; no partial call list escapes.
 
 use super::scope::{Receiver, Scope, ServiceIdentity};
 use crate::compiler::diagnostics::Span;
 use crate::compiler::lexer::{Lexer, Token, TokenKind};
+
+/// Explicit per-file outcome for experimental project receiver inspection.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileInspection {
+    /// Source inspected.
+    pub source_file: std::path::PathBuf,
+    /// Function records, or the reason this file could not be fully inspected.
+    pub functions: Result<Vec<FunctionCalls>, String>,
+}
+
+/// Service-call validation with explicit per-file syntax coverage.
+#[derive(Debug, Clone)]
+pub struct ServiceCheck {
+    /// Files successfully inspected or rejected as unsupported/partial.
+    pub files: Vec<FileInspection>,
+    /// Contract errors in inspected files and E4096 for each unsupported file.
+    pub diagnostics: crate::compiler::diagnostics::Diagnostics,
+}
+
+/// Check resolved service member names and positional argument counts.
+///
+/// Requires a successfully checked project (including service manifest bindings).
+/// Unsupported files remain in `files` as errors and produce E4096 diagnostics.
+/// Local and unresolved receivers are not service calls.
+/// Parameter and return annotation text is not used for type checking.
+pub fn check_service_calls(project: &super::ProjectCheck) -> ServiceCheck {
+    use crate::compiler::diagnostics::{Diagnostic, Diagnostics, Severity};
+    let files = inspect_project(project);
+    let mut diagnostics = Diagnostics::new();
+    let mut operations = std::collections::BTreeMap::new();
+    for operation in &project.service_operations {
+        if let Ok(module) = operation.source_file.canonicalize() {
+            operations.insert(
+                (
+                    module.to_string_lossy().into_owned(),
+                    operation.service.clone(),
+                    operation.name.clone(),
+                ),
+                operation.parameters.len(),
+            );
+        }
+    }
+    for file in &files {
+        let Ok(functions) = &file.functions else {
+            continue;
+        };
+        for function in functions {
+            for call in &function.calls {
+                let issue = match &call.receiver {
+                    Receiver::Service(service) => {
+                        match operations.get(&(
+                            service.module.clone(),
+                            service.name.clone(),
+                            call.operation.clone(),
+                        )) {
+                            None => Some((
+                                "E4093",
+                                format!(
+                                    "service `{}` has no operation `{}`",
+                                    service.name, call.operation
+                                ),
+                            )),
+                            Some(expected) if *expected != call.arguments => Some((
+                                "E4094",
+                                format!(
+                                    "service operation `{}.{}` expects {} argument(s), found {}",
+                                    service.name, call.operation, expected, call.arguments
+                                ),
+                            )),
+                            _ => None,
+                        }
+                    }
+                    Receiver::Ambiguous(_) => Some((
+                        "E4095",
+                        format!(
+                            "ambiguous service receiver for operation `{}`",
+                            call.operation
+                        ),
+                    )),
+                    Receiver::Local | Receiver::Unresolved => None,
+                };
+                if let Some((code, message)) = issue {
+                    diagnostics.push(Diagnostic {
+                        source_file: Some(file.source_file.to_string_lossy().into_owned()),
+                        severity: Severity::Error,
+                        code,
+                        message,
+                        span: call.span,
+                    });
+                }
+            }
+        }
+    }
+    for file in &files {
+        if let Err(reason) = &file.functions {
+            diagnostics.push(Diagnostic {
+                source_file: None,
+                severity: Severity::Error,
+                code: "E4096",
+                message: format!(
+                    "service-call inspection incomplete for `{}`: {reason}",
+                    file.source_file.display()
+                ),
+                span: Span {
+                    start: 0,
+                    end: 0,
+                    line: 0,
+                    column: 0,
+                },
+            });
+        }
+    }
+    ServiceCheck { files, diagnostics }
+}
+
+/// Inspect supported files using validated direct imports and same-file services.
+/// Unsupported files return errors individually; this does not change check
+/// success, enforce service contracts, or treat dependencies as transitive imports.
+pub fn inspect_project(project: &super::ProjectCheck) -> Vec<FileInspection> {
+    project
+        .source_files
+        .iter()
+        .map(|file| {
+            let functions = (|| {
+                let own = file.canonicalize().map_err(|error| error.to_string())?;
+                let mut visible = std::collections::BTreeSet::from([own]);
+                for import in &project.imports {
+                    if import.source_file == *file {
+                        visible.insert(import.target_file.clone());
+                    }
+                }
+                let mut services = Vec::new();
+                for declaration in &project.service_declarations {
+                    let module = declaration
+                        .source_file
+                        .canonicalize()
+                        .map_err(|error| error.to_string())?;
+                    if visible.contains(&module) {
+                        services.push(ServiceIdentity {
+                            module: module.to_string_lossy().into_owned(),
+                            name: declaration.name.clone(),
+                        });
+                    }
+                }
+                let source = std::fs::read_to_string(file).map_err(|error| error.to_string())?;
+                inspect_functions(&source, &services)
+            })();
+            FileInspection {
+                source_file: file.clone(),
+                functions,
+            }
+        })
+        .collect()
+}
 
 /// A member call discovered through structured expression traversal.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,9 +178,158 @@ pub struct MemberCall {
 #[derive(Debug)]
 enum Expression {
     Name(String, Span),
-    Literal,
+    // Namespace resolution is outside service inspection; retain the full range.
+    QualifiedName(Span),
+    Literal(Span),
     Member(Box<Expression>, String, Span),
-    Call(Box<Expression>, Vec<Expression>),
+    Call(Box<Expression>, Vec<Expression>, Span),
+    Binary(Box<Expression>, Box<Expression>, Span),
+}
+
+impl Expression {
+    fn span(&mut self) -> &mut Span {
+        match self {
+            Self::Name(_, span)
+            | Self::QualifiedName(span)
+            | Self::Literal(span)
+            | Self::Member(_, _, span)
+            | Self::Call(_, _, span)
+            | Self::Binary(_, _, span) => span,
+        }
+    }
+}
+
+/// A function or task inspected from a complete source file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionCalls {
+    /// Declaration name.
+    pub name: String,
+    /// Whether this is a task rather than an ordinary function.
+    pub is_task: bool,
+    /// Full declaration range in the original source file.
+    pub span: Span,
+    /// Structured member calls in the supported body subset.
+    pub calls: Vec<MemberCall>,
+}
+
+/// Inspect a file containing top-level function/task declarations.
+///
+/// Signature annotations remain unresolved. Visible services must be supplied
+/// by the caller; this API does not infer imports. Unsupported top-level or body
+/// syntax rejects the whole inspection. All spans are relative to `source`.
+pub fn inspect_functions(
+    source: &str,
+    services: &[ServiceIdentity],
+) -> Result<Vec<FunctionCalls>, String> {
+    let tokens = Lexer::new()
+        .tokenize(source)
+        .map_err(|_| "file contains unsupported lexical syntax".to_owned())?;
+    let mut parser = BodyParser {
+        tokens: &tokens,
+        position: 0,
+        calls: Vec::new(),
+    };
+    let mut functions = Vec::new();
+    while parser.peek() != &TokenKind::Eof {
+        let start = tokens[parser.position].span;
+        if parser.consume(TokenKind::Keyword("use")) {
+            while parser.peek() != &TokenKind::Eof
+                && tokens[parser.position].span.line == start.line
+            {
+                if parser.consume(TokenKind::Punctuation(';')) {
+                    break;
+                }
+                parser.position += 1;
+            }
+            let end = tokens[parser.position - 1].span.end;
+            super::imports::parse(&source[start.start..end]).map_err(str::to_owned)?;
+            continue;
+        }
+        if matches!(parser.peek(), TokenKind::Identifier(name) if name == "service") {
+            parser.position += 1;
+            if !matches!(parser.peek(), TokenKind::Identifier(_)) {
+                return Err("expected service name".into());
+            }
+            parser.position += 1;
+            parser.require(TokenKind::Punctuation('{'))?;
+            let mut depth = 1usize;
+            while depth > 0 {
+                match parser.peek() {
+                    TokenKind::Eof => return Err("unclosed service declaration".into()),
+                    TokenKind::Punctuation('{') => {
+                        if tokens[parser.position + 1].kind != TokenKind::Punctuation('}') {
+                            return Err(format!(
+                                "unsupported service implementation body at byte {}",
+                                tokens[parser.position].span.start
+                            ));
+                        }
+                        depth += 1;
+                    }
+                    TokenKind::Punctuation('}') => depth -= 1,
+                    _ => {}
+                }
+                parser.position += 1;
+            }
+            continue;
+        }
+        let is_task = match parser.peek() {
+            TokenKind::Keyword("fn") => false,
+            TokenKind::Keyword("task") => true,
+            TokenKind::Identifier(name) if name == "task" => true,
+            _ => {
+                return Err(format!(
+                    "unsupported application declaration at byte {}",
+                    start.start
+                ))
+            }
+        };
+        let keyword_end = tokens[parser.position].span.end;
+        parser.position += 1;
+        // Signature structure is checked by the shared contract parser. A body
+        // starts at the first brace; record/object parameter syntax is not yet supported.
+        while !matches!(parser.peek(), TokenKind::Punctuation('{') | TokenKind::Eof) {
+            if matches!(
+                parser.peek(),
+                TokenKind::Keyword("fn") | TokenKind::Punctuation('}')
+            ) {
+                return Err("missing function/task body".into());
+            }
+            parser.position += 1;
+        }
+        if parser.peek() == &TokenKind::Eof {
+            return Err("missing function/task body".into());
+        }
+        let header = source[keyword_end..tokens[parser.position].span.start]
+            .lines()
+            .map(|line| super::strip_line_comment(line, "//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let header = format!("fn {header}");
+        let operation = super::service_contract::parse_operation(&header)
+            .map_err(str::to_owned)?
+            .ok_or("missing declaration signature")?;
+        if operation.suffix.ends_with(';') || operation.body.is_some() {
+            return Err("unexpected terminator before function/task body".into());
+        }
+        let mut scope = Scope::new();
+        for service in services {
+            scope.add_service(service.clone());
+        }
+        for parameter in &operation.declarations {
+            scope.bind(parameter.name, start.start);
+        }
+        parser.block(&scope)?;
+        functions.push(FunctionCalls {
+            name: operation.name.to_owned(),
+            is_task,
+            span: Span {
+                end: tokens[parser.position - 1].span.end,
+                ..start
+            },
+            calls: std::mem::take(&mut parser.calls),
+        });
+    }
+    Ok(functions)
 }
 
 /// Inspect one braced body using explicitly supplied parameters and services.
@@ -102,6 +406,9 @@ impl BodyParser<'_> {
                     return Err("expected local binding name".into());
                 };
                 self.position += 1;
+                if self.consume(TokenKind::Punctuation(':')) {
+                    self.local_annotation()?;
+                }
                 self.require(TokenKind::Operator("="))?;
                 let expression = self.expression()?;
                 self.inspect(&expression, &scope);
@@ -117,7 +424,64 @@ impl BodyParser<'_> {
         }
         Ok(())
     }
+    // Consume structural annotation tokens without resolving their type names.
+    // Stop only at a top-level initializer marker, never at arbitrary body text.
+    fn local_annotation(&mut self) -> Result<(), String> {
+        let mut delimiters = Vec::new();
+        let mut has_name = false;
+        loop {
+            match self.peek() {
+                TokenKind::Operator("=") if delimiters.is_empty() && has_name => return Ok(()),
+                TokenKind::Identifier(_) => has_name = true,
+                TokenKind::Operator("<") => delimiters.push('<'),
+                TokenKind::Punctuation('(') => delimiters.push('('),
+                TokenKind::Punctuation('[') => delimiters.push('['),
+                TokenKind::Operator(">") | TokenKind::Punctuation(')' | ']') => {
+                    let expected = match self.peek() {
+                        TokenKind::Operator(">") => '<',
+                        TokenKind::Punctuation(')') => '(',
+                        _ => '[',
+                    };
+                    if delimiters.pop() != Some(expected) {
+                        return Err("mismatched local annotation delimiter".into());
+                    }
+                }
+                TokenKind::Punctuation(',') if !delimiters.is_empty() => {}
+                TokenKind::Operator("->") => {}
+                _ => return Err("unsupported or incomplete local annotation".into()),
+            }
+            self.position += 1;
+        }
+    }
+
     fn expression(&mut self) -> Result<Expression, String> {
+        self.binary_expression(1)
+    }
+
+    fn binary_expression(&mut self, minimum: u8) -> Result<Expression, String> {
+        let mut left = self.postfix_expression()?;
+        loop {
+            let precedence = match self.tokens[self.position].kind {
+                TokenKind::Operator("==" | "!=" | "<" | "<=" | ">" | ">=") => 1,
+                TokenKind::Operator("+" | "-") => 2,
+                TokenKind::Operator("*" | "/") => 3,
+                _ => break,
+            };
+            if precedence < minimum {
+                break;
+            }
+            self.position += 1;
+            let mut right = self.binary_expression(precedence + 1)?;
+            let span = Span {
+                end: right.span().end,
+                ..*left.span()
+            };
+            left = Expression::Binary(Box::new(left), Box::new(right), span);
+        }
+        Ok(left)
+    }
+
+    fn postfix_expression(&mut self) -> Result<Expression, String> {
         let token = &self.tokens[self.position];
         let mut expression = match &token.kind {
             TokenKind::Identifier(name) => {
@@ -130,12 +494,16 @@ impl BodyParser<'_> {
             | TokenKind::Float(_)
             | TokenKind::Keyword("true" | "false") => {
                 self.position += 1;
-                Expression::Literal
+                Expression::Literal(token.span)
             }
             TokenKind::Punctuation('(') => {
                 self.position += 1;
-                let value = self.expression()?;
+                let mut value = self.expression()?;
                 self.require(TokenKind::Punctuation(')'))?;
+                *value.span() = Span {
+                    end: self.tokens[self.position - 1].span.end,
+                    ..token.span
+                };
                 value
             }
             _ => {
@@ -145,16 +513,26 @@ impl BodyParser<'_> {
                 ))
             }
         };
+        if self.consume(TokenKind::Operator("::")) {
+            let Expression::Name(_, start) = expression else {
+                return Err("expected a module name before `::`".into());
+            };
+            if !matches!(self.peek(), TokenKind::Identifier(_)) {
+                return Err("expected a module member name after `::`".into());
+            }
+            expression = Expression::QualifiedName(Span {
+                end: self.tokens[self.position].span.end,
+                ..start
+            });
+            self.position += 1;
+        }
         loop {
             if self.consume(TokenKind::Punctuation('.')) {
                 let token = &self.tokens[self.position];
                 let TokenKind::Identifier(name) = &token.kind else {
                     return Err("expected member name".into());
                 };
-                let start = match &expression {
-                    Expression::Name(_, span) | Expression::Member(_, _, span) => *span,
-                    _ => token.span,
-                };
+                let start = *expression.span();
                 expression = Expression::Member(
                     Box::new(expression),
                     name.clone(),
@@ -178,7 +556,11 @@ impl BodyParser<'_> {
                         }
                     }
                 }
-                expression = Expression::Call(Box::new(expression), arguments);
+                let span = Span {
+                    end: self.tokens[self.position - 1].span.end,
+                    ..*expression.span()
+                };
+                expression = Expression::Call(Box::new(expression), arguments, span);
             } else {
                 break;
             }
@@ -187,7 +569,7 @@ impl BodyParser<'_> {
     }
     fn inspect(&mut self, expression: &Expression, scope: &Scope<'_>) {
         match expression {
-            Expression::Call(callee, arguments) => {
+            Expression::Call(callee, arguments, _) => {
                 self.inspect(callee, scope);
                 for argument in arguments {
                     self.inspect(argument, scope);
@@ -206,7 +588,11 @@ impl BodyParser<'_> {
                 }
             }
             Expression::Member(receiver, _, _) => self.inspect(receiver, scope),
-            Expression::Name(_, _) | Expression::Literal => {}
+            Expression::Binary(left, right, _) => {
+                self.inspect(left, scope);
+                self.inspect(right, scope);
+            }
+            Expression::Name(_, _) | Expression::QualifiedName(_) | Expression::Literal(_) => {}
         }
     }
 }
@@ -214,10 +600,181 @@ impl BodyParser<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn complex_receiver_ranges_cover_the_entire_member_expression() {
+        for (expression, expected) in [
+            ("maps.make().send()", "maps.make().send"),
+            ("(maps.make()).send()", "(maps.make()).send"),
+            ("(maps.make() + 1).send()", "(maps.make() + 1).send"),
+            ("\"text\".send()", "\"text\".send"),
+            ("(maps).send()", "(maps).send"),
+        ] {
+            let source = format!("{{ // Unicode: λ\r\n  {expression}; }}");
+            let calls = inspect_body(&source, &[], &[service()]).unwrap();
+            let call = calls.last().unwrap();
+            assert_eq!(&source[call.span.start..call.span.end], expected);
+            assert_eq!(call.span.line, 1);
+            assert_eq!(call.span.column, 2);
+            assert_eq!(
+                call.receiver,
+                if expression == "(maps).send()" {
+                    Receiver::Service(service())
+                } else {
+                    Receiver::Unresolved
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn qualified_calls_inspect_arguments_without_becoming_services() {
+        let source =
+            "{ std::println(maps.send(1)); maps::send(2); maps::client.send(maps.make()); }";
+        let calls = inspect_body(source, &[], &[service()]).unwrap();
+        assert_eq!(calls.len(), 3);
+        assert_eq!(calls[0].operation, "send");
+        assert_eq!(calls[0].receiver, Receiver::Service(service()));
+        assert_eq!(calls[1].operation, "make");
+        assert_eq!(calls[1].receiver, Receiver::Service(service()));
+        assert_eq!(calls[2].receiver, Receiver::Unresolved);
+        assert_eq!(
+            &source[calls[2].span.start..calls[2].span.end],
+            "maps::client.send"
+        );
+    }
+
+    #[test]
+    fn malformed_qualified_names_discard_inspection() {
+        for expression in [
+            "std::",
+            "std::(1)",
+            "1::send()",
+            "maps.send::other()",
+            "std::io::print(1)",
+        ] {
+            let source = format!("{{ maps.first(); {expression}; }}");
+            assert!(
+                inspect_body(&source, &[], &[service()]).is_err(),
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn service_implementations_cannot_claim_complete_inspection() {
+        for body in ["maps.missing();", "return 1;", "{}"] {
+            let source =
+                format!("fn first() {{ maps.send(); }} service maps {{ fn send() {{ {body} }} }}");
+            let error = inspect_functions(&source, &[service()]).unwrap_err();
+            assert!(error.contains("service implementation body"), "{error}");
+        }
+    }
+
+    #[test]
+    fn empty_service_bodies_and_signatures_have_no_hidden_calls() {
+        // Line comments and whitespace do not constitute an implementation.
+        let source = "service maps { fn send(); fn empty() { // maps.hidden()\n } }";
+        assert!(inspect_functions(source, &[service()]).unwrap().is_empty());
+    }
+
+    #[test]
+    fn binary_operands_preserve_calls_arguments_and_shadowing() {
+        let source = "{ let maps = maps.first() + maps.second() * 2; maps.local(); return other.send((maps.third() - 1) / 2 >= maps.fourth(), 1 != 2); }";
+        let calls = inspect_body(source, &[], &[service()]).unwrap();
+        assert_eq!(
+            calls
+                .iter()
+                .map(|call| call.operation.as_str())
+                .collect::<Vec<_>>(),
+            ["first", "second", "local", "third", "fourth", "send"]
+        );
+        for call in &calls[..2] {
+            assert_eq!(call.receiver, Receiver::Service(service()));
+        }
+        for call in &calls[2..5] {
+            assert_eq!(call.receiver, Receiver::Local);
+        }
+        assert_eq!(calls[5].arguments, 2);
+    }
+
+    #[test]
+    fn incomplete_binary_operands_discard_all_calls() {
+        for expression in [
+            "maps.send() +",
+            "1 * / maps.send()",
+            "maps.send() ==",
+            "1 + (maps.send() * )",
+        ] {
+            let source = format!("{{ maps.first(); {expression}; }}");
+            assert!(
+                inspect_body(&source, &[], &[service()]).is_err(),
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn typed_locals_preserve_initializer_and_shadowing_order() {
+        for annotation in [
+            "MapClient",
+            "Result<MapClient, Error>",
+            "(Int, Text) -> MapClient",
+            "[MapClient]",
+        ] {
+            let source = format!("{{ let maps: {annotation} = maps.create(); maps.send(); }}");
+            let calls = inspect_body(&source, &[], &[service()]).unwrap();
+            assert_eq!(calls.len(), 2);
+            assert_eq!(calls[0].receiver, Receiver::Service(service()));
+            assert_eq!(calls[1].receiver, Receiver::Local);
+        }
+    }
+
+    #[test]
+    fn malformed_local_annotations_discard_all_inspection_results() {
+        for annotation in ["", "Result<Text, Error", "Text]", "Text, Int", "Text + Int"] {
+            let source = format!("{{ maps.send(); let value: {annotation} = maps.create(); }}");
+            assert!(
+                inspect_body(&source, &[], &[service()]).is_err(),
+                "{annotation}"
+            );
+        }
+    }
     fn service() -> ServiceIdentity {
         ServiceIdentity {
             module: "app.services".into(),
             name: "maps".into(),
+        }
+    }
+
+    #[test]
+    fn file_declarations_supply_parameters_and_preserve_source_spans() {
+        let source = "// Unicode: λ\r\nfn first(\n maps: Object // shadows import\n) -> Result<Text, Error> { return maps.send(); }\ntask second() { maps.send(1); }";
+        let functions = inspect_functions(source, &[service()]).unwrap();
+        assert_eq!(functions.len(), 2);
+        assert_eq!(functions[0].name, "first");
+        assert!(!functions[0].is_task);
+        assert_eq!(functions[0].calls[0].receiver, Receiver::Local);
+        assert!(functions[1].is_task);
+        assert_eq!(functions[1].calls[0].receiver, Receiver::Service(service()));
+        for function in functions {
+            let call = &function.calls[0];
+            assert_eq!(&source[call.span.start..call.span.end], "maps.send");
+            assert!(source[function.span.start..function.span.end].ends_with('}'));
+        }
+    }
+
+    #[test]
+    fn file_inspection_rejects_unsupported_and_incomplete_declarations() {
+        for source in [
+            "fn good() {} fn bad() { if true {} }",
+            "fn missing()",
+            "fn missing() fn next() {}",
+            "fn bad(); {}",
+            "use ../services\nfn main() {}",
+            "model Example {}",
+        ] {
+            assert!(inspect_functions(source, &[service()]).is_err(), "{source}");
         }
     }
 
@@ -258,8 +815,8 @@ mod tests {
             "{ maps.send(); let f = fn value => value; }",
             "{ maps.send(",
             "{ maps.send();",
-            "{ let x: Text = 1; }",
-            "{ maps.send() + 1; }",
+            "{ let x: = 1; }",
+            "{ maps.send() && true; }",
         ] {
             assert!(inspect_body(source, &[], &[service()]).is_err(), "{source}");
         }

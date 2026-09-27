@@ -1,6 +1,16 @@
 # Full development status
 
-Updated: 2026-09-21. Status terms: Implemented, Partial, Experimental, Stub, Planned.
+Updated: 2026-09-27. Status terms: Implemented, Partial, Experimental, Stub, Planned.
+
+Current release direction: **production readiness, not yet achieved**. The
+developer-preview plan is superseded by [the production audit](PRODUCTION_READINESS.md).
+The latest pre-audit Windows baseline is 192 executed tests with no skips;
+formatting, strict Clippy, source packaging and optimized artifact smoke checks
+passed. Historical blocked/pending notes below describe earlier checkpoints and
+are superseded for tests in that baseline. Hosted platform and Rust 1.74 jobs
+remain unverified. Project service-call inspection and JSON member references
+are implemented for a limited subset; full application typing/runtime and package
+publication remain unfinished. Consult the development log for subsequent counts.
 
 ## Repository state and audit
 

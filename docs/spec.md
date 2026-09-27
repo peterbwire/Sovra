@@ -6,6 +6,21 @@ M11 completes the initial compiler roadmap: Sovra can lex, parse, validate,
 lower to explicit IR, interpret, inspect IR, and emit a portable JavaScript
 backend.
 
+The release target is production readiness; these implemented slices do not
+establish it. See [production acceptance gates](PRODUCTION_READINESS.md).
+Both execution engines reject incorrect argument counts at user-function entry,
+including direct public-IR execution, before parameter setup.
+Generated JavaScript rejects missing named values and stack underflow on store,
+widening, binary operations, calls and pops with interpreter-compatible errors.
+Empty-stack returns still produce Unit. This is not full IR verification.
+Builtin calls enforce registry argument counts in both engines; `std::len`
+rejects non-String values rather than coercing them. The interpreter checks call
+stack availability before allocating argument storage, including for malformed IR.
+Numeric literals supplied through public IR use Rust i64/f64 parsing in both
+engines. JavaScript emission normalizes accepted values and preserves invalid
+literal failures at execution time. This does not expand source literal syntax
+or settle non-finite Float formatting policy.
+
 ## Toolchain contract
 
 * The package is named `sovra`; its canonical binary is `svr`.
@@ -293,15 +308,70 @@ not treat its existence as validation of scanned application bodies.
 Experimental `project::application::inspect_body` now connects lexer-produced
 body expressions to the scope resolver. It accepts a braced body plus explicitly
 supplied parameter names and visible service identities. Supported forms are
-unannotated local bindings, nested blocks, returns, literals, grouping, positional
-calls and member access. Results retain operation names, argument counts,
+local bindings with optional structural annotations, nested blocks, returns,
+literals, grouping, positional calls, member access, and binary arithmetic
+(`+`, `-`, `*`, `/`) and comparisons (`==`, `!=`, `<`, `<=`, `>`, `>=`).
+Binary expressions use the executable subset's precedence and left associativity;
+inspection visits calls in both operands without evaluating or type-checking them.
+Two-component qualified names and calls (`module::function(...)`) are also
+recognized, following the existing executable syntax. Calls nested in their
+arguments are inspected. Namespace existence, exports and qualified callable
+types are outside service inspection; `maps::send` is not a dotted service
+reference. Malformed paths and longer namespace chains reject inspection.
+Results retain operation names, argument counts,
 receiver classifications and member-expression ranges relative to the supplied
 body. Local initializers resolve before their binding becomes visible.
 Comments and strings do not create call references. Complex receiver expressions
-remain unresolved. Unsupported forms (including closures, conditionals, binary
-operators and typed locals) fail the whole inspection rather than returning a
-partial list. This API is not wired into project-check enforcement yet and does
-not imply that Fielddesk bodies parse or execute.
+remain unresolved. Unsupported forms (including closures, conditionals and logical
+operators) fail the whole inspection rather than returning a
+partial list. The opt-in service-call check uses this API; ordinary project
+checks do not. This does not imply that Fielddesk bodies parse or execute.
+
+Local annotation scanning preserves the initializer boundary through balanced
+generic, tuple/function-like and array-like delimiters. Type names remain
+unresolved; these spellings do not imply implemented application types. Empty,
+unclosed or mismatched annotations make the file inspection partial. Initializer
+calls resolve before the local name shadows an imported service.
+
+Experimental `project::application::inspect_functions` accepts whole files made
+of top-level function/task declarations in that same limited body subset. It
+derives parameter bindings from structured signatures and returns per-declaration
+call records with original file-relative spans, including across CRLF and UTF-8
+comments. Annotations remain unresolved; functions have independent scopes.
+Callers still provide visible services. Import declarations and balanced service
+blocks are recognized: signatures and empty operation bodies contain no calls
+to inspect. Nonempty service implementation bodies reject file inspection until
+service-body scope rules are implemented; skipped implementation code cannot
+claim complete coverage. Other unsupported top-level forms also reject inspection.
+The opt-in CLI service-call check uses this API and reports E4096 for such files.
+
+Experimental `project::application::inspect_project` connects a successful
+ProjectCheck to per-file inspection. Same-file services and services in direct
+validated imports become receiver candidates; transitive imports do not expose
+services. Empty service declarations retain file identity too. Each file has
+either function/call records or an explicit partial-inspection error. A partial
+file is not reported as having zero calls. This opt-in Rust API does not alter
+CLI check success or enforce operation existence/arity. Local canonical file
+paths temporarily identify source modules; published packages will require
+resolved package-qualified identities rather than treating those paths as portable.
+
+Experimental `project::application::check_service_calls` validates calls in files
+that the inspector can fully parse. E4093 identifies a missing service operation,
+E4094 a positional argument-count mismatch and E4095 an ambiguous service receiver.
+Locations identify the member expression in its original file. Local/unresolved
+receivers are outside this service rule. Parameter/return types are not checked.
+The result retains per-file inspection outcomes alongside diagnostics and emits
+E4096 for every unsupported file, including through the Rust API. Callers must first
+obtain a successful ProjectCheck, which validates service manifest bindings.
+`svr check --service-calls <project-directory>` explicitly requests this inspection
+after ordinary project validation. Unsupported files produce E4096 and exit 1;
+contract errors also exit 1. Complete inspection without errors exits 0. Source
+targets reject the flag with usage exit 2. JSON includes per-file service_coverage,
+and human output includes inspected/total counts. Ordinary checks remain unchanged.
+Opt-in JSON also exposes `member_calls` with enclosing function/task identity,
+member range, operation, argument count and receiver classification/candidates.
+Only fully inspected files contribute records; coverage must be checked before
+interpreting absence. This metadata does not validate ordinary object operations.
 
 ### Partial service-contract scan
 

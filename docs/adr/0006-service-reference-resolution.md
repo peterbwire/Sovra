@@ -3,8 +3,11 @@
 Status: Accepted option A; implementation is partial. The user directed
 continuation after the proposal. Project-relative import records and target
 validation are implemented. A tested experimental scope-resolution API now
-handles explicit bindings and service identities; application parser integration
-and service-call validation remain planned.
+handles explicit bindings and service identities. Experimental application
+inspection and opt-in service-call validation are implemented for a limited body
+subset. The Rust checker and CLI both report E4096 for unsupported files;
+service implementation scope, closure support and application type checking
+remain unfinished.
 
 ## Evidence and boundary
 

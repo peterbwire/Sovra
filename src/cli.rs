@@ -97,7 +97,8 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
         if command == "build" {
             println!("Usage: svr build [--emit ir|js] <source.svr>");
         } else if command == "check" {
-            println!("Usage: svr check [--format human|json] <source.svr|project-directory>");
+            println!("Usage: svr check [--format human|json] [--service-calls] <source.svr|project-directory>");
+            println!("  --service-calls  Experimental project-only contract checks; incomplete coverage fails.");
         } else {
             println!("Usage: svr run <source.svr>");
         }
@@ -197,7 +198,7 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
 }
 
 fn check_command(args: &[String]) -> ExitCode {
-    let (format, path) = match parse_check_args(args) {
+    let (format, path, service_calls) = match parse_check_args(args) {
         Ok(parsed) => parsed,
         Err(message) => {
             eprintln!("{message}");
@@ -219,6 +220,29 @@ fn check_command(args: &[String]) -> ExitCode {
     if metadata.is_dir() {
         match compiler::project::check_project(path) {
             Ok(project) => {
+                if service_calls {
+                    let report = compiler::project::application::check_service_calls(&project);
+                    let success = report.diagnostics.is_empty();
+                    if format == CheckFormat::Json {
+                        println!("{}", check_report::render_service_check(path, &report));
+                    } else {
+                        let inspected = report
+                            .files
+                            .iter()
+                            .filter(|file| file.functions.is_ok())
+                            .count();
+                        println!(
+                            "service-call inspection: {inspected}/{} file(s) covered",
+                            report.files.len()
+                        );
+                        print_diagnostics(report.diagnostics);
+                    }
+                    return if success {
+                        ExitCode::SUCCESS
+                    } else {
+                        ExitCode::from(1)
+                    };
+                }
                 if format == CheckFormat::Json {
                     println!("{}", check_report::render_project(path, &project));
                     return ExitCode::SUCCESS;
@@ -244,6 +268,10 @@ fn check_command(args: &[String]) -> ExitCode {
             }
         }
     } else {
+        if service_calls {
+            eprintln!("svr: --service-calls requires a project directory");
+            return ExitCode::from(2);
+        }
         check_source_file(path, format)
     }
 }
@@ -293,7 +321,8 @@ enum CheckFormat {
     Json,
 }
 
-fn parse_check_args(args: &[String]) -> Result<(CheckFormat, &str), String> {
+fn parse_check_args(args: &[String]) -> Result<(CheckFormat, &str, bool), String> {
+    let mut service_calls = false;
     let mut format = None;
     let mut path = None;
     let mut positional_only = false;
@@ -301,6 +330,13 @@ fn parse_check_args(args: &[String]) -> Result<(CheckFormat, &str), String> {
     while let Some(argument) = arguments.next() {
         if !positional_only && argument == "--" {
             positional_only = true;
+            continue;
+        }
+        if !positional_only && argument == "--service-calls" {
+            if service_calls {
+                return Err("svr: --service-calls may only be specified once".into());
+            }
+            service_calls = true;
             continue;
         }
         let format_value = if !positional_only && argument == "--format" {
@@ -340,7 +376,7 @@ fn parse_check_args(args: &[String]) -> Result<(CheckFormat, &str), String> {
         }
     }
     let path = path.ok_or("svr: check expects exactly one source path or project directory")?;
-    Ok((format.unwrap_or(CheckFormat::Human), path))
+    Ok((format.unwrap_or(CheckFormat::Human), path, service_calls))
 }
 
 fn print_check_diagnostics(

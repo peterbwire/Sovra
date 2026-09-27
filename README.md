@@ -1,5 +1,13 @@
 # Sovra
 
+**Release target: production readiness; not yet achieved.** The implemented subset
+includes a source-file compiler/interpreter, IR/JavaScript output and diagnostics.
+Project checking remains partial and service-call inspection experimental.
+Fielddesk is not runnable; the application runtime, Sovra test runner and library
+publishing are unfinished. The developer-preview release plan is superseded.
+See the [production-readiness plan](docs/PRODUCTION_READINESS.md) for the audit,
+implementation order and acceptance gates.
+
 Sovra is a modern application language for turning ideas into running
 software without stitching together a pile of unrelated frameworks.
 

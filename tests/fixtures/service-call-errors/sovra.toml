@@ -1,0 +1,6 @@
+[project]
+name = "service-call-errors"
+entry = "main.svr"
+
+[services]
+mail = "external"

@@ -134,6 +134,92 @@ fn push_optional_string(output: &mut String, value: Option<&str>) {
     }
 }
 
+/// Render opt-in service diagnostics and explicit per-file syntax coverage.
+pub fn render_service_check(
+    target: &str,
+    report: &crate::compiler::project::application::ServiceCheck,
+) -> String {
+    let mut output = render(target, Some(CheckKind::Project), &report.diagnostics);
+    output.pop();
+    let complete = report.files.iter().all(|file| file.functions.is_ok());
+    let _ = write!(
+        output,
+        ",\"service_coverage\":{{\"complete\":{complete},\"files\":["
+    );
+    for (index, file) in report.files.iter().enumerate() {
+        if index > 0 {
+            output.push(',');
+        }
+        output.push_str("{\"file\":");
+        push_string(&mut output, &file.source_file.to_string_lossy());
+        let _ = write!(
+            output,
+            ",\"inspected\":{},\"reason\":",
+            file.functions.is_ok()
+        );
+        push_optional_string(
+            &mut output,
+            file.functions.as_ref().err().map(String::as_str),
+        );
+        output.push('}');
+    }
+    output.push_str("]},\"member_calls\":[");
+    let mut first = true;
+    for file in &report.files {
+        let Ok(functions) = &file.functions else {
+            continue;
+        };
+        for function in functions {
+            for call in &function.calls {
+                if !first {
+                    output.push(',');
+                }
+                first = false;
+                output.push_str("{\"function\":");
+                push_string(&mut output, &function.name);
+                let _ = write!(output, ",\"is_task\":{},\"operation\":", function.is_task);
+                push_string(&mut output, &call.operation);
+                let _ = write!(output, ",\"arguments\":{},\"receiver\":", call.arguments);
+                push_receiver(&mut output, &call.receiver);
+                output.push_str(",\"location\":{\"file\":");
+                push_string(&mut output, &file.source_file.to_string_lossy());
+                let span = call.span;
+                let _ = write!(
+                    output,
+                    ",\"start\":{},\"end\":{},\"line\":{},\"column\":{}}}}}",
+                    span.start, span.end, span.line, span.column
+                );
+            }
+        }
+    }
+    output.push_str("]}");
+    output
+}
+
+fn push_receiver(output: &mut String, receiver: &crate::compiler::project::scope::Receiver) {
+    use crate::compiler::project::scope::{Receiver, ServiceIdentity};
+    let (kind, candidates): (&str, &[ServiceIdentity]) = match receiver {
+        Receiver::Local => ("local", &[]),
+        Receiver::Unresolved => ("unresolved", &[]),
+        Receiver::Service(service) => ("service", std::slice::from_ref(service)),
+        Receiver::Ambiguous(services) => ("ambiguous", services),
+    };
+    output.push_str("{\"kind\":");
+    push_string(output, kind);
+    output.push_str(",\"candidates\":[");
+    for (index, service) in candidates.iter().enumerate() {
+        if index > 0 {
+            output.push(',');
+        }
+        output.push_str("{\"module\":");
+        push_string(output, &service.module);
+        output.push_str(",\"name\":");
+        push_string(output, &service.name);
+        output.push('}');
+    }
+    output.push_str("]}");
+}
+
 fn push_string(output: &mut String, value: &str) {
     output.push('"');
     for character in value.chars() {
@@ -161,6 +247,64 @@ mod tests {
 
     use super::*;
     use crate::compiler::diagnostics::Diagnostic;
+
+    #[test]
+    fn service_report_exposes_resolved_and_unresolved_member_calls() {
+        use crate::compiler::project::application::{
+            inspect_functions, FileInspection, ServiceCheck,
+        };
+        use crate::compiler::project::scope::ServiceIdentity;
+        let source =
+            "fn main(local: Object) { mail.send(1); local.send(); other.send(); maps.send(); }";
+        let services = [
+            ServiceIdentity {
+                module: "mail.svr".into(),
+                name: "mail".into(),
+            },
+            ServiceIdentity {
+                module: "one.svr".into(),
+                name: "maps".into(),
+            },
+            ServiceIdentity {
+                module: "two.svr".into(),
+                name: "maps".into(),
+            },
+        ];
+        let report = ServiceCheck {
+            files: vec![
+                FileInspection {
+                    source_file: "main.svr".into(),
+                    functions: inspect_functions(source, &services),
+                },
+                FileInspection {
+                    source_file: "partial.svr".into(),
+                    functions: Err("unsupported".into()),
+                },
+            ],
+            diagnostics: Diagnostics::new(),
+        };
+        assert_report(
+            &render_service_check("project", &report),
+            r#"
+            assert.equal(report.service_coverage.complete, false);
+            const calls = report.member_calls;
+            assert.equal(calls.length, 4);
+            assert.deepEqual(calls.map(c => c.receiver.kind), ['service', 'local', 'unresolved', 'ambiguous']);
+            assert.deepEqual(calls[0].receiver.candidates, [{module: 'mail.svr', name: 'mail'}]);
+            assert.deepEqual(calls[1].receiver.candidates, []);
+            assert.deepEqual(calls[2].receiver.candidates, []);
+            assert.equal(calls[3].receiver.candidates.length, 2);
+            assert.equal(calls[0].arguments, 1);
+            for (const call of calls) {
+                assert.equal(call.function, 'main');
+                assert.equal(call.is_task, false);
+                assert.equal(call.operation, 'send');
+                assert.equal(call.location.file, 'main.svr');
+                assert.ok(call.location.end > call.location.start);
+            }
+        "#,
+        );
+    }
 
     fn assert_report(report: &str, assertions: &str) {
         let script = format!(
