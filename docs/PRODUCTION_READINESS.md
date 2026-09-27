@@ -87,6 +87,26 @@ the reproduced capacity-overflow panic from an extreme malformed IR count.
 Numeric IR literal parsing now follows Rust in both engines, with execution-time
 errors for rejected spellings. This closes conversion discrepancies but does not
 settle Float output policy or complete runtime-kind/resource validation.
+Binary runtime-kind checks now reject JavaScript coercions and match the
+interpreter across a 396-case operator/value matrix. This covers ordinary
+primitive samples, Unit, zero-divisor precedence and unknown operators; it is
+not exhaustive Float/boundary or resource-limit evidence.
+Shared IR declaration validation now rejects duplicate function/parameter names
+before execution. Previously the interpreter selected the first duplicate
+function while JavaScript selected the last. This closes identity ambiguity;
+general IR verification and broader resource bounds remain unfinished.
+Parameter encoding now uses positional JavaScript identifiers rather than lossy
+name sanitization. Differential coverage preserves distinct punctuation/Unicode
+IR names, empty names and JavaScript-sensitive runtime keys. Source identifier
+syntax is unchanged.
+Missing-function diagnostics now use shared string escaping, with exact error
+message comparisons before platform-specific stderr formatting. Successful and
+missing calls are covered for unusual IR names, including JavaScript-sensitive
+keys. Parser/resource limits remain the next audit area.
+The [resource-bound audit](design/RESOURCE_BOUNDS.md) identifies recursive parser,
+AST and application-inspection paths and unbounded output/data growth. Project
+source discovery now uses an iterative directory worklist; compiler/runtime
+budget policies remain undecided and are not implied by this refactor.
 
 ## Decisions and progress discipline
 

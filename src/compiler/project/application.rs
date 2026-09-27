@@ -187,6 +187,26 @@ enum Expression {
 }
 
 impl Expression {
+    fn depth(&self) -> usize {
+        let mut pending = vec![(self, 1)];
+        let mut maximum = 0;
+        while let Some((expression, depth)) = pending.pop() {
+            maximum = maximum.max(depth);
+            match expression {
+                Self::Binary(left, right, _) => {
+                    pending.push((left, depth + 1));
+                    pending.push((right, depth + 1));
+                }
+                Self::Member(receiver, _, _) => pending.push((receiver, depth + 1)),
+                Self::Call(callee, arguments, _) => {
+                    pending.push((callee, depth + 1));
+                    pending.extend(arguments.iter().map(|argument| (argument, depth + 1)));
+                }
+                _ => {}
+            }
+        }
+        maximum
+    }
     fn span(&mut self) -> &mut Span {
         match self {
             Self::Name(_, span)
@@ -224,6 +244,7 @@ pub fn inspect_functions(
     let tokens = Lexer::new()
         .tokenize(source)
         .map_err(|_| "file contains unsupported lexical syntax".to_owned())?;
+    check_nesting(&tokens)?;
     let mut parser = BodyParser {
         tokens: &tokens,
         position: 0,
@@ -343,6 +364,7 @@ pub fn inspect_body(
     let tokens = Lexer::new()
         .tokenize(source)
         .map_err(|_| "body contains unsupported lexical syntax".to_owned())?;
+    check_nesting(&tokens)?;
     let mut parser = BodyParser {
         tokens: &tokens,
         position: 0,
@@ -366,6 +388,26 @@ struct BodyParser<'a> {
     tokens: &'a [Token],
     position: usize,
     calls: Vec<MemberCall>,
+}
+
+fn check_nesting(tokens: &[Token]) -> Result<(), String> {
+    crate::compiler::limits::check_nesting(tokens, true).map_err(depth_error)
+}
+
+fn depth_error(span: Span) -> String {
+    format!(
+        "{} at byte {}",
+        crate::compiler::limits::depth_message(),
+        span.start
+    )
+}
+
+fn check_depth(depth: usize, span: Span) -> Result<(), String> {
+    if depth > crate::compiler::limits::MAX_STRUCTURAL_DEPTH {
+        Err(depth_error(span))
+    } else {
+        Ok(())
+    }
 }
 
 impl BodyParser<'_> {
@@ -470,8 +512,10 @@ impl BodyParser<'_> {
             if precedence < minimum {
                 break;
             }
+            let operator_span = self.tokens[self.position].span;
             self.position += 1;
             let mut right = self.binary_expression(precedence + 1)?;
+            check_depth(1 + left.depth().max(right.depth()), operator_span)?;
             let span = Span {
                 end: right.span().end,
                 ..*left.span()
@@ -533,6 +577,7 @@ impl BodyParser<'_> {
                     return Err("expected member name".into());
                 };
                 let start = *expression.span();
+                check_depth(1 + expression.depth(), token.span)?;
                 expression = Expression::Member(
                     Box::new(expression),
                     name.clone(),
@@ -560,6 +605,13 @@ impl BodyParser<'_> {
                     end: self.tokens[self.position - 1].span.end,
                     ..*expression.span()
                 };
+                let depth = 1 + arguments
+                    .iter()
+                    .map(Expression::depth)
+                    .chain(std::iter::once(expression.depth()))
+                    .max()
+                    .unwrap_or(0);
+                check_depth(depth, span)?;
                 expression = Expression::Call(Box::new(expression), arguments, span);
             } else {
                 break;

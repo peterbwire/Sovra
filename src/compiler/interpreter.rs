@@ -34,6 +34,7 @@ impl Value {
 
 /// Execute the `main` function and return captured `print` output.
 pub fn run(program: &IrProgram) -> Result<Vec<String>, String> {
+    crate::compiler::ir::validate_declarations(program)?;
     let function = program
         .functions
         .iter()

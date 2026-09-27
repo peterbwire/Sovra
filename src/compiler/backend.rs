@@ -31,6 +31,9 @@ fn instruction_text(instruction: &Instruction) -> String {
 
 /// Render IR as portable JavaScript.
 pub fn render_javascript(program: &IrProgram) -> String {
+    if let Err(error) = crate::compiler::ir::validate_declarations(program) {
+        return format!("\"use strict\";\nthrow new Error({});\n", js_string(&error));
+    }
     let mut output = String::new();
     let _ = writeln!(output, "\"use strict\";");
     let _ = writeln!(output);
@@ -65,11 +68,11 @@ pub fn render_javascript(program: &IrProgram) -> String {
 
 fn render_js_function(output: &mut String, index: usize, function: &IrFunction) {
     let _ = write!(output, "function {}(", js_function_name(index));
-    for (parameter_index, parameter) in function.parameters.iter().enumerate() {
+    for parameter_index in 0..function.parameters.len() {
         if parameter_index > 0 {
             let _ = write!(output, ", ");
         }
-        let _ = write!(output, "{}", js_identifier(parameter));
+        let _ = write!(output, "svr_arg_{parameter_index}");
     }
     let _ = writeln!(output, ") {{");
     let _ = writeln!(
@@ -94,12 +97,11 @@ fn render_js_function(output: &mut String, index: usize, function: &IrFunction) 
     let _ = writeln!(output, "  try {{");
     let _ = writeln!(output, "  const stack = [];");
     let _ = writeln!(output, "  const names = Object.create(null);");
-    for parameter in &function.parameters {
+    for (parameter_index, parameter) in function.parameters.iter().enumerate() {
         let _ = writeln!(
             output,
-            "  names[{}] = {};",
+            "  names[{}] = svr_arg_{parameter_index};",
             js_string(parameter),
-            js_identifier(parameter)
         );
     }
     for instruction in &function.instructions {
@@ -202,7 +204,8 @@ fn render_js_call(output: &mut String, name: &str, arguments: usize) {
             );
             let _ = writeln!(
                 output,
-                "    if (!callee) throw new Error(\"runtime function `{name}` was not found\");"
+                "    if (!callee) throw new Error({});",
+                js_string(&format!("runtime function `{name}` was not found"))
             );
             let _ = writeln!(output, "    stack.push(callee(...args));");
         }
@@ -253,18 +256,6 @@ fn js_function_name(index: usize) -> String {
     format!("svr_fn_{index}")
 }
 
-fn js_identifier(name: &str) -> String {
-    let mut identifier = String::from("svr_arg_");
-    for character in name.chars() {
-        if character.is_ascii_alphanumeric() || character == '_' {
-            identifier.push(character);
-        } else {
-            identifier.push('_');
-        }
-    }
-    identifier
-}
-
 fn js_string(value: &str) -> String {
     let mut output = String::from("\"");
     for character in value.chars() {
@@ -288,6 +279,167 @@ fn js_string(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unusual_ir_function_names_preserve_calls_and_errors() {
+        for name in ["quote\"slash\\line\nλ", "__proto__", "constructor", ""] {
+            let instructions = vec![Instruction::Call {
+                name: name.into(),
+                arguments: 0,
+            }];
+            assert_ir_failure_matches(instructions.clone());
+            let program = IrProgram {
+                functions: vec![
+                    IrFunction {
+                        name: "main".into(),
+                        parameters: vec![],
+                        instructions,
+                    },
+                    IrFunction {
+                        name: name.into(),
+                        parameters: vec![],
+                        instructions: vec![
+                            Instruction::LoadLiteral(Literal::String("called".into())),
+                            Instruction::Call {
+                                name: "print".into(),
+                                arguments: 1,
+                            },
+                        ],
+                    },
+                ],
+            };
+            let expected = crate::compiler::interpreter::run(&program).unwrap();
+            let output = execute_javascript(&render_javascript(&program));
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert_eq!(
+                String::from_utf8(output.stdout)
+                    .unwrap()
+                    .lines()
+                    .collect::<Vec<_>>(),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn distinct_ir_parameter_names_preserve_argument_identity() {
+        let parameters: Vec<String> = [
+            "a-b",
+            "a_b",
+            "λ",
+            "Ж",
+            "",
+            "arguments",
+            "__proto__",
+            "constructor",
+            "quote\"\\\n",
+        ]
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+        let mut main = Vec::new();
+        let mut body = Vec::new();
+        for (index, parameter) in parameters.iter().enumerate() {
+            main.push(Instruction::LoadLiteral(Literal::Integer(
+                index.to_string(),
+            )));
+            body.push(Instruction::LoadName(parameter.clone()));
+            body.push(Instruction::Call {
+                name: "print".into(),
+                arguments: 1,
+            });
+            body.push(Instruction::Pop);
+        }
+        main.push(Instruction::Call {
+            name: "inspect".into(),
+            arguments: parameters.len(),
+        });
+        let program = IrProgram {
+            functions: vec![
+                IrFunction {
+                    name: "main".into(),
+                    parameters: vec![],
+                    instructions: main,
+                },
+                IrFunction {
+                    name: "inspect".into(),
+                    parameters,
+                    instructions: body,
+                },
+            ],
+        };
+        let expected = crate::compiler::interpreter::run(&program).unwrap();
+        let output = execute_javascript(&render_javascript(&program));
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .lines()
+                .collect::<Vec<_>>(),
+            expected
+        );
+    }
+
+    #[test]
+    fn duplicate_ir_declarations_fail_in_both_engines() {
+        for name in ["main", "helper", "module::helper"] {
+            let function = IrFunction {
+                name: name.into(),
+                parameters: vec![],
+                instructions: vec![],
+            };
+            let mut functions = vec![function.clone(), function];
+            if name != "main" {
+                functions.insert(
+                    0,
+                    IrFunction {
+                        name: "main".into(),
+                        parameters: vec![],
+                        instructions: vec![],
+                    },
+                );
+            }
+            let program = IrProgram { functions };
+            let expected = format!("duplicate IR function `{name}`");
+            assert_eq!(
+                crate::compiler::interpreter::run(&program).unwrap_err(),
+                expected
+            );
+            let output = execute_javascript(&render_javascript(&program));
+            assert!(!output.status.success());
+            assert!(String::from_utf8_lossy(&output.stderr).contains(&expected));
+        }
+        let program = IrProgram {
+            functions: vec![
+                IrFunction {
+                    name: "main".into(),
+                    parameters: vec![],
+                    instructions: vec![],
+                },
+                IrFunction {
+                    name: "unused".into(),
+                    parameters: vec!["x".into(), "x".into()],
+                    instructions: vec![],
+                },
+            ],
+        };
+        let expected = "duplicate IR parameter `x` in function `unused`";
+        assert_eq!(
+            crate::compiler::interpreter::run(&program).unwrap_err(),
+            expected
+        );
+        let output = execute_javascript(&render_javascript(&program));
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains(expected));
+    }
 
     #[test]
     fn binary_runtime_type_matrix_matches_interpreter() {
@@ -461,11 +613,15 @@ mod tests {
             }],
         };
         let expected = crate::compiler::interpreter::run(&program).unwrap_err();
-        let output = execute_javascript(&render_javascript(&program));
-        assert!(!output.status.success(), "expected: {expected}");
-        assert!(
-            String::from_utf8_lossy(&output.stderr).contains(&expected),
-            "expected: {expected}"
+        // Compare the error value before Node formats newlines for host stderr.
+        let script = format!("try {{ (function() {{ {} }})(); }} catch (error) {{ if (error.message !== {}) throw error; process.exitCode = 42; }}",
+            render_javascript(&program), js_string(&expected));
+        let output = execute_javascript(&script);
+        assert_eq!(
+            output.status.code(),
+            Some(42),
+            "expected: {expected}; stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
         );
     }
 

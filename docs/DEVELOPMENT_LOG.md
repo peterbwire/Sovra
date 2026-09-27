@@ -1,5 +1,104 @@
 # Development log
 
+## 2026-09-27 — Measured compiler depth and proposed policy
+
+- **Added:** Reusable Node subprocess depth probe with timeouts, bounded captured
+  output and per-profile JSON results under target. It is diagnostic tooling,
+  not a passing safety test; its exit success means only that probing completed.
+- **Measured:** 60 check/build invocations across grouping, calls and binary
+  chains at depths 32/128/256/512/2048. Windows GNU debug builds passed 24 and
+  crashed with stack overflow on all six depth-2048 cases. Optimized builds
+  passed all 30. rustc 1.98.1; no platform-independent crash threshold inferred.
+- **Proposal:** ADR 0007 recommends a fixed structural-depth bound of 128 with
+  diagnostics before recursive parsing or construction of over-deep expression
+  trees, including application inspection. Public AST/resource budgets remain
+  separate work. No cap is implemented pending compatibility-policy approval.
+- **Validation:** Debug/release builds and probe JavaScript syntax checks passed.
+  No compiler source changed; the existing 203-test baseline was not rerun.
+- **Next:** Obtain the ADR decision required by AGENTS.md, then implement guards
+  with boundary, subprocess crash-regression and platform validation.
+
+## 2026-09-27 — Resource audit and iterative source discovery
+
+- **Changed:** Replaced recursive directory descent with a pending-directory
+  worklist, retaining sorted source results, extension filtering and E4006 I/O
+  errors. This removes native call-stack growth with directory depth; it does
+  not impose a directory, memory or program-size budget.
+- **Audit:** RESOURCE_BOUNDS.md records parser/grouping/call recursion, deep
+  binary AST traversal/cloning/drop, application scopes, and unbounded runtime
+  output/data. Existing call-depth enforcement is not a total execution budget.
+  Compatibility-affecting caps require a concrete policy and review first.
+- **Coverage:** Nested discovery through 48 levels, sibling/root source files,
+  non-source filtering, sorted paths and missing-directory diagnostics.
+- **Validation:** 169 library and 34 CLI tests passed (203 total), with strict CLI
+  execution and no skips. Formatting and strict Clippy passed.
+- **Next:** Measure compiler structural-depth failure modes in isolated processes
+  and propose a tested limit/API policy covering downstream AST work as well as
+  parsing. Production resource guarantees remain unfinished.
+
+## 2026-09-27 — Escaped IR function lookup errors
+
+- **Fixed:** Missing-function errors interpolated raw IR names into JavaScript
+  strings. Quotes/newlines could break emitted syntax instead of reporting the
+  interpreter's error. Messages now use the existing shared string escaper.
+- **Coverage:** Reproduced the malformed JavaScript before the fix. Tests cover
+  missing and successful calls for quote/backslash/newline/Unicode names, empty
+  names and __proto__/constructor keys. Error assertions compare exact message
+  values before Node's Windows newline formatting; wrappers preserve strict mode.
+- **Validation:** 168 library and 34 CLI tests passed (202 total), strict CLI
+  execution enabled, no skips. All 21 backend tests passed again after tightening
+  the error assertion wrapper. Formatting and strict Clippy passed.
+- **Next:** Parser/runtime resource-bound audit. Current IR hardening does not
+  establish complete verification or production readiness.
+
+## 2026-09-27 — Collision-free IR parameter encoding
+
+- **Fixed:** Distinct public-IR names such as `a-b` and `a_b`, or two Unicode
+  characters, were sanitized into identical JavaScript parameters and caused a
+  strict-mode syntax error. Emission now uses unique positional parameter names
+  and retains original names as escaped runtime-environment keys.
+- **Coverage:** Reproduced the duplicate-parameter JavaScript failure before the
+  fix. Differential execution checks argument identity for punctuation, Unicode,
+  empty names, arguments, __proto__, constructor and quote/backslash/newline keys.
+- **Validation:** 167 library and 34 CLI tests passed (201 total), with strict CLI
+  execution enabled and no skips. Formatting and strict Clippy passed.
+- **Next:** Complete the remaining IR name/error-escaping audit, then address
+  compiler/runtime resource bounds. Source identifiers and public APIs are
+  unchanged; production readiness remains incomplete.
+
+## 2026-09-27 — Shared IR declaration validation
+
+- **Fixed:** Public IR duplicate function names previously selected the first
+  declaration in the interpreter and the last in JavaScript. A shared validator
+  now rejects duplicate functions and duplicate parameter names before execution,
+  including unused declarations. JavaScript emits an equivalent throwing program
+  so its existing String-returning API is preserved.
+- **Coverage:** Reproduced duplicate acceptance before implementation. Differential
+  regressions cover duplicate main, ordinary and qualified helper names, and
+  duplicate parameters in an unused function.
+- **Validation:** 166 library and 34 CLI tests passed (200 total), with strict CLI
+  execution enabled and no skips. Formatting and strict Clippy passed.
+- **Next:** Audit backend parameter-name encoding and remaining IR identity
+  invariants, then compiler/runtime resource bounds. No source syntax changed;
+  general IR validation and production readiness remain incomplete.
+
+## 2026-09-27 — Binary runtime-kind parity
+
+- **Fixed:** JavaScript binary helpers now reject incompatible runtime kinds
+  instead of silently coercing values or emitting host-specific TypeErrors.
+  Preserve mixed numeric widening, string concatenation/scalar ordering,
+  equality and interpreter division-by-zero precedence. Source semantics and
+  public stage signatures remain unchanged.
+- **Coverage:** Reproduced the Int-plus-Bool error mismatch before the fix.
+  A differential matrix checks 396 combinations: eleven operators (including an
+  unknown one) over Int, Float, Bool, String, Unit and zero operands. Both values
+  and failure messages are compared against interpreter execution.
+- **Validation:** 165 library and 34 CLI tests passed (199 total), strict CLI
+  execution enabled, no skips. Formatting and strict Clippy passed.
+- **Next:** Audit malformed-IR function identity and resource bounds; Float
+  formatting/non-finite policy still needs an explicit decision. These tests
+  improve supported-subset correctness, not full production readiness.
+
 ## 2026-09-27 — Numeric IR literal parity
 
 - **Fixed:** JavaScript numeric conversion accepted malformed IR spellings that

@@ -360,13 +360,17 @@ fn resolve_project_path(
 
 fn collect_source_files(root: &Path, diagnostics: &mut Diagnostics) -> Vec<PathBuf> {
     let mut files = Vec::new();
-    collect_source_files_inner(root, &mut files, diagnostics);
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(directory) = pending.pop() {
+        collect_source_directory(&directory, &mut pending, &mut files, diagnostics);
+    }
     files.sort();
     files
 }
 
-fn collect_source_files_inner(
+fn collect_source_directory(
     root: &Path,
+    pending: &mut Vec<PathBuf>,
     files: &mut Vec<PathBuf>,
     diagnostics: &mut Diagnostics,
 ) {
@@ -410,7 +414,7 @@ fn collect_source_files_inner(
             }
         };
         if file_type.is_dir() {
-            collect_source_files_inner(&path, files, diagnostics);
+            pending.push(path);
         } else if path.extension().and_then(|extension| extension.to_str()) == Some("svr") {
             files.push(path);
         }
@@ -1687,6 +1691,33 @@ fn push_manifest_error(
 mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn source_discovery_handles_nested_and_sibling_directories() {
+        let project = TestProject::new();
+        let deep = format!("{}leaf.svr", "d/".repeat(48));
+        project.write_file(&deep, "fn deep() {}");
+        project.write_file("z/last.svr", "fn last() {}");
+        project.write_file("a/first.svr", "fn first() {}");
+        project.write_file("root.svr", "fn root() {}");
+        project.write_file("ignored.txt", "not source");
+        let mut diagnostics = Diagnostics::new();
+        let files = collect_source_files(project.path(), &mut diagnostics);
+        let mut expected = vec![
+            deep,
+            "z/last.svr".into(),
+            "a/first.svr".into(),
+            "root.svr".into(),
+        ]
+        .into_iter()
+        .map(|path| project.path().join(path))
+        .collect::<Vec<_>>();
+        expected.sort();
+        assert_eq!(files, expected);
+        assert!(diagnostics.is_empty());
+        assert!(collect_source_files(&project.path().join("missing"), &mut diagnostics).is_empty());
+        assert_eq!(diagnostics.items[0].code, "E4006");
+    }
 
     #[test]
     fn service_call_checks_respect_resolution_and_partial_coverage() {

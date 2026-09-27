@@ -13,6 +13,27 @@ pub struct IrProgram {
     pub functions: Vec<IrFunction>,
 }
 
+// Public IR can bypass source analysis. Reject ambiguous declarations before
+// either engine chooses a function or initializes a parameter environment.
+pub(super) fn validate_declarations(program: &IrProgram) -> Result<(), String> {
+    let mut functions = std::collections::BTreeSet::new();
+    for function in &program.functions {
+        if !functions.insert(&function.name) {
+            return Err(format!("duplicate IR function `{}`", function.name));
+        }
+        let mut parameters = std::collections::BTreeSet::new();
+        for parameter in &function.parameters {
+            if !parameters.insert(parameter) {
+                return Err(format!(
+                    "duplicate IR parameter `{parameter}` in function `{}`",
+                    function.name
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// A lowered function.
 #[derive(Debug, Clone, PartialEq)]
 pub struct IrFunction {

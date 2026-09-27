@@ -9,6 +9,7 @@ pub mod diagnostics;
 pub mod interpreter;
 pub mod ir;
 pub mod lexer;
+mod limits;
 pub mod parser;
 pub mod project;
 pub mod semantic;

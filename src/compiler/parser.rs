@@ -49,7 +49,12 @@ impl Parser {
             tokens,
             position: 0,
             diagnostics: Diagnostics::new(),
+            depth_exceeded: false,
         };
+        if let Err(span) = super::limits::check_nesting(tokens, false) {
+            parser.depth_error(span);
+            return Err(parser.diagnostics);
+        }
         let program = parser.program();
         if parser.diagnostics.is_empty() {
             Ok(program)
@@ -63,6 +68,7 @@ struct TokenParser<'a> {
     tokens: &'a [Token],
     position: usize,
     diagnostics: Diagnostics,
+    depth_exceeded: bool,
 }
 
 impl<'a> TokenParser<'a> {
@@ -230,8 +236,15 @@ impl<'a> TokenParser<'a> {
                 break;
             }
             let operator = (*operator).to_owned();
+            let operator_span = self.peek().span;
             self.advance();
             let right = self.binary_expression(precedence + 1)?;
+            if !self.check_depth(
+                1 + expression_depth(&left).max(expression_depth(&right)),
+                operator_span,
+            ) {
+                return None;
+            }
             left = Expression {
                 span: Span {
                     end: right.span.end,
@@ -318,6 +331,15 @@ impl<'a> TokenParser<'a> {
                 }
             }
             self.expect_punctuation(')');
+            let depth = 1 + arguments
+                .iter()
+                .map(expression_depth)
+                .chain(std::iter::once(expression_depth(&expression)))
+                .max()
+                .unwrap_or(0);
+            if !self.check_depth(depth, token.span) {
+                return None;
+            }
             Some(Expression {
                 span: Span {
                     end: self.previous().span.end,
@@ -434,6 +456,9 @@ impl<'a> TokenParser<'a> {
     }
 
     fn error(&mut self, code: &'static str, message: impl Into<String>) {
+        if self.depth_exceeded {
+            return;
+        }
         self.diagnostics.push(Diagnostic {
             source_file: None,
             severity: Severity::Error,
@@ -442,6 +467,47 @@ impl<'a> TokenParser<'a> {
             span: self.peek().span,
         });
     }
+
+    fn check_depth(&mut self, depth: usize, span: Span) -> bool {
+        if depth <= super::limits::MAX_STRUCTURAL_DEPTH {
+            return true;
+        }
+        self.depth_error(span);
+        false
+    }
+
+    fn depth_error(&mut self, span: Span) {
+        self.diagnostics.items.clear();
+        self.diagnostics.push(Diagnostic {
+            source_file: None,
+            severity: Severity::Error,
+            code: "E2007",
+            message: super::limits::depth_message(),
+            span,
+        });
+        self.depth_exceeded = true;
+        self.position = self.tokens.len() - 1;
+    }
+}
+
+fn expression_depth(expression: &Expression) -> usize {
+    let mut pending = vec![(expression, 1)];
+    let mut maximum = 0;
+    while let Some((expression, depth)) = pending.pop() {
+        maximum = maximum.max(depth);
+        match &expression.kind {
+            ExpressionKind::Binary { left, right, .. } => {
+                pending.push((left, depth + 1));
+                pending.push((right, depth + 1));
+            }
+            ExpressionKind::Call { callee, arguments } => {
+                pending.push((callee, depth + 1));
+                pending.extend(arguments.iter().map(|argument| (argument, depth + 1)));
+            }
+            _ => {}
+        }
+    }
+    maximum
 }
 
 fn precedence(operator: &str) -> u8 {
@@ -456,6 +522,30 @@ fn precedence(operator: &str) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn structural_depth_boundaries_are_enforced() {
+        for (expression, accepted) in [
+            (format!("{}1{}", "(".repeat(128), ")".repeat(128)), true),
+            (format!("{}1{}", "(".repeat(129), ")".repeat(129)), false),
+            (vec!["1"; 128].join(" + "), true),
+            (vec!["1"; 129].join(" + "), false),
+            (format!("{}1{}", "f(".repeat(127), ")".repeat(127)), true),
+            (format!("{}1{}", "f(".repeat(128), ")".repeat(128)), false),
+            (format!("f({})", vec!["1"; 1024].join(",")), true),
+        ] {
+            let source = format!("fn main() {{ {expression}; }}");
+            let result = Parser::new().parse_source(&source);
+            if accepted {
+                assert!(result.is_ok(), "{result:?}");
+            } else {
+                let diagnostics = result.unwrap_err();
+                assert_eq!(diagnostics.items.len(), 1);
+                assert_eq!(diagnostics.items[0].code, "E2007");
+                assert!(diagnostics.items[0].span.end <= source.len());
+            }
+        }
+    }
 
     #[test]
     fn retains_nested_expression_ranges() {
