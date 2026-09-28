@@ -86,6 +86,13 @@ calls to 256, counting `main`. Builtins do not add a frame. Recursive calls beyo
 that boundary report a call-depth error; sequential calls release their frames
 as they return.
 
+Source nesting has a separate compiler limit: 128 open parentheses and an
+expression tree at most 128 nodes deep. Excess depth reports E2007 rather than
+crashing. A chain of 127 nested calls is at the expression-tree boundary because
+the innermost value also counts as one level. Split deeply nested calculations
+into sequential `let` bindings; adding more shallow statements does not consume
+nesting depth. Application inspection separately limits block nesting to 128.
+
 Function values are not implemented. `let value = std::len` produces E3015;
 `let value = std::len("hello")` calls the function and infers an Int result.
 The same restriction applies to exported module functions used without a call.

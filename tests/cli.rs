@@ -27,6 +27,88 @@ fn is_application_control_block(error: &io::Error) -> bool {
     error.raw_os_error() == Some(4551)
 }
 
+#[test]
+fn structural_depth_errors_replace_subprocess_crashes() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("target")
+        .join(format!("depth-cli-{}-{suffix}", std::process::id()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let path = directory.join("main.svr");
+    let source_path = path.to_str().unwrap();
+    for expression in [
+        format!("{}1{}", "(".repeat(2048), ")".repeat(2048)),
+        format!("{}1{}", "f(".repeat(2048), ")".repeat(2048)),
+        vec!["1"; 2049].join("+"),
+    ] {
+        let source = format!("// Unicode: λ\r\nfn main() {{ {expression}; }}");
+        std::fs::write(&path, &source).unwrap();
+        for args in [
+            vec!["check", source_path],
+            vec!["run", source_path],
+            vec!["build", source_path],
+            vec!["build", "--emit", "js", source_path],
+        ] {
+            let Some(output) = output_or_skip(svr().args(args)) else {
+                return;
+            };
+            assert_eq!(
+                output.status.code(),
+                Some(1),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(String::from_utf8_lossy(&output.stderr).contains("E2007"));
+        }
+        let Some(output) = output_or_skip(svr().args(["check", "--format", "json", source_path]))
+        else {
+            return;
+        };
+        assert_eq!(output.status.code(), Some(1));
+        assert_json_report(
+            &output,
+            r#"
+            assert.equal(report.success, false);
+            assert.equal(report.diagnostics.length, 1);
+            const error = report.diagnostics[0];
+            assert.equal(error.code, 'E2007');
+            assert.equal(error.location.line, 1);
+            const source = require('node:fs').readFileSync(error.location.file);
+            assert.ok(['(', '+'].includes(source.subarray(error.location.start, error.location.end).toString()));
+            assert.ok(error.message.includes('128'));
+        "#,
+        );
+    }
+    std::fs::write(
+        directory.join("sovra.toml"),
+        "[project]\nname = \"depth\"\nentry = \"main.svr\"\n",
+    )
+    .unwrap();
+    let Some(output) = output_or_skip(svr().args([
+        "check",
+        "--service-calls",
+        "--format",
+        "json",
+        directory.to_str().unwrap(),
+    ])) else {
+        return;
+    };
+    assert_eq!(output.status.code(), Some(1));
+    assert_json_report(
+        &output,
+        r#"
+        assert.equal(report.service_coverage.complete, false);
+        assert.deepEqual(report.diagnostics.map(d => d.code), ['E4096']);
+        assert.ok(report.service_coverage.files[0].reason.includes('128'));
+        assert.deepEqual(report.member_calls, []);
+    "#,
+    );
+    std::fs::remove_dir_all(&directory).unwrap();
+}
+
 fn assert_json_report(output: &Output, assertions: &str) {
     use std::io::Write as _;
     use std::process::Stdio;

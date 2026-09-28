@@ -43,8 +43,14 @@ impl SemanticAnalyzer {
     }
 
     /// Resolve names and validate the M2 AST.
+    /// Caller-built trees exceeding depth 128 return E3018 before recursive work
+    /// or cloning. This borrowed check does not change the caller's AST drop behavior.
     pub fn analyze(&self, program: &Program) -> Result<TypedProgram, Diagnostics> {
         let mut diagnostics = Diagnostics::new();
+        if let Err(span) = super::limits::check_program_depth(program) {
+            diagnostics.push(diagnostic("E3018", super::limits::depth_message(), span));
+            return Err(diagnostics);
+        }
         let mut declared_functions = HashMap::new();
         for function in &program.functions {
             check_builtin_collision(&function.name, function.span, &mut diagnostics);
@@ -587,6 +593,60 @@ fn diagnostic(code: &'static str, message: impl Into<String>, span: Span) -> Dia
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn manually_constructed_ast_respects_structural_depth() {
+        for depth in [128, 129] {
+            for in_module in [false, true] {
+                let mut program = crate::compiler::parser::Parser::new()
+                    .parse_source(if in_module {
+                        "fn main() {} mod helper { fn unused() { 1; } }"
+                    } else {
+                        "fn main() { 1; }"
+                    })
+                    .unwrap();
+                let span = Span {
+                    start: 12,
+                    end: 13,
+                    line: 0,
+                    column: 12,
+                };
+                let mut expression = Expression {
+                    kind: ExpressionKind::Integer("1".into()),
+                    span,
+                };
+                for _ in 1..depth {
+                    expression = Expression {
+                        kind: ExpressionKind::Binary {
+                            left: Box::new(expression),
+                            operator: "+".into(),
+                            right: Box::new(Expression {
+                                kind: ExpressionKind::Integer("1".into()),
+                                span,
+                            }),
+                        },
+                        span,
+                    };
+                }
+                let function = if in_module {
+                    &mut program.modules[0].functions[0]
+                } else {
+                    &mut program.functions[0]
+                };
+                function.body = vec![Statement::Expression(expression)];
+                let result = SemanticAnalyzer::new().analyze(&program);
+                if depth == 128 {
+                    assert!(result.is_ok());
+                } else {
+                    let diagnostics = result.unwrap_err();
+                    assert_eq!(diagnostics.items.len(), 1);
+                    assert_eq!(diagnostics.items[0].code, "E3018");
+                    assert_eq!(diagnostics.items[0].span, span);
+                    assert!(crate::compiler::ir::lower_program(&program).is_err());
+                }
+            }
+        }
+    }
     use crate::compiler::parser::Parser;
 
     #[test]

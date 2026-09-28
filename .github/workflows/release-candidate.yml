@@ -46,6 +46,8 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $binary = if ($IsWindows) { 'svr.exe' } else { 'svr' }
           $executable = Join-Path 'target/release' $binary
+          node scripts/probe-compiler-depth.mjs $executable --assert-limits
+          if ($LASTEXITCODE -ne 0) { throw 'Optimized compiler depth regression failed' }
           & $executable --version
           if ($LASTEXITCODE -ne 0) { throw 'Version smoke test failed' }
           & $executable run examples/hello-world/main.svr

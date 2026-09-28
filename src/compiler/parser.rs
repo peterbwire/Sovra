@@ -548,6 +548,21 @@ mod tests {
     }
 
     #[test]
+    fn boundary_depths_survive_analysis_lowering_and_execution() {
+        for expression in [
+            format!("{}1{}", "(".repeat(128), ")".repeat(128)),
+            vec!["1"; 128].join("+"),
+            format!("{}1{}", "f(".repeat(127), ")".repeat(127)),
+        ] {
+            let source =
+                format!("fn f(x: Int) -> Int {{ return x }} fn main() {{ let x = {expression}; }}");
+            let program = Parser::new().parse_source(&source).unwrap();
+            let ir = crate::compiler::ir::lower_program(&program).unwrap();
+            assert!(crate::compiler::interpreter::run(&ir).unwrap().is_empty());
+        }
+    }
+
+    #[test]
     fn retains_nested_expression_ranges() {
         fn collect<'a>(expression: &Expression, source: &'a str, spans: &mut Vec<&'a str>) {
             let span = expression.span;

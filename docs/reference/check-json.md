@@ -85,6 +85,11 @@ assuming stdout contains a report.
 
 Source locations use byte offsets `[start, end)` and zero-based line and
 Unicode-character column indices. Columns are not UTF-16/LSP offsets.
+Source structural-depth rejection reports a single E2007 with the 128-level
+limit and the offending delimiter/operator/call-token location. Excessive
+application depth instead yields E4096 with incomplete per-file coverage when
+`--service-calls` is requested. Neither report means a runtime execution budget
+has been enforced.
 Expression diagnostics identify the relevant variable, literal, binary
 expression, callee or argument. Arity diagnostics cover the full call; grouping
 parentheses are included in a grouped expression's range. Binding/return

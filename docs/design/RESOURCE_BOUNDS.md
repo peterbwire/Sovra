@@ -1,12 +1,15 @@
 # Resource-bound audit
 
-Status: audit and design work in progress; no new language limits approved.
+Status: structural depth 128 approved and implemented under ADR 0007; broader
+resource-budget and public-AST safety work remains in progress.
 
 Measured follow-up: see [ADR 0007](../adr/0007-compiler-structural-depth.md).
 The reusable `node scripts/probe-compiler-depth.mjs [path-to-svr]` probe runs
 isolated check/build subprocesses with timeouts. Windows GNU debug builds crashed
 at all three sampled depth-2048 shapes; optimized builds passed those samples.
-Depth 128 is proposed, not implemented or verified as a universal safe threshold.
+The probe's `--assert-limits` mode now requires normal diagnostic exits at excess
+depth and successful compilation at the supported boundary. The 128 bound is
+implemented; it is not a universal host-stack/memory safety guarantee.
 
 ## Findings from implementation review
 
@@ -14,6 +17,9 @@ Depth 128 is proposed, not implemented or verified as a universal safe threshold
   Long binary chains also create deeply nested ASTs even when parser recursion
   stays shallow. Semantic traversal, AST cloning, lowering and drop behavior must
   be considered together; a parentheses-only guard is insufficient.
+  Lowering now uses a worklist, and semantic analysis preflights caller-built
+  depth before recursive validation/cloning. Public AST ownership/drop and
+  caller-invoked cloning remain unresolved.
 - Application inspection recursively traverses blocks, expressions and scopes.
   It requires independent protection until unified structured project checking
   replaces the separate subset.
@@ -31,12 +37,12 @@ Depth 128 is proposed, not implemented or verified as a universal safe threshold
 
 ## Next design work
 
-Specify compiler structural-depth accounting across parsing and downstream AST
-operations, including flat binary chains, nested calls, grouping, and application
-blocks. Select and validate default/configurable thresholds on supported platforms
-before claiming stack safety. Test the boundary, boundary-plus-one and very large
-malformed input in subprocesses so a regression cannot abort the whole harness.
-Diagnostics must identify the limit and source location without cascading errors.
+The approved policy now covers source and application parsing, including flat
+binary chains, nested calls, grouping and application blocks. Validate the fixed
+threshold on all supported platforms before claiming cross-platform stack safety.
+Boundary, boundary-plus-one and large-input tests cover normal diagnostic exits;
+the large crash regressions run in subprocesses to isolate failures.
+Diagnostics identify the limit and source location without cascading errors.
 
 Separately specify runtime execution budgets, output limits and cancellation.
 Do not infer a production-safe memory model from an instruction/depth limit.

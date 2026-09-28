@@ -85,6 +85,31 @@ of the stream. Empty streams and missing, embedded or repeated EOF markers
 produce `E2006`; an EOF-only stream parses as an empty program. Source parsing
 continues to obtain its EOF marker from the lexer.
 
+Under accepted ADR 0007, source compilation permits at most 128 nested open
+parentheses and expression-tree depth 128. A leaf has depth one; a binary or call
+node adds one to its deepest child (including the callee). Grouping consumes
+parenthesis nesting but does not add an AST node. Thus 128 grouping pairs,
+127 nested calls, or a left-associated chain of 128 leaves are boundary examples.
+Wide argument lists do not consume extra depth. Excess depth returns one E2007
+at the offending delimiter/operator/call token, before constructing an over-deep
+tree; no recursive recovery cascade follows. This is a compatibility restriction
+on deeply nested input, not a total memory/work budget or a guarantee for
+manually constructed public ASTs.
+Semantic analysis now checks caller-built AST depth iteratively before recursive
+analysis/cloning and reports E3018 at the first over-depth expression. This also
+protects `ir::lower_program`, which performs analysis. Caller-owned recursive
+drop/clone and direct lowering of manually constructed `TypedProgram` values
+remain outside that checked-entry guarantee.
+Expression lowering itself now uses an explicit worklist, preserving left-to-right
+operand/argument evaluation without growing the native stack with expression
+depth. Direct `lower` still requires valid typed input; this refactor neither
+validates fabricated TypedProgram values nor makes caller-owned AST drop safe.
+
+Application inspection uses the same parentheses/tree ceiling and separately
+limits open braces to 128, including the outer body block. Member nodes add one
+to receiver depth. Any depth failure rejects the whole file inspection and the
+opt-in CLI reports E4096. Comments/strings do not affect delimiter accounting.
+
 ## M3-M8 semantic, type, module, and IR contract
 
 The analyzer validates local names, function names, declared return types,

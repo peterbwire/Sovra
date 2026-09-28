@@ -1,6 +1,8 @@
 # ADR 0007: Bound compiler structural depth
 
-Status: **Proposed; awaiting user decision.** No limit is implemented by this ADR.
+Status: **Accepted option A; implemented for source parsing and application
+inspection.** The user explicitly directed “do the 128 then.” Cross-platform
+boundary evidence and public-AST/resource work remain outstanding.
 
 ## Reproduced failure
 
@@ -18,14 +20,17 @@ configuration sensitivity; it does not establish unlimited release-build safety.
 Results are retained locally in target/depth-probe/results-debug.json and
 results-release.json. Other operating systems and small-stack threads are unmeasured.
 
-## Recommended option A: bounded source compilation
+## Accepted option A: bounded source compilation
 
-Introduce a fixed maximum structural depth of **128** for the supported source
+Enforce a fixed maximum structural depth of **128** for the supported source
 pipeline, with a normal diagnostic instead of stack overflow. This is a
 conservative starting ceiling below the sampled passing depth; it still requires
 boundary verification on supported platforms and test-thread stacks.
 
 - Bound active nested grouping/call parsing before entering recursive work.
+  An iterative token preflight allows at most 128 open parentheses; application
+  inspection separately allows 128 open braces including the outer body block.
+  Strings and comments do not consume nesting depth.
   Count source nesting separately from precedence-helper implementation frames.
 - Bound retained expression-tree depth as well: leaves count as one; binary
   nodes count one plus maximum child depth; calls count one plus maximum callee
@@ -34,9 +39,9 @@ boundary verification on supported platforms and test-thread stacks.
 - Reject before constructing the over-limit subtree; unwinding/dropping a huge
   already-built tree is too late. Preserve wide parameter/argument/statement
   lists when their depth is within bounds; this is not a file-size budget.
-- Reserve E2007 for source-parser depth rejection, at the offending token, with
+- Use E2007 for source-parser depth rejection, at the offending token, with
   the limit in the message. Stop that parse safely without a diagnostic cascade.
-  Confirm code availability before implementation.
+  The failed parse returns one E2007 without cascading recovery errors.
 - Apply equivalent accounting to application inspection. Unsupported excessive
   depth must produce an explicit partial-inspection reason and CLI E4096, never
   success with omitted calls. Block nesting requires its own guarded counter.
@@ -50,6 +55,11 @@ It does not bound total CPU, allocations, output, or runtime call count; the
 existing 256 active runtime frames are a separate contract.
 
 ## Public AST and remaining production scope
+
+Implemented follow-up: semantic analysis performs an iterative borrowed depth
+check before recursive work or cloning, returning E3018 for over-depth ASTs.
+`lower_program` inherits this check. No public stage signature changed; direct
+`lower` still requires a semantically validated `TypedProgram`.
 
 Manually constructed public ASTs can bypass the parser and have recursive
 clone/traversal/drop paths. Source guards must not be advertised as a full public
@@ -78,5 +88,5 @@ exits at excess depth. Keep the full existing suite passing without skips.
 
 AGENTS.md requires: “Document and pause before fundamental syntax, memory-model,
 type-semantics or compatibility decisions.” Option A rejects previously accepted
-deep programs. User review is required before enforcing it. Production-readiness
-intent authorizes the audit and reversible hardening, not an implicit depth policy.
+deep programs. The user's explicit approval now authorizes option A.
+Production-readiness intent alone was not treated as an implicit depth policy.

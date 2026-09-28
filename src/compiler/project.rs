@@ -3088,12 +3088,15 @@ entry = "app/main.svr"
 
     impl TestProject {
         fn new() -> Self {
+            static NEXT_PROJECT: std::sync::atomic::AtomicUsize =
+                std::sync::atomic::AtomicUsize::new(0);
+            let sequence = NEXT_PROJECT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let suffix = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .expect("system clock should be after Unix epoch")
                 .as_nanos();
             let root = std::env::temp_dir().join(format!(
-                "sovra-project-test-{}-{suffix}",
+                "sovra-project-test-{}-{suffix}-{sequence}",
                 std::process::id()
             ));
             fs::create_dir(&root).expect("test project directory should be created");

@@ -1,5 +1,65 @@
 # Development log
 
+## 2026-09-28 — Iterative expression lowering
+
+- **Changed:** Lowering now uses explicit visit/emit work items instead of
+  recursive expression calls. Argument and binary operand order, widening sites,
+  output IR and public stage signatures are preserved. Validated input is still
+  required; direct lowering is not a semantic validator.
+- **Coverage:** Added exact instruction-order/execution coverage before refactoring.
+  A caller-built 10,000-node expression lowers and runs without native expression
+  recursion; the test dismantles the owned AST iteratively to isolate lowering
+  from the unresolved public AST recursive-drop behavior.
+- **Additional fix:** Full testing exposed an existing parallel fixture-name
+  collision (Windows AlreadyExists). Project test directories now include an
+  atomic per-process sequence in addition to timestamp/PID.
+- **Validation:** After the fixture fix, 176 library and 35 CLI tests passed
+  (211 total), strict CLI execution enabled, no skips. Formatting and strict
+  Clippy passed. The initial full run's fixture failure is not counted as a pass.
+- **Next:** Ownership/drop and clone safety of caller-built ASTs remains open;
+  runtime budgets and hosted platform verification also remain production gates.
+
+## 2026-09-28 — Public AST semantic-depth preflight
+
+- **Fixed:** Caller-built ASTs bypassed parser depth guards and could enter
+  recursive semantic analysis/cloning. A borrow-only iterative preflight now
+  returns E3018 for expression depth above 128, including module/private bodies.
+  Checked `lower_program` inherits this validation; public signatures are intact.
+- **Coverage:** Reproduced acceptance of a manually built depth-129 tree before
+  the fix. Tests cover depth 128/129, module/top-level bodies, initializers,
+  returns, expression statements, nested arguments and nested callees, including
+  retained diagnostic spans and rejection by checked lowering.
+- **Validation:** 174 library and 35 CLI tests passed (209 total), with strict CLI
+  execution and no skips. Formatting and strict Clippy passed.
+- **Limits/next:** Borrowed validation cannot protect caller-owned recursive
+  drop/clone, and direct `lower` accepts publicly fabricated TypedProgram values.
+  Its validated-input precondition is now explicit. Audit ownership/checked API
+  boundaries before claiming complete AST resource safety.
+
+## 2026-09-28 — Approved structural-depth limit implemented
+
+- **Decision:** User explicitly approved the 128-depth policy in ADR 0007.
+  Source and application parsers now enforce it; no unrestricted override added.
+- **Implementation:** Shared iterative token preflight guards parentheses and
+  application block nesting. Iterative child-depth inspection rejects binary,
+  call and application member nodes before over-deep tree construction. Source
+  parsing returns one E2007 at the relevant token without recovery cascades;
+  application failures reject all file call records and surface CLI E4096.
+- **Coverage:** Exact boundary/next-depth grouping, calls, binary chains, blocks,
+  member chains, mixed block/group nesting and shallow 1024-argument lists.
+  Boundary programs survive semantic analysis/lowering/interpreter execution.
+  Subprocess tests cover check/run/IR/JS rejection, UTF-8/CRLF JSON locations and
+  explicit incomplete application coverage for the former crash inputs.
+- **Validation:** 172 library and 35 CLI tests passed (207 total), strict CLI
+  execution enabled, no skips. Formatting and strict Clippy passed. Debug and
+  optimized Windows GNU builds each passed 42 depth-probe assertions, including
+  normal E2007 exits for all previously crashing depth-2048 shapes.
+- **CI:** Platform CI now runs the asserting debug probe; candidate verification
+  runs the optimized probe. Hosted platform/MSRV execution remains unverified.
+- **Limits/next:** Source guards do not protect arbitrarily constructed public
+  AST ownership/drop, cap total memory or impose runtime work/output budgets.
+  Continue those audits independently; this is not full production readiness.
+
 ## 2026-09-27 — Measured compiler depth and proposed policy
 
 - **Added:** Reusable Node subprocess depth probe with timeouts, bounded captured

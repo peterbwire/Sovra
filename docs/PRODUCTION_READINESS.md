@@ -107,6 +107,19 @@ The [resource-bound audit](design/RESOURCE_BOUNDS.md) identifies recursive parse
 AST and application-inspection paths and unbounded output/data growth. Project
 source discovery now uses an iterative directory worklist; compiler/runtime
 budget policies remain undecided and are not implied by this refactor.
+ADR 0007 has since been explicitly approved: source and application parsing now
+enforce structural depth 128 before excessive recursion/tree construction.
+Boundary, wide-input and subprocess crash regressions cover the implemented
+guard. Total runtime/memory budgets, manually constructed ASTs and cross-platform
+validation remain separate open production gates.
+Semantic analysis now enforces the same 128 expression-tree ceiling on caller-built
+ASTs using a borrow-only iterative preflight (E3018). Checked `lower_program`
+inherits the guard. Caller-owned recursive destruction and direct lowering from
+manually fabricated `TypedProgram` values remain unprotected entry paths.
+Lowering traversal has since been made iterative: a direct 10,000-node expression
+test lowers without native expression recursion. Validated-input requirements
+remain, and the test explicitly dismantles its caller-owned AST iteratively;
+recursive public AST destruction/clone is still a separate unresolved boundary.
 
 ## Decisions and progress discipline
 

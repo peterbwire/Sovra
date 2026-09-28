@@ -654,6 +654,80 @@ mod tests {
     use super::*;
 
     #[test]
+    fn service_bodies_use_explicit_file_and_independent_lexical_scopes() {
+        let source = "service maps { fn send(x: Int); fn relay() { maps.send(1); let maps = maps.make(); maps.local(); } fn shadow(maps: Client) { maps.local(); } fn next() { maps.send(2); } }";
+        let functions = inspect_functions(source, &[service()]).unwrap();
+        assert_eq!(functions.iter().map(|function| function.name.as_str()).collect::<Vec<_>>(), ["maps.relay", "maps.shadow", "maps.next"]);
+        assert_eq!(functions[0].calls[0].receiver, Receiver::Service(service()));
+        assert_eq!(functions[0].calls[1].receiver, Receiver::Service(service()));
+        assert_eq!(functions[0].calls[2].receiver, Receiver::Local);
+        assert_eq!(functions[1].calls[0].receiver, Receiver::Local);
+        assert_eq!(functions[2].calls[0].receiver, Receiver::Service(service()));
+        for function in functions {
+            assert!(!function.is_task);
+            for call in function.calls {
+                assert!(source[call.span.start..call.span.end].starts_with("maps."));
+            }
+        }
+    }
+
+    #[test]
+    fn application_depth_limits_cover_blocks_trees_and_nesting() {
+        for (body, accepted) in [
+            (
+                format!(
+                    "{}{}1{}{}",
+                    "{".repeat(128),
+                    "(".repeat(128),
+                    ")".repeat(128),
+                    "}".repeat(128)
+                ),
+                true,
+            ),
+            (format!("{}{}", "{".repeat(128), "}".repeat(128)), true),
+            (format!("{}{}", "{".repeat(129), "}".repeat(129)), false),
+            (
+                format!("{{ {}1{} }}", "(".repeat(128), ")".repeat(128)),
+                true,
+            ),
+            (
+                format!("{{ {}1{} }}", "(".repeat(129), ")".repeat(129)),
+                false,
+            ),
+            (format!("{{ {} }}", vec!["1"; 128].join("+")), true),
+            (format!("{{ {} }}", vec!["1"; 129].join("+")), false),
+            (
+                format!("{{ {}1{} }}", "f(".repeat(127), ")".repeat(127)),
+                true,
+            ),
+            (
+                format!("{{ {}1{} }}", "f(".repeat(128), ")".repeat(128)),
+                false,
+            ),
+            (format!("{{ maps{}() }}", ".member".repeat(126)), true),
+            (format!("{{ maps{}() }}", ".member".repeat(127)), false),
+            (format!("{{ f({}) }}", vec!["1"; 1024].join(",")), true),
+        ] {
+            let result = inspect_body(&body, &[], &[service()]);
+            if accepted {
+                assert!(result.is_ok(), "{result:?}");
+            } else {
+                assert!(result
+                    .unwrap_err()
+                    .contains("maximum structural depth of 128"));
+            }
+        }
+        let source = format!(
+            "fn good() {{ maps.send(); }} fn bad() {{ {}1{} }}",
+            "(".repeat(2048),
+            ")".repeat(2048)
+        );
+        assert!(inspect_functions(&source, &[service()])
+            .unwrap_err()
+            .contains("128"));
+    }
+
+    #[test]
     fn complex_receiver_ranges_cover_the_entire_member_expression() {
         for (expression, expected) in [
             ("maps.make().send()", "maps.make().send"),

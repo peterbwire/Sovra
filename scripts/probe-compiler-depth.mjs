@@ -3,12 +3,14 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve, join, basename, dirname } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-const executable = resolve(process.argv[2] ?? `target/debug/svr${process.platform === 'win32' ? '.exe' : ''}`);
+const arguments_ = process.argv.slice(2);
+const enforceLimits = arguments_.includes('--assert-limits');
+const executable = resolve(arguments_.find(value => value !== '--assert-limits') ?? `target/debug/svr${process.platform === 'win32' ? '.exe' : ''}`);
 const directory = resolve('target/depth-probe');
 mkdirSync(directory, { recursive: true });
 const results = [];
 for (const shape of ['grouping', 'calls', 'binary']) {
-    for (const depth of [32, 128, 256, 512, 2048]) {
+    for (const depth of [32, 127, 128, 129, 256, 512, 2048]) {
         const expression = shape === 'grouping' ? '('.repeat(depth) + '1' + ')'.repeat(depth)
             : shape === 'calls' ? 'identity('.repeat(depth) + '1' + ')'.repeat(depth)
             : Array(depth + 1).fill('1').join(' + ');
@@ -32,3 +34,14 @@ for (const shape of ['grouping', 'calls', 'binary']) {
 writeFileSync(join(directory, `results-${basename(dirname(executable))}.json`), JSON.stringify({
     executable, platform: process.platform, architecture: process.arch, results,
 }, null, 2) + '\n');
+if (enforceLimits) {
+    const failed = results.filter(result => {
+        const accepted = result.depth <= (result.shape === 'grouping' ? 128 : 127);
+        return result.error !== null || result.signal !== null ||
+            result.exit !== (accepted ? 0 : 1) || (!accepted && !result.stderr.includes('E2007'));
+    });
+    if (failed.length) {
+        console.error(`${failed.length} structural-depth probe cases violated the expected limit behavior`);
+        process.exitCode = 1;
+    }
+}

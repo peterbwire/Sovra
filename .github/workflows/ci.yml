@@ -32,6 +32,8 @@ jobs:
       - run: cargo clippy --all-targets --all-features -- -D warnings
       - run: cargo test --locked --all-targets
       - run: cargo test --locked --doc
+      - run: cargo build --locked
+      - run: node scripts/probe-compiler-depth.mjs --assert-limits
 
   msrv:
     name: Minimum Rust 1.74
