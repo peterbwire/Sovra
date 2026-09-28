@@ -1,7 +1,8 @@
 # Third-party libraries and packages
 
-Status: Planned requirements. Package resolution, publishing and registry access
-are not implemented. The user explicitly requires developers to be able to
+Status: Partial foundation. Accepted ADR 0010 has a graph-only local dependency
+resolver (`project::packages::resolve`). Executable dependency linking, publishing
+and registry access are not implemented. The user explicitly requires developers to be able to
 publish reusable Sovra libraries for other projects to consume.
 
 ## Architectural contract

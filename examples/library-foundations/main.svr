@@ -1,0 +1,26 @@
+// Executable inline modules, not independently installed packages.
+mod strings {
+    fn separator() -> String {
+        return ": "
+    }
+
+    export fn label(name: String, value: String) -> String {
+        return name + strings::separator() + value
+    }
+}
+
+mod arithmetic {
+    fn product(left: Int, right: Int) -> Int {
+        return left * right
+    }
+
+    export fn square(value: Int) -> Int {
+        return arithmetic::product(value, value)
+    }
+}
+
+fn main() {
+    let result = arithmetic::square(7)
+    std::println(strings::label("square", std::to_string(result)))
+    std::println(strings::label("letters", std::to_string(std::len("Sovra"))))
+}

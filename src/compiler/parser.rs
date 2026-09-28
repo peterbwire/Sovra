@@ -305,7 +305,7 @@ impl<'a> TokenParser<'a> {
                 ..token.span
             },
         };
-        if self.consume_operator("::") {
+        while self.consume_operator("::") {
             let name = self.expect_identifier("module member name")?;
             expression.kind = ExpressionKind::QualifiedName {
                 path: match expression.kind {

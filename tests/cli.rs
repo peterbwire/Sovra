@@ -28,6 +28,97 @@ fn is_application_control_block(error: &io::Error) -> bool {
 }
 
 #[test]
+fn local_library_consumer_checks_runs_and_builds_on_both_engines() {
+    let root = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/local-packages/app");
+    let Some(checked) = output_or_skip(svr().args(["check", "--format=json", root])) else {
+        return;
+    };
+    assert!(
+        checked.status.success(),
+        "{}",
+        String::from_utf8_lossy(&checked.stdout)
+    );
+    assert_json_report(&checked, "assert.equal(report.success, true); assert.equal(report.kind, 'project'); assert.deepEqual(report.diagnostics, []);");
+    let Some(run) = output_or_skip(svr().args(["run", root])) else {
+        return;
+    };
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout).trim(), "49");
+    let Some(ir) = output_or_skip(svr().args(["build", root])) else {
+        return;
+    };
+    assert!(ir.status.success());
+    assert!(String::from_utf8_lossy(&ir.stdout).contains("@package1::arithmetic::square"));
+    let Some(js) = output_or_skip(svr().args(["build", "--emit", "js", root])) else {
+        return;
+    };
+    assert!(js.status.success());
+    let output = Command::new("node")
+        .arg("-e")
+        .arg(String::from_utf8(js.stdout).unwrap())
+        .output()
+        .expect("Node required");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "49");
+}
+
+#[test]
+fn library_foundations_example_checks_runs_and_builds() {
+    let source = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/examples/library-foundations/main.svr"
+    );
+    for args in [vec!["check", source], vec!["build", source]] {
+        let Some(output) = output_or_skip(svr().args(args)) else {
+            return;
+        };
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    let Some(interpreted) = output_or_skip(svr().args(["run", source])) else {
+        return;
+    };
+    assert!(interpreted.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&interpreted.stdout).replace("\r\n", "\n"),
+        "square: 49\nletters: 5\n"
+    );
+    let Some(built) = output_or_skip(svr().args(["build", "--emit", "js", source])) else {
+        return;
+    };
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let js = Command::new("node")
+        .arg("-e")
+        .arg(String::from_utf8(built.stdout).unwrap())
+        .output()
+        .expect("Node is required for backend validation");
+    assert!(
+        js.status.success(),
+        "{}",
+        String::from_utf8_lossy(&js.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&js.stdout).replace("\r\n", "\n"),
+        "square: 49\nletters: 5\n"
+    );
+}
+
+#[test]
 fn structural_depth_errors_replace_subprocess_crashes() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -393,6 +484,30 @@ fn check_json_reports_service_contract_declarations() {
 }
 
 #[test]
+fn project_service_parameters_require_annotations_in_json() {
+    let project = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/service-untyped"
+    );
+    let Some(output) = output_or_skip(svr().args(["check", "--format=json", project])) else {
+        return;
+    };
+    assert_eq!(output.status.code(), Some(1));
+    assert_json_report(
+        &output,
+        r#"
+        assert.equal(report.success, false);
+        assert.equal(report.diagnostics.length, 1);
+        const error = report.diagnostics[0];
+        assert.equal(error.code, 'E4097');
+        assert.ok(error.message.includes('message'));
+        const bytes = require('node:fs').readFileSync(error.location.file);
+        assert.equal(bytes.subarray(error.location.start, error.location.end).toString().trim(), 'fn send(message);');
+    "#,
+    );
+}
+
+#[test]
 fn check_json_exposes_unresolved_service_metadata() {
     let project = concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -414,7 +529,7 @@ fn check_json_exposes_unresolved_service_metadata() {
         assert.equal(send.name, 'send');
         assert.deepEqual(send.parameters, [
             {name: 'value', annotation: 'Result<Text, Error>'},
-            {name: 'context', annotation: null}
+            {name: 'context', annotation: 'Int'}
         ]);
         assert.equal(send.return_annotation, 'Receipt');
         assert.equal(send.has_body, false);
@@ -423,7 +538,7 @@ fn check_json_exposes_unresolved_service_metadata() {
         assert.deepEqual(ping.parameters, []);
         const bytes = require('node:fs').readFileSync(send.location.file);
         assert.equal(bytes.subarray(send.location.start, send.location.end).toString().trim(),
-            'fn send(value: Result<Text, Error>, context) -> Receipt;');
+            'fn send(value: Result<Text, Error>, context: Int) -> Receipt;');
     "#,
     );
 }
@@ -433,12 +548,7 @@ fn service_call_cli_reports_errors_and_incomplete_coverage() {
     let root = env!("CARGO_MANIFEST_DIR");
     for (relative, exit, codes, complete) in [
         ("tests/fixtures/service-metadata", 0, "[]", true),
-        (
-            "tests/fixtures/service-body-coverage",
-            1,
-            "['E4096']",
-            false,
-        ),
+        ("tests/fixtures/service-body-coverage", 1, "['E4093']", true),
         (
             "tests/fixtures/service-call-errors",
             1,
@@ -467,6 +577,16 @@ fn service_call_cli_reports_errors_and_incomplete_coverage() {
                 assert.equal(typeof call.operation, 'string');
             }}
             if ({complete}) assert.ok(report.member_calls.some(c => c.receiver.kind === 'service'));
+            if ('{relative}' === 'tests/fixtures/service-body-coverage') {{
+                const call = report.member_calls.find(c => c.function === 'mail.send');
+                assert.ok(call);
+                assert.equal(call.is_task, false);
+                assert.equal(call.operation, 'missing');
+                assert.equal(call.receiver.kind, 'service');
+                const bytes = require('node:fs').readFileSync(call.location.file);
+                assert.equal(bytes.subarray(call.location.start, call.location.end).toString(), 'mail.missing');
+                assert.deepEqual(report.diagnostics[0].location, call.location);
+            }}
             if ({codes} !== null) assert.deepEqual(report.diagnostics.map(d => d.code), {codes});
             else {{
                 assert.ok(report.diagnostics.some(d => d.code === 'E4096'));

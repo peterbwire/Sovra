@@ -1,6 +1,6 @@
 # ADR 0008: Explicit service implementation scopes
 
-Status: Proposed; awaiting user choice. This decision advances M12, not service
+Status: Accepted (2026-09-28); user approved explicit service calls. This decision advances M12, not service
 execution or full application type checking.
 
 ## Current blocker

@@ -18,8 +18,9 @@ implemented; it is not a universal host-stack/memory safety guarantee.
   stays shallow. Semantic traversal, AST cloning, lowering and drop behavior must
   be considered together; a parentheses-only guard is insufficient.
   Lowering now uses a worklist, and semantic analysis preflights caller-built
-  depth before recursive validation/cloning. Public AST ownership/drop and
-  caller-invoked cloning remain unresolved.
+  depth before recursive validation/cloning. Expression cloning now uses an iterative traversal. Explicit consuming
+  `Expression::drop_iterative` and `Program::drop_iterative` APIs support deep
+  caller-built trees; ordinary Rust drop, Debug and equality remain recursive.
 - Application inspection recursively traverses blocks, expressions and scopes.
   It requires independent protection until unified structured project checking
   replaces the separate subset.

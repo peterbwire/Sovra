@@ -67,6 +67,7 @@ fn parse_suffix(suffix: &str) -> Result<(Option<&str>, Option<&str>), &'static s
         return Ok((None, None));
     }
     if suffix.starts_with('{') {
+        validate_body_tail(suffix)?;
         return Ok((None, Some(suffix)));
     }
     let rest = suffix
@@ -83,10 +84,49 @@ fn parse_suffix(suffix: &str) -> Result<(Option<&str>, Option<&str>), &'static s
     if tail.is_empty() || tail == ";" {
         Ok((Some(annotation), None))
     } else if tail.starts_with('{') {
+        validate_body_tail(tail)?;
         Ok((Some(annotation), Some(tail)))
     } else {
         Err("unexpected text after service operation terminator")
     }
+}
+
+// Bodies remain opaque, but a completed inline body must not hide another
+// declaration from the line-based index. A final service-closing brace is valid.
+fn validate_body_tail(body: &str) -> Result<(), &'static str> {
+    let mut depth = 0usize;
+    let mut quoted = false;
+    let mut escaped = false;
+    for (offset, character) in body.char_indices() {
+        if quoted {
+            if escaped {
+                escaped = false;
+            } else if character == '\\' {
+                escaped = true;
+            } else if character == '"' {
+                quoted = false;
+            }
+            continue;
+        }
+        match character {
+            '"' => quoted = true,
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    let tail = body[offset + 1..].trim();
+                    return if tail.is_empty() || tail == "}" {
+                        Ok(())
+                    } else {
+                        Err("unexpected text after service operation body; use separate declaration lines")
+                    };
+                }
+            }
+            _ => {}
+        }
+    }
+    // The scanner continues tracking multiline bodies separately.
+    Ok(())
 }
 
 // Validate grouping only. Names and operators still belong to the future
@@ -199,7 +239,7 @@ fn append_parameter<'a>(
     Ok(())
 }
 
-/// Recognize the name and balanced parameter list of a single-line operation.
+/// Recognize the name and balanced parameter list of an operation signature.
 /// Parameter types and the return/body suffix remain opaque application syntax.
 pub(super) fn parse_operation(line: &str) -> Result<Option<Operation<'_>>, &'static str> {
     let Some(rest) = line.strip_prefix("fn") else {
@@ -255,12 +295,38 @@ pub(super) fn parse_operation(line: &str) -> Result<Option<Operation<'_>>, &'sta
             _ => {}
         }
     }
-    Err("service operation parameter list must close on the same line")
+    Err("service operation parameter list is unclosed")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn operation_bodies_do_not_hide_trailing_declarations() {
+        for suffix in [
+            "{} fn hidden() {}",
+            "{ nested(); } trailing",
+            "-> Text {} fn hidden();",
+        ] {
+            assert!(
+                parse_operation(&format!("fn send() {suffix}")).is_err(),
+                "{suffix}"
+            );
+        }
+        for suffix in [
+            "{",
+            "{ nested();",
+            "{ { nested(); } }",
+            "{ print(\"} fn hidden() {\"); }",
+            "{} }",
+        ] {
+            assert!(
+                parse_operation(&format!("fn send() {suffix}")).is_ok(),
+                "{suffix}"
+            );
+        }
+    }
 
     #[test]
     fn return_annotations_require_balanced_grouping() {

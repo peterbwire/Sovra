@@ -120,16 +120,31 @@ an additive version-one field; consumers should ignore unknown object members.
 Failed project checks and source checks omit it; absence does not mean an empty
 successful scan.
 
+Missing service parameter annotations and missing annotations in recognized
+top-level function/task/page/view signatures fail project checking with E4097 at
+the signature line (ADR 0009). Malformed parameterized function/task/page/view
+signatures report E4098. The structural metadata schema retains nullable
+annotations for compatibility; successful project checks require them present.
+Annotation names are still unresolved, not verified types.
+
 Each operation contains `service`, `name`, ordered `parameters` (each with `name`
 and nullable `annotation`), nullable `return_annotation`, boolean `has_body`,
 and `location` with file/start/end/line/column fields. Annotations are unresolved
 source text. Null means omitted, not inferred Unit or Any. `has_body` means a
-body starts on the declaration line, not that it was checked or can execute.
+body starts on the declaration line or the next nonblank, noncomment line,
+not that it was checked or can execute. A semicolon ends a declaration-only
+signature. Operation metadata locations cover all collected parameter-list
+lines for multiline signatures. Scanner diagnostics identify the opening
+signature line; parameter-token diagnostic ranges remain future work.
 Operations follow sorted source-file discovery and declaration order. Empty
 services have no entries. General statistics and resolved symbols remain planned.
 
 Opt-in `check --service-calls --format json <project>` reports also expose
 `member_calls`, an additive version-one array from fully inspected files only.
+Service operation bodies use qualified enclosing names such as `mail.relay`
+and `is_task: false` (ADR 0008). Declaration-only operations emit no body records.
+These names are metadata, not new executable identifiers.
+
 Each record contains `function` (enclosing declaration name), `is_task`,
 `operation`, `arguments` (positional count), `location` (member-expression range),
 and `receiver`. The receiver has a `kind` of `service`, `local`, `unresolved`, or

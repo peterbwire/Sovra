@@ -8,6 +8,12 @@ publishing are unfinished. The developer-preview release plan is superseded.
 See the [production-readiness plan](docs/PRODUCTION_READINESS.md) for the audit,
 implementation order and acceptance gates.
 
+For the current module/stdlib/package boundaries, see the
+[library ecosystem assessment](docs/LIBRARY_ECOSYSTEM_ASSESSMENT.md) and
+[real HTTP dependency plan](docs/REAL_HTTP_APPLICATION_PLAN.md). The executable
+[library foundations example](examples/library-foundations/main.svr) uses inline
+modules; separate package consumption is still planned.
+
 Sovra is a modern application language for turning ideas into running
 software without stitching together a pile of unrelated frameworks.
 

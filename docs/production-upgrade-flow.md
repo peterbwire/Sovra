@@ -66,7 +66,8 @@ execution.
 
 1. Service contracts: structured headers/parameters/return text and JSON operation
    metadata are implemented with passing Windows regressions. Service-call
-   references require the import/scope decision in proposed ADR 0006; signature
-   type resolution remains unfinished.
+   references use accepted ADR 0006 import scopes and ADR 0008 explicit service
+   implementation scopes. Opt-in service-call checks validate operation names
+   and arity in supported bodies; signature type resolution remains unfinished.
 2. Page bindings: validate page targets, view references, and data dependencies
    once the application parser can provide structured nodes.

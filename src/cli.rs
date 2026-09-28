@@ -95,12 +95,12 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
     };
     if help_requested && matches!(command, "run" | "build" | "check") {
         if command == "build" {
-            println!("Usage: svr build [--emit ir|js] <source.svr>");
+            println!("Usage: svr build [--emit ir|js] <source.svr|package-directory>");
         } else if command == "check" {
             println!("Usage: svr check [--format human|json] [--service-calls] <source.svr|project-directory>");
             println!("  --service-calls  Experimental project-only contract checks; incomplete coverage fails.");
         } else {
-            println!("Usage: svr run <source.svr>");
+            println!("Usage: svr run <source.svr|package-directory>");
         }
         return ExitCode::SUCCESS;
     }
@@ -139,6 +139,15 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
             return ExitCode::from(2);
         }
         let path = match source_args.first() {
+            Some(path) if std::path::Path::new(path).is_dir() => {
+                return match compiler::project::packages::compile(path) {
+                    Ok(ir) => execute_ir(command, emit, &ir),
+                    Err(diagnostics) => {
+                        print_diagnostics(diagnostics);
+                        ExitCode::from(1)
+                    }
+                };
+            }
             Some(path) if path.ends_with(".svr") => path,
             Some(path) => {
                 eprintln!("svr: source path `{path}` must have a .svr extension");
@@ -172,29 +181,33 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
             }
         };
         let ir = compiler::ir::lower(&typed);
-        if command == "build" {
-            match emit {
-                Emit::Ir => print!("{}", compiler::backend::render(&ir)),
-                Emit::Js => print!("{}", compiler::backend::render_javascript(&ir)),
-            }
-            return ExitCode::SUCCESS;
-        }
-        match compiler::interpreter::run(&ir) {
-            Ok(output) => {
-                for line in output {
-                    println!("{line}");
-                }
-                ExitCode::SUCCESS
-            }
-            Err(error) => {
-                eprintln!("svr: runtime error: {error}");
-                ExitCode::from(1)
-            }
-        }
+        execute_ir(command, emit, &ir)
     }
     eprintln!("{message}.");
     eprintln!("See docs/roadmap.md for planned functionality.");
     ExitCode::from(1)
+}
+
+fn execute_ir(command: &str, emit: Emit, ir: &compiler::ir::IrProgram) -> ExitCode {
+    if command == "build" {
+        match emit {
+            Emit::Ir => print!("{}", compiler::backend::render(ir)),
+            Emit::Js => print!("{}", compiler::backend::render_javascript(ir)),
+        }
+        return ExitCode::SUCCESS;
+    }
+    match compiler::interpreter::run(ir) {
+        Ok(output) => {
+            for line in output {
+                println!("{line}");
+            }
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("svr: runtime error: {error}");
+            ExitCode::from(1)
+        }
+    }
 }
 
 fn check_command(args: &[String]) -> ExitCode {
@@ -218,6 +231,39 @@ fn check_command(args: &[String]) -> ExitCode {
         }
     };
     if metadata.is_dir() {
+        match compiler::project::packages::declares_dependencies(std::path::Path::new(path)) {
+            Ok(true) => {
+                if service_calls {
+                    eprintln!("svr: --service-calls applies to application projects, not executable dependency packages");
+                    return ExitCode::from(2);
+                }
+                let diagnostics = match compiler::project::packages::compile(path) {
+                    Ok(_) => Diagnostics::new(),
+                    Err(diagnostics) => diagnostics,
+                };
+                let success = diagnostics.is_empty();
+                if format == CheckFormat::Json {
+                    println!(
+                        "{}",
+                        check_report::render(path, Some(CheckKind::Project), &diagnostics)
+                    );
+                } else if success {
+                    println!("checked executable package `{path}`");
+                } else {
+                    print_diagnostics(diagnostics);
+                }
+                return if success {
+                    ExitCode::SUCCESS
+                } else {
+                    ExitCode::from(1)
+                };
+            }
+            Err(diagnostics) => {
+                print_check_diagnostics(path, CheckKind::Project, format, diagnostics);
+                return ExitCode::from(1);
+            }
+            Ok(false) => {}
+        }
         match compiler::project::check_project(path) {
             Ok(project) => {
                 if service_calls {

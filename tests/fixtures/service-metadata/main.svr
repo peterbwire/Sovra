@@ -1,6 +1,8 @@
 service mail {
-    fn send(value: Result<Text, Error>, context) -> Receipt;
-    fn ping() {}
+    fn send(value: Result<Text, Error>, context: Int) -> Receipt;
+    fn ping()
+    // A body may start after comments and whitespace.
+    {}
 }
 
 fn typed_local() {

@@ -1,0 +1,4 @@
+[project]
+name = "utilities"
+version = "0.1.0"
+entry = "library.svr"

@@ -1,0 +1,9 @@
+mod arithmetic {
+    fn product(left: Int, right: Int) -> Int {
+        return left * right
+    }
+
+    export fn square(value: Int) -> Int {
+        return arithmetic::product(value, value)
+    }
+}

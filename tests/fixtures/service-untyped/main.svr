@@ -1,0 +1,3 @@
+service mail {
+    fn send(message);
+}

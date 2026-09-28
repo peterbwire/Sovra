@@ -2,6 +2,7 @@
 
 pub mod application;
 mod imports;
+pub mod packages;
 pub mod scope;
 mod service_contract;
 
@@ -99,7 +100,7 @@ pub struct ServiceOperation {
     pub parameters: Vec<ServiceParameter>,
     /// Explicit unresolved return annotation; absence does not infer a type.
     pub return_annotation: Option<String>,
-    /// Whether a body begins on the operation line; its contents are not validated.
+    /// Whether a body follows the signature; its contents are not validated here.
     pub has_body: bool,
     /// Source file containing the operation.
     pub source_file: PathBuf,
@@ -550,15 +551,36 @@ fn scan_source_file(
     let mut seen_services = BTreeSet::new();
     let mut service_contract: Option<(String, BTreeSet<String>, usize)> = None;
     let mut pending_service: Option<(String, usize)> = None;
+    let mut pending_operation: Option<usize> = None;
     let mut brace_depth = 0usize;
     let spans = source_line_spans(source);
-    for (line_index, line) in source.lines().enumerate() {
-        let trimmed = strip_line_comment(line, "//").trim();
+    let lines = source.lines().collect::<Vec<_>>();
+    let mut consumed_until = 0;
+    for (line_index, line) in lines.iter().enumerate() {
+        if line_index < consumed_until {
+            continue;
+        }
+        let line = strip_line_comment(line, "//").trim();
+        let (signature, last_line) =
+            if brace_depth == 0 || (brace_depth == 1 && service_contract.is_some()) {
+                collect_signature_lines(&lines, line_index)
+            } else {
+                (line.to_owned(), line_index)
+            };
+        consumed_until = last_line + 1;
+        let trimmed = signature.as_str();
         let location = SourceLocation {
             file: source_file.to_string_lossy().into_owned(),
             span: spans[line_index],
         };
         if !trimmed.is_empty() {
+            // An unterminated signature can acquire a body on the next substantive
+            // line. Never carry it past another declaration or a closing brace.
+            if let Some(operation) = pending_operation.take() {
+                if brace_depth == 1 && trimmed.starts_with('{') {
+                    index.service_operations[operation].has_body = true;
+                }
+            }
             if let Some((name, declaration_line)) = pending_service.take() {
                 if brace_depth == 0 && trimmed == "{" {
                     service_contract = Some((name, BTreeSet::new(), declaration_line));
@@ -580,6 +602,19 @@ fn scan_source_file(
             if let Some((service, operations, _)) = &mut service_contract {
                 match service_contract::parse_operation(trimmed) {
                     Ok(Some(operation)) => {
+                        for parameter in &operation.declarations {
+                            if parameter.annotation.is_none() {
+                                push_manifest_error(
+                                    diagnostics,
+                                    line_index,
+                                    "E4097",
+                                    format!("parameter `{}` in service operation `{service}.{}` requires an explicit type annotation", parameter.name, operation.name),
+                                );
+                            }
+                        }
+                        if operation.body.is_none() && !operation.suffix.ends_with(';') {
+                            pending_operation = Some(index.service_operations.len());
+                        }
                         index.service_operations.push(ServiceOperation {
                             service: service.clone(),
                             name: operation.name.to_owned(),
@@ -594,7 +629,10 @@ fn scan_source_file(
                             return_annotation: operation.return_annotation.map(str::to_owned),
                             has_body: operation.body.is_some(),
                             source_file: source_file.to_path_buf(),
-                            span: spans[line_index],
+                            span: Span {
+                                end: spans[last_line].end,
+                                ..spans[line_index]
+                            },
                         });
                         if !operations.insert(operation.name.to_owned()) {
                             push_manifest_error(
@@ -622,6 +660,9 @@ fn scan_source_file(
                 service_contract = None;
             }
             continue;
+        }
+        if brace_depth == 0 {
+            check_application_parameters(trimmed, line_index, diagnostics);
         }
         let header = match service_contract::parse_header(trimmed) {
             Ok(header) => header,
@@ -804,8 +845,103 @@ fn scan_source_file(
     }
 }
 
-// Input already has source line comments removed. Quoted braces and escaped
-// quotes must not close a service contract or hide subsequent free functions.
+// Collect only parameter-list continuations. This preserves the scanner's
+// declaration recovery boundary and leaves type interpretation to later stages.
+fn collect_signature_lines(lines: &[&str], start: usize) -> (String, usize) {
+    let first = strip_line_comment(lines[start], "//").trim();
+    let parameterized = ["fn", "task", "page", "view"].iter().any(|kind| {
+        parse_prefixed_identifier(first, kind).is_some_and(|name| {
+            first[kind.len()..].trim_start()[name.len()..]
+                .trim_start()
+                .starts_with('(')
+        })
+    });
+    if !parameterized {
+        return (first.to_owned(), start);
+    }
+    let mut signature = String::new();
+    let mut depth = 0usize;
+    let mut quoted = false;
+    let mut escaped = false;
+    let mut last = start;
+    for (index, line) in lines.iter().enumerate().skip(start) {
+        let line = strip_line_comment(line, "//").trim();
+        if index > start
+            && (line.starts_with(['{', '}'])
+                || [
+                    "fn", "task", "page", "view", "service", "model", "type", "enum", "use", "app",
+                    "auth",
+                ]
+                .iter()
+                .any(|keyword| starts_keyword(line, keyword)))
+        {
+            break;
+        }
+        if index > start {
+            signature.push('\n');
+        }
+        signature.push_str(line);
+        last = index;
+        for character in line.chars() {
+            if quoted {
+                if escaped {
+                    escaped = false;
+                } else if character == '\\' {
+                    escaped = true;
+                } else if character == '"' {
+                    quoted = false;
+                }
+                continue;
+            }
+            match character {
+                '"' => quoted = true,
+                '(' => depth += 1,
+                ')' => {
+                    depth = depth.saturating_sub(1);
+                    if depth == 0 {
+                        return (signature, last);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    (signature, last)
+}
+
+fn check_application_parameters(line: &str, line_index: usize, diagnostics: &mut Diagnostics) {
+    for kind in ["fn", "task", "page", "view"] {
+        let Some(name) = parse_prefixed_identifier(line, kind) else {
+            continue;
+        };
+        let rest = line[kind.len()..].trim_start();
+        if !rest[name.len()..].trim_start().starts_with('(') {
+            // Scheduled task bindings and page routes are not parameter lists.
+            continue;
+        }
+        let signature = format!("fn {rest}");
+        match service_contract::parse_operation(&signature) {
+            Ok(Some(operation)) => {
+                for parameter in operation.declarations {
+                    if parameter.annotation.is_none() {
+                        push_manifest_error(diagnostics, line_index, "E4097", format!(
+                            "parameter `{}` in {kind} `{name}` requires an explicit type annotation", parameter.name
+                        ));
+                    }
+                }
+            }
+            Err(message) => push_manifest_error(
+                diagnostics,
+                line_index,
+                "E4098",
+                format!("invalid {kind} signature: {message}"),
+            ),
+            Ok(None) => {}
+        }
+        break;
+    }
+}
+
 fn update_brace_depth(line: &str, depth: &mut usize) {
     let mut quoted = false;
     let mut escaped = false;
@@ -1387,6 +1523,7 @@ fn is_dotted_identifier(value: &str) -> bool {
 
 #[derive(Debug, Default)]
 struct Manifest {
+    sections: Vec<(String, Span)>,
     entries: Vec<ManifestEntry>,
     diagnostics: Diagnostics,
     source_file: Option<String>,
@@ -1394,6 +1531,10 @@ struct Manifest {
 
 impl Manifest {
     fn parse(source: &str) -> Self {
+        Self::parse_mode(source, false)
+    }
+
+    fn parse_mode(source: &str, dependencies: bool) -> Self {
         let mut manifest = Self::default();
         let mut current_section: Option<String> = None;
         let mut seen_sections = BTreeSet::new();
@@ -1418,7 +1559,12 @@ impl Manifest {
                     current_section = None;
                     continue;
                 }
-                if !SUPPORTED_SECTIONS.contains(&section) {
+                if !SUPPORTED_SECTIONS.contains(&section)
+                    && !(dependencies
+                        && section
+                            .strip_prefix("dependencies.")
+                            .is_some_and(|alias| is_identifier(alias) && alias != "std"))
+                {
                     push_manifest_error(
                         &mut manifest.diagnostics,
                         line_index,
@@ -1435,6 +1581,9 @@ impl Manifest {
                     );
                 }
                 current_section = Some(section.to_owned());
+                manifest
+                    .sections
+                    .push((section.to_owned(), spans[line_index]));
                 continue;
             }
 
@@ -1545,6 +1694,7 @@ fn validate_manifest_key(
         "project" => PROJECT_KEYS.contains(&key),
         "runtime" => RUNTIME_KEYS.contains(&key),
         "services" => !key.is_empty(),
+        section if section.starts_with("dependencies.") => key == "path",
         _ => true,
     };
     if !supported {
@@ -1768,6 +1918,56 @@ mod tests {
     }
 
     #[test]
+    fn service_implementations_validate_imported_calls_with_original_spans() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"sample\"\nentry = \"main.svr\"\n[services]\nmail = \"external\"\nrelay = \"external\"",
+        );
+        project.write_file("services.svr", "service mail {\nfn send(value: Text);\n}\n");
+        let source = "use services\r\n// λ preserves byte offsets\r\nservice relay {\r\nfn forward() { mail.send(); mail.missing(1); mail.send(1); }\r\nfn shadow(mail: Client) { mail.missing(); }\r\nfn again() { mail.send(1); }\r\n}\r\n";
+        project.write_file("main.svr", source);
+        let checked = check_project(project.path()).unwrap();
+        let report = application::check_service_calls(&checked);
+        assert_eq!(report.diagnostics.items.len(), 2);
+        for (error, (code, text)) in report
+            .diagnostics
+            .items
+            .iter()
+            .zip([("E4094", "mail.send"), ("E4093", "mail.missing")])
+        {
+            assert_eq!(error.code, code);
+            assert_eq!(&source[error.span.start..error.span.end], text);
+            assert_eq!(error.span.line, 3);
+            assert_eq!(
+                error.source_file.as_deref(),
+                Some(project.path().join("main.svr").to_string_lossy().as_ref())
+            );
+        }
+        let functions = report
+            .files
+            .iter()
+            .find(|file| file.source_file == project.path().join("main.svr"))
+            .unwrap()
+            .functions
+            .as_ref()
+            .unwrap();
+        assert_eq!(
+            functions
+                .iter()
+                .map(|function| function.name.as_str())
+                .collect::<Vec<_>>(),
+            ["relay.forward", "relay.shadow", "relay.again"]
+        );
+        assert!(functions.iter().all(|function| !function.is_task));
+        assert_eq!(functions[1].calls[0].receiver, scope::Receiver::Local);
+        assert!(matches!(
+            functions[2].calls[0].receiver,
+            scope::Receiver::Service(_)
+        ));
+    }
+
+    #[test]
     fn project_inspection_uses_direct_imports_and_reports_partial_files() {
         let project = TestProject::new();
         project.write_file(
@@ -1858,13 +2058,172 @@ mod tests {
     }
 
     #[test]
+    fn signature_continuations_stop_before_new_declarations() {
+        for next in ["fn next() {}", "service mail {}", "}", "{"] {
+            let lines = ["fn broken(", " value: Int,", next];
+            let (signature, last) = collect_signature_lines(&lines, 0);
+            assert_eq!(last, 1);
+            assert_eq!(signature, "fn broken(\nvalue: Int,");
+        }
+        let lines = ["fn valid(", " callback: (Int, String) -> Bool,", ") {}"];
+        let (signature, last) = collect_signature_lines(&lines, 0);
+        assert_eq!(last, 2);
+        assert!(service_contract::parse_operation(&signature).is_ok());
+    }
+
+    #[test]
+    fn multiline_application_and_service_parameters_are_checked() {
+        for kind in ["fn", "task", "page", "view", "service"] {
+            let project = TestProject::new();
+            let service = kind == "service";
+            project.write_file(
+                "sovra.toml",
+                &format!(
+                    "[project]\nname = \"sample\"\nentry = \"main.svr\"\n{}",
+                    if service {
+                        "[services]\nmail = \"external\""
+                    } else {
+                        ""
+                    }
+                ),
+            );
+            let declaration = if service { "fn" } else { kind };
+            for (parameter, valid) in [("value: String", true), ("value", false)] {
+                let body = format!("{declaration} example(\r\n // λ comment\r\n {parameter},\r\n context: Int,\r\n) {{}}\r\n");
+                let source = if service {
+                    format!("service mail {{\r\n{body}}}\r\n")
+                } else {
+                    body
+                };
+                project.write_file("main.svr", &source);
+                let result = check_project(project.path());
+                if valid {
+                    let checked = result.unwrap();
+                    if service {
+                        assert_eq!(checked.service_operations[0].parameters.len(), 2);
+                        assert!(source[checked.service_operations[0].span.start
+                            ..checked.service_operations[0].span.end]
+                            .contains("context: Int"));
+                    }
+                } else {
+                    let errors = result.unwrap_err();
+                    assert_eq!(errors.items.len(), 1, "{kind}: {errors:?}");
+                    assert_eq!(errors.items[0].code, "E4097");
+                    assert_eq!(errors.items[0].span.line, usize::from(service));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn application_declaration_parameters_require_annotations() {
+        for kind in ["fn", "task", "page", "view"] {
+            let project = TestProject::new();
+            project.write_file(
+                "sovra.toml",
+                "[project]\nname = \"sample\"\nentry = \"main.svr\"",
+            );
+            project.write_file("main.svr", &format!("{kind} example(value) {{}}\n"));
+            let errors = check_project(project.path()).unwrap_err();
+            assert_eq!(errors.items.len(), 1, "{kind}: {errors:?}");
+            assert_eq!(errors.items[0].code, "E4097");
+            assert!(errors.items[0].message.contains("value"));
+            project.write_file("main.svr", &format!("{kind} example(value: String) {{}}\n"));
+            assert!(check_project(project.path()).is_ok(), "{kind}");
+            project.write_file("main.svr", &format!("{kind} example(value:) {{}}\n"));
+            let errors = check_project(project.path()).unwrap_err();
+            assert_eq!(errors.items.len(), 1, "{kind}: {errors:?}");
+            assert_eq!(errors.items[0].code, "E4098");
+        }
+    }
+
+    #[test]
+    fn service_parameters_require_explicit_annotations() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"sample\"\nentry = \"main.svr\"\n[services]\nmail = \"external\"",
+        );
+        project.write_file(
+            "main.svr",
+            "service mail {\nfn send(value, context: Int);\n}\n",
+        );
+        let errors = check_project(project.path()).unwrap_err();
+        assert_eq!(errors.items.len(), 1);
+        assert_eq!(errors.items[0].code, "E4097");
+        assert!(errors.items[0].message.contains("value"));
+        assert_eq!(errors.items[0].span.line, 1);
+        assert!(errors.items[0].source_file.is_some());
+    }
+
+    #[test]
+    fn service_operation_trailing_declarations_are_not_silently_lost() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"sample\"\nentry = \"main.svr\"\n[services]\nmail = \"external\"",
+        );
+        let source = "service mail {\n    fn send() {} fn hidden() {}\n}\n";
+        project.write_file("main.svr", source);
+        let errors = check_project(project.path()).unwrap_err();
+        assert_eq!(errors.items.len(), 1);
+        assert_eq!(errors.items[0].code, "E4027");
+        let span = errors.items[0].span;
+        assert_eq!(
+            &source[span.start..span.end],
+            "    fn send() {} fn hidden() {}"
+        );
+        assert!(errors.items[0].source_file.is_some());
+    }
+
+    #[test]
+    fn service_body_metadata_recognizes_braces_on_following_lines() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"sample\"\nentry = \"main.svr\"\n[services]\nmail = \"external\"",
+        );
+        let source = "service mail {\nfn declaration();\nfn empty()\n// body follows a comment\n\n{}\nfn relay() -> Unit\n{ mail.empty(); }\nfn last()\n}\n";
+        project.write_file("main.svr", source);
+        let checked = check_project(project.path()).unwrap();
+        assert_eq!(
+            checked
+                .service_operations
+                .iter()
+                .map(|operation| (operation.name.as_str(), operation.has_body))
+                .collect::<Vec<_>>(),
+            [
+                ("declaration", false),
+                ("empty", true),
+                ("relay", true),
+                ("last", false)
+            ]
+        );
+        for operation in &checked.service_operations {
+            assert!(source[operation.span.start..operation.span.end]
+                .trim()
+                .starts_with("fn "));
+        }
+        let report = application::check_service_calls(&checked);
+        assert!(report.diagnostics.is_empty(), "{:?}", report.diagnostics);
+        let functions = report.files[0].functions.as_ref().unwrap();
+        assert_eq!(
+            functions
+                .iter()
+                .map(|function| function.name.as_str())
+                .collect::<Vec<_>>(),
+            ["mail.empty", "mail.relay"]
+        );
+    }
+
+    #[test]
     fn project_result_retains_service_operation_metadata() {
         let project = TestProject::new();
         project.write_file(
             "sovra.toml",
             "[project]\nname = \"sample\"\nentry = \"main.svr\"\n[services]\nmail = \"external\"",
         );
-        let source = "service mail {\n fn send(value: Result<Text, Error>, context) -> Receipt;\n fn ping() {}\n}\n";
+        let source = "service mail {\n fn send(value: Result<Text, Error>, context: Int) -> Receipt;\n fn ping() {}\n}\n";
         project.write_file("main.svr", source);
         let checked = check_project(project.path()).unwrap();
         assert_eq!(checked.service_operations.len(), 2);
@@ -1877,12 +2236,12 @@ mod tests {
             Some("Result<Text, Error>")
         );
         assert_eq!(operation.parameters[1].name, "context");
-        assert_eq!(operation.parameters[1].annotation, None);
+        assert_eq!(operation.parameters[1].annotation.as_deref(), Some("Int"));
         assert!(!operation.has_body);
         assert_eq!(operation.source_file, project.path().join("main.svr"));
         assert_eq!(
             &source[operation.span.start..operation.span.end],
-            " fn send(value: Result<Text, Error>, context) -> Receipt;"
+            " fn send(value: Result<Text, Error>, context: Int) -> Receipt;"
         );
         assert!(checked.service_operations[1].has_body);
         assert_eq!(checked.service_operations[1].return_annotation, None);

@@ -1,0 +1,5 @@
+use utilities::arithmetic;
+
+fn main() {
+    std::println(utilities::arithmetic::square(7))
+}

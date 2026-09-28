@@ -46,6 +46,14 @@ impl SemanticAnalyzer {
     /// Caller-built trees exceeding depth 128 return E3018 before recursive work
     /// or cloning. This borrowed check does not change the caller's AST drop behavior.
     pub fn analyze(&self, program: &Program) -> Result<TypedProgram, Diagnostics> {
+        self.analyze_with_imports(program, &[])
+    }
+
+    pub(crate) fn analyze_with_imports<'a>(
+        &self,
+        program: &'a Program,
+        imports: &[(String, &'a Function)],
+    ) -> Result<TypedProgram, Diagnostics> {
         let mut diagnostics = Diagnostics::new();
         if let Err(span) = super::limits::check_program_depth(program) {
             diagnostics.push(diagnostic("E3018", super::limits::depth_message(), span));
@@ -101,6 +109,15 @@ impl SemanticAnalyzer {
             .iter()
             .map(|function| (function.name.clone(), function))
             .collect();
+        for (name, function) in imports {
+            if functions.insert(name.clone(), function).is_some() {
+                diagnostics.push(diagnostic(
+                    "E3008",
+                    format!("duplicate imported function `{name}`"),
+                    function.span,
+                ));
+            }
+        }
         for module in &program.modules {
             for function in &module.functions {
                 if function.is_exported {

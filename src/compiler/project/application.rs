@@ -268,28 +268,19 @@ pub fn inspect_functions(
         }
         if matches!(parser.peek(), TokenKind::Identifier(name) if name == "service") {
             parser.position += 1;
-            if !matches!(parser.peek(), TokenKind::Identifier(_)) {
-                return Err("expected service name".into());
-            }
+            let owner = match parser.peek() {
+                TokenKind::Identifier(name) => name.clone(),
+                _ => return Err("expected service name".into()),
+            };
             parser.position += 1;
             parser.require(TokenKind::Punctuation('{'))?;
-            let mut depth = 1usize;
-            while depth > 0 {
-                match parser.peek() {
-                    TokenKind::Eof => return Err("unclosed service declaration".into()),
-                    TokenKind::Punctuation('{') => {
-                        if tokens[parser.position + 1].kind != TokenKind::Punctuation('}') {
-                            return Err(format!(
-                                "unsupported service implementation body at byte {}",
-                                tokens[parser.position].span.start
-                            ));
-                        }
-                        depth += 1;
-                    }
-                    TokenKind::Punctuation('}') => depth -= 1,
-                    _ => {}
+            while !parser.consume(TokenKind::Punctuation('}')) {
+                if parser.peek() != &TokenKind::Keyword("fn") {
+                    return Err("expected service operation or closing brace".into());
                 }
-                parser.position += 1;
+                if let Some(function) = parser.declaration(source, services, Some(&owner), false)? {
+                    functions.push(function);
+                }
             }
             continue;
         }
@@ -304,51 +295,9 @@ pub fn inspect_functions(
                 ))
             }
         };
-        let keyword_end = tokens[parser.position].span.end;
-        parser.position += 1;
-        // Signature structure is checked by the shared contract parser. A body
-        // starts at the first brace; record/object parameter syntax is not yet supported.
-        while !matches!(parser.peek(), TokenKind::Punctuation('{') | TokenKind::Eof) {
-            if matches!(
-                parser.peek(),
-                TokenKind::Keyword("fn") | TokenKind::Punctuation('}')
-            ) {
-                return Err("missing function/task body".into());
-            }
-            parser.position += 1;
+        if let Some(function) = parser.declaration(source, services, None, is_task)? {
+            functions.push(function);
         }
-        if parser.peek() == &TokenKind::Eof {
-            return Err("missing function/task body".into());
-        }
-        let header = source[keyword_end..tokens[parser.position].span.start]
-            .lines()
-            .map(|line| super::strip_line_comment(line, "//"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let header = format!("fn {header}");
-        let operation = super::service_contract::parse_operation(&header)
-            .map_err(str::to_owned)?
-            .ok_or("missing declaration signature")?;
-        if operation.suffix.ends_with(';') || operation.body.is_some() {
-            return Err("unexpected terminator before function/task body".into());
-        }
-        let mut scope = Scope::new();
-        for service in services {
-            scope.add_service(service.clone());
-        }
-        for parameter in &operation.declarations {
-            scope.bind(parameter.name, start.start);
-        }
-        parser.block(&scope)?;
-        functions.push(FunctionCalls {
-            name: operation.name.to_owned(),
-            is_task,
-            span: Span {
-                end: tokens[parser.position - 1].span.end,
-                ..start
-            },
-            calls: std::mem::take(&mut parser.calls),
-        });
     }
     Ok(functions)
 }
@@ -411,6 +360,69 @@ fn check_depth(depth: usize, span: Span) -> Result<(), String> {
 }
 
 impl BodyParser<'_> {
+    fn declaration(
+        &mut self,
+        source: &str,
+        services: &[ServiceIdentity],
+        owner: Option<&str>,
+        is_task: bool,
+    ) -> Result<Option<FunctionCalls>, String> {
+        let start = self.tokens[self.position].span;
+        let keyword_end = start.end;
+        self.position += 1;
+        while !matches!(
+            self.peek(),
+            TokenKind::Punctuation('{' | '}' | ';') | TokenKind::Keyword("fn") | TokenKind::Eof
+        ) {
+            self.position += 1;
+        }
+        let header = source[keyword_end..self.tokens[self.position].span.start]
+            .lines()
+            .map(|line| super::strip_line_comment(line, "//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let header = format!("fn {header}");
+        let operation = super::service_contract::parse_operation(&header)
+            .map_err(str::to_owned)?
+            .ok_or("missing declaration signature")?;
+        if let Some(parameter) = operation
+            .declarations
+            .iter()
+            .find(|item| item.annotation.is_none())
+        {
+            return Err(format!(
+                "parameter `{}` requires an explicit type annotation at byte {}",
+                parameter.name, start.start
+            ));
+        }
+        if self.peek() != &TokenKind::Punctuation('{') {
+            if owner.is_none() {
+                return Err("missing function/task body".into());
+            }
+            self.consume(TokenKind::Punctuation(';'));
+            return Ok(None);
+        }
+        let mut scope = Scope::new();
+        for service in services {
+            scope.add_service(service.clone());
+        }
+        for parameter in &operation.declarations {
+            scope.bind(parameter.name, start.start);
+        }
+        self.block(&scope)?;
+        Ok(Some(FunctionCalls {
+            name: owner.map_or_else(
+                || operation.name.to_owned(),
+                |owner| format!("{owner}.{}", operation.name),
+            ),
+            is_task,
+            span: Span {
+                end: self.tokens[self.position - 1].span.end,
+                ..start
+            },
+            calls: std::mem::take(&mut self.calls),
+        }))
+    }
     fn peek(&self) -> &TokenKind {
         &self.tokens[self.position].kind
     }
@@ -654,10 +666,28 @@ mod tests {
     use super::*;
 
     #[test]
+    fn inspection_rejects_untyped_declaration_parameters() {
+        for source in [
+            "fn example(value) {}",
+            "task example(value) {}",
+            "service mail { fn send(value); }",
+        ] {
+            let error = inspect_functions(source, &[]).unwrap_err();
+            assert!(error.contains("explicit type annotation"), "{error}");
+        }
+    }
+
+    #[test]
     fn service_bodies_use_explicit_file_and_independent_lexical_scopes() {
         let source = "service maps { fn send(x: Int); fn relay() { maps.send(1); let maps = maps.make(); maps.local(); } fn shadow(maps: Client) { maps.local(); } fn next() { maps.send(2); } }";
         let functions = inspect_functions(source, &[service()]).unwrap();
-        assert_eq!(functions.iter().map(|function| function.name.as_str()).collect::<Vec<_>>(), ["maps.relay", "maps.shadow", "maps.next"]);
+        assert_eq!(
+            functions
+                .iter()
+                .map(|function| function.name.as_str())
+                .collect::<Vec<_>>(),
+            ["maps.relay", "maps.shadow", "maps.next"]
+        );
         assert_eq!(functions[0].calls[0].receiver, Receiver::Service(service()));
         assert_eq!(functions[0].calls[1].receiver, Receiver::Service(service()));
         assert_eq!(functions[0].calls[2].receiver, Receiver::Local);
@@ -788,12 +818,11 @@ mod tests {
     }
 
     #[test]
-    fn service_implementations_cannot_claim_complete_inspection() {
-        for body in ["maps.missing();", "return 1;", "{}"] {
+    fn unsupported_service_implementations_discard_inspection() {
+        for body in ["if true {}", "let x = ;", "maps.send("] {
             let source =
                 format!("fn first() {{ maps.send(); }} service maps {{ fn send() {{ {body} }} }}");
-            let error = inspect_functions(&source, &[service()]).unwrap_err();
-            assert!(error.contains("service implementation body"), "{error}");
+            assert!(inspect_functions(&source, &[service()]).is_err());
         }
     }
 
@@ -801,7 +830,10 @@ mod tests {
     fn empty_service_bodies_and_signatures_have_no_hidden_calls() {
         // Line comments and whitespace do not constitute an implementation.
         let source = "service maps { fn send(); fn empty() { // maps.hidden()\n } }";
-        assert!(inspect_functions(source, &[service()]).unwrap().is_empty());
+        let functions = inspect_functions(source, &[service()]).unwrap();
+        assert_eq!(functions.len(), 1);
+        assert_eq!(functions[0].name, "maps.empty");
+        assert!(functions[0].calls.is_empty());
     }
 
     #[test]

@@ -1,0 +1,445 @@
+//! Local package graph resolution and executable entry-module linking.
+
+mod executable;
+pub use executable::compile;
+
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
+
+use super::{Manifest, MANIFEST_FILE};
+use crate::compiler::diagnostics::{Diagnostic, Diagnostics, Severity, Span};
+
+const MAX_PACKAGES: usize = 1024;
+
+pub(crate) fn declares_dependencies(root: &Path) -> Result<bool, Diagnostics> {
+    let source = super::read_manifest(&root.join(MANIFEST_FILE))?;
+    Ok(Manifest::parse_mode(&source, true)
+        .sections
+        .iter()
+        .any(|(section, _)| section.starts_with("dependencies.")))
+}
+
+/// One local package; its canonical root is its local graph identity.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocalPackage {
+    /// Canonical package directory.
+    pub root: PathBuf,
+    /// Manifest display name, not a globally unique identity.
+    pub name: String,
+    /// Unresolved version metadata; no version selection is performed.
+    pub version: Option<String>,
+    /// Canonical source entry contained inside this package root.
+    pub entry: PathBuf,
+    /// Direct dependency aliases mapped to canonical package roots.
+    pub dependencies: BTreeMap<String, PathBuf>,
+}
+
+/// A fully resolved, acyclic local dependency graph, without source linking.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocalGraph {
+    /// Root package identity.
+    pub root: PathBuf,
+    /// Packages keyed by canonical root, never by display name.
+    pub packages: BTreeMap<PathBuf, LocalPackage>,
+}
+
+/// Resolve local dependencies in deterministic alias order without executing code.
+/// Traversal is iterative, deduplicates canonical roots and rejects cycles.
+/// At most 1024 packages may be loaded. Mutable paths are not content locks.
+pub fn resolve(root: impl AsRef<Path>) -> Result<LocalGraph, Diagnostics> {
+    let root = canonical_root(root.as_ref())?;
+    let mut graph = LocalGraph {
+        root: root.clone(),
+        packages: BTreeMap::new(),
+    };
+    let mut pending = vec![(root, false)];
+    let mut active = Vec::new();
+    let mut done = BTreeSet::new();
+    while let Some((root, exiting)) = pending.pop() {
+        if exiting {
+            active.pop();
+            done.insert(root);
+            continue;
+        }
+        if let Some(start) = active.iter().position(|path| path == &root) {
+            let chain = active[start..]
+                .iter()
+                .chain(std::iter::once(&root))
+                .map(|path: &PathBuf| path.display().to_string())
+                .collect::<Vec<_>>()
+                .join(" -> ");
+            return Err(error(
+                "E4111",
+                format!("local dependency cycle: {chain}"),
+                None,
+            ));
+        }
+        if done.contains(&root) {
+            continue;
+        }
+        if graph.packages.len() >= MAX_PACKAGES {
+            return Err(error(
+                "E4112",
+                "local dependency graph exceeds 1024 packages".into(),
+                None,
+            ));
+        }
+        let package = load(&root)?;
+        active.push(root.clone());
+        pending.push((root.clone(), true));
+        for target in package.dependencies.values().rev() {
+            pending.push((target.clone(), false));
+        }
+        graph.packages.insert(root, package);
+    }
+    Ok(graph)
+}
+
+fn canonical_root(path: &Path) -> Result<PathBuf, Diagnostics> {
+    let canonical = path.canonicalize().map_err(|cause| {
+        error(
+            "E4110",
+            format!("cannot resolve package root `{}`: {cause}", path.display()),
+            None,
+        )
+    })?;
+    if !canonical.is_dir() {
+        return Err(error(
+            "E4110",
+            format!("package root `{}` is not a directory", path.display()),
+            None,
+        ));
+    }
+    Ok(canonical)
+}
+
+fn load(root: &Path) -> Result<LocalPackage, Diagnostics> {
+    let manifest_path = root.join(MANIFEST_FILE);
+    // A symlinked manifest must not silently change the package's authority root.
+    let canonical_manifest = manifest_path.canonicalize().map_err(|cause| {
+        error(
+            "E4110",
+            format!(
+                "cannot read package manifest `{}`: {cause}",
+                manifest_path.display()
+            ),
+            None,
+        )
+    })?;
+    if !canonical_manifest.starts_with(root) {
+        return Err(error(
+            "E4113",
+            "package manifest escapes its root".into(),
+            None,
+        ));
+    }
+    let source = super::read_manifest(&manifest_path)?;
+    let mut manifest = Manifest::parse_mode(&source, true);
+    manifest.source_file = Some(manifest_path.to_string_lossy().into_owned());
+    super::attach_line_locations(&manifest_path, &source, &mut manifest.diagnostics.items);
+    if !manifest.diagnostics.is_empty() {
+        return Err(manifest.diagnostics);
+    }
+    let mut diagnostics = Diagnostics::new();
+    let name = super::require_manifest_value(&manifest, "project", "name", &mut diagnostics);
+    let entry = super::require_manifest_value(&manifest, "project", "entry", &mut diagnostics);
+    if let Some(name) = &name {
+        let first = diagnostics.items.len();
+        super::validate_project_name(name, &mut diagnostics);
+        manifest.attach("project", "name", &mut diagnostics.items[first..]);
+    }
+    if let Some(target) = manifest.value("runtime", "target") {
+        let first = diagnostics.items.len();
+        super::validate_runtime_target(target, &mut diagnostics);
+        manifest.attach("runtime", "target", &mut diagnostics.items[first..]);
+    }
+    if !diagnostics.is_empty() {
+        return Err(diagnostics);
+    }
+    let first = diagnostics.items.len();
+    let entry = super::resolve_project_path(root, entry.as_deref().unwrap(), &mut diagnostics);
+    if let Some(entry) = &entry {
+        super::validate_entry_path(entry, &mut diagnostics);
+    }
+    manifest.attach("project", "entry", &mut diagnostics.items[first..]);
+    if !diagnostics.is_empty() {
+        return Err(diagnostics);
+    }
+    let entry = entry.unwrap().canonicalize().map_err(|cause| {
+        error(
+            "E4110",
+            format!("cannot resolve package entry: {cause}"),
+            None,
+        )
+    })?;
+    if !entry.starts_with(root) {
+        let mut diagnostics = error("E4113", "package entry escapes its root".into(), None);
+        manifest.attach("project", "entry", &mut diagnostics.items);
+        return Err(diagnostics);
+    }
+    let mut dependencies = BTreeMap::new();
+    for (section, span) in &manifest.sections {
+        let Some(alias) = section.strip_prefix("dependencies.") else {
+            continue;
+        };
+        let Some(path) = manifest
+            .value(section, "path")
+            .filter(|path| !path.is_empty())
+        else {
+            return Err(error(
+                "E4110",
+                format!("dependency `{alias}` requires a nonempty path"),
+                Some((&manifest_path, *span)),
+            ));
+        };
+        let target = canonical_root(&root.join(path)).map_err(|mut diagnostics| {
+            manifest.attach(section, "path", &mut diagnostics.items);
+            diagnostics
+        })?;
+        dependencies.insert(alias.to_owned(), target);
+    }
+    Ok(LocalPackage {
+        root: root.to_owned(),
+        name: name.unwrap(),
+        entry,
+        version: manifest.value("project", "version").map(str::to_owned),
+        dependencies,
+    })
+}
+
+fn error(code: &'static str, message: String, location: Option<(&Path, Span)>) -> Diagnostics {
+    let mut diagnostics = Diagnostics::new();
+    diagnostics.push(Diagnostic {
+        severity: Severity::Error,
+        code,
+        message,
+        span: location.map_or(
+            Span {
+                start: 0,
+                end: 0,
+                line: 0,
+                column: 0,
+            },
+            |(_, span)| span,
+        ),
+        source_file: location.map(|(path, _)| path.to_string_lossy().into_owned()),
+    });
+    diagnostics
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+
+    struct Fixture(PathBuf);
+    impl Fixture {
+        fn new() -> Self {
+            let path = std::env::temp_dir().join(format!(
+                "sovra-packages-{}-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            std::fs::create_dir(&path).unwrap();
+            Self(path)
+        }
+        fn package(&self, name: &str, dependencies: &str) -> PathBuf {
+            let root = self.0.join(name);
+            std::fs::create_dir_all(&root).unwrap();
+            std::fs::write(root.join("main.svr"), "fn main() {}").unwrap();
+            std::fs::write(
+                root.join(MANIFEST_FILE),
+                format!(
+                    "[project]\nname = \"same-display-name\"\nentry = \"main.svr\"\n{dependencies}"
+                ),
+            )
+            .unwrap();
+            root
+        }
+    }
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            std::fs::remove_dir_all(&self.0).unwrap();
+        }
+    }
+
+    #[test]
+    fn resolves_diamonds_aliases_and_equal_display_names_deterministically() {
+        let fixture = Fixture::new();
+        fixture.package("shared", "");
+        fixture.package("left", "[dependencies.shared]\npath = \"../shared\"");
+        fixture.package("right", "[dependencies.shared]\npath = \"../shared\"");
+        let root = fixture.package("app", "[dependencies.right]\npath = \"../right\"\n[dependencies.left]\npath = \"../left\"\n[dependencies.alias]\npath = \"../left\"");
+        let graph = resolve(&root).unwrap();
+        assert_eq!(graph.packages.len(), 4);
+        assert_eq!(graph, resolve(root).unwrap());
+        let app = &graph.packages[&graph.root];
+        assert_eq!(
+            app.dependencies
+                .keys()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            ["alias", "left", "right"]
+        );
+        assert_eq!(app.dependencies["alias"], app.dependencies["left"]);
+        assert!(!app.dependencies.contains_key("shared"));
+    }
+
+    #[test]
+    fn rejects_cycles_with_the_chain() {
+        let fixture = Fixture::new();
+        let root = fixture.package("a", "[dependencies.b]\npath = \"../b\"");
+        fixture.package("b", "[dependencies.a]\npath = \"../a\"");
+        let errors = resolve(root).unwrap_err();
+        assert_eq!(errors.items[0].code, "E4111");
+        assert!(errors.items[0].message.contains(" -> "));
+    }
+
+    #[test]
+    fn rejects_invalid_missing_and_duplicate_dependencies() {
+        for dependency in [
+            "[dependencies.std]\npath = \".\"",
+            "[dependencies.bad-name]\npath = \".\"",
+            "[dependencies.a]",
+            "[dependencies.a]\npath = \"\"",
+            "[dependencies.a]\npath = \"../missing\"",
+            "[dependencies.a]\npath = 123",
+            "[dependencies.a]\ngit = \"url\"",
+            "[dependencies.a]\npath = \".\"\npath = \".\"",
+            "[dependencies.a]\npath = \".\"\n[dependencies.a]\npath = \".\"",
+        ] {
+            let fixture = Fixture::new();
+            let root = fixture.package("app", dependency);
+            let errors = resolve(root).unwrap_err();
+            assert!(
+                errors.items.iter().any(|error| error.source_file.is_some()),
+                "{dependency}: {errors:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn compiles_isolated_libraries_with_private_helpers_and_aliases() {
+        let fixture = Fixture::new();
+        let library = fixture.package("lib", "");
+        std::fs::write(library.join("main.svr"), "fn helper(value: Int) -> Int { return value + 1 } fn main() { print(999) } mod math { fn private(value: Int) -> Int { return helper(value) } export fn answer(value: Int) -> Int { return math::private(value) } }").unwrap();
+        let root = fixture.package(
+            "app",
+            "[dependencies.util]\npath = \"../lib\"\n[dependencies.second]\npath = \"../lib\"",
+        );
+        let source = "use util::math; use second::math; use util::math; fn helper(value: Int) -> Int { return 999 } fn main() { print(util::math::answer(41)); print(second::math::answer(1)); }";
+        std::fs::write(root.join("main.svr"), source).unwrap();
+        let linked = compile(&root).unwrap();
+        assert_eq!(
+            crate::compiler::interpreter::run(&linked).unwrap(),
+            ["42", "2"]
+        );
+        assert_eq!(linked, compile(&root).unwrap());
+        for (call, code) in [
+            ("util::math::private(1)", "E3004"),
+            ("util::math::answer()", "E3006"),
+            ("util::math::answer(true)", "E3007"),
+            ("other::math::answer(1)", "E3004"),
+        ] {
+            let source = format!("// λ\r\nuse util::math; fn main() {{ {call}; }}");
+            std::fs::write(root.join("main.svr"), &source).unwrap();
+            let errors = compile(&root).unwrap_err();
+            assert!(
+                errors.items.iter().any(|error| error.code == code),
+                "{errors:?}"
+            );
+            assert!(errors.items.iter().all(|error| error.source_file.as_deref()
+                == Some(
+                    root.join("main.svr")
+                        .canonicalize()
+                        .unwrap()
+                        .to_string_lossy()
+                        .as_ref()
+                )));
+        }
+    }
+
+    #[test]
+    fn imported_modules_require_explicit_direct_dependencies() {
+        let fixture = Fixture::new();
+        let library = fixture.package("lib", "");
+        std::fs::write(
+            library.join("main.svr"),
+            "mod math { export fn answer() -> Int { return 42 } }",
+        )
+        .unwrap();
+        let root = fixture.package("app", "[dependencies.util]\npath = \"../lib\"");
+        for (source, code) in [
+            ("use util.math; fn main() {}", "E4114"),
+            ("use missing::math; fn main() {}", "E4115"),
+            ("use util::absent; fn main() {}", "E4115"),
+            ("fn main() { util::math::answer(); }", "E3004"),
+        ] {
+            std::fs::write(root.join("main.svr"), source).unwrap();
+            assert_eq!(compile(&root).unwrap_err().items[0].code, code);
+        }
+        std::fs::write(root.join("main.svr"), "use util::math; fn main() {}").unwrap();
+        std::fs::write(
+            library.join("main.svr"),
+            "mod math { fn invalid() { missing(); } }",
+        )
+        .unwrap();
+        let errors = compile(root).unwrap_err();
+        assert_eq!(errors.items[0].code, "E3004");
+        assert_eq!(
+            errors.items[0].source_file.as_deref(),
+            Some(
+                library
+                    .join("main.svr")
+                    .canonicalize()
+                    .unwrap()
+                    .to_string_lossy()
+                    .as_ref()
+            )
+        );
+    }
+
+    #[test]
+    fn graph_resolution_does_not_claim_source_validation_or_cli_support() {
+        let fixture = Fixture::new();
+        fixture.package("lib", "");
+        let root = fixture.package("app", "[dependencies.lib]\npath = \"../lib\"");
+        std::fs::write(root.join("main.svr"), "not executable Sovra").unwrap();
+        assert!(resolve(&root).is_ok());
+        let errors = super::super::check_project(root).unwrap_err();
+        assert!(errors.items.iter().any(|error| error.code == "E4010"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symlinked_entry_and_manifest_escapes() {
+        use std::os::unix::fs::symlink;
+        let fixture = Fixture::new();
+        let outside = fixture.package("outside", "");
+        let root = fixture.package("app", "");
+        std::fs::remove_file(root.join("main.svr")).unwrap();
+        symlink(outside.join("main.svr"), root.join("main.svr")).unwrap();
+        assert_eq!(resolve(&root).unwrap_err().items[0].code, "E4113");
+        std::fs::remove_file(root.join(MANIFEST_FILE)).unwrap();
+        symlink(outside.join(MANIFEST_FILE), root.join(MANIFEST_FILE)).unwrap();
+        assert_eq!(resolve(root).unwrap_err().items[0].code, "E4113");
+    }
+
+    #[test]
+    fn rejects_missing_manifests_and_escaping_entries() {
+        let fixture = Fixture::new();
+        assert!(resolve(&fixture.0).is_err());
+        let root = fixture.package("app", "");
+        std::fs::write(
+            root.join(MANIFEST_FILE),
+            "[project]\nname = \"app\"\nentry = \"../outside.svr\"",
+        )
+        .unwrap();
+        assert_eq!(resolve(root).unwrap_err().items[0].code, "E4007");
+    }
+}

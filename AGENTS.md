@@ -42,6 +42,13 @@ syntax with partial wiring validation. Passing its check does not make it runnab
 local inference. There is no separate runtime crate, package manager or language
 server yet.
 
+For library/package work, read `docs/LIBRARY_ECOSYSTEM_ASSESSMENT.md` and
+`docs/REAL_HTTP_APPLICATION_PLAN.md`. ADR 0010 proposes local dependencies and
+executable imports and is accepted. `project::packages::resolve` implements the
+local graph only; executable package imports/linking remain unfinished.
+`examples/library-foundations` is tested
+inline composition, not cross-file/package consumption. Preserve these boundaries.
+
 ## Commands and verification
 
 ```text

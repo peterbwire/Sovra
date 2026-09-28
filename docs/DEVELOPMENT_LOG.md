@@ -1,5 +1,167 @@
 # Development log
 
+## 2026-09-28: Accepted local package graph foundation
+
+User approved continuation after the ADR 0010 A–C approval request. Recorded the
+decision and implemented `project::packages::resolve`: reuses strict manifest
+parsing with explicit dependency sections, canonical package/entry identities,
+manifest-relative dependency paths, ordered aliases, iterative traversal,
+diamond deduplication, cycle-chain diagnostics and a 1024-node bound. Manifest
+and entry symlink escapes are rejected after canonicalization. Equal package
+display names do not alias. No package scripts or source programs execute.
+
+Ordinary manifest checking retains its unsupported-dependency error until linking
+is implemented. The new Rust API validates metadata/graphs only; its success is
+not source validation or usable package consumption. No fake CLI was introduced.
+
+Validation: full Windows suite passed 192 library + 37 CLI tests (229), mandatory
+CLI execution and no skips. An additional API-boundary regression passed afterward
+(230 distinct Windows tests). Formatting and strict Clippy passed. A Unix-only
+symlink escape regression was added but was not executed on this Windows host.
+Evidence: target/local-packages-tests.log. Next: implement explicit executable
+imports and package-aware semantic linking, preserving source provenance and
+private visibility, then connect project check/run/build and a two-package example.
+
+## 2026-09-28: Library ecosystem audit and executable module composition
+
+Read the supplied ecosystem mission and audited source/compiler/runtime/CLI,
+manifest/import handling, std registry, tests and examples before modifications.
+Confirmed a current 224-test Windows baseline, superseding the supplied historical
+158 count. Preserved all existing M12 work. Recorded IMPLEMENTED/PARTIAL/
+EXPERIMENTAL/STUB/PLANNED boundaries in LIBRARY_ECOSYSTEM_ASSESSMENT.md and the
+dependency chain/functional acceptance for real networking in
+REAL_HTTP_APPLICATION_PLAN.md. No architecture rewrite or empty std-module split
+was justified by the four-function registry.
+
+Added examples/library-foundations/main.svr and a course lesson using only current
+mod/export syntax, private helpers, arithmetic and string composition. Its new
+CLI regression validates check, run, IR build, JS emission and actual Node output.
+No language feature, builtin, package manager command or dependency capability
+was added. Proposed ADR 0010 defines local manifest sections, explicit executable
+imports, isolation, graph-cycle policy and end-to-end acceptance for approval.
+
+Final validation: 188 library + 37 CLI tests passed (225 total), no skips, with
+mandatory CLI execution. Formatting, strict Clippy and doc-test stage passed.
+Logs: target/library-audit-baseline.log and target/library-foundations-tests.log.
+Next: obtain the explicitly required approval of ADR 0010 before implementing
+compatibility-affecting executable package imports. Package consumption and M12
+are not complete; creating these files does not satisfy either milestone.
+
+## 2026-09-28: Multiline application parameter lists
+
+The project scanner now collects balanced parameter-list continuations for
+functions, tasks, pages, views and service operations. Annotation enforcement
+works across comments, blank lines and CRLF input. Service metadata spans cover
+the collected signature; diagnostics still identify its opening line. Recovery
+stops before a new declaration or block boundary instead of consuming unrelated
+code. Nested function-like annotations retain their parameter grouping.
+
+The multiline regression failed before implementation. Full Windows validation:
+187 library and 36 CLI tests passed with mandatory CLI execution. An additional
+focused recovery regression passed afterward (224 distinct tests total).
+General multiline return annotations, nested application declarations and named
+type resolution remain unfinished. M12 remains partial.
+
+## 2026-09-28: Extend application parameter annotation enforcement
+
+Recognized top-level function/task/page/view parameter lists now require explicit
+annotations under ADR 0009, reporting E4097. Malformed signatures report E4098.
+Scheduled task bindings and page routes are excluded from signature recognition.
+Structured function/task/service inspection independently rejects untyped
+parameters, so direct Rust API callers cannot bypass that rule.
+
+Both new regressions failed before implementation. Full Windows validation passed
+186 library and 36 CLI tests (222 total) with mandatory CLI execution. Strict
+Clippy passed. The project scanner remains single-line and partial; this slice
+does not establish named-type resolution or complete nested-declaration checking.
+Next: structured application declaration parsing and accepted nominal type
+resolution. M12 is not complete.
+
+## 2026-09-28: ADR 0009 accepted; service parameter annotations required
+
+The user explicitly approved all six M12 checker-contract decisions. Recorded
+acceptance without claiming completion. First implementation slice: project
+service operations now require parameter annotations, reporting E4097 at the
+original signature line. The structural parser still preserves omitted text for
+diagnostics; annotation name resolution remains unfinished. Updated the metadata
+fixture with an explicit Int parameter and added Rust/CLI diagnostic regressions.
+
+The Rust regression failed before the fix. Full Windows suite: 184 library and
+35 existing CLI tests passed; the newly added CLI regression then passed separately
+(220 distinct passing tests). Mandatory CLI execution was enabled. Formatting
+and strict Clippy passed. Next: extend annotation enforcement to remaining
+application declarations and implement accepted nominal type/name resolution.
+Default project checking is still partial until the broader ADR 0009 work lands.
+
+## 2026-09-28: Reject hidden declarations after inline operation bodies
+
+Reproduced the contract scanner silently accepting `fn send() {} fn hidden() {}`
+while indexing only `send`. Completed same-line bodies now reject trailing text
+with existing E4027 and original file/line provenance. The boundary scan respects
+nested braces, quoted strings and escapes, and permits the service closing brace.
+Multiline bodies remain tracked by the existing scanner; this is not statement
+validation or full application parsing.
+
+The focused regression failed before the fix. Windows validation passed 183
+library and 35 CLI tests (218 total), with mandatory CLI execution enabled.
+Formatting and strict Clippy passed. Evidence: `target/service-tail-tests.log`.
+Next: replace remaining line-oriented service declaration boundaries incrementally;
+application signature-type resolution remains unfinished and M12 remains partial.
+
+## 2026-09-28: Service body metadata across line breaks
+
+Fixed service-operation metadata reporting `has_body: false` when an implemented
+operation opens its body on the next substantive line. Blank lines and comments
+are ignored; a semicolon, another declaration or the service closing brace ends
+the pending signature association. Signature source locations remain unchanged.
+This aligns scanner metadata with the existing structured inspector and introduces
+no new syntax or type rules. The CLI metadata fixture now exercises this layout.
+
+The focused regression failed before the fix. Full Windows validation passed
+181 library and 35 CLI tests (216 total), with mandatory CLI execution enabled.
+M12 remains partial; application signature types and wider declaration parsing
+remain unfinished.
+
+## 2026-09-28: Service-body project and CLI integration coverage
+
+Verified imported service receivers inside operation bodies through the project
+checker. Regression coverage checks E4094 argument counts, E4093 missing operations,
+original UTF-8/CRLF byte spans and file provenance, qualified operation names,
+parameter shadowing and independent sibling scopes. CLI JSON assertions verify
+`mail.send` as the enclosing operation, service receiver classification, and exact
+agreement between call and diagnostic locations. No implementation changes were
+needed for these cases.
+
+Validation: 180 library and 35 CLI tests passed on Windows (215 total), with
+mandatory CLI execution enabled. Formatting and strict Clippy passed. Evidence:
+`target/service-integration-tests.log`. M12 remains partial; next work is extending
+structured application parsing and resolving application signature types under
+documented language decisions.
+
+## 2026-09-28: Explicit service implementation scopes and iterative AST ownership
+
+Implemented user-approved ADR 0008. Structured project inspection parses service
+operation bodies with file/import service visibility, independent parameter/local
+scopes and explicit receivers. Records use qualified operation names. Unsupported
+syntax discards the whole file; declaration-only operations emit no body record.
+The CLI regression now reports E4093 for a missing operation inside a service body,
+instead of rejecting that body with E4096. Source execution is unchanged.
+
+Expression cloning now traverses iteratively. Added explicit consuming
+Expression::drop_iterative and Program::drop_iterative APIs with a 10,000-node
+regression. Ordinary Rust drop, Debug and equality still have recursive behavior;
+this does not establish arbitrary-input resource safety for every public API.
+
+Validation: 179 library and 35 CLI tests passed on Windows (214 total), with
+SOVRA_REQUIRE_CLI_EXECUTION=1 and no skips. Formatting, strict all-target/all-feature
+Clippy and diff whitespace checks passed. Service-scope regression failed before
+the implementation and passed afterward. Evidence: target/service-scopes-tests.log.
+
+M12 remains partial. Next: broaden service-body project integration coverage for
+imported receivers, qualified JSON metadata and arity errors, then continue the
+structured application parser and named-type resolution under documented decisions.
+
+
 ## 2026-09-28 — Iterative expression lowering
 
 - **Changed:** Lowering now uses explicit visit/emit work items instead of

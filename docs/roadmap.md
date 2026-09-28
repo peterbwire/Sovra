@@ -5,6 +5,12 @@ plan is superseded. Follow [the production audit and gates](PRODUCTION_READINESS
 without renumbering these milestones. Completed foundation slices do not imply
 that the full language or application platform is production-ready.
 
+The [library ecosystem assessment](LIBRARY_ECOSYSTEM_ASSESSMENT.md) records the
+actual executable module/stdlib boundary and package prerequisites. Local package
+graph resolution is implemented under accepted ADR 0010; executable consumption
+still awaits import/linker work. It does not become implemented by creating dependency
+metadata. The package track retains this roadmap's established milestone numbers.
+
 ## M0 — Repository Foundation (complete)
 
 Cargo package, canonical `svr` binary, repository documentation, and CI.
@@ -95,8 +101,9 @@ Structured headers, parameter records and return annotations now feed retained
 Rust service-operation metadata. This does not implement service calls, signature
 type resolution or full application parsing. Experimental opt-in
 `check --service-calls` now checks operation existence and argument counts in
-supported function/task bodies, with explicit per-file coverage. Unsupported
-syntax, including nonempty service implementation bodies, produces E4096;
+supported function/task and service-operation bodies, with explicit per-file
+coverage. ADR 0008 defines explicit service calls and lexical shadowing. Unsupported
+syntax produces E4096;
 complete coverage does not mean full application type checking.
 
 Before expanding this surface, the handoff assessment recommends hardening the

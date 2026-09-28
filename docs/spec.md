@@ -2,6 +2,19 @@
 
 ## Status
 
+Library/package boundaries are audited in
+[LIBRARY_ECOSYSTEM_ASSESSMENT.md](LIBRARY_ECOSYSTEM_ASSESSMENT.md). Executable
+inline modules are distinct from partial project-file imports and planned
+package dependencies. ADR 0010 is accepted; the local graph resolver is implemented
+as a Rust API, but executable import syntax and CLI package consumption are not yet
+implemented. See `project::packages::resolve`: dependency sections use
+`[dependencies.alias]` with a quoted `path`, relative to the declaring manifest.
+This API validates the graph, not source code. It rejects cycles (E4111), more
+than 1024 nodes (E4112), canonical manifest/entry escapes (E4113), and missing or
+invalid local paths (E4110), retaining existing manifest diagnostic codes.
+Ordinary project checking still rejects dependency sections until executable
+validation is integrated; graph success must not substitute for program checking.
+
 M11 completes the initial compiler roadmap: Sovra can lex, parse, validate,
 lower to explicit IR, interpret, inspect IR, and emit a portable JavaScript
 backend.
@@ -378,11 +391,13 @@ of top-level function/task declarations in that same limited body subset. It
 derives parameter bindings from structured signatures and returns per-declaration
 call records with original file-relative spans, including across CRLF and UTF-8
 comments. Annotations remain unresolved; functions have independent scopes.
-Callers still provide visible services. Import declarations and balanced service
-blocks are recognized: signatures and empty operation bodies contain no calls
-to inspect. Nonempty service implementation bodies reject file inspection until
-service-body scope rules are implemented; skipped implementation code cannot
-claim complete coverage. Other unsupported top-level forms also reject inspection.
+Callers still provide visible services. Service operation bodies use the same
+file/import visibility and independent lexical scopes as functions (ADR 0008).
+Calls to the enclosing service are explicit, such as `mail.send(message)`;
+parameters and locals shadow service receivers. No implicit `self` or sibling
+operation lookup is introduced. Body records use qualified names (`mail.relay`),
+with `is_task: false`; declaration-only operations have no body record. Unsupported
+body syntax rejects the entire file. Other unsupported top-level forms also reject inspection.
 The opt-in CLI service-call check uses this API and reports E4096 for such files.
 
 Experimental `project::application::inspect_project` connects a successful
@@ -438,18 +453,33 @@ report a missing declaration. This header parser does not yet parse signatures.
 Direct operation lines now retain a name, parameter-list text and trailing
 return/body text as separate fields. Missing/invalid names or missing/unclosed
 parameter parentheses produce E4027 at the operation line. Parentheses inside
-quoted strings do not close the list. This is single-line structural validation:
+quoted strings do not close the list. Parameter lists may continue across lines;
+comments and blank lines are ignored, and a new declaration or block boundary
+ends recovery for an unclosed list. This is structural validation:
 parameters retain a name and optional annotation text. Empty annotations,
 invalid or duplicate parameter names, empty interior list items and mismatched
 delimiters produce E4027. Commas inside balanced angle brackets, parentheses,
 square brackets or quoted strings do not split parameters. Empty lists and a
 single trailing comma are accepted. Omitted annotations remain represented as
-absent; this project check does not apply executable-source E3014 rules or infer
-their types. Annotation text and the trailing return/body text remain unresolved.
+absent in the structural parser, but project service validation now rejects them
+with E4097 under accepted ADR 0009. No parameter types are inferred. Annotation
+text and the trailing return/body text remain unresolved. Recognized top-level
+function, task, page and view signatures with parenthesized parameter lists also
+require annotations (E4097); malformed signatures report E4098. This scanner
+validation accepts multiline parameter lists but does not cover nested or
+unsupported declaration forms. Return annotations must begin on the line that
+closes the parameter list; fully general multiline headers remain unfinished.
+Structured function/task/service inspection independently rejects omitted
+parameter annotations, including when called through the public Rust API.
+M12 remains partial; these checks do not resolve annotation types.
 No signature type resolution or default-expression checking is implied.
 Return annotations are separated from a trailing semicolon or opening body
 brace. Missing text after `->`, unsupported suffixes and text after a terminator
 produce E4027. Return type text remains unresolved, and bodies are not parsed.
+When a body opens and closes on its signature line, trailing declarations or
+other text produce E4027 instead of disappearing from the operation index.
+Nested braces and quoted strings are respected; a final service-closing brace
+is allowed. This boundary check does not validate body statements.
 Return annotation delimiters (`<>`, `()` and `[]`) must balance and match;
 commas must be nested inside those groups. Function-type arrow spelling does
 not close an angle bracket. These structural checks also report E4027 and do
@@ -458,7 +488,8 @@ An omitted return annotation is retained as absent rather than inferred.
 
 The Rust `ProjectCheck.service_operations` result retains each operation's
 owning service, name, ordered parameter names/annotations, optional return
-annotation, same-line body flag and source file/line span. Empty services remain
+annotation, body-presence flag and source file/line span. A body may start on the
+signature line or the next nonblank, noncomment line. Empty services remain
 in `declared_services`. Successful project JSON checks expose these records as
 the additive `service_operations` field in schema version 1. Source/error
 reports retain their existing shape. This does not implement service execution.

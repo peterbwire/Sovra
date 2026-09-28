@@ -1,0 +1,7 @@
+[project]
+name = "library-consumer"
+version = "0.1.0"
+entry = "main.svr"
+
+[dependencies.utilities]
+path = "../utilities"
