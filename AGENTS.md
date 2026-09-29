@@ -29,7 +29,8 @@ parameter requires an explicit annotation (`E3014`); local `let` inference and
 the default Unit return type remain. Named-type resolution is still incomplete.
 Consult `docs/FULL_DEVELOPMENT_STATUS.md` and `docs/adr/` for active work and decisions.
 Do not renumber the established milestones.
-`run` executes one source file; `build` emits IR or JS; `check` accepts a source
+`run` executes one source file or local package directory; `build` emits IR or JS;
+`check` accepts a source
 file or project. `check --format json` emits versioned diagnostic reports; see
 `docs/reference/check-json.md` for null locations and the project-scan scope.
 Other commands, including Sovra `test`, are reserved.
@@ -45,7 +46,11 @@ server yet.
 For library/package work, read `docs/LIBRARY_ECOSYSTEM_ASSESSMENT.md` and
 `docs/REAL_HTTP_APPLICATION_PLAN.md`. ADR 0010 proposes local dependencies and
 executable imports and is accepted. `project::packages::resolve` implements the
-local graph only; executable package imports/linking remain unfinished.
+local graph only; `project::packages::compile` parses, checks and links package
+entry files. `use alias::module;` exposes exported members of direct dependencies;
+calls use `alias::module::function`. CLI dependency-package check/run/build use
+this compiler. Directories without dependencies retain partial application checks.
+See `docs/course/local-packages.md` and `examples/local-packages` for tested usage.
 `examples/library-foundations` is tested
 inline composition, not cross-file/package consumption. Preserve these boundaries.
 

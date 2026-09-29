@@ -28,6 +28,71 @@ fn is_application_control_block(error: &io::Error) -> bool {
 }
 
 #[test]
+fn package_cli_rejects_private_calls_with_original_json_locations() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("target")
+        .join(format!("package-cli-{}-{suffix}", std::process::id()));
+    let app = directory.join("app");
+    let library = directory.join("lib");
+    std::fs::create_dir_all(&app).unwrap();
+    std::fs::create_dir_all(&library).unwrap();
+    std::fs::write(
+        app.join("sovra.toml"),
+        "[project]\nname = \"app\"\nentry = \"main.svr\"\n[dependencies.util]\npath = \"../lib\"",
+    )
+    .unwrap();
+    std::fs::write(
+        library.join("sovra.toml"),
+        "[project]\nname = \"lib\"\nentry = \"lib.svr\"",
+    )
+    .unwrap();
+    std::fs::write(
+        library.join("lib.svr"),
+        "mod math { fn secret() -> Int { return 42 } }",
+    )
+    .unwrap();
+    std::fs::write(
+        app.join("main.svr"),
+        "// λ\r\nuse util::math;\r\nfn main() { util::math::secret(); }",
+    )
+    .unwrap();
+    let path = app.to_str().unwrap();
+    let Some(report) = output_or_skip(svr().args(["check", "--format=json", path])) else {
+        return;
+    };
+    assert_eq!(report.status.code(), Some(1));
+    assert_json_report(
+        &report,
+        r#"
+        assert.equal(report.success, false);
+        assert.equal(report.diagnostics.length, 1);
+        const error = report.diagnostics[0];
+        assert.equal(error.code, 'E3004');
+        assert.equal(error.location.line, 2);
+        const bytes = require('node:fs').readFileSync(error.location.file);
+        assert.equal(bytes.subarray(error.location.start, error.location.end).toString(), 'util::math::secret');
+    "#,
+    );
+    for args in [
+        vec!["run", path],
+        vec!["build", path],
+        vec!["build", "--emit", "js", path],
+    ] {
+        let Some(output) = output_or_skip(svr().args(args)) else {
+            return;
+        };
+        assert_eq!(output.status.code(), Some(1));
+        assert!(String::from_utf8_lossy(&output.stderr).contains("E3004"));
+        assert!(output.stdout.is_empty());
+    }
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
 fn local_library_consumer_checks_runs_and_builds_on_both_engines() {
     let root = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/local-packages/app");
     let Some(checked) = output_or_skip(svr().args(["check", "--format=json", root])) else {
@@ -858,7 +923,7 @@ fn build_help_describes_current_usage() {
     assert!(output.status.success());
     assert_eq!(
         String::from_utf8_lossy(&output.stdout).trim(),
-        "Usage: svr build [--emit ir|js] <source.svr>"
+        "Usage: svr build [--emit ir|js] <source.svr|package-directory>"
     );
 }
 

@@ -4,16 +4,29 @@
 
 Library/package boundaries are audited in
 [LIBRARY_ECOSYSTEM_ASSESSMENT.md](LIBRARY_ECOSYSTEM_ASSESSMENT.md). Executable
-inline modules are distinct from partial project-file imports and planned
-package dependencies. ADR 0010 is accepted; the local graph resolver is implemented
-as a Rust API, but executable import syntax and CLI package consumption are not yet
-implemented. See `project::packages::resolve`: dependency sections use
+inline modules are distinct from partial project-file imports and local package
+dependencies. ADR 0010 is accepted. `project::packages::resolve` validates local
+graphs and `project::packages::compile` checks and links their entry files.
+Dependency sections use
 `[dependencies.alias]` with a quoted `path`, relative to the declaring manifest.
 This API validates the graph, not source code. It rejects cycles (E4111), more
 than 1024 nodes (E4112), canonical manifest/entry escapes (E4113), and missing or
 invalid local paths (E4110), retaining existing manifest diagnostic codes.
-Ordinary project checking still rejects dependency sections until executable
-validation is integrated; graph success must not substitute for program checking.
+`use alias::module;` in package entry source imports an inline module from a direct
+dependency; calls use `alias::module::function`. Imports are top-level and require
+a semicolon. Only exported functions are visible externally; private helpers and
+top-level names resolve in their owning package. Duplicate identical imports are
+deduplicated. Every loaded entry body is checked before linked IR is returned.
+Only the root's `main` is the runtime entry point. Internal linked names are not
+source syntax or stable package identities. Relocation preserves emitted IR for
+the same dependency graph and sources.
+
+CLI `check` on a directory with dependency sections invokes this executable
+pipeline. `run` and `build` also accept package directories. Directory checks
+without dependency sections retain the partial application scanner; the Rust
+`project::check_project` API remains that scanner and still rejects dependency
+sections. Source-file commands do not implicitly search for package manifests.
+No registry, lockfile, multi-file module loading or application runtime is implied.
 
 M11 completes the initial compiler roadmap: Sovra can lex, parse, validate,
 lower to explicit IR, interpret, inspect IR, and emit a portable JavaScript

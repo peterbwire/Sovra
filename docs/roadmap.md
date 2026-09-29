@@ -7,9 +7,10 @@ that the full language or application platform is production-ready.
 
 The [library ecosystem assessment](LIBRARY_ECOSYSTEM_ASSESSMENT.md) records the
 actual executable module/stdlib boundary and package prerequisites. Local package
-graph resolution is implemented under accepted ADR 0010; executable consumption
-still awaits import/linker work. It does not become implemented by creating dependency
-metadata. The package track retains this roadmap's established milestone numbers.
+graph resolution and entry-module consumption are implemented under accepted
+ADR 0010, including source validation, private helpers and both execution engines.
+Locks, general multi-file loading and publication remain planned. This package
+track retains the roadmap's established milestone numbers and does not complete M12.
 
 ## M0 — Repository Foundation (complete)
 

@@ -7,6 +7,7 @@ The curriculum is being built incrementally around the executable language.
 - [Numbers and widening](numbers.md)
 - [Strings and concatenation](strings.md)
 - [Composing library-style inline modules](library-foundations.md)
+- [Consuming a local library package](local-packages.md)
 
 The full application syntax in Fielddesk remains a proposal; it is not part
 of these executable lessons.

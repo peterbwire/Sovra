@@ -324,6 +324,87 @@ mod tests {
     }
 
     #[test]
+    fn transitive_packages_link_without_exposing_undeclared_dependencies() {
+        let fixture = Fixture::new();
+        let leaf = fixture.package("leaf", "");
+        std::fs::write(
+            leaf.join("main.svr"),
+            "mod math { export fn value() -> Int { return 20 } }",
+        )
+        .unwrap();
+        let middle = fixture.package("middle", "[dependencies.leaf]\npath = \"../leaf\"");
+        std::fs::write(middle.join("main.svr"), "use leaf::math; mod math { export fn value() -> Int { return leaf::math::value() + 1 } }").unwrap();
+        let root = fixture.package("app", "[dependencies.middle]\npath = \"../middle\"");
+        std::fs::write(
+            root.join("main.svr"),
+            "use middle::math; fn main() { print(middle::math::value() * 2); }",
+        )
+        .unwrap();
+        assert_eq!(
+            crate::compiler::interpreter::run(&compile(&root).unwrap()).unwrap(),
+            ["42"]
+        );
+        std::fs::write(root.join("main.svr"), "use leaf::math; fn main() {}").unwrap();
+        assert_eq!(compile(&root).unwrap_err().items[0].code, "E4115");
+        std::fs::write(root.join("main.svr"), "fn main() { leaf::math::value(); }").unwrap();
+        assert_eq!(compile(&root).unwrap_err().items[0].code, "E3004");
+    }
+
+    #[test]
+    fn linked_ir_is_relocatable_and_numeric_widening_crosses_packages() {
+        let mut results = Vec::new();
+        for _ in 0..2 {
+            let fixture = Fixture::new();
+            let library = fixture.package("lib", "");
+            std::fs::write(
+                library.join("main.svr"),
+                "mod math { export fn half(value: Float) -> Float { return value / 2 } }",
+            )
+            .unwrap();
+            let root = fixture.package("app", "[dependencies.util]\npath = \"../lib\"");
+            std::fs::write(
+                root.join("main.svr"),
+                "use util::math; fn main() { print(util::math::half(3)); }",
+            )
+            .unwrap();
+            results.push(compile(&root).unwrap());
+        }
+        assert_eq!(results[0], results[1]);
+        assert_eq!(
+            crate::compiler::interpreter::run(&results[0]).unwrap(),
+            ["1.5"]
+        );
+    }
+
+    #[test]
+    fn imported_libraries_preserve_duplicate_and_builtin_collision_errors() {
+        let fixture = Fixture::new();
+        let library = fixture.package("lib", "");
+        let root = fixture.package("app", "[dependencies.util]\npath = \"../lib\"");
+        std::fs::write(root.join("main.svr"), "fn main() {}").unwrap();
+        for (source, code) in [
+            ("mod math {} mod math {}", "E3008"),
+            ("mod math { fn f() {} export fn f() {} }", "E3008"),
+            ("fn print() {}", "E3016"),
+            (
+                "mod std { export fn len(value: String) -> Int { return 0 } }",
+                "E3016",
+            ),
+            ("mod math { export fn bad(value: Unknown) {} }", "E3017"),
+        ] {
+            std::fs::write(library.join("main.svr"), source).unwrap();
+            assert!(
+                compile(&root)
+                    .unwrap_err()
+                    .items
+                    .iter()
+                    .any(|error| error.code == code),
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
     fn compiles_isolated_libraries_with_private_helpers_and_aliases() {
         let fixture = Fixture::new();
         let library = fixture.package("lib", "");

@@ -686,6 +686,38 @@ mod tests {
     }
 
     #[test]
+    fn parses_package_qualified_calls_and_rejects_incomplete_paths() {
+        let source = "// λ\r\nfn main() { utilities::arithmetic::square(7); }";
+        let program = Parser::new().parse_source(source).unwrap();
+        let Statement::Expression(expression) = &program.functions[0].body[0] else {
+            panic!("expected call")
+        };
+        let ExpressionKind::Call { callee, .. } = &expression.kind else {
+            panic!("expected call")
+        };
+        assert_eq!(
+            &source[callee.span.start..callee.span.end],
+            "utilities::arithmetic::square"
+        );
+        assert!(
+            matches!(&callee.kind, ExpressionKind::QualifiedName { path } if path == &["utilities", "arithmetic", "square"])
+        );
+        for path in [
+            "utilities::",
+            "utilities::::square",
+            "utilities::arithmetic::",
+            "utilities::7",
+        ] {
+            assert!(
+                Parser::new()
+                    .parse_source(&format!("fn main() {{ {path}(); }}"))
+                    .is_err(),
+                "{path}"
+            );
+        }
+    }
+
+    #[test]
     fn parses_module_functions_and_qualified_calls() {
         let program = Parser::new()
             .parse_source(

@@ -1,5 +1,20 @@
 # JSON check reports
 
+## Executable local packages
+
+For directories declaring dependency sections, `check --format=json` now resolves,
+checks and links package entry sources. The schema remains version 1 with
+`kind: "project"`; errors carry their owning manifest/source file and original
+byte ranges. These reports omit application-scanner fields (`service_operations`,
+`service_coverage`, `member_calls`); absence is not an empty application scan.
+E4110–E4113 describe graph/path failures, E4114 malformed executable imports,
+and E4115 missing direct dependencies/modules. Semantic errors retain existing
+E30xx codes, including E3004 for inaccessible private calls. `--service-calls`
+is rejected with exit 2 for executable dependency packages.
+
+Directories without dependency sections still use partial application checking.
+Standalone `.svr` checks retain their source-only behavior and do not load manifests.
+
 ## Experimental service-call checking
 
 Use `svr check --service-calls --format json <project-directory>` to request
