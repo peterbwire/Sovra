@@ -1,0 +1,66 @@
+{
+  "$schema": "https://fundingjson.org/schema/v1.1.0.json",
+  "version": "v1.0.0",
+
+  "entity": {
+    "type": "individual",
+    "role": "owner",
+    "name": "Musungu Peter",
+    "email": "peterbwire5@gmail.com",
+    "description": "Founder and lead developer of Sovra, an experimental open-source general-purpose programming language and developer toolchain for human and AI-assisted software engineering.",
+    "webpageUrl": {
+      "url": "https://github.com/peterbwire"
+    }
+  },
+
+  "projects": [
+    {
+      "guid": "sovra",
+      "name": "Sovra",
+      "description": "Sovra is an experimental open-source general-purpose programming language and developer toolchain implemented primarily in Rust. The project explores predictable semantics, structured diagnostics, integrated developer tooling, and machine-readable compiler information for human and AI-assisted software development.",
+      "webpageUrl": {
+        "url": "https://github.com/peterbwire/Sovra"
+      },
+      "repositoryUrl": {
+        "url": "https://github.com/peterbwire/Sovra"
+      },
+      "licenses": [
+        "spdx:Apache-2.0",
+        "spdx:MIT"
+      ],
+      "tags": [
+        "programming-language",
+        "compiler",
+        "rust",
+        "developer-tools",
+        "open-source",
+        "artificial-intelligence"
+      ]
+    }
+  ],
+
+  "funding": {
+    "channels": [
+      {
+        "guid": "sovra-bank",
+        "type": "bank",
+        "description": "Bank transfer to the individual project owner's account. Banking instructions will be provided privately to approved funders."
+      }
+    ],
+
+    "plans": [
+      {
+        "guid": "sovra-development",
+        "status": "active",
+        "name": "Sovra Development Fund",
+        "description": "Funding will support core compiler and language engineering, package infrastructure, developer tooling, testing, documentation, and research into AI-assisted software development.",
+        "amount": 10000,
+        "currency": "USD",
+        "frequency": "one-time",
+        "channels": [
+          "sovra-bank"
+        ]
+      }
+    ]
+  }
+}
