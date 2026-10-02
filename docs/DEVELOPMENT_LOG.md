@@ -1,5 +1,65 @@
 # Development log
 
+## 2026-10-03: Proposed exported-record interface decision
+
+Before extending E4116 into usable package record interfaces, inspected accepted
+ADR 0009/0010 and the struct parser/AST. Nominal identity is approved, but record
+export syntax, qualified type spellings and consumer field visibility are not.
+Created ADR 0011 with a concrete recommended `export struct` rule, qualified
+constructor/annotation examples, private-type leakage checks and acceptance tests.
+Alternative B permits opaque values accessed only through exported functions.
+No syntax or runtime changes were made, and no tests were rerun for this
+documentation-only proposal. Next: obtain the required design choice, then
+implement the selected boundary while preserving the E4116 guard until verified.
+
+## 2026-10-03: Resolve imported scalar aliases in their owning package
+
+Two regressions reproduced unsound package signature handling: a consumer's
+`Shared = Bool` alias changed a library's `Shared = Float` parameter, accepting
+a Boolean that failed at runtime; unrelated records with the same name were
+accepted across a package boundary. Imported function signature copies now resolve
+scalar aliases using the declaring package's type environment before consumer
+analysis and lowering. Valid scalar alias calls preserve Float inference and
+widening without requiring consumer redeclarations.
+
+Imported non-scalar signatures now fail explicitly with E4116 at the declaring
+library annotation until package-qualified nominal identity is implemented.
+This does not implement record import/export semantics. Original library bodies
+continue through semantic checking; normalized signature copies do not execute.
+Public compiler-stage APIs and standalone behavior remain intact.
+
+Validation: both regressions failed before the fix. All 224 library and 40 CLI
+tests passed on Windows (264 total), with mandatory CLI execution and no skips.
+The scalar alias regression compares interpreter and emitted JavaScript output.
+Strict Clippy, formatting and the doc-test stage passed (zero doc tests).
+Evidence: target/imported-signature-tests.log. Next: carry package-qualified
+record identities and field metadata through imported signatures before enabling
+record-valued package interfaces; keep E4116 until that path is complete.
+
+## 2026-10-03: Preserve imported Float return types during lowering
+
+Re-audited the updated workspace before continuing package work; preserved its
+records, arrays, control-flow and local numeric-widening changes. Current baseline
+was 221 library and 40 CLI tests. A new package regression reproduced a gap:
+an inferred mutable local initialized from an imported Float-returning function
+lost Float lowering metadata, so reassignment to 3 followed by division by 2
+produced 1 instead of 1.5. Inferred array construction had the same problem.
+
+Package lowering now receives imported function signatures and includes explicit
+Float returns in its inference context. Standalone `ir::lower` retains its public
+API and behavior. The regression verifies both interpreter and generated JavaScript
+outputs. Grouped shared statement type information into an internal context to
+resolve the strict-Clippy argument-count failure in the updated lowering code.
+Corrected stale package status documents; user-defined exported type identity,
+lockfiles and publication remain unfinished.
+
+Validation after all code changes: 222 library and 40 CLI tests passed on Windows
+(262 total), mandatory CLI execution enabled, no skips. Formatting, strict Clippy
+and diff whitespace checks passed; the doc-test stage passed with zero tests.
+Evidence: target/package-float-final-tests.log. Next: resolve exported signatures
+in their defining package's type environment, without capturing consumer aliases,
+before claiming user-defined types cross package boundaries safely.
+
 ## 2026-10-03: Numeric widening on reassignment and mixed arrays
 
 Fixed a runtime mismatch where assigning an Int to an existing Float binding

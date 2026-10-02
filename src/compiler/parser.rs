@@ -82,7 +82,13 @@ impl<'a> TokenParser<'a> {
                 if let Some(ty) = self.type_declaration() {
                     type_declarations.push(ty);
                 }
-            } else if self.check_keyword("struct") {
+            } else if self.check_keyword("struct")
+                || (self.check_keyword("export")
+                    && self
+                        .tokens
+                        .get(self.position + 1)
+                        .is_some_and(|token| token.kind == TokenKind::Keyword("struct")))
+            {
                 if let Some(st) = self.struct_declaration() {
                     struct_declarations.push(st);
                 }
@@ -127,6 +133,7 @@ impl<'a> TokenParser<'a> {
     }
 
     fn struct_declaration(&mut self) -> Option<crate::compiler::ast::StructDeclaration> {
+        let is_exported = self.consume_keyword("export");
         let start = self.expect_keyword("struct")?.span;
         let name = self.expect_identifier("struct name")?;
         self.expect_punctuation('{');
@@ -152,6 +159,7 @@ impl<'a> TokenParser<'a> {
         }
         let end = self.expect_punctuation('}').unwrap_or(start);
         Some(crate::compiler::ast::StructDeclaration {
+            is_exported,
             name,
             fields,
             span: Span {
@@ -173,7 +181,13 @@ impl<'a> TokenParser<'a> {
                 if let Some(ty) = self.type_declaration() {
                     type_declarations.push(ty);
                 }
-            } else if self.check_keyword("struct") {
+            } else if self.check_keyword("struct")
+                || (self.check_keyword("export")
+                    && self
+                        .tokens
+                        .get(self.position + 1)
+                        .is_some_and(|token| token.kind == TokenKind::Keyword("struct")))
+            {
                 if let Some(st) = self.struct_declaration() {
                     struct_declarations.push(st);
                 }
@@ -827,6 +841,24 @@ fn precedence(operator: &str) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_explicit_record_exports_and_rejects_malformed_fields() {
+        let program = Parser::new()
+            .parse_source(
+                "mod geometry { export struct Point { x: Float } struct Hidden { x: Int } }",
+            )
+            .unwrap();
+        assert!(program.modules[0].struct_declarations[0].is_exported);
+        assert!(!program.modules[0].struct_declarations[1].is_exported);
+        for source in [
+            "mod geometry { export struct { x: Float } }",
+            "mod geometry { export struct Point { x Float } }",
+            "mod geometry { export struct Point { x: } }",
+        ] {
+            assert!(Parser::new().parse_source(source).is_err(), "{source}");
+        }
+    }
 
     #[test]
     fn structural_depth_boundaries_are_enforced() {

@@ -29,6 +29,8 @@ pub struct TypeDeclaration {
 /// A user-defined struct declaration used to resolve record types.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructDeclaration {
+    /// Whether this record is exported from its declaring module.
+    pub is_exported: bool,
     /// Struct name visible in source annotations and construction.
     pub name: String,
     /// Fields declared on the struct.

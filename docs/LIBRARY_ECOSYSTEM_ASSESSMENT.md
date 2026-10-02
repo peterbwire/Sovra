@@ -9,9 +9,14 @@ with `SOVRA_REQUIRE_CLI_EXECUTION=1`. Evidence: `target/library-audit-baseline.l
 
 Follow-up after this audit: ADR 0010 was accepted. `project::packages::resolve`
 now resolves local manifest graphs as a Rust API, with canonical identity,
-cycle/duplicate/missing-path validation and containment. Executable package imports,
-linking, CLI consumption and reproducible locks are still absent. The table below
-records the original audit baseline; graph resolution has advanced to PARTIAL.
+cycle/duplicate/missing-path validation and containment. `project::packages::compile`
+now links executable entry modules and powers dependency-package CLI check/run/build.
+As of 2026-10-03, the language also has local aliases, records, arrays and control
+flow. Primitive imported Float results retain inference in lowering; exported
+record interfaces now support explicit `export struct`, qualified construction and
+annotations, public fields and nominal package identity (ADR 0011). Locks and registry access remain
+absent. The table below records the original 2026-09-28 audit, not current feature
+counts; consult the development log for subsequent implementation and validation.
 
 | Area | Status | Evidence and limit |
 | --- | --- | --- |

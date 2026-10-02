@@ -1,5 +1,13 @@
 use utilities::arithmetic;
+use utilities::geometry;
+
+fn length_squared(point: utilities::geometry::Point) -> Float {
+    return utilities::geometry::squared_length(point)
+}
 
 fn main() {
     std::println(utilities::arithmetic::square(7))
+    let point = utilities::geometry::Point { x: 3, y: 4 }
+    std::println(length_squared(point))
+    std::println(point.x / 2)
 }

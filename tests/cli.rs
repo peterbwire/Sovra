@@ -112,7 +112,12 @@ fn local_library_consumer_checks_runs_and_builds_on_both_engines() {
         "{}",
         String::from_utf8_lossy(&run.stderr)
     );
-    assert_eq!(String::from_utf8_lossy(&run.stdout).trim(), "49");
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout)
+            .replace("\r\n", "\n")
+            .trim(),
+        "49\n25\n1.5"
+    );
     let Some(ir) = output_or_skip(svr().args(["build", root])) else {
         return;
     };
@@ -132,7 +137,12 @@ fn local_library_consumer_checks_runs_and_builds_on_both_engines() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "49");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout)
+            .replace("\r\n", "\n")
+            .trim(),
+        "49\n25\n1.5"
+    );
 }
 
 #[test]

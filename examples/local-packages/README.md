@@ -9,5 +9,7 @@ cargo run -- run examples/local-packages/app
 cargo run -- build --emit js examples/local-packages/app
 ```
 
-The run prints `49`. The library's exported square function uses a private helper.
+The run prints `49`, `25`, and `1.5`. The exported square function uses a private
+helper; the exported `geometry::Point` record demonstrates qualified construction,
+type annotations, field reads and Float field widening.
 See [the lesson](../../docs/course/local-packages.md) for visibility and limits.

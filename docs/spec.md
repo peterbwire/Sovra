@@ -14,12 +14,42 @@ than 1024 nodes (E4112), canonical manifest/entry escapes (E4113), and missing o
 invalid local paths (E4110), retaining existing manifest diagnostic codes.
 `use alias::module;` in package entry source imports an inline module from a direct
 dependency; calls use `alias::module::function`. Imports are top-level and require
-a semicolon. Only exported functions are visible externally; private helpers and
+a semicolon. Only exported functions and records are visible externally; private helpers and
 top-level names resolve in their owning package. Duplicate identical imports are
 deduplicated. Every loaded entry body is checked before linked IR is returned.
 Only the root's `main` is the runtime entry point. Internal linked names are not
 source syntax or stable package identities. Relocation preserves emitted IR for
 the same dependency graph and sources.
+
+Imported scalar aliases are resolved in the declaring package before signatures
+enter consumer analysis or lowering. A consumer's same-named alias cannot change
+a library parameter or return type. Unresolved library names retain E3017 at
+the library annotation. Under accepted ADR 0011, `export struct Point { x: Float }`
+exposes a nominal record from its declaring module. Consumers use
+`alias::module::Point` in annotations and constructors after importing that module.
+Unexported records remain private across packages. E4116 rejects private records
+in exported function signatures or exported record fields at the library annotation.
+Record identity includes the canonical package, module and declaration: identical
+names/layouts in different packages never imply structural equivalence. Multiple
+aliases and diamond dependency paths to the same declaration preserve its identity.
+Scalar aliases and aliases to exported records resolve in their owning package.
+
+All fields of an exported record are externally readable and constructible for
+this milestone; constructors must provide every field exactly once with compatible
+values. This does not add field mutation and does not preclude explicit field
+visibility or encapsulation in a future milestone, subject to compatibility design.
+Imports do not expose bare type names, private declarations or transitive dependency
+aliases. Nested public field types retain identity and field metadata even when
+their defining dependency has no direct source spelling in the consumer.
+Exported type aliases, re-exports and recursive-type support are not added.
+Existing same-file type lookup is unchanged; module-local type-scope isolation
+and duplicate bare type names across modules remain limitations of that resolver.
+
+Explicit imported Float return signatures are retained during lowering, including
+inferred mutable locals and inferred array elements. Compatible Int assignments
+and array construction values therefore widen just as for local Float-returning
+functions, including imported aliases that resolve to Float. Qualified record
+constructors also widen compatible Int values in Float fields in both engines.
 
 CLI `check` on a directory with dependency sections invokes this executable
 pipeline. `run` and `build` also accept package directories. Directory checks

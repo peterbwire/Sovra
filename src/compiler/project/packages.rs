@@ -351,6 +351,232 @@ mod tests {
     }
 
     #[test]
+    fn exported_records_support_qualified_construction_fields_and_alias_identity() {
+        let fixture = Fixture::new();
+        let library = fixture.package("lib", "");
+        std::fs::write(library.join("main.svr"), "mod geometry { export struct Point { x: Float, y: Float } export fn origin() -> Point { return Point { x: 0, y: 0 } } export fn x(point: Point) -> Float { return point.x } }").unwrap();
+        let root = fixture.package(
+            "app",
+            "[dependencies.shapes]\npath = \"../lib\"\n[dependencies.other]\npath = \"../lib\"",
+        );
+        std::fs::write(root.join("main.svr"), "use shapes::geometry; use other::geometry; fn read(point: shapes::geometry::Point) -> Float { return point.x } fn main() { let point = shapes::geometry::Point { x: 3, y: 4 }; print(point.x / 2); print(read(point) / 2); print(other::geometry::x(point)); print(shapes::geometry::origin().y); }").unwrap();
+        let linked = compile(&root).unwrap();
+        assert_eq!(
+            crate::compiler::interpreter::run(&linked).unwrap(),
+            ["1.5", "1.5", "3", "0"]
+        );
+        let output = std::process::Command::new("node")
+            .arg("-e")
+            .arg(crate::compiler::backend::render_javascript(&linked))
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n"),
+            "1.5\n1.5\n3\n0\n"
+        );
+    }
+
+    #[test]
+    fn exported_records_from_distinct_packages_are_nominally_distinct() {
+        let fixture = Fixture::new();
+        for name in ["left", "right"] {
+            let root = fixture.package(name, "");
+            std::fs::write(root.join("main.svr"), "mod geometry { export struct Point { x: Int } export fn read(point: Point) -> Int { return point.x } }").unwrap();
+        }
+        let root = fixture.package(
+            "app",
+            "[dependencies.left]\npath = \"../left\"\n[dependencies.right]\npath = \"../right\"",
+        );
+        std::fs::write(root.join("main.svr"), "use left::geometry; use right::geometry; fn main() { let a = left::geometry::Point { x: 1 }; let b = right::geometry::Point { x: 2 }; print(left::geometry::read(a)); print(right::geometry::read(b)); }").unwrap();
+        assert_eq!(
+            crate::compiler::interpreter::run(&compile(&root).unwrap()).unwrap(),
+            ["1", "2"]
+        );
+        std::fs::write(root.join("main.svr"), "use left::geometry; use right::geometry; fn main() { let point = left::geometry::Point { x: 1 }; right::geometry::read(point); }").unwrap();
+        let errors = compile(root).unwrap_err();
+        assert!(errors.items.iter().any(|error| error.code == "E3007"));
+    }
+
+    #[test]
+    fn exported_record_constructors_validate_fields_and_import_scope() {
+        let fixture = Fixture::new();
+        let library = fixture.package("lib", "");
+        std::fs::write(
+            library.join("main.svr"),
+            "mod geometry { export struct Point { x: Float } struct Hidden { x: Int } }",
+        )
+        .unwrap();
+        let root = fixture.package("app", "[dependencies.shapes]\npath = \"../lib\"");
+        for source in [
+            "use shapes::geometry; fn main() { shapes::geometry::Point {}; }",
+            "use shapes::geometry; fn main() { shapes::geometry::Point { x: 1, x: 2 }; }",
+            "use shapes::geometry; fn main() { shapes::geometry::Point { x: true }; }",
+            "use shapes::geometry; fn main() { shapes::geometry::Point { x: 1, y: 2 }; }",
+            "use shapes::geometry; fn main() { let p = shapes::geometry::Point { x: 1 }; print(p.y); }",
+            "fn main() { shapes::geometry::Point { x: 1 }; }",
+            "use shapes::geometry; fn main() { Point { x: 1 }; }",
+            "use shapes::geometry; fn read(p: shapes::geometry::Hidden) {} fn main() {}",
+        ] {
+            std::fs::write(root.join("main.svr"), source).unwrap();
+            let errors = compile(&root).expect_err(source);
+            let entry = root.join("main.svr").canonicalize().unwrap();
+            assert!(errors.items.iter().all(|error| error.source_file.as_deref() == entry.to_str()));
+            assert!(errors.items.iter().all(|error| error.span.end <= source.len()));
+        }
+    }
+
+    #[test]
+    fn nested_exported_records_preserve_transitive_identity_and_scalar_aliases() {
+        let fixture = Fixture::new();
+        let base = fixture.package("base", "");
+        std::fs::write(
+            base.join("main.svr"),
+            "mod geometry { type Scalar = Float; export struct Point { x: Scalar } }",
+        )
+        .unwrap();
+        let wrapper = fixture.package("wrapper", "[dependencies.base]\npath = \"../base\"");
+        std::fs::write(wrapper.join("main.svr"), "use base::geometry; mod boxes { export struct Box { point: base::geometry::Point } export fn make() -> Box { return Box { point: base::geometry::Point { x: 3 } } } }").unwrap();
+        let root = fixture.package("app", "[dependencies.wrapper]\npath = \"../wrapper\"\n[dependencies.direct]\npath = \"../base\"");
+        std::fs::write(root.join("main.svr"), "use wrapper::boxes; use direct::geometry; struct Point { x: String } fn read(p: direct::geometry::Point) -> Float { return p.x } fn main() { let box = wrapper::boxes::make(); print(box.point.x / 2); print(read(box.point)); }").unwrap();
+        let linked = compile(&root).unwrap();
+        assert_eq!(
+            crate::compiler::interpreter::run(&linked).unwrap(),
+            ["1.5", "3"]
+        );
+        let output = std::process::Command::new("node")
+            .arg("-e")
+            .arg(crate::compiler::backend::render_javascript(&linked))
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n"),
+            "1.5\n3\n"
+        );
+    }
+
+    #[test]
+    fn private_record_construction_and_public_field_leaks_are_rejected() {
+        let fixture = Fixture::new();
+        let library = fixture.package("lib", "");
+        let root = fixture.package("app", "[dependencies.shapes]\npath = \"../lib\"");
+        std::fs::write(
+            library.join("main.svr"),
+            "mod geometry { struct Hidden { x: Int } }",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("main.svr"),
+            "use shapes::geometry; fn main() { let value = shapes::geometry::Hidden { x: 1 }; }",
+        )
+        .unwrap();
+        assert!(compile(&root)
+            .unwrap_err()
+            .items
+            .iter()
+            .any(|error| error.code == "E3004"));
+        std::fs::write(root.join("main.svr"), "use shapes::geometry; fn main() {}").unwrap();
+        std::fs::write(
+            library.join("main.svr"),
+            "mod geometry { struct Hidden { x: Int } export struct Public { hidden: Hidden } }",
+        )
+        .unwrap();
+        assert_eq!(compile(root).unwrap_err().items[0].code, "E4116");
+    }
+
+    #[test]
+    fn consumer_alias_cannot_reinterpret_a_library_signature() {
+        let fixture = Fixture::new();
+        let library = fixture.package("lib", "");
+        std::fs::write(library.join("main.svr"), "type Shared = Float; mod math { export fn identity(value: Shared) -> Shared { return value } }").unwrap();
+        let root = fixture.package("app", "[dependencies.util]\npath = \"../lib\"");
+        std::fs::write(
+            root.join("main.svr"),
+            "use util::math; type Shared = Bool; fn main() { util::math::identity(true); }",
+        )
+        .unwrap();
+        let errors = compile(&root).unwrap_err();
+        assert!(errors.items.iter().any(|error| error.code == "E3007"));
+        std::fs::write(root.join("main.svr"), "use util::math; fn main() { let mut value = util::math::identity(3); value = 5; print(value / 2); }").unwrap();
+        let linked = compile(root).unwrap();
+        assert_eq!(crate::compiler::interpreter::run(&linked).unwrap(), ["2.5"]);
+        let output = std::process::Command::new("node")
+            .arg("-e")
+            .arg(crate::compiler::backend::render_javascript(&linked))
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "2.5");
+    }
+
+    #[test]
+    fn unrelated_package_records_do_not_alias_by_spelling() {
+        let fixture = Fixture::new();
+        let library = fixture.package("lib", "");
+        std::fs::write(library.join("main.svr"), "struct Token { value: Int } mod api { export fn read(token: Token) -> Int { return token.value } }").unwrap();
+        let root = fixture.package("app", "[dependencies.util]\npath = \"../lib\"");
+        std::fs::write(root.join("main.svr"), "use util::api; struct Token { value: Int } fn main() { print(util::api::read(Token { value: 1 })); }").unwrap();
+        let errors = compile(root).unwrap_err();
+        assert_eq!(errors.items[0].code, "E4116");
+        assert_eq!(
+            errors.items[0].source_file.as_deref(),
+            Some(
+                library
+                    .join("main.svr")
+                    .canonicalize()
+                    .unwrap()
+                    .to_string_lossy()
+                    .as_ref()
+            )
+        );
+    }
+
+    #[test]
+    fn imported_float_results_preserve_inferred_widening() {
+        let fixture = Fixture::new();
+        let library = fixture.package("lib", "");
+        std::fs::write(
+            library.join("main.svr"),
+            "mod math { export fn value() -> Float { return 1.5 } }",
+        )
+        .unwrap();
+        let root = fixture.package("app", "[dependencies.util]\npath = \"../lib\"");
+        std::fs::write(root.join("main.svr"), "use util::math; fn main() { let mut value = util::math::value(); value = 3; print(value / 2); let values = [util::math::value(), 3]; print(values[1] / 2); }").unwrap();
+        let linked = compile(&root).unwrap();
+        assert_eq!(
+            crate::compiler::interpreter::run(&linked).unwrap(),
+            ["1.5", "1.5"]
+        );
+        let output = std::process::Command::new("node")
+            .arg("-e")
+            .arg(crate::compiler::backend::render_javascript(&linked))
+            .output()
+            .expect("Node required for backend verification");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n"),
+            "1.5\n1.5\n"
+        );
+    }
+
+    #[test]
     fn linked_ir_is_relocatable_and_numeric_widening_crosses_packages() {
         let mut results = Vec::new();
         for _ in 0..2 {

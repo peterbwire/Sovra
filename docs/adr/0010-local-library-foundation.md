@@ -90,11 +90,14 @@ single-file behavior and all builtin collision regressions.
 
 ## Approval and implementation status
 
-The user approved A, B and C. The graph-only Rust API is implemented: canonical
-local nodes, dependency aliases, deterministic traversal, cycle detection,
-manifest validation and entry containment. Source imports, semantic linking and
-project run/build integration remain unfinished. The ordinary CLI checker still
-rejects dependency sections to avoid claiming executable validation.
+The user approved A, B and C. Canonical graph resolution, dependency aliases,
+deterministic traversal, cycle detection, manifest validation and entry containment
+are implemented. `project::packages::compile` additionally parses package entry
+files, validates explicit imports and function visibility, checks all loaded
+bodies and links IR. CLI dependency-package check/run/build use this pipeline.
+The local two-package example executes in the interpreter and generated JavaScript.
+General multi-file packages, exported user-defined type interfaces, lockfiles,
+registry operations and publishing remain unfinished.
 
 The original approval boundary was required because the user request
 explicitly says to stop before an undecided import/export compatibility change.

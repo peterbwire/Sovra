@@ -63,8 +63,15 @@ This is mutable local-source consumption, not a lockfile or integrity guarantee.
 No Git/registry downloads, publishing, installation scripts or package-manager
 commands have been added. Only package entry files are compiled; general multi-file
 source loading and re-exports remain planned. Inline `mod`/`export fn` syntax is
-unchanged. Other declaration forms, collections, generics and HTTP remain outside
-the executable subset.
+unchanged. Package-level user-defined type interfaces, generics and HTTP remain
+unfinished. The executable language now also has local records, arrays and control
+flow; their existence does not make named types transferable between packages.
+An imported function explicitly returning `Float` preserves Float inference for
+mutable locals and array elements, including compatible Int-to-Float widening.
+Scalar aliases in exported signatures resolve in the library, so a consumer
+need not redeclare them. A same-named consumer alias cannot reinterpret them.
+Record signatures currently fail with E4116 when imported; identically named
+records in separate packages are not treated as the same type.
 
 CLI directory checking selects executable package compilation when dependency
 sections are present. Directories without them still use the partial application

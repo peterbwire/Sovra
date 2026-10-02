@@ -8,7 +8,11 @@ checks and links package entry sources. The schema remains version 1 with
 byte ranges. These reports omit application-scanner fields (`service_operations`,
 `service_coverage`, `member_calls`); absence is not an empty application scan.
 E4110–E4113 describe graph/path failures, E4114 malformed executable imports,
-and E4115 missing direct dependencies/modules. Semantic errors retain existing
+and E4115 missing direct dependencies/modules.
+E4116 reports private or unsupported types exposed by an exported function
+signature or record field; its location identifies the library's annotation.
+Explicitly exported records retain nominal package identity (ADR 0011).
+Scalar aliases are resolved in the library before consumer checks. Errors retain
 E30xx codes, including E3004 for inaccessible private calls. `--service-calls`
 is rejected with exit 2 for executable dependency packages.
 

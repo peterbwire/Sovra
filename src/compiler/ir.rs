@@ -118,9 +118,24 @@ pub enum Instruction {
 /// Obtain the input through semantic analysis (or use [`lower_program`]). Directly
 /// constructing a `TypedProgram` bypasses validation, including structural bounds.
 pub fn lower(program: &TypedProgram) -> IrProgram {
+    lower_with_imports(program, &[])
+}
+
+// Package-qualified signatures retain imported result types during local
+// inference. Do not resolve their annotations against consumer-owned aliases.
+pub(crate) fn lower_with_imports(
+    program: &TypedProgram,
+    imports: &[(String, &crate::compiler::ast::Function)],
+) -> IrProgram {
     let float_aliases = collect_float_aliases(&program.program);
-    let float_returning_functions =
+    let mut float_returning_functions =
         collect_float_returning_functions(&program.program, &float_aliases);
+    float_returning_functions.extend(
+        imports
+            .iter()
+            .filter(|(_, function)| function.return_type.as_deref() == Some("Float"))
+            .map(|(name, _)| name.clone()),
+    );
     let float_struct_fields = collect_float_struct_fields(&program.program, &float_aliases);
     let mut functions = Vec::new();
     for function in &program.program.functions {
@@ -169,6 +184,27 @@ fn collect_float_struct_fields(
                 .collect();
             structs.insert(declaration.name.clone(), fields.clone());
             structs.insert(format!("{}::{}", module.name, declaration.name), fields);
+        }
+    }
+    // Imported record spellings are aliases to canonical declarations. Preserve
+    // field widening through those aliases as well as ordinary local aliases.
+    loop {
+        let mut changed = false;
+        for declaration in program.type_declarations.iter().chain(
+            program
+                .modules
+                .iter()
+                .flat_map(|module| &module.type_declarations),
+        ) {
+            if !structs.contains_key(&declaration.name) {
+                if let Some(fields) = structs.get(&declaration.target).cloned() {
+                    structs.insert(declaration.name.clone(), fields);
+                    changed = true;
+                }
+            }
+        }
+        if !changed {
+            break;
         }
     }
     structs
@@ -294,10 +330,12 @@ fn lower_function(
     for statement in &function.body {
         lower_statement(
             statement,
-            function.return_type.as_deref(),
-            float_aliases,
-            float_returning_functions,
-            float_struct_fields,
+            StatementTypes {
+                return_type: function.return_type.as_deref(),
+                float_aliases,
+                float_returning_functions,
+                float_struct_fields,
+            },
             &mut locals,
             &mut next_shadow_id,
             &mut instructions,
@@ -314,16 +352,27 @@ fn lower_function(
     }
 }
 
+#[derive(Clone, Copy)]
+struct StatementTypes<'a> {
+    return_type: Option<&'a str>,
+    float_aliases: &'a HashSet<String>,
+    float_returning_functions: &'a HashSet<String>,
+    float_struct_fields: &'a HashMap<String, HashSet<String>>,
+}
+
 fn lower_statement(
     statement: &Statement,
-    return_type: Option<&str>,
-    float_aliases: &HashSet<String>,
-    float_returning_functions: &HashSet<String>,
-    float_struct_fields: &HashMap<String, HashSet<String>>,
+    types: StatementTypes<'_>,
     locals: &mut HashMap<String, LoweredBinding>,
     next_shadow_id: &mut usize,
     instructions: &mut Vec<Instruction>,
 ) {
+    let StatementTypes {
+        return_type,
+        float_aliases,
+        float_returning_functions,
+        float_struct_fields,
+    } = types;
     match statement {
         Statement::Let {
             name,
@@ -471,10 +520,7 @@ fn lower_statement(
             for statement in then_block {
                 lower_statement(
                     statement,
-                    return_type,
-                    float_aliases,
-                    float_returning_functions,
-                    float_struct_fields,
+                    types,
                     &mut then_locals,
                     next_shadow_id,
                     instructions,
@@ -489,10 +535,7 @@ fn lower_statement(
                 for statement in else_block {
                     lower_statement(
                         statement,
-                        return_type,
-                        float_aliases,
-                        float_returning_functions,
-                        float_struct_fields,
+                        types,
                         &mut else_locals,
                         next_shadow_id,
                         instructions,
@@ -524,10 +567,7 @@ fn lower_statement(
             for statement in body {
                 lower_statement(
                     statement,
-                    return_type,
-                    float_aliases,
-                    float_returning_functions,
-                    float_struct_fields,
+                    types,
                     &mut loop_locals,
                     next_shadow_id,
                     instructions,

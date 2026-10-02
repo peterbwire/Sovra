@@ -7,3 +7,14 @@ mod arithmetic {
         return arithmetic::product(value, value)
     }
 }
+
+mod geometry {
+    export struct Point {
+        x: Float,
+        y: Float,
+    }
+
+    export fn squared_length(point: Point) -> Float {
+        return point.x * point.x + point.y * point.y
+    }
+}

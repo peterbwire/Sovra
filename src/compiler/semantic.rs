@@ -518,6 +518,118 @@ fn collect_struct_fields(
     structs
 }
 
+// Import signatures must never resolve type names in the consumer's environment.
+// Primitive aliases normalize to primitives; exported records normalize to the
+// package-qualified identity supplied by the linker, never consumer spellings.
+pub(crate) fn normalize_imported_signatures(
+    owner: &Program,
+    functions: &[&Function],
+    records: &HashMap<String, String>,
+) -> Result<Vec<Function>, Diagnostics> {
+    let mut diagnostics = Diagnostics::new();
+    let known = collect_named_types(owner, &mut diagnostics);
+    if !diagnostics.is_empty() {
+        return Err(diagnostics);
+    }
+    let mut normalize = |name: &str, span: Span| -> String {
+        let resolved = Type::from_name_with_known(name, Some(&known)).canonicalize(&known);
+        let canonical = match resolved {
+            Type::Unit => "Unit",
+            Type::Bool => "Bool",
+            Type::Int => "Int",
+            Type::Float => "Float",
+            Type::String => "String",
+            Type::Unknown => {
+                diagnostics.push(diagnostic(
+                    "E3017",
+                    format!("unresolved type `{name}` in imported signature"),
+                    span,
+                ));
+                return name.to_owned();
+            }
+            Type::Named(ref record) if records.contains_key(record) => {
+                return records[record].clone();
+            }
+            Type::Named(_) | Type::Array(_) => {
+                diagnostics.push(diagnostic("E4116", format!("type `{name}` is private or unsupported in an exported interface; records must be explicitly exported"), span));
+                return name.to_owned();
+            }
+        };
+        canonical.to_owned()
+    };
+    let mut signatures = Vec::new();
+    for function in functions {
+        let mut signature = (*function).clone();
+        signature.body.clear();
+        for parameter in &mut signature.parameters {
+            if let Some(name) = &parameter.type_name {
+                parameter.type_name = Some(normalize(
+                    name,
+                    parameter.type_span.unwrap_or(parameter.span),
+                ));
+            }
+        }
+        if let Some(name) = &signature.return_type {
+            signature.return_type = Some(normalize(
+                name,
+                signature.return_type_span.unwrap_or(signature.span),
+            ));
+        }
+        signatures.push(signature);
+    }
+    if diagnostics.is_empty() {
+        Ok(signatures)
+    } else {
+        Err(diagnostics)
+    }
+}
+
+pub(crate) fn exported_record_fields(
+    owner: &Program,
+    records: &HashMap<String, String>,
+) -> Result<Vec<crate::compiler::ast::StructDeclaration>, Diagnostics> {
+    let mut result = Vec::new();
+    for record in owner
+        .struct_declarations
+        .iter()
+        .chain(
+            owner
+                .modules
+                .iter()
+                .flat_map(|module| &module.struct_declarations),
+        )
+        .filter(|record| record.is_exported)
+    {
+        // Reuse signature resolution for field annotations, keeping their source spans.
+        let signature = Function {
+            name: record.name.clone(),
+            is_exported: true,
+            parameters: record
+                .fields
+                .iter()
+                .map(|field| crate::compiler::ast::Parameter {
+                    name: field.name.clone(),
+                    type_name: Some(field.type_name.clone()),
+                    type_span: field.type_span,
+                    span: field.span,
+                })
+                .collect(),
+            return_type: None,
+            return_type_span: None,
+            body: Vec::new(),
+            span: record.span,
+        };
+        let normalized = normalize_imported_signatures(owner, &[&signature], records)?;
+        let mut record = record.clone();
+        record.name = records[&record.name].clone();
+        for (field, parameter) in record.fields.iter_mut().zip(&normalized[0].parameters) {
+            field.type_name = parameter.type_name.clone().unwrap();
+        }
+        result.push(record);
+    }
+    Ok(result)
+}
+
 fn check_builtin_collision(name: &str, span: Span, diagnostics: &mut Diagnostics) {
     if stdlib::lookup(name).is_some() {
         diagnostics.push(diagnostic(
@@ -957,7 +1069,13 @@ fn check_expression(
             }
         }
         ExpressionKind::StructLiteral { type_name, fields } => {
-            let type_fields = match struct_fields.get(type_name) {
+            let resolved =
+                Type::from_name_with_known(type_name, Some(named_types)).canonicalize(named_types);
+            let identity = match &resolved {
+                Type::Named(name) => name.as_str(),
+                _ => type_name.as_str(),
+            };
+            let type_fields = match struct_fields.get(identity) {
                 Some(fields) => fields,
                 None => {
                     diagnostics.push(diagnostic(
@@ -1014,7 +1132,7 @@ fn check_expression(
                     ));
                 }
             }
-            Type::Named(type_name.clone())
+            resolved
         }
         ExpressionKind::ArrayLiteral(items) => {
             let mut element_type = Type::Unknown;
