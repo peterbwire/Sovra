@@ -20,11 +20,17 @@ pub(super) fn check_program_depth(program: &Program) -> Result<(), Span> {
     {
         for statement in &function.body {
             let expression = match statement {
-                Statement::Let { value, .. } | Statement::Expression(value) => value,
+                Statement::Let { value, .. }
+                | Statement::Expression(value)
+                | Statement::Assign {
+                    target: _, value, ..
+                } => value,
                 Statement::Return {
                     value: Some(value), ..
                 } => value,
                 Statement::Return { value: None, .. } => continue,
+                Statement::If { condition, .. } => condition,
+                Statement::While { condition, .. } => condition,
             };
             let mut pending = vec![(expression, 1)];
             while let Some((expression, depth)) = pending.pop() {
@@ -40,6 +46,19 @@ pub(super) fn check_program_depth(program: &Program) -> Result<(), Span> {
                         pending
                             .extend(arguments.iter().rev().map(|argument| (argument, depth + 1)));
                         pending.push((callee, depth + 1));
+                    }
+                    ExpressionKind::FieldAccess { receiver, .. } => {
+                        pending.push((receiver, depth + 1));
+                    }
+                    ExpressionKind::StructLiteral { fields, .. } => {
+                        pending.extend(fields.iter().rev().map(|(_, value)| (value, depth + 1)));
+                    }
+                    ExpressionKind::ArrayLiteral(items) => {
+                        pending.extend(items.iter().rev().map(|value| (value, depth + 1)));
+                    }
+                    ExpressionKind::Index { target, index } => {
+                        pending.push((index, depth + 1));
+                        pending.push((target, depth + 1));
                     }
                     _ => {}
                 }
@@ -114,6 +133,7 @@ mod tests {
                 program.functions[0].body = vec![match context {
                     0 => Statement::Let {
                         name: "x".into(),
+                        is_mutable: false,
                         type_name: None,
                         type_span: None,
                         value: expression,

@@ -75,8 +75,18 @@ impl<'a> TokenParser<'a> {
     fn program(&mut self) -> Program {
         let mut functions = Vec::new();
         let mut modules = Vec::new();
+        let mut type_declarations = Vec::new();
+        let mut struct_declarations = Vec::new();
         while !self.at_eof() {
-            if self.check_keyword("mod") {
+            if self.check_keyword("type") {
+                if let Some(ty) = self.type_declaration() {
+                    type_declarations.push(ty);
+                }
+            } else if self.check_keyword("struct") {
+                if let Some(st) = self.struct_declaration() {
+                    struct_declarations.push(st);
+                }
+            } else if self.check_keyword("mod") {
                 if let Some(module) = self.module() {
                     modules.push(module);
                 }
@@ -85,11 +95,70 @@ impl<'a> TokenParser<'a> {
                     functions.push(function);
                 }
             } else {
-                self.error("E2000", "expected a function or module declaration");
+                self.error(
+                    "E2000",
+                    "expected a type, struct, function or module declaration",
+                );
                 self.advance();
             }
         }
-        Program { functions, modules }
+        Program {
+            functions,
+            modules,
+            type_declarations,
+            struct_declarations,
+        }
+    }
+
+    fn type_declaration(&mut self) -> Option<crate::compiler::ast::TypeDeclaration> {
+        let start = self.expect_keyword("type")?.span;
+        let name = self.expect_identifier("type name")?;
+        self.expect_operator("=");
+        let target = self.expect_type_name()?;
+        self.expect_punctuation(';');
+        Some(crate::compiler::ast::TypeDeclaration {
+            name,
+            target,
+            span: Span {
+                end: self.previous().span.end,
+                ..start
+            },
+        })
+    }
+
+    fn struct_declaration(&mut self) -> Option<crate::compiler::ast::StructDeclaration> {
+        let start = self.expect_keyword("struct")?.span;
+        let name = self.expect_identifier("struct name")?;
+        self.expect_punctuation('{');
+        let mut fields = Vec::new();
+        while !self.check_punctuation('}') && !self.at_eof() {
+            let field_start = self.peek().span;
+            let field_name = self.expect_identifier("field name")?;
+            self.expect_punctuation(':');
+            let type_name = self.expect_type_name()?;
+            let field_span = Span {
+                end: self.previous().span.end,
+                ..field_start
+            };
+            fields.push(crate::compiler::ast::StructField {
+                name: field_name,
+                type_name,
+                type_span: Some(field_span),
+                span: field_span,
+            });
+            if !self.consume_punctuation(',') {
+                break;
+            }
+        }
+        let end = self.expect_punctuation('}').unwrap_or(start);
+        Some(crate::compiler::ast::StructDeclaration {
+            name,
+            fields,
+            span: Span {
+                end: end.end,
+                ..start
+            },
+        })
     }
 
     fn module(&mut self) -> Option<crate::compiler::ast::Module> {
@@ -97,13 +166,26 @@ impl<'a> TokenParser<'a> {
         let name = self.expect_identifier("module name")?;
         self.expect_punctuation('{');
         let mut functions = Vec::new();
+        let mut type_declarations = Vec::new();
+        let mut struct_declarations = Vec::new();
         while !self.check_punctuation('}') && !self.at_eof() {
-            if self.check_keyword("fn") || self.check_keyword("export") {
+            if self.check_keyword("type") {
+                if let Some(ty) = self.type_declaration() {
+                    type_declarations.push(ty);
+                }
+            } else if self.check_keyword("struct") {
+                if let Some(st) = self.struct_declaration() {
+                    struct_declarations.push(st);
+                }
+            } else if self.check_keyword("fn") || self.check_keyword("export") {
                 if let Some(function) = self.function() {
                     functions.push(function);
                 }
             } else {
-                self.error("E2000", "expected a function declaration in module");
+                self.error(
+                    "E2000",
+                    "expected a type, struct or function declaration in module",
+                );
                 self.advance();
             }
         }
@@ -111,6 +193,8 @@ impl<'a> TokenParser<'a> {
         Some(crate::compiler::ast::Module {
             name,
             functions,
+            type_declarations,
+            struct_declarations,
             span: Span {
                 end: end.end,
                 ..start
@@ -130,7 +214,7 @@ impl<'a> TokenParser<'a> {
             let mut type_span = None;
             let type_name = if self.consume_punctuation(':') {
                 type_span = Some(self.peek().span);
-                self.expect_identifier("parameter type")
+                self.expect_type_name()
             } else {
                 // Preserve the missing annotation for a semantic diagnostic
                 // at the parameter's name rather than discarding the function.
@@ -150,7 +234,7 @@ impl<'a> TokenParser<'a> {
         let mut return_type_span = None;
         let return_type = if self.consume_operator("->") {
             return_type_span = Some(self.peek().span);
-            self.expect_identifier("return type")
+            self.expect_type_name()
         } else {
             None
         };
@@ -181,11 +265,12 @@ impl<'a> TokenParser<'a> {
     fn statement(&mut self) -> Option<Statement> {
         if self.consume_keyword("let") {
             let start = self.previous().span;
+            let is_mutable = self.consume_keyword("mut");
             let name = self.expect_identifier("binding name")?;
             let mut type_span = None;
             let type_name = if self.consume_punctuation(':') {
                 type_span = Some(self.peek().span);
-                Some(self.expect_identifier("binding type")?)
+                Some(self.expect_type_name()?)
             } else {
                 None
             };
@@ -194,6 +279,7 @@ impl<'a> TokenParser<'a> {
             self.consume_punctuation(';');
             return Some(Statement::Let {
                 name,
+                is_mutable,
                 type_name,
                 type_span,
                 value,
@@ -219,9 +305,117 @@ impl<'a> TokenParser<'a> {
                 },
             });
         }
+        if self.consume_keyword("if") {
+            let start = self.previous().span;
+            let condition = if self.consume_punctuation('(') {
+                let condition = self.expression()?;
+                self.expect_punctuation(')');
+                condition
+            } else {
+                self.expression()?
+            };
+            let then_block = self.block()?;
+            let else_block = if self.consume_keyword("else") {
+                if self.check_punctuation('{') {
+                    Some(self.block()?)
+                } else {
+                    let statement = self.statement()?;
+                    Some(vec![statement])
+                }
+            } else {
+                None
+            };
+            return Some(Statement::If {
+                condition,
+                then_block,
+                else_block,
+                span: Span {
+                    end: self.previous().span.end,
+                    ..start
+                },
+            });
+        }
+        if self.consume_keyword("while") {
+            let start = self.previous().span;
+            let condition = if self.consume_punctuation('(') {
+                let condition = self.expression()?;
+                self.expect_punctuation(')');
+                condition
+            } else {
+                self.expression()?
+            };
+            let body = self.block()?;
+            return Some(Statement::While {
+                condition,
+                body,
+                span: Span {
+                    end: self.previous().span.end,
+                    ..start
+                },
+            });
+        }
+        if let Some(target) = self.assignment_target() {
+            if self.consume_operator("=") {
+                let start = target.span;
+                let value = self.expression()?;
+                self.consume_punctuation(';');
+                return Some(Statement::Assign {
+                    target,
+                    value,
+                    span: Span {
+                        end: self.previous().span.end,
+                        ..start
+                    },
+                });
+            }
+        }
         let expression = self.expression()?;
         self.consume_punctuation(';');
         Some(Statement::Expression(expression))
+    }
+
+    fn assignment_target(&mut self) -> Option<Expression> {
+        let start = self.position;
+        let token = self.peek().clone();
+        let mut expression = match token.kind {
+            TokenKind::Identifier(name) => {
+                self.advance();
+                Expression {
+                    kind: ExpressionKind::Identifier(name),
+                    span: token.span,
+                }
+            }
+            _ => return None,
+        };
+        while self.consume_punctuation('[') {
+            let index = self.expression()?;
+            self.expect_punctuation(']');
+            expression = Expression {
+                span: Span {
+                    end: self.previous().span.end,
+                    ..expression.span
+                },
+                kind: ExpressionKind::Index {
+                    target: Box::new(expression),
+                    index: Box::new(index),
+                },
+            };
+        }
+        if !matches!(self.peek().kind, TokenKind::Operator("=")) {
+            self.position = start;
+            return None;
+        }
+        Some(expression)
+    }
+
+    fn block(&mut self) -> Option<Vec<Statement>> {
+        self.expect_punctuation('{')?;
+        let mut statements = Vec::new();
+        while !self.check_punctuation('}') && !self.at_eof() {
+            statements.push(self.statement()?);
+        }
+        self.expect_punctuation('}')?;
+        Some(statements)
     }
 
     fn expression(&mut self) -> Option<Expression> {
@@ -285,13 +479,44 @@ impl<'a> TokenParser<'a> {
             }
             TokenKind::Identifier(name) => {
                 self.advance();
-                ExpressionKind::Identifier(name)
+                if self.check_punctuation('{') {
+                    self.expect_punctuation('{');
+                    let mut fields = Vec::new();
+                    while !self.check_punctuation('}') && !self.at_eof() {
+                        let field_name = self.expect_identifier("field name")?;
+                        self.expect_punctuation(':');
+                        let value = self.expression()?;
+                        fields.push((field_name, value));
+                        if !self.consume_punctuation(',') {
+                            break;
+                        }
+                    }
+                    self.expect_punctuation('}');
+                    ExpressionKind::StructLiteral {
+                        type_name: name,
+                        fields,
+                    }
+                } else {
+                    ExpressionKind::Identifier(name)
+                }
             }
             TokenKind::Punctuation('(') => {
                 self.advance();
                 let expression = self.expression();
                 self.expect_punctuation(')');
                 expression?.kind
+            }
+            TokenKind::Punctuation('[') => {
+                self.advance();
+                let mut items = Vec::new();
+                while !self.check_punctuation(']') && !self.at_eof() {
+                    items.push(self.expression()?);
+                    if !self.consume_punctuation(',') {
+                        break;
+                    }
+                }
+                self.expect_punctuation(']');
+                ExpressionKind::ArrayLiteral(items)
             }
             _ => {
                 self.error("E2001", "expected an expression");
@@ -322,37 +547,94 @@ impl<'a> TokenParser<'a> {
             };
             expression.span.end = self.previous().span.end;
         }
-        if self.consume_punctuation('(') {
-            let mut arguments = Vec::new();
-            while !self.check_punctuation(')') && !self.at_eof() {
-                arguments.push(self.expression()?);
+        if matches!(
+            expression.kind,
+            ExpressionKind::Identifier(_) | ExpressionKind::QualifiedName { .. }
+        ) && self.check_punctuation('{')
+        {
+            let type_name = match expression.kind {
+                ExpressionKind::Identifier(name) => name,
+                ExpressionKind::QualifiedName { path } => path.join("::"),
+                _ => unreachable!(),
+            };
+            self.expect_punctuation('{');
+            let mut fields = Vec::new();
+            while !self.check_punctuation('}') && !self.at_eof() {
+                let field_name = self.expect_identifier("field name")?;
+                self.expect_punctuation(':');
+                let value = self.expression()?;
+                fields.push((field_name, value));
                 if !self.consume_punctuation(',') {
                     break;
                 }
             }
-            self.expect_punctuation(')');
-            let depth = 1 + arguments
-                .iter()
-                .map(expression_depth)
-                .chain(std::iter::once(expression_depth(&expression)))
-                .max()
-                .unwrap_or(0);
-            if !self.check_depth(depth, token.span) {
-                return None;
-            }
-            Some(Expression {
-                span: Span {
-                    end: self.previous().span.end,
-                    ..expression.span
-                },
-                kind: ExpressionKind::Call {
-                    callee: Box::new(expression),
-                    arguments,
-                },
-            })
-        } else {
-            Some(expression)
+            self.expect_punctuation('}');
+            expression.kind = ExpressionKind::StructLiteral { type_name, fields };
+            expression.span.end = self.previous().span.end;
         }
+        loop {
+            if self.consume_punctuation('.') {
+                let field = self.expect_identifier("field name")?;
+                expression = Expression {
+                    span: Span {
+                        end: self.previous().span.end,
+                        ..expression.span
+                    },
+                    kind: ExpressionKind::FieldAccess {
+                        receiver: Box::new(expression),
+                        field,
+                    },
+                };
+                continue;
+            }
+            if self.consume_punctuation('[') {
+                let index = self.expression()?;
+                self.expect_punctuation(']');
+                expression = Expression {
+                    span: Span {
+                        end: self.previous().span.end,
+                        ..expression.span
+                    },
+                    kind: ExpressionKind::Index {
+                        target: Box::new(expression),
+                        index: Box::new(index),
+                    },
+                };
+                continue;
+            }
+            if self.consume_punctuation('(') {
+                let mut arguments = Vec::new();
+                while !self.check_punctuation(')') && !self.at_eof() {
+                    arguments.push(self.expression()?);
+                    if !self.consume_punctuation(',') {
+                        break;
+                    }
+                }
+                self.expect_punctuation(')');
+                let depth = 1 + arguments
+                    .iter()
+                    .map(expression_depth)
+                    .chain(std::iter::once(expression_depth(&expression)))
+                    .max()
+                    .unwrap_or(0);
+                if !self.check_depth(depth, token.span) {
+                    return None;
+                }
+                expression = Expression {
+                    span: Span {
+                        end: self.previous().span.end,
+                        ..expression.span
+                    },
+                    kind: ExpressionKind::Call {
+                        callee: Box::new(expression),
+                        arguments,
+                    },
+                };
+                continue;
+            }
+            break;
+        }
+        Some(expression)
     }
 
     fn synchronize_statement(&mut self) {
@@ -375,6 +657,14 @@ impl<'a> TokenParser<'a> {
                 None
             }
         }
+    }
+
+    fn expect_type_name(&mut self) -> Option<String> {
+        let mut parts = vec![self.expect_identifier("type name")?];
+        while self.consume_operator("::") {
+            parts.push(self.expect_identifier("type member name")?);
+        }
+        Some(parts.join("::"))
     }
 
     fn expect_keyword(&mut self, keyword: &'static str) -> Option<Token> {
@@ -504,6 +794,19 @@ fn expression_depth(expression: &Expression) -> usize {
                 pending.push((callee, depth + 1));
                 pending.extend(arguments.iter().map(|argument| (argument, depth + 1)));
             }
+            ExpressionKind::FieldAccess { receiver, .. } => {
+                pending.push((receiver, depth + 1));
+            }
+            ExpressionKind::StructLiteral { fields, .. } => {
+                pending.extend(fields.iter().map(|(_, value)| (value, depth + 1)));
+            }
+            ExpressionKind::ArrayLiteral(items) => {
+                pending.extend(items.iter().map(|value| (value, depth + 1)));
+            }
+            ExpressionKind::Index { target, index } => {
+                pending.push((target, depth + 1));
+                pending.push((index, depth + 1));
+            }
             _ => {}
         }
     }
@@ -512,9 +815,11 @@ fn expression_depth(expression: &Expression) -> usize {
 
 fn precedence(operator: &str) -> u8 {
     match operator {
-        "==" | "!=" | "<" | "<=" | ">" | ">=" => 1,
-        "+" | "-" => 2,
-        "*" | "/" => 3,
+        "||" => 1,
+        "&&" => 2,
+        "==" | "!=" | "<" | "<=" | ">" | ">=" => 3,
+        "+" | "-" => 4,
+        "*" | "/" => 5,
         _ => 0,
     }
 }
@@ -656,6 +961,31 @@ mod tests {
     }
 
     #[test]
+    fn parses_mutable_bindings_and_assignments() {
+        let program = Parser::new()
+            .parse_source("fn main() { let mut items = [1, 2]; items[0] = 3; items = [4]; }")
+            .expect("source should parse");
+        assert!(matches!(
+            &program.functions[0].body[0],
+            Statement::Let {
+                name,
+                is_mutable: true,
+                ..
+            } if name == "items"
+        ));
+        assert!(matches!(
+            &program.functions[0].body[1],
+            Statement::Assign { target, .. }
+                if matches!(&target.kind, ExpressionKind::Index { .. })
+        ));
+        assert!(matches!(
+            &program.functions[0].body[2],
+            Statement::Assign { target, .. }
+                if matches!(&target.kind, ExpressionKind::Identifier(name) if name == "items")
+        ));
+    }
+
+    #[test]
     fn preserves_missing_parameter_annotation_for_diagnostics() {
         let source = "fn helper(value, typed: Int) {}";
         let program = Parser::new()
@@ -682,6 +1012,34 @@ mod tests {
         assert!(matches!(
             program.functions[0].body[0],
             Statement::Return { .. }
+        ));
+    }
+
+    #[test]
+    fn parses_logical_operators_with_boolean_precedence() {
+        let program = Parser::new()
+            .parse_source("fn main() { true || false && true == false }")
+            .expect("logical expression should parse");
+        let Statement::Expression(expression) = &program.functions[0].body[0] else {
+            panic!("expected expression statement");
+        };
+        let ExpressionKind::Binary {
+            operator, right, ..
+        } = &expression.kind
+        else {
+            panic!("expected logical-or expression");
+        };
+        assert_eq!(operator, "||");
+        let ExpressionKind::Binary {
+            operator, right, ..
+        } = &right.kind
+        else {
+            panic!("expected logical-and expression");
+        };
+        assert_eq!(operator, "&&");
+        assert!(matches!(
+            right.kind,
+            ExpressionKind::Binary { ref operator, .. } if operator == "=="
         ));
     }
 

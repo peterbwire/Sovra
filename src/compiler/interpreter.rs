@@ -16,8 +16,21 @@ pub enum Value {
     Bool(bool),
     /// A string.
     String(String),
+    /// A homogeneous collection of values.
+    Array(Vec<Value>),
+    /// A user-defined record with fields in source construction order.
+    Struct(Box<StructValue>),
     /// No value.
     Unit,
+}
+
+/// Runtime representation of a user-defined record.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StructValue {
+    /// Declared record type name.
+    pub type_name: String,
+    /// Record fields in source construction order.
+    pub fields: Vec<(String, Value)>,
 }
 
 impl Value {
@@ -27,6 +40,18 @@ impl Value {
             Self::Float(value) => value.to_string(),
             Self::Bool(value) => value.to_string(),
             Self::String(value) => value.clone(),
+            Self::Array(values) => {
+                let parts: Vec<_> = values.iter().map(Self::display).collect();
+                format!("[{}]", parts.join(", "))
+            }
+            Self::Struct(record) => {
+                let parts: Vec<_> = record
+                    .fields
+                    .iter()
+                    .map(|(name, value)| format!("{name}: {}", value.display()))
+                    .collect();
+                format!("{} {{ {} }}", record.type_name, parts.join(", "))
+            }
             Self::Unit => String::new(),
         }
     }
@@ -40,22 +65,18 @@ pub fn run(program: &IrProgram) -> Result<Vec<String>, String> {
         .iter()
         .find(|function| function.name == "main")
         .ok_or_else(|| "entry function `main` was not found".to_owned())?;
-    let (output, _) = execute_function(function, &[], program, 0)?;
+    let (output, _) = execute_function(function, &[], program)?;
     Ok(output)
 }
 
-fn execute_function(
-    function: &IrFunction,
-    arguments: &[Value],
-    program: &IrProgram,
-    depth: usize,
-) -> Result<(Vec<String>, Value), String> {
-    if depth >= MAX_CALL_DEPTH {
-        return Err(format!(
-            "maximum call depth of {MAX_CALL_DEPTH} exceeded in `{}`",
-            function.name
-        ));
-    }
+struct CallFrame<'a> {
+    function: &'a IrFunction,
+    stack: Vec<Value>,
+    names: HashMap<String, Value>,
+    pc: usize,
+}
+
+fn call_frame<'a>(function: &'a IrFunction, arguments: &[Value]) -> Result<CallFrame<'a>, String> {
     if arguments.len() != function.parameters.len() {
         return Err(format!(
             "function `{}` expects {} argument(s), found {}",
@@ -64,84 +85,267 @@ fn execute_function(
             arguments.len()
         ));
     }
-    let mut stack = Vec::new();
-    let mut names = HashMap::new();
-    for (name, value) in function.parameters.iter().zip(arguments) {
-        names.insert(name.clone(), value.clone());
-    }
+    let names = function
+        .parameters
+        .iter()
+        .cloned()
+        .zip(arguments.iter().cloned())
+        .collect();
+    Ok(CallFrame {
+        function,
+        stack: Vec::new(),
+        names,
+        pc: 0,
+    })
+}
+
+fn execute_function(
+    function: &IrFunction,
+    arguments: &[Value],
+    program: &IrProgram,
+) -> Result<(Vec<String>, Value), String> {
+    let mut frames = vec![call_frame(function, arguments)?];
     let mut output = Vec::new();
-    for instruction in &function.instructions {
-        match instruction {
-            Instruction::LoadLiteral(value) => stack.push(value_from_literal(value)?),
-            Instruction::LoadName(name) => stack.push(
-                names
-                    .get(name)
-                    .cloned()
-                    .ok_or_else(|| format!("runtime name `{name}` was not found"))?,
-            ),
-            Instruction::StoreName(name) => {
-                let value = stack
-                    .pop()
-                    .ok_or_else(|| "stack underflow on store".to_owned())?;
-                names.insert(name.clone(), value);
+    loop {
+        let active_frames = frames.len();
+        let frame = frames.last_mut().expect("entry call frame exists");
+        if frame.pc >= frame.function.instructions.len() {
+            let return_value = frame.stack.pop().unwrap_or(Value::Unit);
+            frames.pop();
+            if let Some(caller) = frames.last_mut() {
+                caller.stack.push(return_value);
+            } else {
+                return Ok((output, return_value));
             }
-            Instruction::WidenFloat => {
-                let value = stack
-                    .pop()
-                    .ok_or_else(|| "stack underflow on widening".to_owned())?;
-                stack.push(match value {
-                    Value::Int(value) => Value::Float(value as f64),
-                    Value::Float(_) => value,
-                    _ => return Err("Float conversion expects Int or Float".to_owned()),
-                });
-            }
-            Instruction::Binary(operator) => {
-                let right = stack
-                    .pop()
-                    .ok_or_else(|| "stack underflow on binary operator".to_owned())?;
-                let left = stack
-                    .pop()
-                    .ok_or_else(|| "stack underflow on binary operator".to_owned())?;
-                stack.push(binary(operator, left, right)?);
-            }
-            Instruction::Call { name, arguments } => {
-                if *arguments > stack.len() {
-                    return Err("stack underflow on call".to_owned());
+            continue;
+        }
+
+        let mut pending_frame = None;
+        let mut return_value = None;
+        {
+            let frame = frames.last_mut().expect("active call frame exists");
+            let instruction: &Instruction = &frame.function.instructions[frame.pc];
+            frame.pc += 1;
+            match instruction {
+                Instruction::LoadLiteral(value) => frame.stack.push(value_from_literal(value)?),
+                Instruction::LoadName(name) => frame.stack.push(
+                    frame
+                        .names
+                        .get(name)
+                        .cloned()
+                        .ok_or_else(|| format!("runtime name `{name}` was not found"))?,
+                ),
+                Instruction::StoreName(name) => {
+                    let value = frame
+                        .stack
+                        .pop()
+                        .ok_or_else(|| "stack underflow on store".to_owned())?;
+                    frame.names.insert(name.clone(), value);
                 }
-                let mut call_arguments = Vec::with_capacity(*arguments);
-                for _ in 0..*arguments {
-                    call_arguments.push(
-                        stack
-                            .pop()
-                            .ok_or_else(|| "stack underflow on call".to_owned())?,
-                    );
+                Instruction::WidenFloat => {
+                    let value = frame
+                        .stack
+                        .pop()
+                        .ok_or_else(|| "stack underflow on widening".to_owned())?;
+                    frame.stack.push(match value {
+                        Value::Int(value) => Value::Float(value as f64),
+                        Value::Float(_) => value,
+                        _ => return Err("Float conversion expects Int or Float".to_owned()),
+                    });
                 }
-                call_arguments.reverse();
-                if stdlib::lookup(name).is_some() {
-                    execute_std_call(name, &call_arguments, &mut output, &mut stack)?;
-                } else {
-                    let callee = program
-                        .functions
-                        .iter()
-                        .find(|function| function.name == name.as_str())
-                        .ok_or_else(|| format!("runtime function `{name}` was not found"))?;
-                    let (callee_output, return_value) =
-                        execute_function(callee, &call_arguments, program, depth + 1)?;
-                    output.extend(callee_output);
-                    stack.push(return_value);
+                Instruction::Binary(operator) => {
+                    let right = frame
+                        .stack
+                        .pop()
+                        .ok_or_else(|| "stack underflow on binary operator".to_owned())?;
+                    let left = frame
+                        .stack
+                        .pop()
+                        .ok_or_else(|| "stack underflow on binary operator".to_owned())?;
+                    frame.stack.push(binary(operator, left, right)?);
                 }
-            }
-            Instruction::Pop => {
-                stack
-                    .pop()
-                    .ok_or_else(|| "stack underflow on pop".to_owned())?;
-            }
-            Instruction::Return => {
-                return Ok((output, stack.pop().unwrap_or(Value::Unit)));
+                Instruction::MakeArray { length } => {
+                    if *length > frame.stack.len() {
+                        return Err("stack underflow on array literal".to_owned());
+                    }
+                    let mut items = Vec::with_capacity(*length);
+                    for _ in 0..*length {
+                        items.push(
+                            frame
+                                .stack
+                                .pop()
+                                .ok_or_else(|| "stack underflow on array literal".to_owned())?,
+                        );
+                    }
+                    items.reverse();
+                    frame.stack.push(Value::Array(items));
+                }
+                Instruction::MakeStruct { type_name, fields } => {
+                    if fields.len() > frame.stack.len() {
+                        return Err("stack underflow on struct literal".to_owned());
+                    }
+                    let mut values = Vec::with_capacity(fields.len());
+                    for _ in fields {
+                        values.push(
+                            frame
+                                .stack
+                                .pop()
+                                .ok_or_else(|| "stack underflow on struct literal".to_owned())?,
+                        );
+                    }
+                    values.reverse();
+                    let mut seen = std::collections::HashSet::new();
+                    if fields.iter().any(|field| !seen.insert(field)) {
+                        return Err(format!("duplicate field in struct `{type_name}`"));
+                    }
+                    frame.stack.push(Value::Struct(Box::new(StructValue {
+                        type_name: type_name.clone(),
+                        fields: fields.iter().cloned().zip(values).collect(),
+                    })));
+                }
+                Instruction::LoadField(field) => {
+                    let target = frame
+                        .stack
+                        .pop()
+                        .ok_or_else(|| "stack underflow on field access".to_owned())?;
+                    match target {
+                        Value::Struct(record) => {
+                            let value = record
+                                .fields
+                                .iter()
+                                .find(|(name, _)| name == field)
+                                .map(|(_, value)| value.clone())
+                                .ok_or_else(|| format!("struct value has no field `{field}`"))?;
+                            frame.stack.push(value);
+                        }
+                        _ => return Err("field access requires a struct value".to_owned()),
+                    }
+                }
+                Instruction::Index => {
+                    let index = frame
+                        .stack
+                        .pop()
+                        .ok_or_else(|| "stack underflow on index".to_owned())?;
+                    let target = frame
+                        .stack
+                        .pop()
+                        .ok_or_else(|| "stack underflow on index".to_owned())?;
+                    match (target, index) {
+                        (Value::Array(values), Value::Int(index)) => {
+                            let index = index as usize;
+                            if index >= values.len() {
+                                return Err("array index out of bounds".to_owned());
+                            }
+                            frame.stack.push(values[index].clone());
+                        }
+                        _ => return Err("index requires an Array and Int index".to_owned()),
+                    }
+                }
+                Instruction::StoreIndex => {
+                    let value = frame
+                        .stack
+                        .pop()
+                        .ok_or_else(|| "stack underflow on store-index".to_owned())?;
+                    let index = frame
+                        .stack
+                        .pop()
+                        .ok_or_else(|| "stack underflow on store-index".to_owned())?;
+                    let mut target = frame
+                        .stack
+                        .pop()
+                        .ok_or_else(|| "stack underflow on store-index".to_owned())?;
+                    match (&mut target, index) {
+                        (Value::Array(values), Value::Int(index)) => {
+                            let index = index as usize;
+                            if index >= values.len() {
+                                return Err("array index out of bounds".to_owned());
+                            }
+                            values[index] = value;
+                            frame.stack.push(target);
+                        }
+                        _ => {
+                            return Err(
+                                "index assignment requires an Array and Int index".to_owned()
+                            )
+                        }
+                    }
+                }
+                Instruction::Jump { target } => {
+                    if *target > frame.function.instructions.len() {
+                        return Err("jump target out of bounds".to_owned());
+                    }
+                    frame.pc = *target;
+                }
+                Instruction::JumpIfFalse { target } => {
+                    if *target > frame.function.instructions.len() {
+                        return Err("jump target out of bounds".to_owned());
+                    }
+                    let condition = frame
+                        .stack
+                        .pop()
+                        .ok_or_else(|| "stack underflow on jump-if-false".to_owned())?;
+                    let is_true = match condition {
+                        Value::Bool(value) => value,
+                        _ => return Err("if condition must be Bool".to_owned()),
+                    };
+                    if !is_true {
+                        frame.pc = *target;
+                    }
+                }
+                Instruction::Call { name, arguments } => {
+                    if *arguments > frame.stack.len() {
+                        return Err("stack underflow on call".to_owned());
+                    }
+                    let mut call_arguments = Vec::with_capacity(*arguments);
+                    for _ in 0..*arguments {
+                        call_arguments.push(
+                            frame
+                                .stack
+                                .pop()
+                                .ok_or_else(|| "stack underflow on call".to_owned())?,
+                        );
+                    }
+                    call_arguments.reverse();
+                    if stdlib::lookup(name).is_some() {
+                        execute_std_call(name, &call_arguments, &mut output, &mut frame.stack)?;
+                    } else {
+                        let callee = program
+                            .functions
+                            .iter()
+                            .find(|function| function.name == name.as_str())
+                            .ok_or_else(|| format!("runtime function `{name}` was not found"))?;
+                        if active_frames >= MAX_CALL_DEPTH {
+                            return Err(format!(
+                                "maximum call depth of {MAX_CALL_DEPTH} exceeded in `{}`",
+                                callee.name
+                            ));
+                        }
+                        pending_frame = Some(call_frame(callee, &call_arguments)?);
+                    }
+                }
+                Instruction::Pop => {
+                    frame
+                        .stack
+                        .pop()
+                        .ok_or_else(|| "stack underflow on pop".to_owned())?;
+                }
+                Instruction::Return => {
+                    return_value = Some(frame.stack.pop().unwrap_or(Value::Unit));
+                }
             }
         }
+
+        if let Some(return_value) = return_value {
+            frames.pop();
+            if let Some(caller) = frames.last_mut() {
+                caller.stack.push(return_value);
+            } else {
+                return Ok((output, return_value));
+            }
+        } else if let Some(callee) = pending_frame {
+            frames.push(callee);
+        }
     }
-    Ok((output, stack.pop().unwrap_or(Value::Unit)))
 }
 
 fn execute_std_call(
@@ -175,6 +379,15 @@ fn execute_std_call(
                 Value::Float(value) => Value::String(value.to_string()),
                 Value::Bool(value) => Value::String(value.to_string()),
                 Value::String(value) => Value::String(value.clone()),
+                Value::Array(values) => Value::String(format!(
+                    "[{}]",
+                    values
+                        .iter()
+                        .map(Value::display)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )),
+                value @ Value::Struct(_) => Value::String(value.display()),
                 Value::Unit => Value::String(String::new()),
             };
             stack.push(value);

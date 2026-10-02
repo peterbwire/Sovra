@@ -100,8 +100,9 @@ The lexer lives in [`src/compiler/lexer.rs`](../src/compiler/lexer.rs).
 M2 parses function declarations, parameter names with optional annotations,
 optional return types, blocks, `let` bindings, `return` statements, literals,
 identifiers, function calls, module-qualified names, and binary expressions with
-conventional precedence. Statement semicolons are optional before a closing
-block.
+conventional precedence. Binary precedence from lowest to highest is `||`,
+`&&`, comparisons, `+`/`-`, then `*`/`/`; operators at one level associate
+left-to-right. Statement semicolons are optional before a closing block.
 
 A missing parameter annotation is retained in the AST for a semantic diagnostic;
 every valid function parameter requires an explicit type under ADR 0002.
@@ -140,8 +141,10 @@ opt-in CLI reports E4096. Comments/strings do not affect delimiter accounting.
 
 The analyzer validates local names, function names, declared return types,
 function call arity, parameter types, duplicate declarations, module exports,
-and basic operand compatibility. Successful analysis produces a minimal linear
-IR containing loads, stores, operators, calls, returns, and value pops.
+and operand compatibility. Logical `&&` and `||` require `Bool` operands and
+produce `Bool`; both operators short-circuit, so the right operand is evaluated
+only when needed. Successful analysis produces a stack IR containing loads,
+stores, operators, branches, calls, returns, and value pops.
 Diagnostics use stable `E30xx` codes. Function names and parameters must be
 unique, and the `main` entry function takes no arguments and returns `Unit`.
 Module function-name uniqueness applies to private and exported declarations
@@ -176,16 +179,21 @@ Requiring parameter annotations rejects previously accepted untyped declarations
 see [ADR 0002](adr/0002-function-typing.md), the [function lesson](course/functions.md)
 and [executable example](../examples/functions/main.svr).
 
-Primitive types are `Unit`, `Bool`, `Int`, `Float` and `String`. Until executable
-type declarations are implemented, other explicit parameter, return and local
-annotation names produce E3017, including `Any`, `Text` and misspellings. Every
-function is checked, including unused/private/exported declarations. Names are
-case-sensitive; no implicit aliases are introduced. See approved
+Primitive types are `Unit`, `Bool`, `Int`, `Float` and `String`. A type alias
+has the form `type Name = Target;` and targets a primitive, alias, or struct
+type; a declaration like `struct Name { field: Type, ... }` defines a nominal
+record. Struct literals must provide
+each declared field exactly once with a compatible value. Field reads use
+`record.field`, including chained reads. Records can pass through function
+parameters, return values and local bindings. Field mutation and first-class
+type values are not implemented. Other unknown annotation names produce E3017.
+Every function is checked, including unused/private/exported declarations.
+Names are case-sensitive; no implicit aliases are introduced. See approved
 [ADR 0004](adr/0004-unresolved-type-annotations.md). Local inference and default
 Unit returns remain. E3017 identifies the exact annotation token, including
 its byte range and line/column in JSON reports. Missing annotations still use
-the parameter name (E3014). This is not a general typed HIR or user-defined
-type system.
+the parameter name (E3014). This is not a general typed HIR or complete type
+system.
 
 `String + String` produces `String`, including in inferred local bindings and
 chained concatenations. Its result must satisfy ordinary parameter, binding
@@ -197,14 +205,40 @@ ordering for valid strings, in both execution engines. A prefix sorts before
 its longer extension. Comparisons are not locale-sensitive and do not normalize
 Unicode; composed and decomposed spellings remain distinct.
 
+### Arrays and mutation
+
+Array literals use `[value, ...]`; elements must have compatible types. Mixed
+Int/Float elements promote the array element type to Float, with Int values
+widened during construction. Indexing uses an `Int` index and reports an
+out-of-bounds runtime error. `let name = ...` creates an immutable binding;
+`let mut name = ...` permits reassignment.
+Indexed assignment is supported for a direct mutable array binding, for example
+`values[0] = 42`. Assigning through an immutable binding reports E3011; nested
+indexed assignment such as `values[0][1] = 42` is not supported and reports
+E3003. The interpreter and JavaScript backend both validate index type and
+bounds.
+
 Parameter and body checks apply to every function, including exported and
 non-exported module functions that are never called. Each function has its own
 local scope. Only top-level `main` has entry-signature restrictions; a module
 function named `main` is an ordinary function.
-In the current straight-line grammar, a function declared to return a non-Unit
-type must contain an explicit `return`; falling through produces `E3013`.
-An expression statement is not an implicit return. Unit functions may fall
-through. Branch-sensitive return analysis will accompany future control flow.
+Every path through a function declared to return a non-Unit type must reach an
+explicit `return`; possible fallthrough produces `E3013`. An `if` is considered
+complete only when it has an `else` and both branches guarantee a return;
+nested conditionals follow the same rule. A `while` body is not considered
+guaranteed to execute, even when its condition is a literal, so a return inside
+a loop does not by itself satisfy the function's return requirement. An
+expression statement is not an implicit return. Unit functions may fall
+through.
+
+`if` and `while` conditions require `Bool`. Logical expressions also require
+Boolean operands; for example, `ready && authorized` evaluates
+`authorized` only when `ready` is true, while `fallback || load()` calls
+`load` only when `fallback` is false. The operands are checked statically even
+when runtime short-circuiting makes the right side unreachable.
+Bindings declared inside an `if` branch or `while` body are local to that block.
+They may shadow an outer binding without changing it; assignments to an outer
+mutable binding remain visible after the branch or loop.
 
 In the current subset, calls resolve top-level functions by bare name and
 exported module functions by `module::function`, including from inside that
@@ -232,6 +266,14 @@ use, and mixed Int/Float operators widen the Int operand before evaluation,
 including equality and ordering. Large Int values may round when widened;
 Int-only arithmetic and comparison remain exact. Division by zero is an error
 for both numeric types. No implicit Float-to-Int narrowing is provided.
+Aliases resolving to `Float` preserve the same widening at annotated local,
+parameter and return boundaries.
+Assignments to a mutable Float binding, including one declared through an
+alias, widen compatible Int values before storage. In an array inferred as
+`[Float]`, compatible Int elements and indexed writes are likewise widened;
+any Float element promotes the array element type, including when the first
+element is Int. Int values assigned to Float-typed record fields are widened
+when the record is constructed.
 
 The IR carries `widen-float` at annotated boundaries. The JavaScript backend
 uses BigInt for Int and Number for Float and requires a runtime supporting
@@ -250,7 +292,8 @@ comparisons are supported at runtime. Both execution engines allow at most 256
 simultaneously active user-function frames, including `main`; builtin calls do
 not add frames. Entering a 257th frame reports a call-depth error naming the
 function. Returning or unwinding an error releases the frame, so sequential
-calls do not accumulate depth.
+calls do not accumulate depth. The interpreter uses an explicit frame stack, so
+language call depth does not consume one native Rust stack frame per Sovra call.
 
 ## M9 standard-library contract
 
@@ -285,8 +328,10 @@ inspectable through `svr build`.
 The initial compiler backend emits portable JavaScript through
 `svr build --emit js <source.svr>`. The generated program preserves the current
 IR execution model, including stack-based local execution, user-function calls,
-standard-library output capture, arithmetic, comparison, and runtime division
-by zero checks.
+standard-library output capture, arithmetic, comparison, short-circuit Boolean
+operators and conditional/loop branches, along with runtime division-by-zero
+checks. JavaScript execution remains an experimental backend; parity is covered
+for the tested subset, not guaranteed for all runtime behavior.
 
 JavaScript string emission escapes quotes, backslashes, control characters and
 Unicode line/paragraph separators without changing the decoded value. NUL uses

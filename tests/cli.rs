@@ -750,6 +750,44 @@ fn module_example_executes_private_helper() {
 }
 
 #[test]
+fn records_example_checks_and_executes() {
+    let source = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/records/main.svr");
+    let Some(output) = output_or_skip(svr().args(["run", source])) else {
+        return;
+    };
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8(output.stdout)
+            .unwrap()
+            .lines()
+            .collect::<Vec<_>>(),
+        [
+            "3",
+            "4",
+            "Location { name: Studio, point: Point { x: 3, y: 4 } }"
+        ]
+    );
+    for args in [
+        vec!["check", source],
+        vec!["build", source],
+        vec!["build", "--emit", "js", source],
+    ] {
+        let Some(output) = output_or_skip(svr().args(args)) else {
+            return;
+        };
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
+#[test]
 fn source_commands_reject_builtin_collisions() {
     let source = format!(
         "{}/tests/fixtures/builtin-collision.svr",
@@ -852,7 +890,7 @@ fn version_command_prints_canonical_version() {
         return;
     };
     assert!(output.status.success());
-    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "svr 0.1.0");
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "svr 1.0.0");
 }
 
 #[test]

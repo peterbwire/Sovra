@@ -1,6 +1,6 @@
 //! Name resolution and basic type checking for M3.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::compiler::ast::{Expression, ExpressionKind, Function, Program, Statement};
 use crate::compiler::diagnostics::{Diagnostic, Diagnostics, Severity, Span};
@@ -19,10 +19,62 @@ pub enum Type {
     Float,
     /// UTF-8 string value.
     String,
-    /// A named type reserved for future declarations.
+    /// A homogeneous array value.
+    Array(Box<Type>),
+    /// A named type resolved from a declared user type or future type registry.
     Named(String),
     /// An unresolved or invalid type.
     Unknown,
+}
+
+impl Type {
+    /// Resolve a type name against the built-in scalar types and a caller-supplied
+    /// registry of declared named types. This keeps the checker forward-compatible
+    /// with user-defined types without changing the existing source-language checks.
+    pub fn from_name_with_known(
+        name: &str,
+        known_named_types: Option<&HashMap<String, Type>>,
+    ) -> Self {
+        match name {
+            "Unit" => Self::Unit,
+            "Bool" => Self::Bool,
+            "Int" => Self::Int,
+            "Float" => Self::Float,
+            "String" => Self::String,
+            _ => known_named_types
+                .and_then(|known| known.get(name).cloned())
+                .unwrap_or(Self::Unknown),
+        }
+    }
+
+    /// Canonicalize a nominal name to its underlying primitive or alias target when
+    /// that mapping is known to the semantic analyzer. Structs and aliases are tracked
+    /// as named declarations, so we stop when the mapping loops back to the same symbol
+    /// instead of recursing forever.
+    pub fn canonicalize(&self, known_named_types: &HashMap<String, Type>) -> Self {
+        match self {
+            Self::Named(name) => {
+                let mut current = name.clone();
+                let mut seen = HashSet::new();
+                loop {
+                    if !seen.insert(current.clone()) {
+                        return Self::Named(current);
+                    }
+                    match known_named_types.get(&current) {
+                        Some(Self::Named(next)) if next == &current => {
+                            return Self::Named(current);
+                        }
+                        Some(Self::Named(next)) => {
+                            current = next.clone();
+                        }
+                        Some(other) => return other.clone(),
+                        None => return Self::Named(current),
+                    }
+                }
+            }
+            _ => self.clone(),
+        }
+    }
 }
 
 /// Result of successful semantic analysis.
@@ -59,6 +111,8 @@ impl SemanticAnalyzer {
             diagnostics.push(diagnostic("E3018", super::limits::depth_message(), span));
             return Err(diagnostics);
         }
+        let named_types = collect_named_types(program, &mut diagnostics);
+        let struct_fields = collect_struct_fields(program, &named_types, &mut diagnostics);
         let mut declared_functions = HashMap::new();
         for function in &program.functions {
             check_builtin_collision(&function.name, function.span, &mut diagnostics);
@@ -144,7 +198,13 @@ impl SemanticAnalyzer {
                     function.span,
                 ));
             }
-            check_function_body(function, &functions, &mut diagnostics);
+            check_function_body(
+                function,
+                &functions,
+                &named_types,
+                &struct_fields,
+                &mut diagnostics,
+            );
         }
         for module in &program.modules {
             let mut visible_functions = functions.clone();
@@ -152,7 +212,13 @@ impl SemanticAnalyzer {
                 visible_functions.insert(format!("{}::{}", module.name, function.name), function);
             }
             for function in &module.functions {
-                check_function_body(function, &visible_functions, &mut diagnostics);
+                check_function_body(
+                    function,
+                    &visible_functions,
+                    &named_types,
+                    &struct_fields,
+                    &mut diagnostics,
+                );
             }
         }
         if diagnostics.is_empty() {
@@ -163,6 +229,293 @@ impl SemanticAnalyzer {
             Err(diagnostics)
         }
     }
+}
+
+fn collect_named_types(program: &Program, diagnostics: &mut Diagnostics) -> HashMap<String, Type> {
+    let mut aliases = HashMap::new();
+    let mut structured_names = HashSet::new();
+    let mut type_declarations = HashMap::new();
+
+    fn insert_alias(
+        name: &str,
+        target: &str,
+        span: Span,
+        aliases: &mut HashMap<String, String>,
+        diagnostics: &mut Diagnostics,
+    ) {
+        if matches!(name, "Unit" | "Bool" | "Int" | "Float" | "String")
+            || aliases.contains_key(name)
+        {
+            diagnostics.push(diagnostic(
+                "E3008",
+                format!("duplicate type `{name}`"),
+                span,
+            ));
+            return;
+        }
+        aliases.insert(name.to_owned(), target.to_owned());
+    }
+
+    fn insert_struct(
+        name: &str,
+        declaration: &crate::compiler::ast::StructDeclaration,
+        structured_names: &mut HashSet<String>,
+        diagnostics: &mut Diagnostics,
+    ) {
+        if matches!(name, "Unit" | "Bool" | "Int" | "Float" | "String")
+            || structured_names.contains(name)
+        {
+            diagnostics.push(diagnostic(
+                "E3008",
+                format!("duplicate type `{name}`"),
+                declaration.span,
+            ));
+            return;
+        }
+        structured_names.insert(name.to_owned());
+    }
+
+    for declaration in &program.type_declarations {
+        insert_alias(
+            &declaration.name,
+            &declaration.target,
+            declaration.span,
+            &mut aliases,
+            diagnostics,
+        );
+        type_declarations.insert(declaration.name.clone(), declaration);
+    }
+    for module in &program.modules {
+        for declaration in &module.type_declarations {
+            let qualified = format!("{}::{}", module.name, declaration.name);
+            insert_alias(
+                &declaration.name,
+                &declaration.target,
+                declaration.span,
+                &mut aliases,
+                diagnostics,
+            );
+            insert_alias(
+                &qualified,
+                &declaration.target,
+                declaration.span,
+                &mut aliases,
+                diagnostics,
+            );
+            type_declarations.insert(declaration.name.clone(), declaration);
+            type_declarations.insert(qualified.clone(), declaration);
+        }
+    }
+
+    for declaration in &program.struct_declarations {
+        insert_struct(
+            &declaration.name,
+            declaration,
+            &mut structured_names,
+            diagnostics,
+        );
+    }
+    for module in &program.modules {
+        for declaration in &module.struct_declarations {
+            insert_struct(
+                &declaration.name,
+                declaration,
+                &mut structured_names,
+                diagnostics,
+            );
+            insert_struct(
+                &format!("{}::{}", module.name, declaration.name),
+                declaration,
+                &mut structured_names,
+                diagnostics,
+            );
+        }
+    }
+    for alias_name in aliases.keys() {
+        if structured_names.contains(alias_name) {
+            diagnostics.push(diagnostic(
+                "E3008",
+                format!("duplicate type `{alias_name}`"),
+                type_declarations
+                    .get(alias_name)
+                    .map(|declaration| declaration.span)
+                    .unwrap_or(Span {
+                        start: 0,
+                        end: 0,
+                        line: 0,
+                        column: 0,
+                    }),
+            ));
+        }
+    }
+
+    let mut resolved = HashMap::new();
+    for name in structured_names.iter() {
+        resolved.insert(name.clone(), Type::Named(name.clone()));
+    }
+
+    let mut visiting = HashSet::new();
+    for name in aliases.keys() {
+        resolve_type_alias(
+            name,
+            &aliases,
+            &structured_names,
+            &type_declarations,
+            &mut resolved,
+            &mut visiting,
+            diagnostics,
+        );
+    }
+    resolved
+}
+
+fn resolve_type_alias(
+    name: &str,
+    aliases: &HashMap<String, String>,
+    structured_names: &HashSet<String>,
+    declarations: &HashMap<String, &crate::compiler::ast::TypeDeclaration>,
+    resolved: &mut HashMap<String, Type>,
+    visiting: &mut HashSet<String>,
+    diagnostics: &mut Diagnostics,
+) -> Type {
+    if let Some(resolved_type) = resolved.get(name) {
+        return resolved_type.clone();
+    }
+    if !visiting.insert(name.to_owned()) {
+        if let Some(declaration) = declarations.get(name) {
+            diagnostics.push(diagnostic(
+                "E3017",
+                format!(
+                    "type `{}` creates a recursive alias cycle",
+                    declaration.name
+                ),
+                declaration.span,
+            ));
+        }
+        return Type::Unknown;
+    }
+
+    let target = aliases
+        .get(name)
+        .cloned()
+        .unwrap_or_else(|| name.to_owned());
+    let resolved_type = if target == name {
+        diagnostics.push(diagnostic(
+            "E3017",
+            format!("type `{}` cannot alias itself", name),
+            declarations
+                .get(name)
+                .map(|decl| decl.span)
+                .unwrap_or(Span {
+                    start: 0,
+                    end: 0,
+                    line: 0,
+                    column: 0,
+                }),
+        ));
+        Type::Unknown
+    } else {
+        match type_from_name(&target) {
+            Type::Unknown => {
+                if resolved.contains_key(&target) {
+                    resolved[&target].clone()
+                } else if aliases.contains_key(&target) {
+                    resolve_type_alias(
+                        &target,
+                        aliases,
+                        structured_names,
+                        declarations,
+                        resolved,
+                        visiting,
+                        diagnostics,
+                    )
+                } else if structured_names.contains(&target) {
+                    Type::Named(target.clone())
+                } else {
+                    diagnostics.push(diagnostic(
+                        "E3017",
+                        format!(
+                            "unknown type `{}`; expected Unit, Bool, Int, Float, String or a declared alias",
+                            target
+                        ),
+                        declarations
+                            .get(name)
+                            .map(|decl| decl.span)
+                            .unwrap_or(Span {
+                                start: 0,
+                                end: 0,
+                                line: 0,
+                                column: 0,
+                            }),
+                    ));
+                    Type::Unknown
+                }
+            }
+            resolved_target => resolved_target,
+        }
+    };
+
+    visiting.remove(name);
+    resolved.insert(name.to_owned(), resolved_type.clone());
+    resolved_type
+}
+
+fn collect_struct_fields(
+    program: &Program,
+    named_types: &HashMap<String, Type>,
+    diagnostics: &mut Diagnostics,
+) -> HashMap<String, HashMap<String, Type>> {
+    let mut structs = HashMap::new();
+    let mut seen = HashSet::new();
+    let mut insert_struct = |name: &str, declaration: &crate::compiler::ast::StructDeclaration| {
+        if !seen.insert(name.to_owned()) {
+            diagnostics.push(diagnostic(
+                "E3008",
+                format!("duplicate type `{name}`"),
+                declaration.span,
+            ));
+            return;
+        }
+        let mut fields = HashMap::new();
+        let mut seen_fields = HashSet::new();
+        for field in &declaration.fields {
+            if !seen_fields.insert(field.name.clone()) {
+                diagnostics.push(diagnostic(
+                    "E3008",
+                    format!("duplicate field `{}` in struct `{name}`", field.name),
+                    field.span,
+                ));
+                continue;
+            }
+            let field_type = Type::from_name_with_known(&field.type_name, Some(named_types));
+            if field_type == Type::Unknown {
+                diagnostics.push(diagnostic(
+                    "E3017",
+                    format!(
+                        "unknown type `{}`; expected Unit, Bool, Int, Float, String or a declared alias",
+                        field.type_name
+                    ),
+                    field.span,
+                ));
+            }
+            fields.insert(field.name.clone(), field_type);
+        }
+        structs.insert(name.to_owned(), fields);
+    };
+
+    for declaration in &program.struct_declarations {
+        insert_struct(&declaration.name, declaration);
+    }
+    for module in &program.modules {
+        for declaration in &module.struct_declarations {
+            insert_struct(&declaration.name, declaration);
+            insert_struct(
+                &format!("{}::{}", module.name, declaration.name),
+                declaration,
+            );
+        }
+    }
+    structs
 }
 
 fn check_builtin_collision(name: &str, span: Span, diagnostics: &mut Diagnostics) {
@@ -178,11 +531,13 @@ fn check_builtin_collision(name: &str, span: Span, diagnostics: &mut Diagnostics
 fn check_function_body(
     function: &Function,
     functions: &HashMap<String, &Function>,
+    named_types: &HashMap<String, Type>,
+    struct_fields: &HashMap<String, HashMap<String, Type>>,
     diagnostics: &mut Diagnostics,
 ) {
-    let mut scope: HashMap<String, Type> = HashMap::new();
+    let mut scope = LocalScope::default();
     for parameter in &function.parameters {
-        if scope.contains_key(&parameter.name) {
+        if scope.types.contains_key(&parameter.name) {
             diagnostics.push(diagnostic(
                 "E3011",
                 format!("duplicate parameter `{}`", parameter.name),
@@ -193,6 +548,7 @@ fn check_function_body(
             Some(type_name) => check_annotation(
                 type_name,
                 parameter.type_span.unwrap_or(parameter.span),
+                named_types,
                 diagnostics,
             ),
             None => {
@@ -204,11 +560,10 @@ fn check_function_body(
                     ),
                     parameter.span,
                 ));
-                // Unknown is error recovery, not parameter type inference.
                 Type::Unknown
             }
         };
-        scope.insert(parameter.name.clone(), parameter_type);
+        scope.types.insert(parameter.name.clone(), parameter_type);
     }
     let expected_return = function
         .return_type
@@ -217,17 +572,13 @@ fn check_function_body(
             check_annotation(
                 name,
                 function.return_type_span.unwrap_or(function.span),
+                named_types,
                 diagnostics,
             )
         })
         .unwrap_or(Type::Unit);
-    // The current AST has only straight-line statements. Branches and loops
-    // will require control-flow-aware return analysis when they are introduced.
     if !matches!(expected_return, Type::Unit | Type::Unknown)
-        && !function
-            .body
-            .iter()
-            .any(|statement| matches!(statement, Statement::Return { .. }))
+        && !block_guarantees_return(&function.body)
     {
         diagnostics.push(diagnostic(
             "E3013",
@@ -243,33 +594,71 @@ fn check_function_body(
             statement,
             &mut scope,
             functions,
+            named_types,
+            struct_fields,
             &expected_return,
             diagnostics,
         );
     }
 }
 
+fn block_guarantees_return(statements: &[Statement]) -> bool {
+    statements.iter().any(|statement| match statement {
+        Statement::Return { .. } => true,
+        Statement::If {
+            then_block,
+            else_block: Some(else_block),
+            ..
+        } => block_guarantees_return(then_block) && block_guarantees_return(else_block),
+        Statement::Let { .. }
+        | Statement::Assign { .. }
+        | Statement::If {
+            else_block: None, ..
+        }
+        | Statement::While { .. }
+        | Statement::Expression(_) => false,
+    })
+}
+
+#[derive(Clone, Default)]
+struct LocalScope {
+    types: HashMap<String, Type>,
+    mutable_names: HashSet<String>,
+}
+
 fn check_statement(
     statement: &Statement,
-    scope: &mut HashMap<String, Type>,
+    scope: &mut LocalScope,
     functions: &HashMap<String, &Function>,
+    named_types: &HashMap<String, Type>,
+    struct_fields: &HashMap<String, HashMap<String, Type>>,
     expected_return: &Type,
     diagnostics: &mut Diagnostics,
 ) {
     match statement {
         Statement::Let {
             name,
+            is_mutable,
             type_name,
             type_span,
             value,
             span,
         } => {
-            let value_type = check_expression(value, scope, functions, diagnostics);
+            let value_type = check_expression(
+                value,
+                &scope.types,
+                functions,
+                named_types,
+                struct_fields,
+                diagnostics,
+            );
             let declared_type = type_name
                 .as_deref()
-                .map(|name| check_annotation(name, type_span.unwrap_or(*span), diagnostics))
+                .map(|name| {
+                    check_annotation(name, type_span.unwrap_or(*span), named_types, diagnostics)
+                })
                 .unwrap_or(value_type.clone());
-            if !types_compatible(&declared_type, &value_type) {
+            if !types_compatible(&declared_type, &value_type, named_types) {
                 diagnostics.push(diagnostic(
                     "E3002",
                     format!(
@@ -278,14 +667,145 @@ fn check_statement(
                     *span,
                 ));
             }
-            scope.insert(name.clone(), declared_type);
+            scope.types.insert(name.clone(), declared_type);
+            if *is_mutable {
+                scope.mutable_names.insert(name.clone());
+            } else {
+                scope.mutable_names.remove(name);
+            }
         }
+        Statement::Assign {
+            target,
+            value,
+            span,
+        } => match &target.kind {
+            ExpressionKind::Identifier(name) => {
+                let Some(current_type) = scope.types.get(name).cloned() else {
+                    diagnostics.push(diagnostic(
+                        "E3001",
+                        format!("undefined variable `{name}`"),
+                        target.span,
+                    ));
+                    return;
+                };
+                if !scope.mutable_names.contains(name) {
+                    diagnostics.push(diagnostic(
+                        "E3011",
+                        format!("variable `{name}` is not mutable"),
+                        target.span,
+                    ));
+                }
+                let value_type = check_expression(
+                    value,
+                    &scope.types,
+                    functions,
+                    named_types,
+                    struct_fields,
+                    diagnostics,
+                );
+                if !types_compatible(&current_type, &value_type, named_types) {
+                    diagnostics.push(diagnostic(
+                            "E3002",
+                            format!(
+                                "assignment type mismatch for `{name}`: expected {current_type:?}, found {value_type:?}"
+                            ),
+                            *span,
+                        ));
+                }
+                scope.types.insert(name.clone(), current_type);
+            }
+            ExpressionKind::Index { target, index } => {
+                if let ExpressionKind::Identifier(name) = &target.kind {
+                    if scope.types.contains_key(name) && !scope.mutable_names.contains(name) {
+                        diagnostics.push(diagnostic(
+                            "E3011",
+                            format!("variable `{name}` is not mutable"),
+                            target.span,
+                        ));
+                    }
+                } else {
+                    diagnostics.push(diagnostic(
+                        "E3003",
+                        "indexed assignment must target a mutable array binding directly",
+                        target.span,
+                    ));
+                }
+                let target_type = check_expression(
+                    target,
+                    &scope.types,
+                    functions,
+                    named_types,
+                    struct_fields,
+                    diagnostics,
+                );
+                let index_type = check_expression(
+                    index,
+                    &scope.types,
+                    functions,
+                    named_types,
+                    struct_fields,
+                    diagnostics,
+                );
+                if !types_compatible(&Type::Int, &index_type, named_types) {
+                    diagnostics.push(diagnostic(
+                        "E3005",
+                        format!("array index must be Int, found {index_type:?}"),
+                        index.span,
+                    ));
+                }
+                let array_type = target_type.canonicalize(named_types);
+                let element_type = match &array_type {
+                    Type::Array(element_type) => element_type.as_ref(),
+                    _ => {
+                        diagnostics.push(diagnostic(
+                            "E3007",
+                            format!("indexing requires an array, found {array_type:?}"),
+                            target.span,
+                        ));
+                        return;
+                    }
+                };
+                let value_type = check_expression(
+                    value,
+                    &scope.types,
+                    functions,
+                    named_types,
+                    struct_fields,
+                    diagnostics,
+                );
+                if !types_compatible(element_type, &value_type, named_types) {
+                    diagnostics.push(diagnostic(
+                            "E3007",
+                            format!(
+                                "assignment type mismatch for index target: expected {element_type:?}, found {value_type:?}"
+                            ),
+                            value.span,
+                        ));
+                }
+            }
+            _ => {
+                diagnostics.push(diagnostic(
+                    "E3003",
+                    "assignment target must be a mutable variable or array index",
+                    *span,
+                ));
+            }
+        },
         Statement::Return { value, span } => {
             let actual = value
                 .as_ref()
-                .map(|expression| check_expression(expression, scope, functions, diagnostics))
+                .map(|expression| {
+                    check_expression(
+                        expression,
+                        &scope.types,
+                        functions,
+                        named_types,
+                        struct_fields,
+                        diagnostics,
+                    )
+                })
                 .unwrap_or(Type::Unit);
-            if !types_compatible(expected_return, &actual) {
+            if !types_compatible(expected_return, &actual, named_types) {
                 diagnostics.push(diagnostic(
                     "E3002",
                     format!("return type mismatch: expected {expected_return:?}, found {actual:?}"),
@@ -293,8 +813,96 @@ fn check_statement(
                 ));
             }
         }
+        Statement::If {
+            condition,
+            then_block,
+            else_block,
+            span,
+        } => {
+            let condition_type = check_expression(
+                condition,
+                &scope.types,
+                functions,
+                named_types,
+                struct_fields,
+                diagnostics,
+            );
+            if !types_compatible(&Type::Bool, &condition_type, named_types) {
+                diagnostics.push(diagnostic(
+                    "E3005",
+                    format!("if condition must be Bool, found {condition_type:?}"),
+                    *span,
+                ));
+            }
+            let mut then_scope = scope.clone();
+            for statement in then_block {
+                check_statement(
+                    statement,
+                    &mut then_scope,
+                    functions,
+                    named_types,
+                    struct_fields,
+                    expected_return,
+                    diagnostics,
+                );
+            }
+            if let Some(else_block) = else_block {
+                let mut else_scope = scope.clone();
+                for statement in else_block {
+                    check_statement(
+                        statement,
+                        &mut else_scope,
+                        functions,
+                        named_types,
+                        struct_fields,
+                        expected_return,
+                        diagnostics,
+                    );
+                }
+            }
+        }
+        Statement::While {
+            condition,
+            body,
+            span,
+        } => {
+            let condition_type = check_expression(
+                condition,
+                &scope.types,
+                functions,
+                named_types,
+                struct_fields,
+                diagnostics,
+            );
+            if !types_compatible(&Type::Bool, &condition_type, named_types) {
+                diagnostics.push(diagnostic(
+                    "E3005",
+                    format!("while condition must be Bool, found {condition_type:?}"),
+                    *span,
+                ));
+            }
+            let mut loop_scope = scope.clone();
+            for statement in body {
+                check_statement(
+                    statement,
+                    &mut loop_scope,
+                    functions,
+                    named_types,
+                    struct_fields,
+                    expected_return,
+                    diagnostics,
+                );
+            }
+        }
         Statement::Expression(expression) => {
-            check_expression(expression, scope, functions, diagnostics);
+            check_expression(
+                expression,
+                &scope.types,
+                functions,
+                named_types,
+                struct_fields,
+                diagnostics,
+            );
         }
     }
 }
@@ -303,6 +911,8 @@ fn check_expression(
     expression: &Expression,
     scope: &HashMap<String, Type>,
     functions: &HashMap<String, &Function>,
+    named_types: &HashMap<String, Type>,
+    struct_fields: &HashMap<String, HashMap<String, Type>>,
     diagnostics: &mut Diagnostics,
 ) -> Type {
     let span = expression.span;
@@ -346,6 +956,159 @@ fn check_expression(
                 Type::Unknown
             }
         }
+        ExpressionKind::StructLiteral { type_name, fields } => {
+            let type_fields = match struct_fields.get(type_name) {
+                Some(fields) => fields,
+                None => {
+                    diagnostics.push(diagnostic(
+                        "E3004",
+                        format!("undefined struct `{type_name}`"),
+                        span,
+                    ));
+                    return Type::Unknown;
+                }
+            };
+            let declared_fields: HashSet<_> = type_fields.keys().cloned().collect();
+            let mut seen_fields = HashSet::new();
+            for (field_name, value) in fields {
+                if !seen_fields.insert(field_name.clone()) {
+                    diagnostics.push(diagnostic(
+                        "E3008",
+                        format!("duplicate field `{field_name}` in struct literal `{type_name}`"),
+                        value.span,
+                    ));
+                    continue;
+                }
+                let field_type = type_fields.get(field_name).cloned().unwrap_or_else(|| {
+                    diagnostics.push(diagnostic(
+                        "E3001",
+                        format!("struct `{type_name}` has no field `{field_name}`"),
+                        span,
+                    ));
+                    Type::Unknown
+                });
+                let value_type = check_expression(
+                    value,
+                    scope,
+                    functions,
+                    named_types,
+                    struct_fields,
+                    diagnostics,
+                );
+                if !types_compatible(&field_type, &value_type, named_types) {
+                    diagnostics.push(diagnostic(
+                        "E3007",
+                        format!(
+                            "field `{field_name}` on `{type_name}` expects {field_type:?}, found {value_type:?}"
+                        ),
+                        value.span,
+                    ));
+                }
+            }
+            for field_name in declared_fields {
+                if !fields.iter().any(|(name, _)| name == &field_name) {
+                    diagnostics.push(diagnostic(
+                        "E3001",
+                        format!("struct `{type_name}` is missing field `{field_name}`"),
+                        span,
+                    ));
+                }
+            }
+            Type::Named(type_name.clone())
+        }
+        ExpressionKind::ArrayLiteral(items) => {
+            let mut element_type = Type::Unknown;
+            for item in items {
+                let item_type = check_expression(
+                    item,
+                    scope,
+                    functions,
+                    named_types,
+                    struct_fields,
+                    diagnostics,
+                );
+                if element_type == Type::Unknown {
+                    element_type = item_type.clone();
+                } else if element_type == Type::Int && item_type == Type::Float {
+                    element_type = Type::Float;
+                } else if !types_compatible(&element_type, &item_type, named_types) {
+                    diagnostics.push(diagnostic(
+                        "E3007",
+                        format!("array elements must share a compatible type, found {element_type:?} and {item_type:?}"),
+                        item.span,
+                    ));
+                }
+            }
+            Type::Array(Box::new(element_type))
+        }
+        ExpressionKind::FieldAccess { receiver, field } => {
+            let receiver_type = check_expression(
+                receiver,
+                scope,
+                functions,
+                named_types,
+                struct_fields,
+                diagnostics,
+            );
+            let struct_type = match receiver_type.canonicalize(named_types) {
+                Type::Named(name) => name,
+                _ => {
+                    diagnostics.push(diagnostic(
+                        "E3007",
+                        format!("field access `{field}` requires a named struct instance"),
+                        span,
+                    ));
+                    return Type::Unknown;
+                }
+            };
+            struct_fields
+                .get(&struct_type)
+                .and_then(|fields| fields.get(field).cloned())
+                .unwrap_or_else(|| {
+                    diagnostics.push(diagnostic(
+                        "E3001",
+                        format!("struct `{struct_type}` has no field `{field}`"),
+                        span,
+                    ));
+                    Type::Unknown
+                })
+        }
+        ExpressionKind::Index { target, index } => {
+            let target_type = check_expression(
+                target,
+                scope,
+                functions,
+                named_types,
+                struct_fields,
+                diagnostics,
+            );
+            let index_type = check_expression(
+                index,
+                scope,
+                functions,
+                named_types,
+                struct_fields,
+                diagnostics,
+            );
+            if !types_compatible(&Type::Int, &index_type, named_types) {
+                diagnostics.push(diagnostic(
+                    "E3005",
+                    format!("array index must be Int, found {index_type:?}"),
+                    index.span,
+                ));
+            }
+            match target_type.canonicalize(named_types) {
+                Type::Array(element_type) => *element_type,
+                _ => {
+                    diagnostics.push(diagnostic(
+                        "E3007",
+                        format!("indexing requires an array, found {target_type:?}"),
+                        span,
+                    ));
+                    Type::Unknown
+                }
+            }
+        }
         ExpressionKind::Call { callee, arguments } => {
             let name = match &callee.kind {
                 ExpressionKind::Identifier(name) => Some(name.clone()),
@@ -363,15 +1126,17 @@ fn check_expression(
                 return Type::Unknown;
             };
             if let Some(function) = stdlib::lookup(&name) {
-                check_std_call(
+                check_std_call(StdCallContext {
                     function,
-                    &name,
+                    source_name: &name,
                     arguments,
                     scope,
                     functions,
+                    named_types,
+                    struct_fields,
                     diagnostics,
                     span,
-                );
+                });
                 return type_from_name(function.return_type);
             }
             if let Some(function) = functions.get(&name) {
@@ -387,10 +1152,18 @@ fn check_expression(
                     ));
                 }
                 for (argument, parameter) in arguments.iter().zip(&function.parameters) {
-                    let argument_type = check_expression(argument, scope, functions, diagnostics);
+                    let argument_type = check_expression(
+                        argument,
+                        scope,
+                        functions,
+                        named_types,
+                        struct_fields,
+                        diagnostics,
+                    );
                     if let Some(parameter_type) = parameter.type_name.as_deref() {
-                        let expected = type_from_name(parameter_type);
-                        if !types_compatible(&expected, &argument_type) {
+                        let expected =
+                            Type::from_name_with_known(parameter_type, Some(named_types));
+                        if !types_compatible(&expected, &argument_type, named_types) {
                             diagnostics.push(diagnostic(
                                 "E3007",
                                 format!(
@@ -402,16 +1175,30 @@ fn check_expression(
                     }
                 }
                 for argument in arguments.iter().skip(function.parameters.len()) {
-                    check_expression(argument, scope, functions, diagnostics);
+                    check_expression(
+                        argument,
+                        scope,
+                        functions,
+                        named_types,
+                        struct_fields,
+                        diagnostics,
+                    );
                 }
                 function
                     .return_type
                     .as_deref()
-                    .map(type_from_name)
+                    .map(|return_type| Type::from_name_with_known(return_type, Some(named_types)))
                     .unwrap_or(Type::Unit)
             } else {
                 for argument in arguments {
-                    check_expression(argument, scope, functions, diagnostics);
+                    check_expression(
+                        argument,
+                        scope,
+                        functions,
+                        named_types,
+                        struct_fields,
+                        diagnostics,
+                    );
                 }
                 diagnostics.push(diagnostic(
                     "E3004",
@@ -426,8 +1213,34 @@ fn check_expression(
             operator,
             right,
         } => {
-            let left_type = check_expression(left, scope, functions, diagnostics);
-            let right_type = check_expression(right, scope, functions, diagnostics);
+            let left_type = check_expression(
+                left,
+                scope,
+                functions,
+                named_types,
+                struct_fields,
+                diagnostics,
+            );
+            let right_type = check_expression(
+                right,
+                scope,
+                functions,
+                named_types,
+                struct_fields,
+                diagnostics,
+            );
+            if matches!(operator.as_str(), "&&" | "||") {
+                if !types_compatible(&Type::Bool, &left_type, named_types)
+                    || !types_compatible(&Type::Bool, &right_type, named_types)
+                {
+                    diagnostics.push(diagnostic(
+                        "E3005",
+                        format!("operator `{operator}` requires Bool operands"),
+                        span,
+                    ));
+                }
+                return Type::Bool;
+            }
             let comparable = numeric_or_string_comparison_compatible(&left_type, &right_type)
                 && match operator.as_str() {
                     "==" | "!=" => {
@@ -484,15 +1297,31 @@ fn check_expression(
     }
 }
 
-fn check_std_call(
+struct StdCallContext<'a> {
     function: stdlib::StdFunction,
-    source_name: &str,
-    arguments: &[Expression],
-    scope: &HashMap<String, Type>,
-    functions: &HashMap<String, &Function>,
-    diagnostics: &mut Diagnostics,
+    source_name: &'a str,
+    arguments: &'a [Expression],
+    scope: &'a HashMap<String, Type>,
+    functions: &'a HashMap<String, &'a Function>,
+    named_types: &'a HashMap<String, Type>,
+    struct_fields: &'a HashMap<String, HashMap<String, Type>>,
+    diagnostics: &'a mut Diagnostics,
     span: Span,
-) {
+}
+
+fn check_std_call(context: StdCallContext<'_>) {
+    let StdCallContext {
+        function,
+        source_name,
+        arguments,
+        scope,
+        functions,
+        named_types,
+        struct_fields,
+        diagnostics,
+        span,
+    } = context;
+
     if arguments.len() != function.parameters.len() {
         diagnostics.push(diagnostic(
             "E3006",
@@ -505,12 +1334,19 @@ fn check_std_call(
         ));
     }
     for (argument, expected) in arguments.iter().zip(function.parameters) {
-        let argument_type = check_expression(argument, scope, functions, diagnostics);
+        let argument_type = check_expression(
+            argument,
+            scope,
+            functions,
+            named_types,
+            struct_fields,
+            diagnostics,
+        );
         if stdlib::is_any_type(expected) {
             continue;
         }
-        let expected = type_from_name(expected);
-        if !types_compatible(&expected, &argument_type) {
+        let expected = Type::from_name_with_known(expected, Some(named_types));
+        if !types_compatible(&expected, &argument_type, named_types) {
             diagnostics.push(diagnostic(
                 "E3007",
                 format!(
@@ -521,27 +1357,34 @@ fn check_std_call(
         }
     }
     for argument in arguments.iter().skip(function.parameters.len()) {
-        check_expression(argument, scope, functions, diagnostics);
+        check_expression(
+            argument,
+            scope,
+            functions,
+            named_types,
+            struct_fields,
+            diagnostics,
+        );
     }
 }
 
 fn type_from_name(name: &str) -> Type {
-    match name {
-        "Unit" => Type::Unit,
-        "Bool" => Type::Bool,
-        "Int" => Type::Int,
-        "Float" => Type::Float,
-        "String" => Type::String,
-        _ => Type::Unknown,
-    }
+    Type::from_name_with_known(name, None)
 }
 
-fn check_annotation(name: &str, span: Span, diagnostics: &mut Diagnostics) -> Type {
-    let resolved = type_from_name(name);
+fn check_annotation(
+    name: &str,
+    span: Span,
+    named_types: &HashMap<String, Type>,
+    diagnostics: &mut Diagnostics,
+) -> Type {
+    let resolved = Type::from_name_with_known(name, Some(named_types));
     if resolved == Type::Unknown {
         diagnostics.push(diagnostic(
             "E3017",
-            format!("unknown type `{name}`; expected Unit, Bool, Int, Float or String"),
+            format!(
+                "unknown type `{name}`; expected Unit, Bool, Int, Float, String or a declared alias"
+            ),
             span,
         ));
     }
@@ -584,12 +1427,20 @@ fn numeric_or_string_comparison_compatible(left: &Type, right: &Type) -> bool {
     )
 }
 
-fn types_compatible(expected: &Type, actual: &Type) -> bool {
+fn types_compatible(expected: &Type, actual: &Type, named_types: &HashMap<String, Type>) -> bool {
+    let expected = expected.canonicalize(named_types);
+    let actual = actual.canonicalize(named_types);
     if matches!(actual, Type::Unknown) || matches!(expected, Type::Unknown) {
         return true;
     }
     if expected == actual {
         return true;
+    }
+    if let (Type::Array(expected_items), Type::Array(actual_items)) = (&expected, &actual) {
+        return types_compatible(expected_items, actual_items, named_types);
+    }
+    if let (Type::Named(expected_name), Type::Named(actual_name)) = (&expected, &actual) {
+        return expected_name == actual_name;
     }
     matches!(
         (expected, actual),
@@ -789,6 +1640,181 @@ mod tests {
             crate::compiler::interpreter::run(&crate::compiler::ir::lower(&typed)).unwrap(),
             vec!["2"]
         );
+    }
+
+    #[test]
+    fn named_types_are_compatible_by_declaration_name() {
+        let user = Type::Named("User".to_string());
+        let same = Type::Named("User".to_string());
+        let other = Type::Named("Other".to_string());
+        let empty = HashMap::new();
+        assert!(types_compatible(&user, &same, &empty));
+        assert!(!types_compatible(&user, &other, &empty));
+        let known = HashMap::from([
+            ("User".to_string(), Type::Named("User".to_string())),
+            ("Alias".to_string(), Type::Int),
+        ]);
+        assert_eq!(
+            Type::from_name_with_known("User", Some(&known)),
+            Type::Named("User".to_string())
+        );
+        assert_eq!(Type::from_name_with_known("Alias", Some(&known)), Type::Int);
+        assert_eq!(
+            Type::from_name_with_known("Missing", Some(&known)),
+            Type::Unknown
+        );
+    }
+
+    #[test]
+    fn alias_declarations_are_resolved_transitively_and_order_independent() {
+        let source = "type User = Int; type Account = User; fn helper(value: Account) -> User { return value } fn main() { let value: User = 1; let account: Account = value; let result: Int = helper(account); }";
+        let parsed = Parser::new().parse_source(source).unwrap();
+        assert!(
+            SemanticAnalyzer::new().analyze(&parsed).is_ok(),
+            "{source:?}"
+        );
+
+        let reversed = "type Account = User; type User = Int; fn helper(value: Account) -> User { return value } fn main() { let value: User = 1; let account: Account = value; let result: Int = helper(account); }";
+        let parsed = Parser::new().parse_source(reversed).unwrap();
+        assert!(
+            SemanticAnalyzer::new().analyze(&parsed).is_ok(),
+            "{reversed:?}"
+        );
+    }
+
+    #[test]
+    fn module_local_type_aliases_are_visible_inside_module_scope() {
+        let source =
+            "mod math { type User = Int; export fn identity(value: User) -> User { return value } }
+            fn main() { let value: Int = math::identity(2); }
+        ";
+        let parsed = Parser::new().parse_source(source).unwrap();
+        assert!(
+            SemanticAnalyzer::new().analyze(&parsed).is_ok(),
+            "{source:?}"
+        );
+    }
+
+    #[test]
+    fn aliases_can_target_declared_structs() {
+        let source = "struct User { value: Int } type UserAlias = User; fn make() -> UserAlias { let user = User { value: 7 }; return user } fn main() { let user: UserAlias = make(); let total: Int = user.value; }";
+        let parsed = Parser::new().parse_source(source).unwrap();
+        assert!(
+            SemanticAnalyzer::new().analyze(&parsed).is_ok(),
+            "{source:?}"
+        );
+
+        let module_source = "mod math { struct User { value: Int } type UserAlias = User; export fn make() -> UserAlias { let user = User { value: 9 }; return user } } fn main() { let user: math::UserAlias = math::make(); let total: Int = user.value; }";
+        let parsed = Parser::new().parse_source(module_source).unwrap();
+        assert!(
+            SemanticAnalyzer::new().analyze(&parsed).is_ok(),
+            "{module_source:?}"
+        );
+    }
+
+    #[test]
+    fn struct_literals_and_field_access_match_declared_fields() {
+        let literal_source = "
+            struct User { name: String, age: Int }
+            fn main() {
+                let user = User { name: 42, age: 42 };
+            }
+        ";
+        let literal_errors = SemanticAnalyzer::new()
+            .analyze(&Parser::new().parse_source(literal_source).unwrap())
+            .unwrap_err();
+        assert!(literal_errors.items.iter().any(|item| item.code == "E3007"));
+
+        let binding_source = "
+            struct User { name: String, age: Int }
+            fn main() {
+                let user = User { name: \"Ada\", age: 42 };
+                let bad: Int = user.name;
+            }
+        ";
+        let binding_errors = SemanticAnalyzer::new()
+            .analyze(&Parser::new().parse_source(binding_source).unwrap())
+            .unwrap_err();
+        assert!(binding_errors.items.iter().any(|item| item.code == "E3002"));
+    }
+
+    #[test]
+    fn records_construct_access_pass_and_return_across_functions() {
+        let source = "
+            struct Point { x: Int, y: Int }
+            type Position = Point;
+            struct Marker { label: String, position: Position }
+            fn point_x(point: Point) -> Int { return point.x }
+            fn make_marker() -> Marker {
+                let point: Position = Point { x: 12, y: 34 };
+                return Marker { label: \"origin\", position: point }
+            }
+            fn main() {
+                let marker = make_marker();
+                print(point_x(marker.position));
+                print(marker.position.y);
+                print(std::to_string(marker));
+            }
+        ";
+        let program = Parser::new().parse_source(source).expect("valid syntax");
+        let ir = crate::compiler::ir::lower_program(&program).expect("valid record types");
+        let output = crate::compiler::interpreter::run(&ir).expect("record execution");
+        assert_eq!(
+            output,
+            [
+                "12",
+                "34",
+                "Marker { label: origin, position: Point { x: 12, y: 34 } }"
+            ]
+        );
+    }
+
+    #[test]
+    fn module_scoped_structs_use_qualified_names() {
+        let source = "mod math { struct User { value: Int } export fn make() -> math::User { let user = math::User { value: 42 }; return user } } fn main() { let user: math::User = math::User { value: 7 }; let total: Int = user.value; }";
+        let parsed = Parser::new().parse_source(source).unwrap();
+        assert!(
+            SemanticAnalyzer::new().analyze(&parsed).is_ok(),
+            "{source:?}"
+        );
+    }
+
+    #[test]
+    fn duplicate_fields_in_struct_literals_are_rejected() {
+        let source = "struct User { name: String, age: Int } fn main() { let user = User { name: \"Ada\", age: 42, name: \"Grace\" }; }";
+        let parsed = Parser::new().parse_source(source).unwrap();
+        let errors = SemanticAnalyzer::new().analyze(&parsed).unwrap_err();
+        assert!(errors.items.iter().any(|item| item.code == "E3008"));
+    }
+
+    #[test]
+    fn struct_literals_require_all_declared_fields() {
+        let source = "struct User { name: String, age: Int } fn main() { let user = User { name: \"Ada\" }; }";
+        let parsed = Parser::new().parse_source(source).unwrap();
+        let errors = SemanticAnalyzer::new().analyze(&parsed).unwrap_err();
+        assert!(errors.items.iter().any(|item| item.code == "E3001"));
+
+        let extra_source = "struct User { name: String, age: Int } fn main() { let user = User { name: \"Ada\", age: 42, extra: true }; }";
+        let parsed = Parser::new().parse_source(extra_source).unwrap();
+        let errors = SemanticAnalyzer::new().analyze(&parsed).unwrap_err();
+        assert!(errors.items.iter().any(|item| item.code == "E3001"));
+    }
+
+    #[test]
+    fn recursive_type_aliases_are_rejected() {
+        let sources = [
+            "type Loop = Loop; fn main() {}",
+            "type A = B; type B = A; fn main() {}",
+            "type Bad = Missing; fn main() {}",
+        ];
+        for source in sources {
+            let parsed = Parser::new().parse_source(source).unwrap();
+            let errors = SemanticAnalyzer::new().analyze(&parsed).unwrap_err();
+            assert!(
+                errors.items.iter().any(|e| e.code == "E3017"),
+                "{source:?} => {errors:?}"
+            );
+        }
     }
 
     #[test]
@@ -1080,6 +2106,9 @@ mod tests {
             "fn value() -> String { let result = \"hi\" } fn main() {}",
             "mod values { export fn value() -> Float {} } fn main() {}",
             "mod values { fn value() -> Int { print(42) } } fn main() {}",
+            "fn value(flag: Bool) -> Int { if (flag) { return 1 } } fn main() {}",
+            "fn value(flag: Bool) -> Int { if (flag) { return 1 } else { print(2) } } fn main() {}",
+            "fn value(flag: Bool) -> Int { while (flag) { return 1 } } fn main() {}",
         ] {
             let parsed = Parser::new().parse_source(source).expect("valid syntax");
             let errors = SemanticAnalyzer::new()
@@ -1087,10 +2116,18 @@ mod tests {
                 .expect_err("value-returning function cannot fall through");
             assert!(errors.items.iter().any(|error| error.code == "E3013"));
         }
-        let parsed = Parser::new()
-            .parse_source("fn noop() -> Unit {} fn value() -> Int { return 42 } fn main() {}")
-            .expect("valid syntax");
-        assert!(SemanticAnalyzer::new().analyze(&parsed).is_ok());
+        for source in [
+            "fn noop() -> Unit {} fn value() -> Int { return 42 } fn main() {}",
+            "fn value(flag: Bool) -> Int { if (flag) { return 1 } else { return 2 } } fn main() {}",
+            "fn value(flag: Bool, other: Bool) -> Int { if (flag) { if (other) { return 1 } else { return 2 } } else { return 3 } } fn main() {}",
+            "fn value(flag: Bool) -> Int { if (flag) { return 1 } else if (false) { return 2 } else { return 3 } } fn main() {}",
+        ] {
+            let parsed = Parser::new().parse_source(source).expect("valid syntax");
+            assert!(
+                SemanticAnalyzer::new().analyze(&parsed).is_ok(),
+                "{source}"
+            );
+        }
     }
 
     #[test]
@@ -1108,11 +2145,62 @@ mod tests {
     }
 
     #[test]
+    fn mutable_int_bindings_reject_float_reassignment() {
+        let program = Parser::new()
+            .parse_source("fn main() { let mut count = 1; count = 1.5; }")
+            .expect("valid syntax");
+        let diagnostics = SemanticAnalyzer::new()
+            .analyze(&program)
+            .expect_err("an Int binding cannot be reassigned a Float");
+        assert!(
+            diagnostics.items.iter().any(|item| item.code == "E3002"),
+            "{diagnostics:?}"
+        );
+    }
+
+    #[test]
     fn resolves_bindings_and_builtin_print() {
         let program = Parser::new()
             .parse_source("fn main() { let message = \"hi\"; print(message) }")
             .expect("source should parse");
         assert!(SemanticAnalyzer::new().analyze(&program).is_ok());
+    }
+
+    #[test]
+    fn array_element_assignment_requires_mutable_direct_binding() {
+        let source = "fn mutate() { let mut values = [1, 2]; values[0] = 9; print(values[0]); }
+            fn main() { print(mutate()); }";
+        let program = Parser::new().parse_source(source).expect("valid syntax");
+        let typed = SemanticAnalyzer::new()
+            .analyze(&program)
+            .expect("mutable array slot assignment is valid");
+        let output = crate::compiler::interpreter::run(&crate::compiler::ir::lower(&typed))
+            .expect("updated array should execute");
+        assert_eq!(output, ["9", ""]);
+
+        for (source, expected_code) in [
+            ("fn main() { let values = [1]; values[0] = 2; }", "E3011"),
+            (
+                "fn main() { let mut values = [[1]]; values[0][0] = 2; }",
+                "E3003",
+            ),
+            (
+                "fn main() { let mut values = [1]; values[0] = \"two\"; }",
+                "E3007",
+            ),
+        ] {
+            let program = Parser::new().parse_source(source).expect("valid syntax");
+            let diagnostics = SemanticAnalyzer::new()
+                .analyze(&program)
+                .expect_err("invalid array assignment");
+            assert!(
+                diagnostics
+                    .items
+                    .iter()
+                    .any(|diagnostic| diagnostic.code == expected_code),
+                "{source}: {diagnostics:?}"
+            );
+        }
     }
 
     #[test]
@@ -1135,6 +2223,29 @@ mod tests {
             .analyze(&program)
             .expect_err("source should fail semantic analysis");
         assert!(diagnostics.items.iter().any(|item| item.code == "E3002"));
+    }
+
+    #[test]
+    fn logical_operators_require_boolean_operands() {
+        let valid = Parser::new()
+            .parse_source("fn main() { let value = true || false && true; if (value) {} }")
+            .expect("valid syntax");
+        assert!(SemanticAnalyzer::new().analyze(&valid).is_ok());
+
+        for source in [
+            "fn main() { print(true && 1) }",
+            "fn main() { print(\"yes\" || false) }",
+            "fn main() { print(false && 1) }",
+        ] {
+            let program = Parser::new().parse_source(source).expect("valid syntax");
+            let diagnostics = SemanticAnalyzer::new()
+                .analyze(&program)
+                .expect_err("logical operands must be Bool");
+            assert!(
+                diagnostics.items.iter().any(|item| item.code == "E3005"),
+                "{source}: {diagnostics:?}"
+            );
+        }
     }
 
     #[test]

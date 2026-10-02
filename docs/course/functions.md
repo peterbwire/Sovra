@@ -71,15 +71,15 @@ cargo run -- build --emit js examples/functions/main.svr
 
 Source `check`, `run` and `build` all apply these semantic rules. Project
 directory checking remains a manifest and wiring scan; its success does not
-validate function annotations or bodies. User-defined type declarations,
-named-type resolution and general parameter inference remain unfinished.
+validate function annotations or bodies. Aliases and records are available in
+the executable language; see [Records and named types](records.md).
 
-Only `Unit`, `Bool`, `Int`, `Float` and `String` are valid annotation names today.
-An unknown name such as `Strng`, `Text` or `Any` produces E3017 in a parameter,
-return type or local binding, pointing to the type name itself. JSON reports
-retain that exact token's byte range and line/column. Correct typos to the intended implemented type;
-user-defined types will require future declaration support. These rules apply
-to executable source checks, not Fielddesk's project wiring scan.
+`Unit`, `Bool`, `Int`, `Float`, `String`, and declared alias/struct names are
+valid annotation names. An unknown name such as `Strng`, `Text` or `Any`
+produces E3017 in a parameter, return type or local binding, pointing to the
+type name itself. JSON reports retain that exact token's byte range and
+line/column. These rules apply to executable source checks, not Fielddesk's
+project wiring scan.
 
 The interpreter and JavaScript backend limit simultaneously active user-function
 calls to 256, counting `main`. Builtins do not add a frame. Recursive calls beyond

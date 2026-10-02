@@ -1,0 +1,23 @@
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+type Position = Point;
+
+struct Location {
+    name: String,
+    point: Position,
+}
+
+fn point_x(point: Point) -> Int {
+    return point.x
+}
+
+fn main() {
+    let origin = Point { x: 3, y: 4 }
+    let office = Location { name: "Studio", point: origin }
+    print(point_x(office.point))
+    print(office.point.y)
+    print(std::to_string(office))
+}

@@ -19,7 +19,7 @@ section per local dependency:
 ```toml
 [project]
 name = "consumer"
-version = "0.1.0"
+version = "1.0.0"
 entry = "main.svr"
 
 [dependencies.utilities]

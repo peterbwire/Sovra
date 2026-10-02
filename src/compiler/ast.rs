@@ -9,6 +9,45 @@ pub struct Program {
     pub functions: Vec<Function>,
     /// Named source modules defined in the file.
     pub modules: Vec<Module>,
+    /// Named type aliases declared in the file.
+    pub type_declarations: Vec<TypeDeclaration>,
+    /// Named struct declarations declared in the file.
+    pub struct_declarations: Vec<StructDeclaration>,
+}
+
+/// A type alias used by semantic name resolution.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypeDeclaration {
+    /// Alias name visible in source annotations.
+    pub name: String,
+    /// Target type or alias used to resolve the name.
+    pub target: String,
+    /// Location of the declaration.
+    pub span: Span,
+}
+
+/// A user-defined struct declaration used to resolve record types.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StructDeclaration {
+    /// Struct name visible in source annotations and construction.
+    pub name: String,
+    /// Fields declared on the struct.
+    pub fields: Vec<StructField>,
+    /// Location of the declaration.
+    pub span: Span,
+}
+
+/// A field declared on a user-defined struct.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StructField {
+    /// Field name.
+    pub name: String,
+    /// Declared field type.
+    pub type_name: String,
+    /// Exact field type token range, when present.
+    pub type_span: Option<Span>,
+    /// Location of the field declaration.
+    pub span: Span,
 }
 
 impl Program {
@@ -28,7 +67,71 @@ impl Program {
                     | Statement::Return {
                         value: Some(value), ..
                     } => value.drop_iterative(),
+                    Statement::Assign { target, value, .. } => {
+                        target.drop_iterative();
+                        value.drop_iterative();
+                    }
                     Statement::Return { value: None, .. } => {}
+                    Statement::If {
+                        condition,
+                        then_block,
+                        else_block,
+                        ..
+                    } => {
+                        condition.drop_iterative();
+                        for statement in then_block {
+                            match statement {
+                                Statement::Let { value, .. }
+                                | Statement::Expression(value)
+                                | Statement::Return {
+                                    value: Some(value), ..
+                                } => value.drop_iterative(),
+                                Statement::Assign { target, value, .. } => {
+                                    target.drop_iterative();
+                                    value.drop_iterative();
+                                }
+                                Statement::Return { value: None, .. } => {}
+                                Statement::If { .. } | Statement::While { .. } => {}
+                            }
+                        }
+                        if let Some(else_block) = else_block {
+                            for statement in else_block {
+                                match statement {
+                                    Statement::Let { value, .. }
+                                    | Statement::Expression(value)
+                                    | Statement::Return {
+                                        value: Some(value), ..
+                                    } => value.drop_iterative(),
+                                    Statement::Assign { target, value, .. } => {
+                                        target.drop_iterative();
+                                        value.drop_iterative();
+                                    }
+                                    Statement::Return { value: None, .. } => {}
+                                    Statement::If { .. } | Statement::While { .. } => {}
+                                }
+                            }
+                        }
+                    }
+                    Statement::While {
+                        condition, body, ..
+                    } => {
+                        condition.drop_iterative();
+                        for statement in body {
+                            match statement {
+                                Statement::Let { value, .. }
+                                | Statement::Expression(value)
+                                | Statement::Return {
+                                    value: Some(value), ..
+                                } => value.drop_iterative(),
+                                Statement::Assign { target, value, .. } => {
+                                    target.drop_iterative();
+                                    value.drop_iterative();
+                                }
+                                Statement::Return { value: None, .. } => {}
+                                Statement::If { .. } | Statement::While { .. } => {}
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -42,6 +145,10 @@ pub struct Module {
     pub name: String,
     /// Exported functions in the module.
     pub functions: Vec<Function>,
+    /// Named type aliases declared in the module.
+    pub type_declarations: Vec<TypeDeclaration>,
+    /// Named struct declarations declared in the module.
+    pub struct_declarations: Vec<StructDeclaration>,
     /// Location of the module declaration.
     pub span: Span,
 }
@@ -86,6 +193,8 @@ pub enum Statement {
     Let {
         /// Binding name.
         name: String,
+        /// Whether the binding may be reassigned.
+        is_mutable: bool,
         /// Optional declared binding type.
         type_name: Option<String>,
         /// Exact binding type token range, when an annotation is present.
@@ -95,10 +204,39 @@ pub enum Statement {
         /// Statement location.
         span: Span,
     },
+    /// Reassign an existing binding or array slot.
+    Assign {
+        /// Target expression.
+        target: Expression,
+        /// Replacement value.
+        value: Expression,
+        /// Statement location.
+        span: Span,
+    },
     /// A return statement.
     Return {
         /// Optional returned expression.
         value: Option<Expression>,
+        /// Statement location.
+        span: Span,
+    },
+    /// A conditional branch.
+    If {
+        /// Condition expression.
+        condition: Expression,
+        /// Branch body.
+        then_block: Vec<Statement>,
+        /// Optional else body.
+        else_block: Option<Vec<Statement>>,
+        /// Statement location.
+        span: Span,
+    },
+    /// A loop.
+    While {
+        /// Loop condition.
+        condition: Expression,
+        /// Loop body.
+        body: Vec<Statement>,
         /// Statement location.
         span: Span,
     },
@@ -131,6 +269,19 @@ impl Expression {
                     pending.push(*callee);
                     pending.extend(arguments);
                 }
+                ExpressionKind::FieldAccess { receiver, .. } => {
+                    pending.push(*receiver);
+                }
+                ExpressionKind::StructLiteral { fields, .. } => {
+                    pending.extend(fields.into_iter().map(|(_, value)| value));
+                }
+                ExpressionKind::ArrayLiteral(items) => {
+                    pending.extend(items);
+                }
+                ExpressionKind::Index { target, index } => {
+                    pending.push(*target);
+                    pending.push(*index);
+                }
                 _ => {}
             }
         }
@@ -158,6 +309,27 @@ impl Clone for Expression {
                         pending.extend(arguments.iter().rev().map(Work::Visit));
                         pending.push(Work::Visit(callee));
                     }
+                    ExpressionKind::FieldAccess { receiver, .. } => {
+                        pending.push(Work::Finish(expression));
+                        pending.push(Work::Visit(receiver));
+                    }
+                    ExpressionKind::StructLiteral { fields, .. } => {
+                        pending.push(Work::Finish(expression));
+                        for (_, value) in fields.iter().rev() {
+                            pending.push(Work::Visit(value));
+                        }
+                    }
+                    ExpressionKind::ArrayLiteral(items) => {
+                        pending.push(Work::Finish(expression));
+                        for value in items.iter().rev() {
+                            pending.push(Work::Visit(value));
+                        }
+                    }
+                    ExpressionKind::Index { target, index } => {
+                        pending.push(Work::Finish(expression));
+                        pending.push(Work::Visit(index));
+                        pending.push(Work::Visit(target));
+                    }
                     _ => completed.push(Self {
                         kind: expression.kind.clone(),
                         span: expression.span,
@@ -180,6 +352,47 @@ impl Clone for Expression {
                             ExpressionKind::Call {
                                 callee: Box::new(callee),
                                 arguments,
+                            }
+                        }
+                        ExpressionKind::FieldAccess { field, .. } => {
+                            let receiver = completed.pop().expect("receiver clone completed");
+                            ExpressionKind::FieldAccess {
+                                receiver: Box::new(receiver),
+                                field: field.clone(),
+                            }
+                        }
+                        ExpressionKind::StructLiteral {
+                            type_name, fields, ..
+                        } => {
+                            let mut cloned = Vec::with_capacity(fields.len());
+                            for _ in fields {
+                                cloned.push(completed.pop().expect("field clone completed"));
+                            }
+                            cloned.reverse();
+                            let fields = fields
+                                .iter()
+                                .zip(cloned)
+                                .map(|((name, _), value)| (name.clone(), value))
+                                .collect();
+                            ExpressionKind::StructLiteral {
+                                type_name: type_name.clone(),
+                                fields,
+                            }
+                        }
+                        ExpressionKind::ArrayLiteral(items) => {
+                            let mut cloned = Vec::with_capacity(items.len());
+                            for _ in items {
+                                cloned.push(completed.pop().expect("array clone completed"));
+                            }
+                            cloned.reverse();
+                            ExpressionKind::ArrayLiteral(cloned)
+                        }
+                        ExpressionKind::Index { .. } => {
+                            let index = completed.pop().expect("index clone completed");
+                            let target = completed.pop().expect("target clone completed");
+                            ExpressionKind::Index {
+                                target: Box::new(target),
+                                index: Box::new(index),
                             }
                         }
                         _ => unreachable!("only composite expressions need finishing"),
@@ -219,6 +432,29 @@ pub enum ExpressionKind {
         callee: Box<Expression>,
         /// Arguments passed to the function.
         arguments: Vec<Expression>,
+    },
+    /// A record literal for a user-defined struct.
+    StructLiteral {
+        /// Struct type name being constructed.
+        type_name: String,
+        /// Field names and values in order.
+        fields: Vec<(String, Expression)>,
+    },
+    /// A literal list/array expression.
+    ArrayLiteral(Vec<Expression>),
+    /// Access a named field on a value of a user-defined struct type.
+    FieldAccess {
+        /// Receiver expression.
+        receiver: Box<Expression>,
+        /// Field name.
+        field: String,
+    },
+    /// Index into a collection or array-like value.
+    Index {
+        /// Target expression.
+        target: Box<Expression>,
+        /// Index expression.
+        index: Box<Expression>,
     },
     /// A binary operator expression.
     Binary {

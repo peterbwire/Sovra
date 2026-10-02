@@ -7,16 +7,22 @@
   developer-preview publication plan is superseded.
 - Add experimental opt-in service-call checking with coverage errors and
   machine-readable member-call references. Application execution remains planned.
-
 - Add versioned JSON reports with `svr check --format json` for source/project
   validation and input I/O errors, preserving default human output.
-
 - Require explicit type annotations on every function parameter, including
   unused and module functions, under approved ADR 0002. Untyped declarations
   now report semantic error `E3014` at the parameter name. This is a source
   compatibility change; local `let` inference and default Unit returns remain.
 - Add an executable function example and a course lesson on typed signatures,
   inferred locals and migration from untyped parameters.
+
+## 1.0.0 - 2026-10-02
+
+- Mark the first public v1.0.0 release of the Sovra compiler foundation.
+- Publish the canonical `svr` binary version metadata and aligned project
+  manifests for the source compiler, IR, interpreter, and JS backend.
+- Preserve the production-readiness release track and keep experimental
+  application/runtime features clearly separated from shipped compiler behavior.
 
 ## 0.1.0 - 2026-09-03
 

@@ -6,6 +6,8 @@ The curriculum is being built incrementally around the executable language.
 - [Inline modules and function validation](modules.md)
 - [Numbers and widening](numbers.md)
 - [Strings and concatenation](strings.md)
+- [Control flow and Boolean logic](control-flow.md)
+- [Records and named types](records.md)
 - [Composing library-style inline modules](library-foundations.md)
 - [Consuming a local library package](local-packages.md)
 

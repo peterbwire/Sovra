@@ -200,12 +200,16 @@ impl<'a> Scanner<'a> {
             "return" => TokenKind::Keyword("return"),
             "if" => TokenKind::Keyword("if"),
             "else" => TokenKind::Keyword("else"),
+            "while" => TokenKind::Keyword("while"),
             "true" => TokenKind::Keyword("true"),
             "false" => TokenKind::Keyword("false"),
+            "mut" => TokenKind::Keyword("mut"),
             "mod" => TokenKind::Keyword("mod"),
             "export" => TokenKind::Keyword("export"),
             "use" => TokenKind::Keyword("use"),
             "import" => TokenKind::Keyword("import"),
+            "struct" => TokenKind::Keyword("struct"),
+            "type" => TokenKind::Keyword("type"),
             _ => TokenKind::Identifier(text.to_owned()),
         }
     }

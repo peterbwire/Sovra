@@ -1,5 +1,133 @@
 # Development log
 
+## 2026-10-03: Numeric widening on reassignment and mixed arrays
+
+Fixed a runtime mismatch where assigning an Int to an existing Float binding
+skipped conversion and changed subsequent arithmetic to integer semantics.
+Lowering now retains Float-ness for local bindings and inserts widening for
+assignments, including aliases and values inferred as Float. Inferred array
+elements are unified to Float when any element is Float, including when the
+first item is Int. Lowering widens Int elements during construction and Int
+values on indexed writes. Float-typed record fields now widen compatible Int
+values during record construction. Float-returning calls and indexed reads
+participate in local Float inference.
+
+Regressions initially reproduced integer division after Float reassignment and
+an Int-first mixed array retaining an Int element type. Coverage now compares
+interpreter and JavaScript results for local and indexed writes, mixed array
+construction, Float record fields and type rejection when assigning Float to an
+Int binding.
+
+## 2026-10-03: Float widening for reassignment and arrays
+
+Fixed another gap between accepted Float compatibility and generated runtime
+values. Assignments to Float-typed mutable locals now widen Int values before
+storage, including aliases and inferred Float locals. Inferred Float arrays now
+widen compatible Int elements during construction and widen Int values written
+through indexed assignment. Float-returning calls are tracked so inference
+continues across call-to-local and array-element boundaries.
+
+The regression verifies fractional division after annotated, inferred and
+indexed reassignment, plus an Int element in an array inferred as Float. The
+interpreter and JavaScript backend produce identical results. Formatting,
+all 220 library tests and all 40 CLI tests passed on Windows (260 total).
+Strict Clippy, `cargo fmt --check` and `git diff --check` passed.
+
+## 2026-10-02: Lexical shadowing across control-flow blocks
+
+Fixed a semantic/runtime mismatch: semantic analysis already checked `if` and
+`while` bodies in child scopes, but lowering stored shadowed declarations under
+the outer variable's runtime name. The interpreter and JavaScript backend
+therefore overwrote the outer value. Lowering now assigns an internal runtime
+name when a declaration shadows a visible local and lowers each branch/loop
+body with an independent name environment. Assignments to outer mutable names
+continue to target the outer binding.
+
+The regression initially reproduced the incorrect outer-value overwrite and
+now checks branch and loop shadowing in both execution engines. Formatting,
+all 219 library tests and all 40 CLI tests passed on Windows (259 total).
+Strict Clippy, `cargo fmt --check` and `git diff --check` passed.
+
+## 2026-10-02: Float alias widening at typed boundaries
+
+Fixed a mismatch where semantic analysis accepted Int-to-Float widening through
+aliases, but IR lowering emitted conversion instructions only for annotations
+spelled exactly `Float`. Lowering now resolves declared alias chains and emits
+the same conversions for Float aliases on parameters, local bindings and return
+values. Alias cycles and unresolved aliases remain semantic errors and are not
+treated as valid widening types.
+
+A regression reproduces loss of precision with an integer beyond binary64's
+exact-integer range, checking chained aliases across all three boundaries in
+the interpreter and generated JavaScript backend. Formatting, all 218 library
+tests and all 40 CLI tests passed on Windows (258 total). Strict Clippy,
+`cargo fmt --check` and `git diff --check` passed.
+
+## 2026-10-02: Short-circuit Boolean expressions and backend branches
+
+Added Boolean-only `&&` and `||` with conventional precedence and branch-based
+short-circuit lowering. The JavaScript backend now dispatches IR instructions
+by program counter, supporting conditional and loop branches instead of
+rejecting them. Interpreter and JavaScript both permit a jump to the
+instruction-count boundary, and validate conditional jump targets consistently
+whether or not the branch is taken.
+
+Regressions cover precedence, invalid operand types, skipped side effects,
+logical combinations, `if`/`while` execution and interpreter/Node output parity.
+Formatting passed; all 217 library tests and 40 CLI tests passed on Windows
+(257 total), including the Node-backed parity checks. Strict Clippy and
+`git diff --check` passed.
+
+## 2026-10-02: Branch-aware non-Unit return completeness
+
+Replaced the prior “contains any return” check with definite-return analysis
+over statement sequences. An `if` guarantees a return only when it has an `else`
+and both blocks guarantee a return; nested conditionals compose. Loops are
+conservatively not treated as guaranteed to execute. Non-Unit functions that
+can fall through now report the existing E3013, while Unit behavior and
+diagnostic codes remain unchanged.
+
+Regressions cover missing `else`, a non-returning alternate branch, return-only
+loops, complete two-branch conditionals, nested branches and `else if`.
+Formatting, strict Clippy, all 213 library tests and all 40 CLI tests passed on
+Windows; `git diff --check` passed.
+
+## 2026-10-02: Executable record construction and field access
+
+Completed the previously parsed/type-checked-only record path. Lowering now
+emits explicit record construction and field-load instructions. The interpreter
+stores nominal record values with construction-order fields; the JavaScript
+backend emits equivalent records, validates malformed public-IR field accesses,
+and renders nested records and arrays consistently with interpreter output.
+Records pass through locals, aliases, function parameters and return values.
+Field mutation remains unsupported. The added runtime representation exposed
+host-stack exhaustion at the documented 256-call limit, so interpreter calls
+now use an explicit call-frame stack rather than Rust recursion; language-level
+call-depth errors remain unchanged.
+
+Added an executable records example, a course lesson, and tests spanning nested
+records, aliases, function boundaries, interpreter/Node output parity, and CLI
+check/run/IR/JS commands. Formatting, strict Clippy, all 213 library tests and
+all 40 CLI tests passed on Windows. The Node-backed tests executed successfully.
+
+## 2026-10-02: Mutable array write-back and index parity
+
+Hardened the in-progress array/mutability slice. Indexed assignment now requires
+a directly named mutable binding; immutable arrays report E3011 and nested
+indexed writes report E3003 instead of producing lossy lowering. Lowering stores
+the updated array back into its binding and consumes the store result, preventing
+stale reads and operand-stack residue. The JavaScript backend now validates
+array/index kinds and bounds consistently with the interpreter for both reads
+and writes.
+
+Added semantic and execution regressions for successful mutation, immutable
+assignment, nested-write rejection, element type mismatch, backend parity and
+negative indices. A Unit-returning helper regression also confirms assignment
+does not leave a value on the operand stack. Formatting, strict Clippy, all 211
+library tests and all 39 CLI tests passed on Windows; the backend parity test
+executed with Node.js. Next: continue checking the type information lost between
+semantic analysis and lowering before expanding collection behavior.
+
 ## 2026-09-28: Accepted local package graph foundation
 
 User approved continuation after the ADR 0010 A–C approval request. Recorded the

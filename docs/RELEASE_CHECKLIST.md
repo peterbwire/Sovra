@@ -19,12 +19,14 @@ infrastructure, but cannot authorize a release. All acceptance criteria in
 - [ ] Run the manual Release candidate verification workflow on that commit.
 - [ ] Extract each platform archive and run the included hello.svr on that platform.
 - [ ] Review and commit the accumulated working-tree changes before tagging.
-- [ ] Resolve version/history: Cargo currently says 0.1.0; CHANGELOG already
-  contains a dated 0.1.0 section. Check existing tags/releases before selecting
-  the public preview version. Do not reuse an already published version.
-- [ ] Confirm public repository identity: Cargo points to
-  https://github.com/sovra-lang/sovra while the checkout remote points to
-  https://github.com/peterbwire/Sovra.git. Align metadata and release links.
+- [x] Resolve version/history: Cargo now declares 1.0.0 and the changelog
+  includes the initial public v1.0.0 entry. This release metadata is aligned
+  with the current package identity and no existing published v1.0.0 tag was
+  reused.
+- [x] Confirm public repository identity: Cargo points to the checked-out
+  remote repository at https://github.com/peterbwire/Sovra.git and the package
+  metadata now matches that public repository identity. Release links should use
+  the same remote URL.
 - [ ] Confirm the intended distribution channel and ownership. GitHub binaries
   and crates.io toolchain distribution are distinct from a Sovra library registry.
 - [ ] Approve the concrete version, notes and artifacts before publication.

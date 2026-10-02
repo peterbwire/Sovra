@@ -28,7 +28,7 @@ scheduled task targets. This pass also validates auth policy shape and policy
 model references. The handoff assessment identified prerequisite executable
 subset correctness gaps. All module function bodies now receive semantic
 checks. Numeric conversion/bounds, checked Int arithmetic, JS numeric kinds,
-token ranges and straight-line return completeness have since been hardened.
+token ranges and branch-aware return completeness have since been hardened.
 ADR 0002 is approved and implemented: executable function parameters require
 explicit types (`E3014`), with local inference and the default Unit return type
 preserved. Expression diagnostics now retain precise source ranges. Named-type

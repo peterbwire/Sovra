@@ -1,5 +1,7 @@
 //! Stable, minimal intermediate representation for M10 and later backends.
 
+use std::collections::{HashMap, HashSet};
+
 use crate::compiler::ast::{Expression, ExpressionKind, Program, Statement};
 use crate::compiler::semantic::TypedProgram;
 
@@ -67,10 +69,38 @@ pub enum Instruction {
     LoadName(String),
     /// Store a named value.
     StoreName(String),
+    /// Replace the element at an index in an array-like value.
+    StoreIndex,
     /// Convert an Int value to Float, preserving values already of type Float.
     WidenFloat,
     /// Apply an operator.
     Binary(String),
+    /// Construct a homogeneous array from the top `length` stack values.
+    MakeArray {
+        /// Number of stack values consumed to assemble the array.
+        length: usize,
+    },
+    /// Construct a record from the top stack values in field order.
+    MakeStruct {
+        /// Declared record type name.
+        type_name: String,
+        /// Field names corresponding to consumed values.
+        fields: Vec<String>,
+    },
+    /// Read a field from the top record value.
+    LoadField(String),
+    /// Index an array-like value using the top two stack items.
+    Index,
+    /// Jump to a concrete instruction index.
+    Jump {
+        /// Instruction index to jump to.
+        target: usize,
+    },
+    /// Jump to a concrete instruction index when the condition is false.
+    JumpIfFalse {
+        /// Instruction index to jump to when the condition is false.
+        target: usize,
+    },
     /// Call a function with an argument count.
     Call {
         /// Function name.
@@ -88,31 +118,174 @@ pub enum Instruction {
 /// Obtain the input through semantic analysis (or use [`lower_program`]). Directly
 /// constructing a `TypedProgram` bypasses validation, including structural bounds.
 pub fn lower(program: &TypedProgram) -> IrProgram {
+    let float_aliases = collect_float_aliases(&program.program);
+    let float_returning_functions =
+        collect_float_returning_functions(&program.program, &float_aliases);
+    let float_struct_fields = collect_float_struct_fields(&program.program, &float_aliases);
     let mut functions = Vec::new();
     for function in &program.program.functions {
-        functions.push(lower_function(function));
+        functions.push(lower_function(
+            function,
+            &float_aliases,
+            &float_returning_functions,
+            &float_struct_fields,
+        ));
     }
     for module in &program.program.modules {
         for function in &module.functions {
-            functions.push(lower_namespaced_function(&module.name, function));
+            functions.push(lower_namespaced_function(
+                &module.name,
+                function,
+                &float_aliases,
+                &float_returning_functions,
+                &float_struct_fields,
+            ));
         }
     }
     IrProgram { functions }
 }
 
+fn collect_float_struct_fields(
+    program: &Program,
+    float_aliases: &HashSet<String>,
+) -> HashMap<String, HashSet<String>> {
+    let mut structs = HashMap::new();
+    for declaration in &program.struct_declarations {
+        let fields = declaration
+            .fields
+            .iter()
+            .filter(|field| is_float_type(Some(&field.type_name), float_aliases))
+            .map(|field| field.name.clone())
+            .collect();
+        structs.insert(declaration.name.clone(), fields);
+    }
+    for module in &program.modules {
+        for declaration in &module.struct_declarations {
+            let fields: HashSet<_> = declaration
+                .fields
+                .iter()
+                .filter(|field| is_float_type(Some(&field.type_name), float_aliases))
+                .map(|field| field.name.clone())
+                .collect();
+            structs.insert(declaration.name.clone(), fields.clone());
+            structs.insert(format!("{}::{}", module.name, declaration.name), fields);
+        }
+    }
+    structs
+}
+
+fn is_float_type(name: Option<&str>, float_aliases: &HashSet<String>) -> bool {
+    name.is_some_and(|name| name == "Float" || float_aliases.contains(name))
+}
+
+fn collect_float_returning_functions(
+    program: &Program,
+    float_aliases: &HashSet<String>,
+) -> HashSet<String> {
+    let mut functions = HashSet::new();
+    for function in &program.functions {
+        if is_float_type(function.return_type.as_deref(), float_aliases) {
+            functions.insert(function.name.clone());
+        }
+    }
+    for module in &program.modules {
+        for function in &module.functions {
+            if is_float_type(function.return_type.as_deref(), float_aliases) {
+                functions.insert(format!("{}::{}", module.name, function.name));
+            }
+        }
+    }
+    functions
+}
+
+fn collect_float_aliases(program: &Program) -> std::collections::HashSet<String> {
+    let mut aliases = std::collections::HashMap::new();
+    for declaration in &program.type_declarations {
+        aliases.insert(declaration.name.clone(), declaration.target.clone());
+    }
+    for module in &program.modules {
+        for declaration in &module.type_declarations {
+            aliases.insert(declaration.name.clone(), declaration.target.clone());
+            aliases.insert(
+                format!("{}::{}", module.name, declaration.name),
+                declaration.target.clone(),
+            );
+        }
+    }
+
+    let mut float_aliases = std::collections::HashSet::new();
+    for name in aliases.keys() {
+        let mut current = name.as_str();
+        let mut seen = std::collections::HashSet::new();
+        loop {
+            if !seen.insert(current) {
+                break;
+            }
+            match aliases.get(current).map(String::as_str) {
+                Some("Float") => {
+                    float_aliases.insert(name.clone());
+                    break;
+                }
+                Some(target) => current = target,
+                None => break,
+            }
+        }
+    }
+    float_aliases
+}
+
+#[derive(Clone)]
+struct LoweredBinding {
+    name: String,
+    is_float: bool,
+    is_float_array_element: bool,
+}
+
 fn lower_namespaced_function(
     module_name: &str,
     function: &crate::compiler::ast::Function,
+    float_aliases: &HashSet<String>,
+    float_returning_functions: &HashSet<String>,
+    float_struct_fields: &HashMap<String, HashSet<String>>,
 ) -> IrFunction {
-    let mut lowered = lower_function(function);
+    let mut lowered = lower_function(
+        function,
+        float_aliases,
+        float_returning_functions,
+        float_struct_fields,
+    );
     lowered.name = format!("{module_name}::{name}", name = lowered.name);
     lowered
 }
 
-fn lower_function(function: &crate::compiler::ast::Function) -> IrFunction {
+fn lower_function(
+    function: &crate::compiler::ast::Function,
+    float_aliases: &HashSet<String>,
+    float_returning_functions: &HashSet<String>,
+    float_struct_fields: &HashMap<String, HashSet<String>>,
+) -> IrFunction {
+    let mut locals: HashMap<String, LoweredBinding> = function
+        .parameters
+        .iter()
+        .map(|parameter| {
+            (
+                parameter.name.clone(),
+                LoweredBinding {
+                    name: parameter.name.clone(),
+                    is_float: is_float_type(parameter.type_name.as_deref(), float_aliases),
+                    is_float_array_element: false,
+                },
+            )
+        })
+        .collect();
+    let mut next_shadow_id = 0;
     let mut instructions = Vec::new();
     for parameter in &function.parameters {
-        if parameter.type_name.as_deref() == Some("Float") {
+        if parameter
+            .type_name
+            .as_ref()
+            .is_some_and(|name| name == "Float" || float_aliases.contains(name))
+        {
             instructions.push(Instruction::LoadName(parameter.name.clone()));
             instructions.push(Instruction::WidenFloat);
             instructions.push(Instruction::StoreName(parameter.name.clone()));
@@ -122,6 +295,11 @@ fn lower_function(function: &crate::compiler::ast::Function) -> IrFunction {
         lower_statement(
             statement,
             function.return_type.as_deref(),
+            float_aliases,
+            float_returning_functions,
+            float_struct_fields,
+            &mut locals,
+            &mut next_shadow_id,
             &mut instructions,
         );
     }
@@ -139,6 +317,11 @@ fn lower_function(function: &crate::compiler::ast::Function) -> IrFunction {
 fn lower_statement(
     statement: &Statement,
     return_type: Option<&str>,
+    float_aliases: &HashSet<String>,
+    float_returning_functions: &HashSet<String>,
+    float_struct_fields: &HashMap<String, HashSet<String>>,
+    locals: &mut HashMap<String, LoweredBinding>,
+    next_shadow_id: &mut usize,
     instructions: &mut Vec<Instruction>,
 ) {
     match statement {
@@ -148,32 +331,240 @@ fn lower_statement(
             value,
             ..
         } => {
-            lower_expression(value, instructions);
-            if type_name.as_deref() == Some("Float") {
+            lower_expression(
+                value,
+                locals,
+                float_returning_functions,
+                float_struct_fields,
+                instructions,
+            );
+            let is_declared_float = is_float_type(type_name.as_deref(), float_aliases);
+            let is_float = is_declared_float
+                || inferred_float_expression(value, locals, float_returning_functions);
+            let is_float_array_element =
+                inferred_float_array_element(value, locals, float_returning_functions);
+            if is_declared_float {
                 instructions.push(Instruction::WidenFloat);
             }
-            instructions.push(Instruction::StoreName(name.clone()));
+            let lowered_name = if locals.contains_key(name) {
+                let lowered_name = format!("\0svr-local-{}", *next_shadow_id);
+                *next_shadow_id += 1;
+                lowered_name
+            } else {
+                name.clone()
+            };
+            locals.insert(
+                name.clone(),
+                LoweredBinding {
+                    name: lowered_name.clone(),
+                    is_float,
+                    is_float_array_element,
+                },
+            );
+            instructions.push(Instruction::StoreName(lowered_name));
         }
+        Statement::Assign { target, value, .. } => match &target.kind {
+            ExpressionKind::Identifier(name) => {
+                lower_expression(
+                    value,
+                    locals,
+                    float_returning_functions,
+                    float_struct_fields,
+                    instructions,
+                );
+                if locals.get(name).is_some_and(|binding| binding.is_float) {
+                    instructions.push(Instruction::WidenFloat);
+                }
+                instructions.push(Instruction::StoreName(
+                    locals
+                        .get(name)
+                        .map(|binding| binding.name.clone())
+                        .unwrap_or_else(|| name.clone()),
+                ));
+            }
+            ExpressionKind::Index {
+                target: base,
+                index,
+            } => {
+                lower_expression(
+                    base,
+                    locals,
+                    float_returning_functions,
+                    float_struct_fields,
+                    instructions,
+                );
+                lower_expression(
+                    index,
+                    locals,
+                    float_returning_functions,
+                    float_struct_fields,
+                    instructions,
+                );
+                lower_expression(
+                    value,
+                    locals,
+                    float_returning_functions,
+                    float_struct_fields,
+                    instructions,
+                );
+                if let ExpressionKind::Identifier(name) = &base.kind {
+                    if locals
+                        .get(name)
+                        .is_some_and(|binding| binding.is_float_array_element)
+                    {
+                        instructions.push(Instruction::WidenFloat);
+                    }
+                }
+                instructions.push(Instruction::StoreIndex);
+                if let ExpressionKind::Identifier(name) = &base.kind {
+                    instructions.push(Instruction::StoreName(
+                        locals
+                            .get(name)
+                            .map(|binding| binding.name.clone())
+                            .unwrap_or_else(|| name.clone()),
+                    ));
+                } else {
+                    instructions.push(Instruction::Pop);
+                }
+            }
+            _ => {
+                lower_expression(
+                    value,
+                    locals,
+                    float_returning_functions,
+                    float_struct_fields,
+                    instructions,
+                );
+            }
+        },
         Statement::Return { value, .. } => {
             if let Some(value) = value {
-                lower_expression(value, instructions);
-                if return_type == Some("Float") {
+                lower_expression(
+                    value,
+                    locals,
+                    float_returning_functions,
+                    float_struct_fields,
+                    instructions,
+                );
+                if is_float_type(return_type, float_aliases) {
                     instructions.push(Instruction::WidenFloat);
                 }
             }
             instructions.push(Instruction::Return);
         }
+        Statement::If {
+            condition,
+            then_block,
+            else_block,
+            ..
+        } => {
+            lower_expression(
+                condition,
+                locals,
+                float_returning_functions,
+                float_struct_fields,
+                instructions,
+            );
+            let false_jump = instructions.len();
+            instructions.push(Instruction::JumpIfFalse { target: 0 });
+            let mut then_locals = locals.clone();
+            for statement in then_block {
+                lower_statement(
+                    statement,
+                    return_type,
+                    float_aliases,
+                    float_returning_functions,
+                    float_struct_fields,
+                    &mut then_locals,
+                    next_shadow_id,
+                    instructions,
+                );
+            }
+            if let Some(else_block) = else_block {
+                let end_jump = instructions.len();
+                instructions.push(Instruction::Jump { target: 0 });
+                let else_start = instructions.len();
+                instructions[false_jump] = Instruction::JumpIfFalse { target: else_start };
+                let mut else_locals = locals.clone();
+                for statement in else_block {
+                    lower_statement(
+                        statement,
+                        return_type,
+                        float_aliases,
+                        float_returning_functions,
+                        float_struct_fields,
+                        &mut else_locals,
+                        next_shadow_id,
+                        instructions,
+                    );
+                }
+                instructions[end_jump] = Instruction::Jump {
+                    target: instructions.len(),
+                };
+            } else {
+                instructions[false_jump] = Instruction::JumpIfFalse {
+                    target: instructions.len(),
+                };
+            }
+        }
+        Statement::While {
+            condition, body, ..
+        } => {
+            let loop_start = instructions.len();
+            lower_expression(
+                condition,
+                locals,
+                float_returning_functions,
+                float_struct_fields,
+                instructions,
+            );
+            let exit_jump = instructions.len();
+            instructions.push(Instruction::JumpIfFalse { target: 0 });
+            let mut loop_locals = locals.clone();
+            for statement in body {
+                lower_statement(
+                    statement,
+                    return_type,
+                    float_aliases,
+                    float_returning_functions,
+                    float_struct_fields,
+                    &mut loop_locals,
+                    next_shadow_id,
+                    instructions,
+                );
+            }
+            instructions.push(Instruction::Jump { target: loop_start });
+            instructions[exit_jump] = Instruction::JumpIfFalse {
+                target: instructions.len(),
+            };
+        }
         Statement::Expression(expression) => {
-            lower_expression(expression, instructions);
+            lower_expression(
+                expression,
+                locals,
+                float_returning_functions,
+                float_struct_fields,
+                instructions,
+            );
             instructions.push(Instruction::Pop);
         }
     }
 }
 
-fn lower_expression(expression: &Expression, instructions: &mut Vec<Instruction>) {
+fn lower_expression(
+    expression: &Expression,
+    locals: &HashMap<String, LoweredBinding>,
+    float_returning_functions: &HashSet<String>,
+    float_struct_fields: &HashMap<String, HashSet<String>>,
+    instructions: &mut Vec<Instruction>,
+) {
     enum Work<'a> {
         Visit(&'a Expression),
         Emit(Instruction),
+        FinishAnd(&'a Expression),
+        FinishAndRight { false_jump: usize },
+        FinishOr(&'a Expression),
+        FinishOrRight { end_jump: usize },
     }
     let mut pending = vec![Work::Visit(expression)];
     while let Some(work) = pending.pop() {
@@ -181,6 +572,46 @@ fn lower_expression(expression: &Expression, instructions: &mut Vec<Instruction>
             Work::Visit(expression) => expression,
             Work::Emit(instruction) => {
                 instructions.push(instruction);
+                continue;
+            }
+            Work::FinishAnd(right) => {
+                let false_jump = instructions.len();
+                instructions.push(Instruction::JumpIfFalse { target: 0 });
+                pending.push(Work::FinishAndRight { false_jump });
+                pending.push(Work::Visit(right));
+                continue;
+            }
+            Work::FinishAndRight { false_jump } => {
+                let end_jump = instructions.len();
+                instructions.push(Instruction::Jump { target: 0 });
+                let false_target = instructions.len();
+                instructions[false_jump] = Instruction::JumpIfFalse {
+                    target: false_target,
+                };
+                instructions.push(Instruction::LoadLiteral(Literal::Boolean(false)));
+                instructions[end_jump] = Instruction::Jump {
+                    target: instructions.len(),
+                };
+                continue;
+            }
+            Work::FinishOr(right) => {
+                let right_target_jump = instructions.len();
+                instructions.push(Instruction::JumpIfFalse { target: 0 });
+                instructions.push(Instruction::LoadLiteral(Literal::Boolean(true)));
+                let end_jump = instructions.len();
+                instructions.push(Instruction::Jump { target: 0 });
+                let right_target = instructions.len();
+                instructions[right_target_jump] = Instruction::JumpIfFalse {
+                    target: right_target,
+                };
+                pending.push(Work::FinishOrRight { end_jump });
+                pending.push(Work::Visit(right));
+                continue;
+            }
+            Work::FinishOrRight { end_jump } => {
+                instructions[end_jump] = Instruction::Jump {
+                    target: instructions.len(),
+                };
                 continue;
             }
         };
@@ -197,9 +628,12 @@ fn lower_expression(expression: &Expression, instructions: &mut Vec<Instruction>
             ExpressionKind::Boolean(value) => {
                 instructions.push(Instruction::LoadLiteral(Literal::Boolean(*value)));
             }
-            ExpressionKind::Identifier(name) => {
-                instructions.push(Instruction::LoadName(name.clone()))
-            }
+            ExpressionKind::Identifier(name) => instructions.push(Instruction::LoadName(
+                locals
+                    .get(name)
+                    .map(|binding| binding.name.clone())
+                    .unwrap_or_else(|| name.clone()),
+            )),
             ExpressionKind::QualifiedName { path } => {
                 instructions.push(Instruction::LoadName(path.join("::")));
             }
@@ -218,16 +652,113 @@ fn lower_expression(expression: &Expression, instructions: &mut Vec<Instruction>
                 // LIFO work preserves left-to-right argument evaluation.
                 pending.extend(arguments.iter().rev().map(Work::Visit));
             }
+            ExpressionKind::FieldAccess { receiver, field } => {
+                pending.push(Work::Emit(Instruction::LoadField(field.clone())));
+                pending.push(Work::Visit(receiver));
+            }
+            ExpressionKind::StructLiteral { type_name, fields } => {
+                pending.push(Work::Emit(Instruction::MakeStruct {
+                    type_name: type_name.clone(),
+                    fields: fields.iter().map(|(name, _)| name.clone()).collect(),
+                }));
+                let float_fields = float_struct_fields.get(type_name);
+                for (field_name, value) in fields.iter().rev() {
+                    if float_fields.is_some_and(|names| names.contains(field_name)) {
+                        pending.push(Work::Emit(Instruction::WidenFloat));
+                    }
+                    pending.push(Work::Visit(value));
+                }
+            }
+            ExpressionKind::ArrayLiteral(items) => {
+                pending.push(Work::Emit(Instruction::MakeArray {
+                    length: items.len(),
+                }));
+                let float_elements = items
+                    .iter()
+                    .any(|item| inferred_float_expression(item, locals, float_returning_functions));
+                for value in items.iter().rev() {
+                    if float_elements
+                        && !inferred_float_expression(value, locals, float_returning_functions)
+                    {
+                        pending.push(Work::Emit(Instruction::WidenFloat));
+                    }
+                    pending.push(Work::Visit(value));
+                }
+            }
+            ExpressionKind::Index { target, index } => {
+                pending.push(Work::Emit(Instruction::Index));
+                pending.push(Work::Visit(index));
+                pending.push(Work::Visit(target));
+            }
             ExpressionKind::Binary {
                 left,
                 operator,
                 right,
             } => {
-                pending.push(Work::Emit(Instruction::Binary(operator.clone())));
-                pending.push(Work::Visit(right));
+                match operator.as_str() {
+                    "&&" => pending.push(Work::FinishAnd(right)),
+                    "||" => pending.push(Work::FinishOr(right)),
+                    _ => {
+                        pending.push(Work::Emit(Instruction::Binary(operator.clone())));
+                        pending.push(Work::Visit(right));
+                    }
+                }
                 pending.push(Work::Visit(left));
             }
         }
+    }
+}
+
+fn inferred_float_expression(
+    expression: &Expression,
+    locals: &HashMap<String, LoweredBinding>,
+    float_returning_functions: &HashSet<String>,
+) -> bool {
+    match &expression.kind {
+        ExpressionKind::Float(_) => true,
+        ExpressionKind::Identifier(name) => {
+            locals.get(name).is_some_and(|binding| binding.is_float)
+        }
+        ExpressionKind::Binary {
+            left,
+            operator,
+            right,
+        } => {
+            matches!(operator.as_str(), "+" | "-" | "*" | "/")
+                && (inferred_float_expression(left, locals, float_returning_functions)
+                    || inferred_float_expression(right, locals, float_returning_functions))
+        }
+        ExpressionKind::Index { target, .. } => match &target.kind {
+            ExpressionKind::Identifier(name) => locals
+                .get(name)
+                .is_some_and(|binding| binding.is_float_array_element),
+            _ => false,
+        },
+        ExpressionKind::Call { callee, .. } => {
+            let name = match &callee.kind {
+                ExpressionKind::Identifier(name) => Some(name.as_str()),
+                ExpressionKind::QualifiedName { path } => {
+                    let qualified = path.join("::");
+                    return float_returning_functions.contains(&qualified);
+                }
+                _ => None,
+            };
+            name.is_some_and(|name| float_returning_functions.contains(name))
+        }
+        _ => false,
+    }
+}
+
+fn inferred_float_array_element(
+    expression: &Expression,
+    locals: &HashMap<String, LoweredBinding>,
+    float_returning_functions: &HashSet<String>,
+) -> bool {
+    match &expression.kind {
+        ExpressionKind::ArrayLiteral(items) => items
+            .first()
+            .is_some_and(|item| inferred_float_expression(item, locals, float_returning_functions)),
+        _ => false,
     }
 }
 

@@ -1,12 +1,14 @@
 # Sovra
 
-**Release target: production readiness; not yet achieved.** The implemented subset
-includes a source-file compiler/interpreter, IR/JavaScript output and diagnostics.
-Project checking remains partial and service-call inspection experimental.
-Fielddesk is not runnable; the application runtime, Sovra test runner and library
-publishing are unfinished. The developer-preview release plan is superseded.
-See the [production-readiness plan](docs/PRODUCTION_READINESS.md) for the audit,
-implementation order and acceptance gates.
+**Version 1.0.0 is the first public release of the Sovra compiler foundation.**
+The shipped scope includes the source-file compiler/interpreter, IR/JavaScript
+output, semantic validation, project checks, and the canonical `svr` CLI.
+The broader application runtime, Sovra-native test runner, package publishing,
+and library ecosystem remain active follow-on work. This first public release is
+intentionally scoped to the compiler foundation and is not a complete application
+platform. The developer-preview release plan is superseded; see the
+[production-readiness plan](docs/PRODUCTION_READINESS.md) for the audited gates
+and current implementation order.
 
 For the current module/stdlib/package boundaries, see the
 [library ecosystem assessment](docs/LIBRARY_ECOSYSTEM_ASSESSMENT.md) and

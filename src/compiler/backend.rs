@@ -21,8 +21,17 @@ fn instruction_text(instruction: &Instruction) -> String {
         Instruction::LoadLiteral(value) => format!("load {}", literal_text(value)),
         Instruction::LoadName(name) => format!("load-name {name}"),
         Instruction::StoreName(name) => format!("store-name {name}"),
+        Instruction::StoreIndex => "store-index".to_owned(),
         Instruction::WidenFloat => "widen-float".to_owned(),
         Instruction::Binary(operator) => format!("binary {operator}"),
+        Instruction::MakeArray { length } => format!("make-array {length}"),
+        Instruction::MakeStruct { type_name, fields } => {
+            format!("make-struct {type_name} {}", fields.join(" "))
+        }
+        Instruction::LoadField(field) => format!("load-field {field}"),
+        Instruction::Index => "index".to_owned(),
+        Instruction::Jump { target } => format!("jump {target}"),
+        Instruction::JumpIfFalse { target } => format!("jump-if-false {target}"),
         Instruction::Call { name, arguments } => format!("call {name} {arguments}"),
         Instruction::Return => "return".to_owned(),
         Instruction::Pop => "pop".to_owned(),
@@ -41,6 +50,22 @@ pub fn render_javascript(program: &IrProgram) -> String {
     let _ = writeln!(output, "const svrFunctions = Object.create(null);");
     let _ = writeln!(output, "let svrCallDepth = 0;");
     output.push_str(include_str!("numeric_runtime.js"));
+    output.push_str(
+        r#"
+function svrDisplay(value) {
+  if (value === undefined) return "";
+  if (Array.isArray(value)) return "[" + value.map(svrDisplay).join(", ") + "]";
+  if (value !== null && typeof value === "object" &&
+      Object.prototype.hasOwnProperty.call(value, "__svrStruct")) {
+    const record = value.__svrStruct;
+    return record.typeName + " { " +
+      record.fieldOrder.map(name => name + ": " + svrDisplay(record.fields[name])).join(", ") +
+      " }";
+  }
+  return String(value);
+}
+"#,
+    );
     let _ = writeln!(output);
     for (index, function) in program.functions.iter().enumerate() {
         render_js_function(&mut output, index, function);
@@ -104,58 +129,195 @@ fn render_js_function(output: &mut String, index: usize, function: &IrFunction) 
             js_string(parameter),
         );
     }
-    for instruction in &function.instructions {
-        render_js_instruction(output, instruction);
+    let _ = writeln!(output, "  let pc = 0;");
+    let _ = writeln!(output, "  while (pc < {}) {{", function.instructions.len());
+    let _ = writeln!(output, "    switch (pc) {{");
+    for (pc, instruction) in function.instructions.iter().enumerate() {
+        render_js_instruction(output, pc, instruction, function.instructions.len());
     }
+    let _ = writeln!(
+        output,
+        "      default: throw new Error(\"jump target out of bounds\");"
+    );
+    let _ = writeln!(output, "    }}");
+    let _ = writeln!(output, "  }}");
     let _ = writeln!(output, "  return stack.length ? stack.pop() : undefined;");
     let _ = writeln!(output, "  }} finally {{ svrCallDepth--; }}");
     let _ = writeln!(output, "}}");
     let _ = writeln!(output);
 }
 
-fn render_js_instruction(output: &mut String, instruction: &Instruction) {
+fn render_js_instruction(
+    output: &mut String,
+    pc: usize,
+    instruction: &Instruction,
+    instruction_count: usize,
+) {
+    let _ = writeln!(output, "      case {pc}: {{");
     match instruction {
         Instruction::LoadLiteral(value) => {
-            let _ = writeln!(output, "  stack.push({});", js_literal(value));
+            let _ = writeln!(output, "        stack.push({});", js_literal(value));
         }
         Instruction::LoadName(name) => {
             let _ = writeln!(
                 output,
-                "  if (!Object.prototype.hasOwnProperty.call(names, {})) throw new Error({});",
+                "        if (!Object.prototype.hasOwnProperty.call(names, {})) throw new Error({});",
                 js_string(name),
                 js_string(&format!("runtime name `{name}` was not found"))
             );
-            let _ = writeln!(output, "  stack.push(names[{}]);", js_string(name));
+            let _ = writeln!(output, "        stack.push(names[{}]);", js_string(name));
         }
         Instruction::StoreName(name) => {
             render_stack_guard(output, 1, "store");
-            let _ = writeln!(output, "  names[{}] = stack.pop();", js_string(name));
+            let _ = writeln!(output, "        names[{}] = stack.pop();", js_string(name));
+        }
+        Instruction::StoreIndex => {
+            render_stack_guard(output, 3, "store-index");
+            let _ = writeln!(output, "        {{");
+            let _ = writeln!(output, "          const value = stack.pop();");
+            let _ = writeln!(output, "          const index = stack.pop();");
+            let _ = writeln!(output, "          const target = stack.pop();");
+            let _ = writeln!(output, "          if (!Array.isArray(target) || typeof index !== \"bigint\") throw new Error(\"index assignment requires an Array and Int index\");");
+            let _ = writeln!(output, "          if (index < 0n || index >= BigInt(target.length)) throw new Error(\"array index out of bounds\");");
+            let _ = writeln!(
+                output,
+                "          target[Number(index)] = value; stack.push(target);"
+            );
+            let _ = writeln!(output, "        }}");
         }
         Instruction::WidenFloat => {
             render_stack_guard(output, 1, "widening");
-            let _ = writeln!(output, "  stack.push(svrWidenFloat(stack.pop()));");
+            let _ = writeln!(output, "        stack.push(svrWidenFloat(stack.pop()));");
         }
         Instruction::Binary(operator) => {
             render_stack_guard(output, 2, "binary operator");
-            let _ = writeln!(output, "  {{");
-            let _ = writeln!(output, "    const right = stack.pop();");
-            let _ = writeln!(output, "    const left = stack.pop();");
+            let _ = writeln!(output, "        {{");
+            let _ = writeln!(output, "          const right = stack.pop();");
+            let _ = writeln!(output, "          const left = stack.pop();");
             let _ = writeln!(
                 output,
-                "    stack.push(svrBinary({}, left, right));",
+                "          stack.push(svrBinary({}, left, right));",
                 js_string(operator)
             );
-            let _ = writeln!(output, "  }}");
+            let _ = writeln!(output, "        }}");
+        }
+        Instruction::MakeArray { length } => {
+            render_stack_guard(output, *length, "array literal");
+            let _ = writeln!(
+                output,
+                "        {{
+          const items = stack.splice(stack.length - {length});
+          stack.push(items);
+        }}"
+            );
+        }
+        Instruction::MakeStruct { type_name, fields } => {
+            render_stack_guard(output, fields.len(), "struct literal");
+            let _ = writeln!(output, "        {{");
+            let _ = writeln!(
+                output,
+                "          const values = stack.splice(stack.length - {});",
+                fields.len()
+            );
+            let _ = writeln!(
+                output,
+                "          const recordFields = Object.create(null);"
+            );
+            let _ = writeln!(output, "          const fieldOrder = [];");
+            for (index, field) in fields.iter().enumerate() {
+                let _ = writeln!(
+                    output,
+                    "          if (Object.prototype.hasOwnProperty.call(recordFields, {})) throw new Error({});",
+                    js_string(field),
+                    js_string(&format!("duplicate field in struct `{type_name}`"))
+                );
+                let _ = writeln!(
+                    output,
+                    "          recordFields[{}] = values[{index}]; fieldOrder.push({});",
+                    js_string(field),
+                    js_string(field)
+                );
+            }
+            let _ = writeln!(
+                output,
+                "          stack.push({{ __svrStruct: {{ typeName: {}, fields: recordFields, fieldOrder }} }});",
+                js_string(type_name)
+            );
+            let _ = writeln!(output, "        }}");
+        }
+        Instruction::LoadField(field) => {
+            render_stack_guard(output, 1, "field access");
+            let _ = writeln!(output, "        {{");
+            let _ = writeln!(output, "          const recordValue = stack.pop();");
+            let _ = writeln!(output, "          if (recordValue === null || typeof recordValue !== \"object\" || !Object.prototype.hasOwnProperty.call(recordValue, \"__svrStruct\")) throw new Error(\"field access requires a struct value\");");
+            let _ = writeln!(
+                output,
+                "          const recordFields = recordValue.__svrStruct.fields;"
+            );
+            let _ = writeln!(output, "          if (!Object.prototype.hasOwnProperty.call(recordFields, {})) throw new Error({});", js_string(field), js_string(&format!("struct value has no field `{field}`")));
+            let _ = writeln!(
+                output,
+                "          stack.push(recordFields[{}]);",
+                js_string(field)
+            );
+            let _ = writeln!(output, "        }}");
+        }
+        Instruction::Index => {
+            render_stack_guard(output, 2, "index");
+            let _ = writeln!(output, "        {{");
+            let _ = writeln!(output, "          const arrayIndex = stack.pop();");
+            let _ = writeln!(output, "          const arrayTarget = stack.pop();");
+            let _ = writeln!(output, "          if (!Array.isArray(arrayTarget) || typeof arrayIndex !== \"bigint\") throw new Error(\"index requires an Array and Int index\");");
+            let _ = writeln!(output, "          if (arrayIndex < 0n || arrayIndex >= BigInt(arrayTarget.length)) throw new Error(\"array index out of bounds\");");
+            let _ = writeln!(
+                output,
+                "          stack.push(arrayTarget[Number(arrayIndex)]);"
+            );
+            let _ = writeln!(output, "        }}");
+        }
+        Instruction::Jump { target } => {
+            let _ = writeln!(
+                output,
+                "        if ({target} > {instruction_count}) throw new Error(\"jump target out of bounds\");"
+            );
+            let _ = writeln!(output, "        pc = {target}; break;");
+        }
+        Instruction::JumpIfFalse { target } => {
+            render_stack_guard(output, 1, "jump-if-false");
+            let _ = writeln!(
+                output,
+                "        if ({target} > {instruction_count}) throw new Error(\"jump target out of bounds\");"
+            );
+            let _ = writeln!(output, "        {{");
+            let _ = writeln!(output, "          const condition = stack.pop();");
+            let _ = writeln!(output, "          if (typeof condition !== \"boolean\") throw new Error(\"if condition must be Bool\");");
+            let _ = writeln!(
+                output,
+                "          if (condition) pc += 1; else pc = {target};"
+            );
+            let _ = writeln!(output, "        }}");
+            let _ = writeln!(output, "        break;");
         }
         Instruction::Call { name, arguments } => render_js_call(output, name, *arguments),
         Instruction::Return => {
-            let _ = writeln!(output, "  return stack.length ? stack.pop() : undefined;");
+            let _ = writeln!(
+                output,
+                "        return stack.length ? stack.pop() : undefined;"
+            );
         }
         Instruction::Pop => {
             render_stack_guard(output, 1, "pop");
-            let _ = writeln!(output, "  stack.pop();");
+            let _ = writeln!(output, "        stack.pop();");
         }
     }
+    if !matches!(
+        instruction,
+        Instruction::Jump { .. } | Instruction::JumpIfFalse { .. } | Instruction::Return
+    ) {
+        let _ = writeln!(output, "        pc += 1;");
+        let _ = writeln!(output, "        break;");
+    }
+    let _ = writeln!(output, "      }}");
 }
 
 fn render_js_call(output: &mut String, name: &str, arguments: usize) {
@@ -180,7 +342,7 @@ fn render_js_call(output: &mut String, name: &str, arguments: usize) {
     );
     match name {
         "print" | "std::print" | "std::println" => {
-            let _ = writeln!(output, "    svrOutput.push(args[0] ?? \"\");");
+            let _ = writeln!(output, "    svrOutput.push(svrDisplay(args[0]));");
             let _ = writeln!(output, "    stack.push(undefined);");
         }
         "std::len" => {
@@ -191,10 +353,7 @@ fn render_js_call(output: &mut String, name: &str, arguments: usize) {
             );
         }
         "std::to_string" => {
-            let _ = writeln!(
-                output,
-                "    stack.push(args[0] === undefined ? \"\" : String(args[0]));"
-            );
+            let _ = writeln!(output, "    stack.push(svrDisplay(args[0]));");
         }
         _ => {
             let _ = writeln!(
@@ -602,6 +761,302 @@ mod tests {
                 arguments: 1,
             },
         ]);
+    }
+
+    #[test]
+    fn javascript_array_reads_and_mutation_match_interpreter() {
+        let source = "fn mutate() { let mut values = [1, 2]; values[0] = 9; values[1] = 8; print(values[0]); print(values[1]); }
+            fn main() { print(mutate()); }";
+        let program = crate::compiler::parser::Parser::new()
+            .parse_source(source)
+            .expect("valid syntax");
+        let ir = crate::compiler::ir::lower_program(&program).expect("valid program");
+        let expected = crate::compiler::interpreter::run(&ir).expect("interpreter execution");
+        let output = execute_javascript(&render_javascript(&ir));
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .lines()
+                .collect::<Vec<_>>(),
+            expected
+        );
+
+        assert_ir_failure_matches(vec![
+            Instruction::MakeArray { length: 0 },
+            Instruction::LoadLiteral(Literal::Integer("-1".into())),
+            Instruction::Index,
+        ]);
+        assert_ir_failure_matches(vec![
+            Instruction::MakeArray { length: 0 },
+            Instruction::LoadLiteral(Literal::Integer("-1".into())),
+            Instruction::LoadLiteral(Literal::Integer("1".into())),
+            Instruction::StoreIndex,
+        ]);
+    }
+
+    #[test]
+    fn javascript_record_construction_access_and_display_match_interpreter() {
+        let source = "
+            struct Point { x: Int, y: Int }
+            struct Marker { label: String, point: Point }
+            fn origin() -> Marker {
+                return Marker { label: \"home\", point: Point { x: 4, y: 7 } }
+            }
+            fn main() {
+                let marker = origin();
+                print(marker.point.x);
+                print(std::to_string(marker));
+            }
+        ";
+        let program = crate::compiler::parser::Parser::new()
+            .parse_source(source)
+            .expect("valid syntax");
+        let ir = crate::compiler::ir::lower_program(&program).expect("valid record types");
+        let expected = crate::compiler::interpreter::run(&ir).expect("interpreter execution");
+        let output = execute_javascript(&render_javascript(&ir));
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .lines()
+                .collect::<Vec<_>>(),
+            expected
+        );
+        assert_eq!(
+            expected,
+            ["4", "Marker { label: home, point: Point { x: 4, y: 7 } }"]
+        );
+
+        assert_ir_failure_matches(vec![
+            Instruction::LoadLiteral(Literal::Integer("1".into())),
+            Instruction::LoadField("x".into()),
+        ]);
+        assert_ir_failure_matches(vec![
+            Instruction::LoadLiteral(Literal::Integer("1".into())),
+            Instruction::MakeStruct {
+                type_name: "Point".into(),
+                fields: vec!["x".into()],
+            },
+            Instruction::LoadField("missing".into()),
+        ]);
+    }
+
+    #[test]
+    fn logical_operators_short_circuit_and_control_flow_matches_interpreter() {
+        let source = "
+            fn right() -> Bool { print(\"rhs\"); return true }
+            fn main() {
+                print(false && right())
+                print(true || right())
+                print(true && right())
+                print(false || right())
+                print(false || true && false)
+                let mut index = 0
+                while (index < 2) {
+                    print(index)
+                    index = index + 1
+                }
+                if (index == 2) { print(\"done\") } else { print(\"bad\") }
+            }
+        ";
+        let program = crate::compiler::parser::Parser::new()
+            .parse_source(source)
+            .expect("valid syntax");
+        let ir = crate::compiler::ir::lower_program(&program).expect("valid types");
+        let expected = crate::compiler::interpreter::run(&ir).expect("interpreter execution");
+        assert_eq!(
+            expected,
+            ["false", "true", "rhs", "true", "rhs", "true", "false", "0", "1", "done"]
+        );
+        let output = execute_javascript(&render_javascript(&ir));
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .lines()
+                .collect::<Vec<_>>(),
+            expected
+        );
+    }
+
+    #[test]
+    fn float_aliases_preserve_widening_at_typed_boundaries() {
+        let source = "
+            type Decimal = Float;
+            type PreciseDecimal = Decimal;
+            fn show(value: PreciseDecimal) {
+                print(std::to_string(value))
+            }
+            fn rounded() -> Decimal {
+                return 9007199254740993
+            }
+            fn main() {
+                let local: PreciseDecimal = 9007199254740993
+                print(std::to_string(local))
+                show(9007199254740993)
+                print(std::to_string(rounded()))
+            }
+        ";
+        let program = crate::compiler::parser::Parser::new()
+            .parse_source(source)
+            .expect("valid syntax");
+        let ir = crate::compiler::ir::lower_program(&program).expect("valid types");
+        let expected = ["9007199254740992", "9007199254740992", "9007199254740992"];
+        assert_eq!(
+            crate::compiler::interpreter::run(&ir).expect("interpreter execution"),
+            expected
+        );
+        let output = execute_javascript(&render_javascript(&ir));
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .lines()
+                .collect::<Vec<_>>(),
+            expected
+        );
+    }
+
+    #[test]
+    fn reassignment_preserves_float_widening() {
+        let source = "
+            type Decimal = Float;
+            struct Measurement { amount: Decimal }
+            fn main() {
+                let mut value: Decimal = 3
+                value = 3
+                print(value / 2)
+
+                let mut inferred = 3.0
+                inferred = 3
+                print(inferred / 2)
+
+                let mut values = [3.0]
+                values[0] = 3
+                print(values[0] / 2)
+
+                let mixed = [1, 3.0, 5]
+                print(mixed[0] / 2)
+                print(mixed[1] / 2)
+                print(mixed[2] / 2)
+
+                let measurement = Measurement { amount: 3 }
+                print(measurement.amount / 2)
+            }
+        ";
+        let program = crate::compiler::parser::Parser::new()
+            .parse_source(source)
+            .expect("valid syntax");
+        let ir = crate::compiler::ir::lower_program(&program).expect("valid types");
+        let expected = ["1.5", "1.5", "1.5", "0.5", "1.5", "2.5", "1.5"];
+        assert_eq!(
+            crate::compiler::interpreter::run(&ir).expect("interpreter execution"),
+            expected
+        );
+        let output = execute_javascript(&render_javascript(&ir));
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .lines()
+                .collect::<Vec<_>>(),
+            expected
+        );
+    }
+
+    #[test]
+    fn shadowed_branch_bindings_do_not_overwrite_outer_values() {
+        let source = "
+            fn main() {
+                let value = 1
+                if (true) {
+                    let value = 2
+                    print(value)
+                }
+                print(value)
+
+                let count = 1
+                let mut iterations = 0
+                while (iterations < 1) {
+                    let count = 20
+                    print(count)
+                    iterations = iterations + 1
+                }
+                print(count)
+            }
+        ";
+        let program = crate::compiler::parser::Parser::new()
+            .parse_source(source)
+            .expect("valid syntax");
+        let ir = crate::compiler::ir::lower_program(&program).expect("valid types");
+        let expected = ["2", "1", "20", "1"];
+        assert_eq!(
+            crate::compiler::interpreter::run(&ir).expect("interpreter execution"),
+            expected
+        );
+        let output = execute_javascript(&render_javascript(&ir));
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .lines()
+                .collect::<Vec<_>>(),
+            expected
+        );
+    }
+
+    #[test]
+    fn conditional_jump_validation_matches_for_taken_and_untaken_branches() {
+        assert_ir_failure_matches(vec![
+            Instruction::LoadLiteral(Literal::Boolean(true)),
+            Instruction::JumpIfFalse { target: 3 },
+        ]);
+        assert_ir_failure_matches(vec![
+            Instruction::LoadLiteral(Literal::Boolean(false)),
+            Instruction::JumpIfFalse { target: 3 },
+        ]);
+        let program = IrProgram {
+            functions: vec![IrFunction {
+                name: "main".into(),
+                parameters: vec![],
+                instructions: vec![
+                    Instruction::LoadLiteral(Literal::Boolean(false)),
+                    Instruction::JumpIfFalse { target: 2 },
+                ],
+            }],
+        };
+        assert!(crate::compiler::interpreter::run(&program).is_ok());
+        let output = execute_javascript(&render_javascript(&program));
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 
     fn assert_ir_failure_matches(instructions: Vec<Instruction>) {

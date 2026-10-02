@@ -1,12 +1,12 @@
 [package]
 name = "sovra"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 rust-version = "1.74"
 description = "The Sovra programming language toolchain"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
-repository = "https://github.com/sovra-lang/sovra"
+repository = "https://github.com/peterbwire/Sovra.git"
 keywords = ["compiler", "programming-language", "sovra"]
 categories = ["compilers", "command-line-utilities"]
 include = [

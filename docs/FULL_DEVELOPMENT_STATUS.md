@@ -1,6 +1,24 @@
 # Full development status
 
-Updated: 2026-09-27. Status terms: Implemented, Partial, Experimental, Stub, Planned.
+Updated: 2026-10-02. Status terms: Implemented, Partial, Experimental, Stub, Planned.
+
+## 2026-10-02 language-core follow-up
+
+The in-progress executable subset now includes arrays, indexing, `if`/`while`,
+`let mut`, and assignment. Direct indexed writes require a mutable array binding;
+the compiler writes the modified array back to that binding. Nested indexed
+writes remain unsupported. Boolean `&&` and `||` are typed, short-circuit during
+execution, and use conditional branches in the JavaScript backend. User-defined
+aliases and structs are executable: record literals construct runtime values,
+field reads work across local and function boundaries, and both engines display
+nested records consistently. Interpreter and JavaScript array reads/writes
+agree on index type and bounds errors. Float aliases preserve numeric widening
+at local, parameter and return boundaries. Branch and loop local declarations
+now preserve lexical shadowing at runtime. Float widening also applies to
+mutable assignment and inferred Float array elements and indexed writes. This
+incremental work does not establish a complete semantic type system or
+application runtime; see the corresponding entries in `DEVELOPMENT_LOG.md`
+and `spec.md`.
 
 Current release direction: **production readiness, not yet achieved**. The
 developer-preview plan is superseded by [the production audit](PRODUCTION_READINESS.md).
@@ -25,10 +43,10 @@ No restart or crate/layout migration is needed.
 
 | Area | Status | Working scope / remaining work |
 | --- | --- | --- |
-| Lexer/parser/AST | Implemented subset | Functions, locals, literals, binary operations, inline modules; no control flow or structured data. |
-| Name/type analysis | Partial | All bodies, annotations and straight-line returns checked; qualified same-module private lookup added, execution verification pending; user-defined types remain planned. |
-| Typed representation/IR | Partial | Validated AST wrapper, linear stack IR and explicit Float widening; no general typed HIR, branches, optimizer or native ABI. |
-| Interpreter/runtime | Partial | Primitive values, functions, builtins, depth bound, numeric widening and checked Int arithmetic. |
+| Lexer/parser/AST | Implemented subset | Functions, locals, literals, binary operations, inline modules, control flow, arrays, aliases and records. |
+| Name/type analysis | Partial | All bodies and annotations checked; definite returns include nested conditionals; aliases and nominal records implemented; no general typed HIR. |
+| Typed representation/IR | Partial | Validated AST wrapper, stack IR, explicit Float widening, branches, arrays and record operations; no general typed HIR, optimizer or native ABI. |
+| Interpreter/runtime | Partial | Primitive and record values, arrays, functions, builtins, depth bound, numeric widening and checked Int arithmetic. |
 | Backend | Experimental | Text IR and JavaScript emission with tested numeric parity; full Float formatting and general runtime parity remain incomplete. No native/WASM target. |
 | CLI | Partial | Help/version, source run/build/check, JSON check reports and shallow project check work. Other recognized commands are stubs. |
 | Standard library | Partial | print/println, len, to_string only; filesystem, collections, networking and other modules are planned. |
@@ -37,11 +55,12 @@ No restart or crate/layout migration is needed.
 | Application libraries | Planned | Web/data/auth/cloud libraries follow a stable core; Fielddesk is target syntax. |
 
 Working features include `Int`, `Float`, `Bool`, `String`, `Unit`, typed
-parameters/locals/returns, functions and exported inline module calls. Every
-function parameter requires an explicit type under approved ADR 0002; local
-`let` inference and omitted return annotations meaning Unit are preserved. Char,
-Never, collections, closures, generics, structs/enums, traits, imports,
-pattern matching, Result/Option, mutation and concurrency remain planned.
+parameters/locals/returns, functions, exported inline module calls, aliases,
+records, arrays, basic control flow and local mutation. Every function parameter
+requires an explicit type under approved ADR 0002; local `let` inference and
+omitted return annotations meaning Unit are preserved. Char, Never, general
+collections, closures, generics, enums, traits, pattern matching, Result/Option,
+field mutation and concurrency remain planned.
 Nova integration follows inspectable compiler/tooling interfaces; no custom
 foundation model is planned in this development pass.
 
@@ -73,8 +92,8 @@ Application Control has intermittently blocked earlier runs; inspect skip/block
 messages rather than trusting counts alone. CI explicitly installs Node 22.
 
 Specification, architecture, roadmap, handoff, examples, agent context and
-function, module and numeric course lessons exist. JSON check reports have a
-reference and automation guide; the complete curriculum is unfinished.
+function, module, numeric and record course lessons exist. JSON check reports
+have a reference and automation guide; the complete curriculum is unfinished.
 New stable behavior needs executable examples and tests, not just prose.
 Numeric implementation decisions were recorded in ADR 0001 before code.
 The user approved ADR 0002 before enforcement of required function parameter
@@ -85,9 +104,9 @@ untyped declarations. See `DEVELOPMENT_LOG.md` for validation of that later slic
 ## Blockers and debt
 
 Accepted ADR 0004 rejects unresolved executable-source annotations with E3017.
-Only Unit, Bool, Int, Float and String currently resolve; user-defined type
-declarations remain planned. E3017 identifies precise type-token spans in parsed
-source; manually constructed ASTs without those spans use declaration locations.
+Unit, Bool, Int, Float, String, declared aliases and structs resolve. E3017
+identifies precise type-token spans in parsed source; manually constructed ASTs
+without those spans use declaration locations.
 Project scanning is unaffected.
 
 - Numeric widening, Int bounds/overflow and JS numeric kinds are now fixed and
@@ -115,9 +134,10 @@ Project scanning is unaffected.
 - ADR 0005 adds qualified private calls within the declaring module and lowers
   private functions. External access remains rejected. Execution verification
   is pending due to Windows policy; cross-file loading remains planned.
-- Straight-line non-Unit fallthrough and missing parameter annotations are
-  rejected. ADR 0002 is approved and implemented; named-type resolution and a
-  general typed HIR remain incomplete.
+-   Non-Unit fallthrough across nested conditionals and missing parameter
+  annotations are rejected. Loops conservatively do not establish definite
+  return. ADR 0002 is approved and implemented; a retained expression-level typed
+  HIR remains incomplete.
 - Project scanning is line-based, scope-insensitive and not full validation.
   Malformed entry service/data lists now fail with E4024/E4062 instead of
   silently dropping invalid items; multiline application parsing remains absent.
@@ -137,12 +157,12 @@ declared dependencies, package-qualified identities and public exports. See
 registry client or publisher yet; existing import checks do not provide them.
 
 1. Completed: numeric widening/Int correctness, real differential tests, token
-   ranges, straight-line return completeness and explicit function parameter
+   ranges, branch-aware return completeness and explicit function parameter
    typing under approved ADR 0002, followed by versioned JSON check reports.
 2. Close remaining type holes and add
    expression/file-aware structured diagnostics.
 3. Resolve/document private modules and cross-file loading before package work.
-4. Add control flow and structured data incrementally, with design records for
+4. Continue hardening control flow and structured data, with design records for
    syntax/type decisions and a reviewed memory-model decision before references
    and concurrency. Do not select a final memory model from scaffolding alone.
 5. Project creation/run/build, official formatter, REPL and Sovra test runner.
