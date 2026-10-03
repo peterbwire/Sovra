@@ -19,6 +19,31 @@ function svrWidenFloat(value) {
   return Number(value);
 }
 
+function svrWidenFloatArray(value, depth) {
+  if (depth === 0) throw new Error("array widening depth must be positive");
+  // Conversion builds new arrays so widening never changes an Int source binding.
+  const result = [];
+  const pending = [[value, result, depth]];
+  while (pending.length) {
+    const [source, destination, remaining] = pending.pop();
+    if (!Array.isArray(source)) throw new Error("array widening expects Array");
+    for (let index = 0; index < source.length; index++) {
+      if (remaining === 1) {
+        destination.push(svrWidenFloat(source[index]));
+      } else {
+        const nested = [];
+        destination.push(nested);
+      }
+    }
+    if (remaining > 1) {
+      for (let index = source.length - 1; index >= 0; index--) {
+        pending.push([source[index], destination[index], remaining - 1]);
+      }
+    }
+  }
+  return result;
+}
+
 function svrCheckedInt(value) {
   if (value < -9223372036854775808n || value > 9223372036854775807n) {
     throw new Error("integer overflow");

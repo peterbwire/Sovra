@@ -51,7 +51,7 @@ impl Parser {
             diagnostics: Diagnostics::new(),
             depth_exceeded: false,
         };
-        if let Err(span) = super::limits::check_nesting(tokens, false) {
+        if let Err(span) = super::limits::check_nesting(tokens, true) {
             parser.depth_error(span);
             return Err(parser.diagnostics);
         }
@@ -506,6 +506,16 @@ impl<'a> TokenParser<'a> {
                         }
                     }
                     self.expect_punctuation('}');
+                    if !self.check_depth(
+                        1 + fields
+                            .iter()
+                            .map(|(_, value)| expression_depth(value))
+                            .max()
+                            .unwrap_or(0),
+                        token.span,
+                    ) {
+                        return None;
+                    }
                     ExpressionKind::StructLiteral {
                         type_name: name,
                         fields,
@@ -530,6 +540,12 @@ impl<'a> TokenParser<'a> {
                     }
                 }
                 self.expect_punctuation(']');
+                if !self.check_depth(
+                    1 + items.iter().map(expression_depth).max().unwrap_or(0),
+                    token.span,
+                ) {
+                    return None;
+                }
                 ExpressionKind::ArrayLiteral(items)
             }
             _ => {
@@ -583,11 +599,24 @@ impl<'a> TokenParser<'a> {
                 }
             }
             self.expect_punctuation('}');
+            if !self.check_depth(
+                1 + fields
+                    .iter()
+                    .map(|(_, value)| expression_depth(value))
+                    .max()
+                    .unwrap_or(0),
+                token.span,
+            ) {
+                return None;
+            }
             expression.kind = ExpressionKind::StructLiteral { type_name, fields };
             expression.span.end = self.previous().span.end;
         }
         loop {
             if self.consume_punctuation('.') {
+                if !self.check_depth(1 + expression_depth(&expression), self.previous().span) {
+                    return None;
+                }
                 let field = self.expect_identifier("field name")?;
                 expression = Expression {
                     span: Span {
@@ -602,8 +631,15 @@ impl<'a> TokenParser<'a> {
                 continue;
             }
             if self.consume_punctuation('[') {
+                let delimiter = self.previous().span;
                 let index = self.expression()?;
                 self.expect_punctuation(']');
+                if !self.check_depth(
+                    1 + expression_depth(&expression).max(expression_depth(&index)),
+                    delimiter,
+                ) {
+                    return None;
+                }
                 expression = Expression {
                     span: Span {
                         end: self.previous().span.end,
@@ -841,6 +877,55 @@ fn precedence(operator: &str) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compound_expression_and_block_depth_cannot_bypass_limits() {
+        for (source, accepted) in [
+            (
+                format!("fn main() {{ {}1{} }}", "[".repeat(127), "]".repeat(127)),
+                true,
+            ),
+            (
+                format!("fn main() {{ {}1{} }}", "[".repeat(128), "]".repeat(128)),
+                false,
+            ),
+            (
+                format!("fn main() {{ root{} }}", ".field".repeat(127)),
+                true,
+            ),
+            (
+                format!("fn main() {{ root{} }}", ".field".repeat(128)),
+                false,
+            ),
+            (format!("fn main() {{ root{} }}", "[0]".repeat(127)), true),
+            (format!("fn main() {{ root{} }}", "[0]".repeat(128)), false),
+            (
+                format!(
+                    "fn main() {{ {}print(1) {} }}",
+                    "if (true) {".repeat(127),
+                    "}".repeat(127)
+                ),
+                true,
+            ),
+            (
+                format!(
+                    "fn main() {{ {}print(1) {} }}",
+                    "if (true) {".repeat(128),
+                    "}".repeat(128)
+                ),
+                false,
+            ),
+        ] {
+            let result = Parser::new().parse_source(&source);
+            if accepted {
+                assert!(result.is_ok(), "{result:?}");
+            } else {
+                let errors = result.expect_err("over-depth source must be rejected by parser");
+                assert_eq!(errors.items.len(), 1);
+                assert_eq!(errors.items[0].code, "E2007");
+            }
+        }
+    }
 
     #[test]
     fn parses_explicit_record_exports_and_rejects_malformed_fields() {

@@ -2,6 +2,9 @@
 
 use std::collections::{HashMap, HashSet};
 
+mod type_facts;
+use type_facts::{TypeFacts, ValueType};
+
 use crate::compiler::ast::{Expression, ExpressionKind, Program, Statement};
 use crate::compiler::semantic::TypedProgram;
 
@@ -73,6 +76,11 @@ pub enum Instruction {
     StoreIndex,
     /// Convert an Int value to Float, preserving values already of type Float.
     WidenFloat,
+    /// Convert numeric leaves in an array to Float without changing its shape.
+    WidenFloatArray {
+        /// Number of array levels above each numeric leaf; must be positive.
+        depth: usize,
+    },
     /// Apply an operator.
     Binary(String),
     /// Construct a homogeneous array from the top `length` stack values.
@@ -128,21 +136,14 @@ pub(crate) fn lower_with_imports(
     imports: &[(String, &crate::compiler::ast::Function)],
 ) -> IrProgram {
     let float_aliases = collect_float_aliases(&program.program);
-    let mut float_returning_functions =
-        collect_float_returning_functions(&program.program, &float_aliases);
-    float_returning_functions.extend(
-        imports
-            .iter()
-            .filter(|(_, function)| function.return_type.as_deref() == Some("Float"))
-            .map(|(name, _)| name.clone()),
-    );
+    let type_facts = TypeFacts::new(&program.program, imports);
     let float_struct_fields = collect_float_struct_fields(&program.program, &float_aliases);
     let mut functions = Vec::new();
     for function in &program.program.functions {
         functions.push(lower_function(
             function,
             &float_aliases,
-            &float_returning_functions,
+            &type_facts,
             &float_struct_fields,
         ));
     }
@@ -152,7 +153,7 @@ pub(crate) fn lower_with_imports(
                 &module.name,
                 function,
                 &float_aliases,
-                &float_returning_functions,
+                &type_facts,
                 &float_struct_fields,
             ));
         }
@@ -182,7 +183,6 @@ fn collect_float_struct_fields(
                 .filter(|field| is_float_type(Some(&field.type_name), float_aliases))
                 .map(|field| field.name.clone())
                 .collect();
-            structs.insert(declaration.name.clone(), fields.clone());
             structs.insert(format!("{}::{}", module.name, declaration.name), fields);
         }
     }
@@ -190,15 +190,20 @@ fn collect_float_struct_fields(
     // field widening through those aliases as well as ordinary local aliases.
     loop {
         let mut changed = false;
-        for declaration in program.type_declarations.iter().chain(
-            program
-                .modules
-                .iter()
-                .flat_map(|module| &module.type_declarations),
-        ) {
-            if !structs.contains_key(&declaration.name) {
-                if let Some(fields) = structs.get(&declaration.target).cloned() {
-                    structs.insert(declaration.name.clone(), fields);
+        for (name, target) in program
+            .type_declarations
+            .iter()
+            .map(|decl| (decl.name.clone(), &decl.target))
+            .chain(program.modules.iter().flat_map(|module| {
+                module
+                    .type_declarations
+                    .iter()
+                    .map(move |decl| (format!("{}::{}", module.name, decl.name), &decl.target))
+            }))
+        {
+            if !structs.contains_key(&name) {
+                if let Some(fields) = structs.get(target).cloned() {
+                    structs.insert(name, fields);
                     changed = true;
                 }
             }
@@ -214,26 +219,6 @@ fn is_float_type(name: Option<&str>, float_aliases: &HashSet<String>) -> bool {
     name.is_some_and(|name| name == "Float" || float_aliases.contains(name))
 }
 
-fn collect_float_returning_functions(
-    program: &Program,
-    float_aliases: &HashSet<String>,
-) -> HashSet<String> {
-    let mut functions = HashSet::new();
-    for function in &program.functions {
-        if is_float_type(function.return_type.as_deref(), float_aliases) {
-            functions.insert(function.name.clone());
-        }
-    }
-    for module in &program.modules {
-        for function in &module.functions {
-            if is_float_type(function.return_type.as_deref(), float_aliases) {
-                functions.insert(format!("{}::{}", module.name, function.name));
-            }
-        }
-    }
-    functions
-}
-
 fn collect_float_aliases(program: &Program) -> std::collections::HashSet<String> {
     let mut aliases = std::collections::HashMap::new();
     for declaration in &program.type_declarations {
@@ -241,7 +226,6 @@ fn collect_float_aliases(program: &Program) -> std::collections::HashSet<String>
     }
     for module in &program.modules {
         for declaration in &module.type_declarations {
-            aliases.insert(declaration.name.clone(), declaration.target.clone());
             aliases.insert(
                 format!("{}::{}", module.name, declaration.name),
                 declaration.target.clone(),
@@ -273,23 +257,17 @@ fn collect_float_aliases(program: &Program) -> std::collections::HashSet<String>
 #[derive(Clone)]
 struct LoweredBinding {
     name: String,
-    is_float: bool,
-    is_float_array_element: bool,
+    value_type: ValueType,
 }
 
 fn lower_namespaced_function(
     module_name: &str,
     function: &crate::compiler::ast::Function,
     float_aliases: &HashSet<String>,
-    float_returning_functions: &HashSet<String>,
+    type_facts: &TypeFacts,
     float_struct_fields: &HashMap<String, HashSet<String>>,
 ) -> IrFunction {
-    let mut lowered = lower_function(
-        function,
-        float_aliases,
-        float_returning_functions,
-        float_struct_fields,
-    );
+    let mut lowered = lower_function(function, float_aliases, type_facts, float_struct_fields);
     lowered.name = format!("{module_name}::{name}", name = lowered.name);
     lowered
 }
@@ -297,7 +275,7 @@ fn lower_namespaced_function(
 fn lower_function(
     function: &crate::compiler::ast::Function,
     float_aliases: &HashSet<String>,
-    float_returning_functions: &HashSet<String>,
+    type_facts: &TypeFacts,
     float_struct_fields: &HashMap<String, HashSet<String>>,
 ) -> IrFunction {
     let mut locals: HashMap<String, LoweredBinding> = function
@@ -308,8 +286,7 @@ fn lower_function(
                 parameter.name.clone(),
                 LoweredBinding {
                     name: parameter.name.clone(),
-                    is_float: is_float_type(parameter.type_name.as_deref(), float_aliases),
-                    is_float_array_element: false,
+                    value_type: type_facts.annotation(parameter.type_name.as_deref().unwrap_or("")),
                 },
             )
         })
@@ -333,7 +310,7 @@ fn lower_function(
             StatementTypes {
                 return_type: function.return_type.as_deref(),
                 float_aliases,
-                float_returning_functions,
+                type_facts,
                 float_struct_fields,
             },
             &mut locals,
@@ -356,7 +333,7 @@ fn lower_function(
 struct StatementTypes<'a> {
     return_type: Option<&'a str>,
     float_aliases: &'a HashSet<String>,
-    float_returning_functions: &'a HashSet<String>,
+    type_facts: &'a TypeFacts,
     float_struct_fields: &'a HashMap<String, HashSet<String>>,
 }
 
@@ -370,7 +347,7 @@ fn lower_statement(
     let StatementTypes {
         return_type,
         float_aliases,
-        float_returning_functions,
+        type_facts,
         float_struct_fields,
     } = types;
     match statement {
@@ -380,18 +357,12 @@ fn lower_statement(
             value,
             ..
         } => {
-            lower_expression(
-                value,
-                locals,
-                float_returning_functions,
-                float_struct_fields,
-                instructions,
-            );
+            lower_expression(value, locals, type_facts, float_struct_fields, instructions);
             let is_declared_float = is_float_type(type_name.as_deref(), float_aliases);
-            let is_float = is_declared_float
-                || inferred_float_expression(value, locals, float_returning_functions);
-            let is_float_array_element =
-                inferred_float_array_element(value, locals, float_returning_functions);
+            let value_type = type_name
+                .as_deref()
+                .map(|name| type_facts.annotation(name))
+                .unwrap_or_else(|| type_facts.expression(value, locals));
             if is_declared_float {
                 instructions.push(Instruction::WidenFloat);
             }
@@ -406,23 +377,19 @@ fn lower_statement(
                 name.clone(),
                 LoweredBinding {
                     name: lowered_name.clone(),
-                    is_float,
-                    is_float_array_element,
+                    value_type,
                 },
             );
             instructions.push(Instruction::StoreName(lowered_name));
         }
         Statement::Assign { target, value, .. } => match &target.kind {
             ExpressionKind::Identifier(name) => {
-                lower_expression(
-                    value,
-                    locals,
-                    float_returning_functions,
-                    float_struct_fields,
-                    instructions,
-                );
-                if locals.get(name).is_some_and(|binding| binding.is_float) {
-                    instructions.push(Instruction::WidenFloat);
+                lower_expression(value, locals, type_facts, float_struct_fields, instructions);
+                if let Some(instruction) = locals
+                    .get(name)
+                    .and_then(|binding| widening_instruction(&binding.value_type))
+                {
+                    instructions.push(instruction);
                 }
                 instructions.push(Instruction::StoreName(
                     locals
@@ -435,34 +402,13 @@ fn lower_statement(
                 target: base,
                 index,
             } => {
-                lower_expression(
-                    base,
-                    locals,
-                    float_returning_functions,
-                    float_struct_fields,
-                    instructions,
-                );
-                lower_expression(
-                    index,
-                    locals,
-                    float_returning_functions,
-                    float_struct_fields,
-                    instructions,
-                );
-                lower_expression(
-                    value,
-                    locals,
-                    float_returning_functions,
-                    float_struct_fields,
-                    instructions,
-                );
-                if let ExpressionKind::Identifier(name) = &base.kind {
-                    if locals
-                        .get(name)
-                        .is_some_and(|binding| binding.is_float_array_element)
-                    {
-                        instructions.push(Instruction::WidenFloat);
-                    }
+                lower_expression(base, locals, type_facts, float_struct_fields, instructions);
+                lower_expression(index, locals, type_facts, float_struct_fields, instructions);
+                lower_expression(value, locals, type_facts, float_struct_fields, instructions);
+                if let Some(instruction) =
+                    widening_instruction(&type_facts.expression(target, locals))
+                {
+                    instructions.push(instruction);
                 }
                 instructions.push(Instruction::StoreIndex);
                 if let ExpressionKind::Identifier(name) = &base.kind {
@@ -477,24 +423,12 @@ fn lower_statement(
                 }
             }
             _ => {
-                lower_expression(
-                    value,
-                    locals,
-                    float_returning_functions,
-                    float_struct_fields,
-                    instructions,
-                );
+                lower_expression(value, locals, type_facts, float_struct_fields, instructions);
             }
         },
         Statement::Return { value, .. } => {
             if let Some(value) = value {
-                lower_expression(
-                    value,
-                    locals,
-                    float_returning_functions,
-                    float_struct_fields,
-                    instructions,
-                );
+                lower_expression(value, locals, type_facts, float_struct_fields, instructions);
                 if is_float_type(return_type, float_aliases) {
                     instructions.push(Instruction::WidenFloat);
                 }
@@ -510,7 +444,7 @@ fn lower_statement(
             lower_expression(
                 condition,
                 locals,
-                float_returning_functions,
+                type_facts,
                 float_struct_fields,
                 instructions,
             );
@@ -557,7 +491,7 @@ fn lower_statement(
             lower_expression(
                 condition,
                 locals,
-                float_returning_functions,
+                type_facts,
                 float_struct_fields,
                 instructions,
             );
@@ -582,7 +516,7 @@ fn lower_statement(
             lower_expression(
                 expression,
                 locals,
-                float_returning_functions,
+                type_facts,
                 float_struct_fields,
                 instructions,
             );
@@ -594,7 +528,7 @@ fn lower_statement(
 fn lower_expression(
     expression: &Expression,
     locals: &HashMap<String, LoweredBinding>,
-    float_returning_functions: &HashSet<String>,
+    type_facts: &TypeFacts,
     float_struct_fields: &HashMap<String, HashSet<String>>,
     instructions: &mut Vec<Instruction>,
 ) {
@@ -713,14 +647,13 @@ fn lower_expression(
                 pending.push(Work::Emit(Instruction::MakeArray {
                     length: items.len(),
                 }));
-                let float_elements = items
-                    .iter()
-                    .any(|item| inferred_float_expression(item, locals, float_returning_functions));
+                let element_widening = match type_facts.expression(expression, locals) {
+                    ValueType::Array(element) => widening_instruction(&element),
+                    _ => None,
+                };
                 for value in items.iter().rev() {
-                    if float_elements
-                        && !inferred_float_expression(value, locals, float_returning_functions)
-                    {
-                        pending.push(Work::Emit(Instruction::WidenFloat));
+                    if let Some(instruction) = &element_widening {
+                        pending.push(Work::Emit(instruction.clone()));
                     }
                     pending.push(Work::Visit(value));
                 }
@@ -749,56 +682,17 @@ fn lower_expression(
     }
 }
 
-fn inferred_float_expression(
-    expression: &Expression,
-    locals: &HashMap<String, LoweredBinding>,
-    float_returning_functions: &HashSet<String>,
-) -> bool {
-    match &expression.kind {
-        ExpressionKind::Float(_) => true,
-        ExpressionKind::Identifier(name) => {
-            locals.get(name).is_some_and(|binding| binding.is_float)
-        }
-        ExpressionKind::Binary {
-            left,
-            operator,
-            right,
-        } => {
-            matches!(operator.as_str(), "+" | "-" | "*" | "/")
-                && (inferred_float_expression(left, locals, float_returning_functions)
-                    || inferred_float_expression(right, locals, float_returning_functions))
-        }
-        ExpressionKind::Index { target, .. } => match &target.kind {
-            ExpressionKind::Identifier(name) => locals
-                .get(name)
-                .is_some_and(|binding| binding.is_float_array_element),
-            _ => false,
-        },
-        ExpressionKind::Call { callee, .. } => {
-            let name = match &callee.kind {
-                ExpressionKind::Identifier(name) => Some(name.as_str()),
-                ExpressionKind::QualifiedName { path } => {
-                    let qualified = path.join("::");
-                    return float_returning_functions.contains(&qualified);
-                }
-                _ => None,
-            };
-            name.is_some_and(|name| float_returning_functions.contains(name))
-        }
-        _ => false,
+fn widening_instruction(value_type: &ValueType) -> Option<Instruction> {
+    let mut leaf = value_type;
+    let mut depth = 0;
+    while let ValueType::Array(element) = leaf {
+        depth += 1;
+        leaf = element;
     }
-}
-
-fn inferred_float_array_element(
-    expression: &Expression,
-    locals: &HashMap<String, LoweredBinding>,
-    float_returning_functions: &HashSet<String>,
-) -> bool {
-    match &expression.kind {
-        ExpressionKind::ArrayLiteral(items) => items
-            .first()
-            .is_some_and(|item| inferred_float_expression(item, locals, float_returning_functions)),
-        _ => false,
+    match (leaf, depth) {
+        (ValueType::Float, 0) => Some(Instruction::WidenFloat),
+        (ValueType::Float, depth) => Some(Instruction::WidenFloatArray { depth }),
+        _ => None,
     }
 }
 

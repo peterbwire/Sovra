@@ -153,6 +153,31 @@ fn execute_function(
                         _ => return Err("Float conversion expects Int or Float".to_owned()),
                     });
                 }
+                Instruction::WidenFloatArray { depth } => {
+                    let mut value = frame
+                        .stack
+                        .pop()
+                        .ok_or_else(|| "stack underflow on array widening".to_owned())?;
+                    if *depth == 0 {
+                        return Err("array widening depth must be positive".to_owned());
+                    }
+                    let mut pending = vec![(&mut value, *depth)];
+                    while let Some((value, remaining)) = pending.pop() {
+                        if remaining == 0 {
+                            match value {
+                                Value::Int(number) => *value = Value::Float(*number as f64),
+                                Value::Float(_) => {}
+                                _ => return Err("Float conversion expects Int or Float".to_owned()),
+                            }
+                        } else if let Value::Array(items) = value {
+                            pending
+                                .extend(items.iter_mut().rev().map(|item| (item, remaining - 1)));
+                        } else {
+                            return Err("array widening expects Array".to_owned());
+                        }
+                    }
+                    frame.stack.push(value);
+                }
                 Instruction::Binary(operator) => {
                     let right = frame
                         .stack

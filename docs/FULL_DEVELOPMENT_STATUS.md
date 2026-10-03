@@ -1,6 +1,27 @@
 # Full development status
 
-Updated: 2026-10-02. Status terms: Implemented, Partial, Experimental, Stub, Planned.
+Updated: 2026-10-03. Status terms: Implemented, Partial, Experimental, Stub, Planned.
+
+## 2026-10-03 exported-record package interfaces
+
+Subsequent compiler upgrade: module-local record/alias scopes are implemented,
+with qualified references retained through semantic analysis, lowering and
+package linking. Same-named types in different modules no longer collide or
+capture each other's fields/signatures. Iterative alias resolution fixes a
+reproduced 20,000-alias stack overflow. Latest suite: **241 library + 42 CLI =
+283 passed**, no skips; strict Clippy and formatting passed. The runnable
+`examples/scoped-types` example executes in both engines. This does not finish
+M12, application execution, compound-copy semantics or registry publication.
+
+Implemented accepted ADR 0011 option A for local dependency packages:
+`export struct`, qualified annotations/construction, public field reads and
+nominal identity across packages. Unexported records cannot cross public
+signatures or public record fields. Multiple aliases for one package retain the
+same identity; identical layouts in different packages do not. Public fields are
+the current milestone rule, not a prohibition on future explicit encapsulation.
+Both execution engines are covered. Latest Windows validation: 230 library and
+40 CLI tests passed, no skips; strict Clippy and formatting passed at that earlier
+checkpoint. Registry publication and full M12 remain unfinished.
 
 ## 2026-10-02 language-core follow-up
 

@@ -28,6 +28,10 @@ records. Records can be passed to and returned from functions. Type aliases
 resolve to their declared targets, so a field or function annotated with an
 alias still uses the underlying record type.
 
+Record identity includes its declaring module and, for dependencies, its package.
+Identically shaped records in different modules cannot be passed interchangeably.
+See [module-scoped types](modules.md) for a tested example with repeated names.
+
 Records are values. This subset has no field-assignment syntax; a field cannot
 be updated with `point.x = 5`. Arrays and `let mut` are separate language
 features, with their assignment rules documented in the

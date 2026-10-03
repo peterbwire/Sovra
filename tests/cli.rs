@@ -28,6 +28,109 @@ fn is_application_control_block(error: &io::Error) -> bool {
 }
 
 #[test]
+fn scoped_type_example_checks_runs_and_builds() {
+    let source = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/examples/scoped-types/main.svr"
+    );
+    for args in [vec!["check", source], vec!["build", source]] {
+        let Some(output) = output_or_skip(svr().args(args)) else {
+            return;
+        };
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    let Some(output) = output_or_skip(svr().args(["run", source])) else {
+        return;
+    };
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n"),
+        "1.5\n1.5\n1\nroot\n"
+    );
+    let Some(output) = output_or_skip(svr().args(["build", "--emit", "js", source])) else {
+        return;
+    };
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let js = Command::new("node")
+        .arg("-e")
+        .arg(String::from_utf8(output.stdout).unwrap())
+        .output()
+        .unwrap();
+    assert!(
+        js.status.success(),
+        "{}",
+        String::from_utf8_lossy(&js.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&js.stdout).replace("\r\n", "\n"),
+        "1.5\n1.5\n1\nroot\n"
+    );
+}
+
+#[test]
+fn long_alias_chain_checks_runs_and_builds_without_stack_overflow() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("target")
+        .join(format!("alias-cli-{}-{suffix}", std::process::id()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let file = directory.join("main.svr");
+    let mut source = String::new();
+    for index in 0..20000 {
+        source.push_str(&format!(
+            "type T{index} = {};\n",
+            if index == 19999 {
+                "Float".into()
+            } else {
+                format!("T{}", index + 1)
+            }
+        ));
+    }
+    source.push_str("fn main() { let x: T0 = 3; print(x / 2); }");
+    std::fs::write(&file, source).unwrap();
+    let path = file.to_str().unwrap();
+    for args in [
+        vec!["check", path],
+        vec!["build", path],
+        vec!["build", "--emit", "js", path],
+    ] {
+        let Some(output) = output_or_skip(svr().args(args)) else {
+            return;
+        };
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    let Some(output) = output_or_skip(svr().args(["run", path])) else {
+        return;
+    };
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "1.5");
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
 fn package_cli_rejects_private_calls_with_original_json_locations() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -209,6 +312,16 @@ fn structural_depth_errors_replace_subprocess_crashes() {
         format!("{}1{}", "(".repeat(2048), ")".repeat(2048)),
         format!("{}1{}", "f(".repeat(2048), ")".repeat(2048)),
         vec!["1"; 2049].join("+"),
+        format!("{}1{}", "[".repeat(2048), "]".repeat(2048)),
+        format!("root{}", ".field".repeat(2048)),
+        format!("root{}", "[0]".repeat(2048)),
+        format!("{}1{}", "Box { value: ".repeat(2048), "}".repeat(2048)),
+        format!("{}print(1){}", "if (true) {".repeat(2048), "}".repeat(2048)),
+        format!(
+            "{}print(1){}",
+            "while (false) {".repeat(2048),
+            "}".repeat(2048)
+        ),
     ] {
         let source = format!("// Unicode: λ\r\nfn main() {{ {expression}; }}");
         std::fs::write(&path, &source).unwrap();
@@ -243,7 +356,7 @@ fn structural_depth_errors_replace_subprocess_crashes() {
             assert.equal(error.code, 'E2007');
             assert.equal(error.location.line, 1);
             const source = require('node:fs').readFileSync(error.location.file);
-            assert.ok(['(', '+'].includes(source.subarray(error.location.start, error.location.end).toString()));
+            assert.ok(['(', '+', '[', '{', '.'].includes(source.subarray(error.location.start, error.location.end).toString()));
             assert.ok(error.message.includes('128'));
         "#,
         );

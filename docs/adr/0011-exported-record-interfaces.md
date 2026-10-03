@@ -1,18 +1,18 @@
 # ADR 0011: Exported record interfaces between packages
 
 Status: Accepted option A (2026-10-03), explicitly approved by the user.
-Implementation and verification remain required.
+Implemented for local dependency package interfaces in both execution engines.
 
-## Existing contract and missing decision
+## Context
 
 ADR 0009 approves nominal type identity and direct-import name resolution.
 ADR 0010 implements exported functions from dependency entry modules. Local
-records exist, but record declaration exports and cross-package field visibility
-have not been selected. The compiler currently reports E4116 for imported record
+records existed, but record declaration exports and cross-package field visibility
+had not been selected. Before this decision, E4116 rejected imported record
 signatures, preventing unrelated same-named records from being interchangeable.
 Scalar aliases already resolve in the library and retain their existing behavior.
 
-## Recommended option A: explicit record exports
+## Accepted option A: explicit record exports
 
 Reuse the existing export modifier on a module's record declaration:
 
@@ -29,7 +29,7 @@ mod geometry {
 }
 ```
 
-This is proposed syntax, not yet executable. A consumer uses the existing module
+A consumer uses the existing module
 import and keeps the dependency/module qualification for explicit type spellings:
 
 ```svr
@@ -90,9 +90,14 @@ Keep E4116 until each supported boundary is fully implemented; do not remove it
 and return an unresolved type as a success. Document any remaining unsupported
 recursive/type-export combinations. This completes neither M12 nor publication.
 
-## Approval boundary
+## Implementation limits and approval
 
-AGENTS.md requires: "Document and pause before fundamental syntax, memory-model,
-type-semantics or compatibility decisions." The approved nominal identity rule
-does not by itself choose record export syntax or public-field visibility.
-Approve option A or select option B before dependent implementation.
+The user explicitly approved option A, including public construction and field
+reads for this milestone, while reserving future field visibility/encapsulation.
+E4116 remains for private record leaks and unsupported exported interface types.
+Follow-up implementation isolates module-local type names under ADR 0009's
+declaring-scope rule. Different modules can reuse record/alias names while
+retaining owner-specific signatures and nominal identity. Existing qualified
+same-file type access is preserved; cross-package visibility remains governed
+by explicit record exports. This does not add recursive-type support, exported
+alias syntax, a new same-file visibility policy, or registry publication.

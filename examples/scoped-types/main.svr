@@ -1,0 +1,39 @@
+struct Point { x: String }
+
+mod fractional {
+    type Scalar = Float;
+    type Position = Point;
+    struct Point { x: Scalar }
+
+    export fn make() -> Position {
+        return Point { x: 3 }
+    }
+
+    export fn read(point: Position) -> Scalar {
+        return point.x
+    }
+}
+
+mod whole {
+    type Scalar = Int;
+    struct Point { x: Scalar }
+
+    export fn make() -> Point {
+        return Point { x: 3 }
+    }
+
+    export fn read(point: Point) -> Scalar {
+        return point.x
+    }
+}
+
+fn main() {
+    let root = Point { x: "root" }
+    let point: fractional::Position = fractional::make()
+    let mut value = point.x
+    value = 3
+    print(value / 2)
+    print(fractional::read(fractional::Point { x: 3 }) / 2)
+    print(whole::read(whole::make()) / 2)
+    print(root.x)
+}

@@ -42,14 +42,35 @@ Imports do not expose bare type names, private declarations or transitive depend
 aliases. Nested public field types retain identity and field metadata even when
 their defining dependency has no direct source spelling in the consumer.
 Exported type aliases, re-exports and recursive-type support are not added.
-Existing same-file type lookup is unchanged; module-local type-scope isolation
-and duplicate bare type names across modules remain limitations of that resolver.
+Module-local records and aliases now resolve in their declaring module. Separate
+modules may reuse a type name; `a::Point` and `b::Point` retain different nominal
+identities. Bare module type names are not visible in root or sibling scopes.
+Within a module, its local declaration takes precedence over a root declaration;
+otherwise existing root-type references remain available. Existing qualified
+same-file record/alias access is preserved. Package consumers still require
+explicit exported records and direct imports; this adds no exported alias syntax.
+
+Semantic analysis retains qualified type references in `TypedProgram.program`
+without mutating the caller's parsed AST or changing source spans. Alias resolution
+uses an iterative, cached walk in sorted name order; cycles and unknown targets
+remain E3017. Resolved scalar alias targets are retained for lowering and package
+interfaces, avoiding repeated long-chain traversal. A chain of aliases is not a
+nested expression and does not consume the structural expression-depth budget.
 
 Explicit imported Float return signatures are retained during lowering, including
 inferred mutable locals and inferred array elements. Compatible Int assignments
 and array construction values therefore widen just as for local Float-returning
 functions, including imported aliases that resolve to Float. Qualified record
 constructors also widen compatible Int values in Float fields in both engines.
+Lowering retains record field, function result and array element facts through
+inferred bindings. Float fields reached through nested records, calls or array
+indexing retain widening on reassignment. Mixed arrays infer Float from every
+element, and copied array bindings retain their element type for indexed writes.
+Replacing a Float array with a compatible Int array widens its numeric elements,
+including nested array values and replacement rows. The conversion preserves
+shape, accepts empty arrays, and does not change the source Int binding.
+This numeric fix does not settle compound-copy/equality semantics; ADR 0012
+records the separate interpreter/JavaScript discrepancy and proposed contract.
 
 CLI `check` on a directory with dependency sections invokes this executable
 pipeline. `run` and `build` also accept package directories. Directory checks
@@ -143,17 +164,22 @@ produce `E2006`; an EOF-only stream parses as an empty program. Source parsing
 continues to obtain its EOF marker from the lexer.
 
 Under accepted ADR 0007, source compilation permits at most 128 nested open
-parentheses and expression-tree depth 128. A leaf has depth one; a binary or call
-node adds one to its deepest child (including the callee). Grouping consumes
+parentheses, square brackets and braces (each counted independently), and
+expression-tree depth 128. Brace accounting includes function/module bodies and
+record literals. A leaf has depth one; binary, call, array, record, field-read and
+index nodes add one to their deepest child (including a call's callee). Grouping consumes
 parenthesis nesting but does not add an AST node. Thus 128 grouping pairs,
-127 nested calls, or a left-associated chain of 128 leaves are boundary examples.
+127 nested calls/arrays, or a left-associated chain of 128 leaves are boundary
+examples. A top-level function body permits 127 nested `if`/`while` blocks.
 Wide argument lists do not consume extra depth. Excess depth returns one E2007
 at the offending delimiter/operator/call token, before constructing an over-deep
 tree; no recursive recovery cascade follows. This is a compatibility restriction
 on deeply nested input, not a total memory/work budget or a guarantee for
 manually constructed public ASTs.
 Semantic analysis now checks caller-built AST depth iteratively before recursive
-analysis/cloning and reports E3018 at the first over-depth expression. This also
+analysis/cloning and reports E3018 at an over-depth expression or block. The
+borrowed worklist checks both branch bodies, loop bodies and assignment targets
+as well as values; deeply nested statements cannot evade the preflight. This also
 protects `ir::lower_program`, which performs analysis. Caller-owned recursive
 drop/clone and direct lowering of manually constructed `TypedProgram` values
 remain outside that checked-entry guarantee.
@@ -305,7 +331,10 @@ any Float element promotes the array element type, including when the first
 element is Int. Int values assigned to Float-typed record fields are widened
 when the record is constructed.
 
-The IR carries `widen-float` at annotated boundaries. The JavaScript backend
+The IR carries `widen-float` at scalar boundaries and `widen-float-array N` for
+numeric leaves beneath N array levels. Array depth must be positive. Both engines
+reject stack underflow, non-array intermediate values and nonnumeric leaves;
+conversion uses an iterative traversal. The JavaScript backend
 uses BigInt for Int and Number for Float and requires a runtime supporting
 BigInt and TextEncoder. `std::len` counts UTF-8 bytes in both engines.
 Complete non-finite Float and Float-to-string parity remains experimental.

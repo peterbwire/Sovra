@@ -23,6 +23,7 @@ fn instruction_text(instruction: &Instruction) -> String {
         Instruction::StoreName(name) => format!("store-name {name}"),
         Instruction::StoreIndex => "store-index".to_owned(),
         Instruction::WidenFloat => "widen-float".to_owned(),
+        Instruction::WidenFloatArray { depth } => format!("widen-float-array {depth}"),
         Instruction::Binary(operator) => format!("binary {operator}"),
         Instruction::MakeArray { length } => format!("make-array {length}"),
         Instruction::MakeStruct { type_name, fields } => {
@@ -188,6 +189,13 @@ fn render_js_instruction(
         Instruction::WidenFloat => {
             render_stack_guard(output, 1, "widening");
             let _ = writeln!(output, "        stack.push(svrWidenFloat(stack.pop()));");
+        }
+        Instruction::WidenFloatArray { depth } => {
+            render_stack_guard(output, 1, "array widening");
+            let _ = writeln!(
+                output,
+                "        stack.push(svrWidenFloatArray(stack.pop(), {depth}));"
+            );
         }
         Instruction::Binary(operator) => {
             render_stack_guard(output, 2, "binary operator");
@@ -438,6 +446,30 @@ fn js_string(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn module_local_records_and_aliases_retain_distinct_types_in_both_engines() {
+        let source = include_str!("../../examples/scoped-types/main.svr");
+        let program = crate::compiler::parser::Parser::new()
+            .parse_source(source)
+            .unwrap();
+        let ir = crate::compiler::ir::lower_program(&program).unwrap();
+        let expected = ["1.5", "1.5", "1", "root"];
+        assert_eq!(crate::compiler::interpreter::run(&ir).unwrap(), expected);
+        let output = execute_javascript(&render_javascript(&ir));
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .lines()
+                .collect::<Vec<_>>(),
+            expected
+        );
+    }
 
     #[test]
     fn unusual_ir_function_names_preserve_calls_and_errors() {
@@ -919,6 +951,134 @@ mod tests {
             crate::compiler::interpreter::run(&ir).expect("interpreter execution"),
             expected
         );
+        let output = execute_javascript(&render_javascript(&ir));
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .lines()
+                .collect::<Vec<_>>(),
+            expected
+        );
+    }
+
+    #[test]
+    fn malformed_array_widening_reports_matching_runtime_errors() {
+        for instructions in [
+            vec![Instruction::WidenFloatArray { depth: 1 }],
+            vec![
+                Instruction::MakeArray { length: 0 },
+                Instruction::WidenFloatArray { depth: 0 },
+            ],
+            vec![
+                Instruction::LoadLiteral(Literal::Integer("1".into())),
+                Instruction::WidenFloatArray { depth: 1 },
+            ],
+            vec![
+                Instruction::LoadLiteral(Literal::String("bad".into())),
+                Instruction::MakeArray { length: 1 },
+                Instruction::WidenFloatArray { depth: 1 },
+            ],
+            vec![
+                Instruction::LoadLiteral(Literal::Integer("1".into())),
+                Instruction::MakeArray { length: 1 },
+                Instruction::WidenFloatArray { depth: usize::MAX },
+            ],
+            vec![
+                Instruction::MakeArray { length: 0 },
+                Instruction::MakeArray { length: 1 },
+                Instruction::WidenFloatArray { depth: 1 },
+            ],
+        ] {
+            assert_ir_failure_matches(instructions);
+        }
+    }
+
+    #[test]
+    fn whole_array_replacement_preserves_numeric_element_types() {
+        let source = r#"
+            fn main() {
+                let ints = [3, 5]
+                let mut floats = [0.0]
+                floats = ints
+                print(floats[0] / 2)
+                print(floats[1] / 2)
+                print(ints[0] / 2)
+                floats = []
+                print(floats)
+                floats = [7]
+                print(floats[0] / 2)
+                let mut rows = [[1.0], [3]]
+                print(rows[1][0] / 2)
+                rows[0] = [5]
+                print(rows[0][0] / 2)
+                rows = [[7], [9]]
+                print(rows[1][0] / 2)
+            }
+        "#;
+        let program = crate::compiler::parser::Parser::new()
+            .parse_source(source)
+            .unwrap();
+        let ir = crate::compiler::ir::lower_program(&program).unwrap();
+        let expected = ["1.5", "2.5", "1", "[]", "3.5", "1.5", "2.5", "4.5"];
+        assert_eq!(crate::compiler::interpreter::run(&ir).unwrap(), expected);
+        let output = execute_javascript(&render_javascript(&ir));
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .lines()
+                .collect::<Vec<_>>(),
+            expected
+        );
+    }
+
+    #[test]
+    fn inferred_record_fields_and_array_copies_preserve_float_widening() {
+        let source = r#"
+            type Decimal = Float;
+            struct Measurement { amount: Decimal }
+            struct Box { measurement: Measurement }
+            fn measure() -> Measurement { return Measurement { amount: 3 } }
+            fn inspect(box: Box) {
+                let mut value = box.measurement.amount
+                value = 3
+                print(value / 2)
+            }
+            fn main() {
+                let box = Box { measurement: measure() }
+                inspect(box)
+                let mut value = measure().amount
+                value = 3
+                print(value / 2)
+                let mut mixed = [1, box.measurement.amount]
+                mixed[0] = 3
+                print(mixed[0] / 2)
+                let mut copy = mixed
+                copy[0] = 5
+                print(copy[0] / 2)
+                let mut literal = [1, 3.0]
+                literal[0] = 3
+                print(literal[0] / 2)
+                let mut indexed = [measure()][0].amount
+                indexed = 3
+                print(indexed / 2)
+            }
+        "#;
+        let program = crate::compiler::parser::Parser::new()
+            .parse_source(source)
+            .unwrap();
+        let ir = crate::compiler::ir::lower_program(&program).unwrap();
+        let expected = ["1.5", "1.5", "1.5", "2.5", "1.5", "1.5"];
+        assert_eq!(crate::compiler::interpreter::run(&ir).unwrap(), expected);
         let output = execute_javascript(&render_javascript(&ir));
         assert!(
             output.status.success(),

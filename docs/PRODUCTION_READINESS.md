@@ -8,6 +8,11 @@ that every defect has been found. Existing M0–M15 numbers remain unchanged;
 
 ## Evidence and scope
 
+Scope confirmation (2026-10-03): version one must include the full application
+platform and third-party library publishing. Compiler-only release notes are
+superseded. See [V1_DELIVERY_GATES.md](V1_DELIVERY_GATES.md). The audit baseline
+below is historical; current execution counts are in the development log.
+
 Reviewed the public parser, semantic analyzer, IR, interpreter, JavaScript
 emitter, project discovery/imports/application inspector, CLI command dispatch,
 test harness and release workflows alongside accepted ADRs. Keep the existing

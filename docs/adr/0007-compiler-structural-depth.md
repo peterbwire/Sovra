@@ -31,6 +31,11 @@ boundary verification on supported platforms and test-thread stacks.
   An iterative token preflight allows at most 128 open parentheses; application
   inspection separately allows 128 open braces including the outer body block.
   Strings and comments do not consume nesting depth.
+  Follow-up for the implemented compound/control-flow syntax: source parsing
+  also bounds open square brackets and braces to 128. Array/record constructors,
+  field reads and indexing enforce retained-tree depth; source braces include
+  enclosing module/function blocks. The semantic AST preflight visits nested
+  branch/loop bodies and assignment targets, with a separate block-depth guard.
   Count source nesting separately from precedence-helper implementation frames.
 - Bound retained expression-tree depth as well: leaves count as one; binary
   nodes count one plus maximum child depth; calls count one plus maximum callee

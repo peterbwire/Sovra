@@ -9,12 +9,15 @@ const executable = resolve(arguments_.find(value => value !== '--assert-limits')
 const directory = resolve('target/depth-probe');
 mkdirSync(directory, { recursive: true });
 const results = [];
-for (const shape of ['grouping', 'calls', 'binary']) {
+for (const shape of ['grouping', 'calls', 'binary', 'arrays', 'if-blocks', 'while-blocks']) {
     for (const depth of [32, 127, 128, 129, 256, 512, 2048]) {
         const expression = shape === 'grouping' ? '('.repeat(depth) + '1' + ')'.repeat(depth)
             : shape === 'calls' ? 'identity('.repeat(depth) + '1' + ')'.repeat(depth)
+            : shape === 'arrays' ? '['.repeat(depth) + '1' + ']'.repeat(depth)
             : Array(depth + 1).fill('1').join(' + ');
-        const source = `fn identity(value: Int) -> Int { return value }\nfn main() { let value = ${expression}; }\n`;
+        const source = shape.endsWith('-blocks')
+            ? `fn main() { ${(shape === 'if-blocks' ? 'if (true) {' : 'while (false) {').repeat(depth)} let value = 1; ${'}'.repeat(depth)} }`
+            : `fn identity(value: Int) -> Int { return value }\nfn main() { let value = ${expression}; }\n`;
         const file = join(directory, `${shape}-${depth}.svr`);
         writeFileSync(file, source);
         for (const command of ['check', 'build']) {

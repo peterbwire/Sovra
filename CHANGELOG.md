@@ -16,13 +16,14 @@
 - Add an executable function example and a course lesson on typed signatures,
   inferred locals and migration from untyped parameters.
 
-## 1.0.0 - 2026-10-02
+## 1.0.0 target metadata - not release evidence
 
-- Mark the first public v1.0.0 release of the Sovra compiler foundation.
-- Publish the canonical `svr` binary version metadata and aligned project
+- Set the intended v1.0.0 version metadata for the Sovra toolchain.
+- Align the canonical `svr` binary version metadata and project
   manifests for the source compiler, IR, interpreter, and JS backend.
-- Preserve the production-readiness release track and keep experimental
-  application/runtime features clearly separated from shipped compiler behavior.
+- The user confirmed on 2026-10-03 that the full application platform and library
+  publishing are required before 1.0.0. Metadata does not establish publication
+  or readiness; the earlier compiler-only release scope is superseded.
 
 ## 0.1.0 - 2026-09-03
 

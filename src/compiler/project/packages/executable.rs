@@ -163,8 +163,9 @@ pub fn compile(root: impl AsRef<Path>) -> Result<IrProgram, Diagnostics> {
         let typed = SemanticAnalyzer::new()
             .analyze_with_imports(&program, &signatures)
             .map_err(|diagnostics| locate(diagnostics, &package.entry))?;
-        let names = record_names(&program, ids[root], true);
-        let exposed = crate::compiler::semantic::exported_record_fields(&program, &names)
+        let program = &typed.program;
+        let names = record_names(program, ids[root], true);
+        let exposed = crate::compiler::semantic::exported_record_fields(program, &names)
             .map_err(|diagnostics| locate(diagnostics, &package.entry))?;
         let exports = program
             .modules
@@ -172,9 +173,9 @@ pub fn compile(root: impl AsRef<Path>) -> Result<IrProgram, Diagnostics> {
             .flat_map(|module| &module.functions)
             .filter(|function| function.is_exported)
             .collect::<Vec<_>>();
-        crate::compiler::semantic::normalize_imported_signatures(&program, &exports, &names)
+        crate::compiler::semantic::normalize_imported_signatures(program, &exports, &names)
             .map_err(|diagnostics| locate(diagnostics, &package.entry))?;
-        let mut runtime_types = record_names(&program, ids[root], false);
+        let mut runtime_types = record_names(program, ids[root], false);
         runtime_types.extend(imported_types);
         let mut lowered = ir::lower_with_imports(&typed, &signatures);
         for function in &lowered.functions {
@@ -196,7 +197,7 @@ pub fn compile(root: impl AsRef<Path>) -> Result<IrProgram, Diagnostics> {
             }
         }
         linked.functions.extend(lowered.functions);
-        prepared.insert(root.clone(), program);
+        prepared.insert(root.clone(), program.clone());
         interfaces.insert(root.clone(), exposed);
         public_names.insert(root.clone(), names);
     }
@@ -222,21 +223,25 @@ fn record_names(program: &Program, package: usize, exported_only: bool) -> HashM
                 continue;
             }
             let identity = format!("@package{package}::type::{}::{}", module.name, record.name);
-            names.insert(record.name.clone(), identity.clone());
             names.insert(format!("{}::{}", module.name, record.name), identity);
         }
     }
     loop {
         let mut changed = false;
-        for declaration in program.type_declarations.iter().chain(
-            program
-                .modules
-                .iter()
-                .flat_map(|module| &module.type_declarations),
-        ) {
-            if !names.contains_key(&declaration.name) {
-                if let Some(identity) = names.get(&declaration.target).cloned() {
-                    names.insert(declaration.name.clone(), identity);
+        for (name, target) in program
+            .type_declarations
+            .iter()
+            .map(|decl| (decl.name.clone(), &decl.target))
+            .chain(program.modules.iter().flat_map(|module| {
+                module
+                    .type_declarations
+                    .iter()
+                    .map(move |decl| (format!("{}::{}", module.name, decl.name), &decl.target))
+            }))
+        {
+            if !names.contains_key(&name) {
+                if let Some(identity) = names.get(target).cloned() {
+                    names.insert(name, identity);
                     changed = true;
                 }
             }

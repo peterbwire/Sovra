@@ -359,11 +359,11 @@ mod tests {
             "app",
             "[dependencies.shapes]\npath = \"../lib\"\n[dependencies.other]\npath = \"../lib\"",
         );
-        std::fs::write(root.join("main.svr"), "use shapes::geometry; use other::geometry; fn read(point: shapes::geometry::Point) -> Float { return point.x } fn main() { let point = shapes::geometry::Point { x: 3, y: 4 }; print(point.x / 2); print(read(point) / 2); print(other::geometry::x(point)); print(shapes::geometry::origin().y); }").unwrap();
+        std::fs::write(root.join("main.svr"), "use shapes::geometry; use other::geometry; fn read(point: shapes::geometry::Point) -> Float { return point.x } fn main() { let point = shapes::geometry::Point { x: 3, y: 4 }; print(point.x / 2); print(read(point) / 2); print(other::geometry::x(point)); print(shapes::geometry::origin().y); let mut inferred = shapes::geometry::origin().x; inferred = 3; print(inferred / 2); let mut values = [1, point.x]; values[0] = 3; print(values[0] / 2); }").unwrap();
         let linked = compile(&root).unwrap();
         assert_eq!(
             crate::compiler::interpreter::run(&linked).unwrap(),
-            ["1.5", "1.5", "3", "0"]
+            ["1.5", "1.5", "3", "0", "1.5", "1.5"]
         );
         let output = std::process::Command::new("node")
             .arg("-e")
@@ -377,7 +377,7 @@ mod tests {
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n"),
-            "1.5\n1.5\n3\n0\n"
+            "1.5\n1.5\n3\n0\n1.5\n1.5\n"
         );
     }
 
@@ -400,6 +400,49 @@ mod tests {
         std::fs::write(root.join("main.svr"), "use left::geometry; use right::geometry; fn main() { let point = left::geometry::Point { x: 1 }; right::geometry::read(point); }").unwrap();
         let errors = compile(root).unwrap_err();
         assert!(errors.items.iter().any(|error| error.code == "E3007"));
+    }
+
+    #[test]
+    fn same_named_types_in_dependency_modules_keep_owner_signatures_and_identity() {
+        let fixture = Fixture::new();
+        let library = fixture.package("lib", "");
+        std::fs::write(library.join("main.svr"), "mod a { type Scalar = Float; export struct Point { x: Scalar } export fn make() -> Point { return Point { x: 3 } } export fn read(p: Point) -> Scalar { return p.x } } mod b { type Scalar = Int; export struct Point { x: Scalar } export fn make() -> Point { return Point { x: 3 } } export fn read(p: Point) -> Scalar { return p.x } }").unwrap();
+        let root = fixture.package("app", "[dependencies.shapes]\npath = \"../lib\"");
+        std::fs::write(root.join("main.svr"), "use shapes::a; use shapes::b; type Scalar = String; fn main() { let a: shapes::a::Point = shapes::a::make(); let b: shapes::b::Point = shapes::b::Point { x: 3 }; print(shapes::a::read(a) / 2); print(shapes::b::read(b) / 2); }").unwrap();
+        let linked = compile(&root).unwrap();
+        assert_eq!(
+            crate::compiler::interpreter::run(&linked).unwrap(),
+            ["1.5", "1"]
+        );
+        let output = std::process::Command::new("node")
+            .arg("-e")
+            .arg(crate::compiler::backend::render_javascript(&linked))
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n"),
+            "1.5\n1\n"
+        );
+        std::fs::write(
+            root.join("main.svr"),
+            "use shapes::a; use shapes::b; fn main() { shapes::b::read(shapes::a::make()); }",
+        )
+        .unwrap();
+        let errors = compile(&root).unwrap_err();
+        let error = errors
+            .items
+            .iter()
+            .find(|error| error.code == "E3007")
+            .unwrap();
+        assert_eq!(
+            error.source_file.as_deref(),
+            root.join("main.svr").canonicalize().unwrap().to_str()
+        );
     }
 
     #[test]

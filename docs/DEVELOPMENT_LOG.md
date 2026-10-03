@@ -1,5 +1,148 @@
 # Development log
 
+## 2026-10-03: Module-scoped named types and iterative alias resolution
+
+- **Upgrade:** Added a dedicated type-scope resolution pass under accepted ADR
+  0009's declaring-module rule. It rewrites module-local type references in
+  signatures, record fields, aliases, local annotations and constructors before
+  validation. The caller's parsed AST and source spans are preserved; the typed
+  program retains qualified identities and resolved scalar alias targets.
+- **Compiler/linker:** Removed globally flattened bare module types from semantic
+  registries and lowering metadata. Separate modules can independently declare
+  `Point`/`Scalar`; root declarations cannot capture their signatures/fields.
+  Package interfaces and record relocation now use the validated scoped program,
+  preserving module/package nominal identity and private package boundaries.
+- **Crash fix:** A 20,000-alias source reproduced Windows stack overflow
+  (exit 3221225725) in the prior debug compiler. Replaced recursive alias chasing
+  with an iterative cached walk and sorted traversal. Scalar alias targets are
+  flattened in validated metadata so lowering does not repeat long chains.
+  Root-record alias paths are retained when flattening could rebind a shadowed
+  name on re-analysis. Existing unknown/cycle/duplicate codes remain stable.
+- **Coverage:** Repeated names across modules and root, Float alias widening,
+  cross-module nominal mismatch through a dependency, bare-name leakage,
+  duplicates/builtin names/unknowns/cycles, input/span preservation and idempotent
+  analysis. Added a 4,096-alias unit regression and 20,000-alias CLI check/run/IR/JS
+  build regression. `examples/scoped-types` is executed in both engines and CLI.
+- **Validation:** **241 library + 42 CLI = 283 passed**, no failures/skips, with
+  strict CLI execution (`target/v1-type-scopes-tests.log`). Strict all-target/
+  all-feature Clippy, formatting, doc stage (0 tests) and diff checks passed.
+  Debug and optimized builds now check the previously crashing 20,000-alias
+  source. The optimized scoped-type example prints `1.5`, `1.5`, `1`, `root`.
+- **Compatibility/limits:** Leaked bare module type names must become qualified
+  references. Existing qualified same-file record/alias access is preserved;
+  this does not add a new same-file visibility policy or exported alias syntax.
+  Package consumers still require explicit record exports/direct imports.
+  Full retained expression typing, application checking/runtime, native tests,
+  registry publication and ADR 0012 compound-value semantics remain unfinished.
+- **Next:** Build retained typed application/service declarations on the scoped
+  type foundation and continue production correctness work. Version-one scope
+  remains the full platform and third-party publishing, not this compiler slice.
+
+## 2026-10-03: Close compound and control-flow depth-guard gaps
+
+- **Reproduced:** A parser regression accepted an array tree beyond depth 128;
+  a public-AST regression accepted an over-depth expression in an else body.
+  Inspection also found unchecked field/index chains, source block recursion
+  and assignment targets in the semantic preflight.
+- **Fixed:** Applied accepted ADR 0007's existing limit to square brackets and
+  braces before recursive source parsing, and checked array/record/field/index
+  node depth before wrapping children. Semantic preflight now uses a borrowed
+  statement worklist for both branches and loops, checks targets and values,
+  and bounds nested blocks. E2007/E3018 remain the corresponding diagnostics.
+- **Coverage:** Boundary tests, public-AST regressions, CLI checks/run/build/JS
+  rejection and exact JSON ranges for 2,048-level compound/control-flow inputs.
+  Extended the shared CI/candidate probe with arrays and if/while block shapes.
+- **Validation:** **235 library + 40 CLI = 275 passed**, no failures/skips, with
+  strict CLI execution (`target/v1-compound-depth-tests.log`). Formatting,
+  strict all-target/all-feature Clippy, doc stage (0 tests) and whitespace checks
+  passed. Debug and optimized Windows GNU builds each passed all **84** depth
+  probe cases; logs: `target/v1-depth-debug.log`, `target/v1-depth-release.log`.
+- **Limits/next:** This enforces the existing structural bound, not a total
+  runtime/allocation budget or unrestricted public-AST destruction guarantee.
+  Hosted platform/MSRV evidence and full application/library-publishing gates
+  remain open. Compound-copy/equality semantics still await ADR 0012 approval;
+  further independent compiler correctness work can proceed meanwhile.
+
+## 2026-10-03: Whole-array numeric conversion correctness
+
+- **Reproduced:** Type checking accepted replacing a Float array with an Int
+  array, but both engines retained integer leaves. A regression obtained `1`,
+  `2`, `3`, `4` where Float division required `1.5`, `2.5`, `3.5`, `4.5`.
+  Nested array construction and row replacement had the same missing conversion.
+- **Fixed:** Lowering uses retained destination types for assignments and array
+  elements, emitting `WidenFloatArray { depth }` for compound conversion. Both
+  engines traverse iteratively, preserve shape and empty arrays, and reject
+  invalid public IR with matching errors. JavaScript conversion builds new
+  numeric arrays so it cannot change a source Int binding.
+- **Coverage:** Whole-array replacement, mixed nested arrays, row replacement,
+  empty replacements, source binding preservation and six malformed-IR cases.
+  Removed redundant Float flags from lowering bindings now that retained value
+  types drive conversion. Added an arrays lesson and updated the IR/spec contract.
+- **Validation:** Strict CLI execution full suite: **233 library + 40 CLI = 273
+  passed**, zero failures/skips (`target/v1-array-widening-tests.log`). Formatting,
+  strict all-target/all-feature Clippy, doc stage (0 tests) and diff checks passed.
+- **Pending:** Requested explicit clarification whether “NEXT” approves ADR 0012
+  option A. Its compound copy/equality decision remains unimplemented pending
+  that answer; numeric widening implements existing compatibility rules only.
+  Full application/platform publication gates remain open.
+
+## 2026-10-03: Full-platform v1 scope and retained lowering type facts
+
+- **Release contract:** User explicitly selected full application platform and
+  third-party library publishing before version 1.0. Corrected compiler-only
+  release claims in README/changelog/draft notes and added V1_DELIVERY_GATES.md.
+  Cargo's existing 1.0.0 target version is unchanged. No publication occurred.
+- **Confirmed bug/fix:** A new six-case regression reproduced lost Float
+  widening through record fields, factory returns, mixed arrays, copied arrays
+  and indexing: expected `1.5`/`2.5`, obtained `1`/`2`. Lowering now retains
+  alias-resolved field/return/array type facts through local scopes, rather than
+  relying only on a set of Float-returning function names. Both execution engines
+  pass the regression. Qualified imported factory/field inference is also covered.
+- **Verification:** Full strict-execution Windows suite passed **231 library +
+  40 CLI = 271 tests**, no failures/skips (`target/v1-type-facts-tests.log`).
+  Strict all-target/all-feature Clippy passed. Package regression was extended
+  after that run and verified separately; formatting and doc checks also passed.
+- **New blocking decision:** An isolated copy/mutation probe printed `1` in the
+  interpreter and `2` in JavaScript. ADR 0012 proposes independent compound
+  values and nominal record/content equality; explicit approval requested under
+  AGENTS.md's memory/type-semantics rule. This was not silently resolved by
+  choosing either engine. Ordinary whole-array numeric conversions and broader
+  retained semantic typing still require further correctness work.
+- **Next:** Implement approved compound semantics with differential regressions,
+  then module-local type resolution and the structured M12/application/library
+  milestones. Version one is not ready for publication; hosted platform/MSRV,
+  native tests, application runtime and registry workflows remain incomplete.
+
+## 2026-10-03: Implemented approved exported-record package interfaces
+
+- **Decision:** User approved ADR 0011 option A: explicit `export struct`, qualified
+  consumer types/construction, private unexported records and nominal identity.
+  Public fields are readable/constructible now; future explicit field visibility
+  and encapsulation remain possible under a compatibility design.
+- **Implementation:** Parser/AST retain record exports. Package compilation checks
+  dependencies before consumers and transports canonical record identities and
+  resolved field metadata. Exported signatures and fields resolve in the library;
+  E4116 rejects private-record leaks. Aliases and diamond paths preserve identity,
+  while unrelated packages with identical record names/layouts remain distinct.
+  Qualified constructors preserve Float field widening in IR and both engines.
+- **Regression evidence:** A direct field-division test initially produced `1`
+  instead of `1.5`; alias-aware field metadata fixed constructor widening.
+  Added valid/invalid export syntax, qualified annotations/construction, field
+  validation/access, private annotations/construction/leaks, distinct same-name
+  records, cross-package mismatch, alias identity, nested transitive records,
+  consumer name collisions and diagnostic file/range coverage. The CLI example
+  now checks/runs/builds records and executes emitted JavaScript with Node.
+- **Verification:** `SOVRA_REQUIRE_CLI_EXECUTION=1 cargo test --locked --all-targets
+  -- --nocapture`: **230 library + 40 CLI = 270 passed**, zero failures or skips;
+  evidence `target/exported-records-tests.log`. Strict all-target/all-feature
+  Clippy, formatting, doc tests (0 cases) and diff whitespace checks passed.
+- **Limits:** Local path packages only. Existing same-file type lookup still
+  shares bare module type names and rejects duplicate local module type names.
+  No exported aliases, field mutation, new recursive-type support, registry or
+  publishing was added. M12 and production readiness remain incomplete.
+- **Next:** Harden module-local named-type scope resolution incrementally, then
+  continue the library/application roadmap without changing nominal semantics.
+
 ## 2026-10-03: Proposed exported-record interface decision
 
 Before extending E4116 into usable package record interfaces, inspected accepted

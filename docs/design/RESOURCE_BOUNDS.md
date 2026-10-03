@@ -13,6 +13,14 @@ implemented; it is not a universal host-stack/memory safety guarantee.
 
 ## Findings from implementation review
 
+2026-10-03 follow-up: new compound/control-flow forms had gaps in the original
+guard. Parser boundary regressions reproduced acceptance of over-depth array
+trees; a caller-built AST regression reproduced missed nested-body expressions.
+The parser now bounds brackets/braces and all compound expression nodes, and
+semantic preflight walks nested statements and both sides of assignments.
+The subprocess probe now includes arrays and `if`/`while` blocks alongside its
+original shapes. Tests also exercise very long field/index chains and records.
+
 - Source grouping and call arguments recursively enter the expression parser.
   Long binary chains also create deeply nested ASTs even when parser recursion
   stays shallow. Semantic traversal, AST cloning, lowering and drop behavior must

@@ -1,12 +1,12 @@
 # Sovra
 
-**Version 1.0.0 is the first public release of the Sovra compiler foundation.**
-The shipped scope includes the source-file compiler/interpreter, IR/JavaScript
-output, semantic validation, project checks, and the canonical `svr` CLI.
-The broader application runtime, Sovra-native test runner, package publishing,
-and library ecosystem remain active follow-on work. This first public release is
-intentionally scoped to the compiler foundation and is not a complete application
-platform. The developer-preview release plan is superseded; see the
+**Version 1.0.0 is a development target, not yet ready for publication.**
+The required release scope includes the full application platform and third-party
+library publishing. The implemented compiler, interpreter, IR/JavaScript output,
+local libraries and `svr` CLI are foundations for that release. Application
+execution, Sovra-native testing and registry publication remain incomplete and
+must be delivered before version 1.0. The compiler-only and developer-preview
+release plans are superseded; see the
 [production-readiness plan](docs/PRODUCTION_READINESS.md) for the audited gates
 and current implementation order.
 

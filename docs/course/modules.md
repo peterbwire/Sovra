@@ -12,6 +12,27 @@ calls `math::add`. The qualified spelling is required even inside `math`.
 Top-level functions remain callable by bare name, and builtins use `std::`.
 This is inline grouping, not cross-file imports.
 
+Modules also own their record and alias names. `fractional::Point` and
+`whole::Point` can coexist and are different nominal types, even if their fields
+match. Inside each module, bare `Point` resolves to that module's declaration;
+it does not leak into the root or sibling modules. A root declaration remains
+available where no module-local declaration shadows it. Qualified same-file
+record/alias access retains its existing behavior; package consumers additionally
+require `export struct` and an explicit dependency import.
+
+Run [the scoped-type example](../../examples/scoped-types/main.svr):
+
+```text
+cargo run -- run examples/scoped-types/main.svr
+```
+
+It prints `1.5`, `1.5`, `1`, and `root`. Two modules independently use the names
+`Point` and `Scalar`, while a third `Point` lives at the root. Float aliases and
+inferred field types preserve numeric widening in both execution engines.
+Code that previously relied on a module type leaking into global bare-name
+lookup must use its qualified spelling. Duplicate declarations within one scope
+still fail with E3008; unresolved names and alias cycles fail with E3017.
+
 Function names must be unique within a module, including private/exported
 combinations. A repeated name produces E3008 at the repeated declaration.
 Exported names must also avoid exact builtin collisions: exporting `std::len`

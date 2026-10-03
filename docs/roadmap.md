@@ -5,6 +5,11 @@ plan is superseded. Follow [the production audit and gates](PRODUCTION_READINESS
 without renumbering these milestones. Completed foundation slices do not imply
 that the full language or application platform is production-ready.
 
+On 2026-10-03 the user explicitly required the **full application platform and
+third-party library publishing before version 1.0**. The compiler-only release
+scope is superseded. [Version-one delivery gates](V1_DELIVERY_GATES.md) track
+the required evidence; setting Cargo's version to 1.0.0 does not satisfy them.
+
 The [library ecosystem assessment](LIBRARY_ECOSYSTEM_ASSESSMENT.md) records the
 actual executable module/stdlib boundary and package prerequisites. Local package
 graph resolution and entry-module consumption are implemented under accepted

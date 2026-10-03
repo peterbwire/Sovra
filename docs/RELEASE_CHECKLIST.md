@@ -7,8 +7,12 @@ infrastructure, but cannot authorize a release. All acceptance criteria in
 
 ## Release gates
 
+Scope confirmed 2026-10-03: **full application platform and third-party library
+publishing before version 1.0**. A compiler-only release is not sufficient.
+See [the version-one delivery gates](V1_DELIVERY_GATES.md) for concrete acceptance.
+
 - [x] Describe implemented versus experimental features in the root README.
-- [ ] Replace superseded preview notes with evidence-backed production notes.
+- [x] Replace compiler-only release claims with accurate draft status and scope.
 - [x] Limit Cargo source archives to code, tests, examples, docs and licenses.
 - [x] Configure Linux, Windows and macOS checks, plus Rust 1.74 compile checks.
 - [x] Configure manual candidate archives, SHA-256 checksums and commit metadata.
@@ -74,8 +78,9 @@ by Cargo; CI and release checks must run from a clean committed tree. Local
 ## Scope limits
 
 The current implementation is not a production application platform. Fielddesk cannot run. Full application
-typing, control flow, structured data, service implementations and runtime support
-remain incomplete. Sovra-native tests, package resolution/publishing, formatter,
+typing, service implementations and runtime support remain incomplete.
+Records, arrays, control flow and local package resolution are implemented.
+Sovra-native tests, locked registry resolution/publishing, formatter,
 language server and REPL are not implemented. Do not market reserved CLI commands
 as functionality. Preserve milestone numbering and the published JSON version-one
 compatibility rules.

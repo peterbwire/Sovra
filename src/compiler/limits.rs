@@ -18,21 +18,74 @@ pub(super) fn check_program_depth(program: &Program) -> Result<(), Span> {
         .iter()
         .chain(program.modules.iter().flat_map(|module| &module.functions))
     {
-        for statement in &function.body {
-            let expression = match statement {
-                Statement::Let { value, .. }
-                | Statement::Expression(value)
-                | Statement::Assign {
-                    target: _, value, ..
-                } => value,
-                Statement::Return {
-                    value: Some(value), ..
-                } => value,
-                Statement::Return { value: None, .. } => continue,
-                Statement::If { condition, .. } => condition,
-                Statement::While { condition, .. } => condition,
+        let mut statements: Vec<_> = function
+            .body
+            .iter()
+            .rev()
+            .map(|statement| (statement, 1))
+            .collect();
+        while let Some((statement, block_depth)) = statements.pop() {
+            let span = match statement {
+                Statement::Let { span, .. }
+                | Statement::Assign { span, .. }
+                | Statement::Return { span, .. }
+                | Statement::If { span, .. }
+                | Statement::While { span, .. } => *span,
+                Statement::Expression(expression) => expression.span,
             };
-            let mut pending = vec![(expression, 1)];
+            if block_depth > MAX_STRUCTURAL_DEPTH {
+                return Err(span);
+            }
+            let mut pending = Vec::new();
+            match statement {
+                Statement::Let { value, .. } | Statement::Expression(value) => {
+                    pending.push((value, 1))
+                }
+                Statement::Assign { target, value, .. } => {
+                    pending.push((value, 1));
+                    pending.push((target, 1));
+                }
+                Statement::Return { value, .. } => {
+                    pending.extend(value.iter().map(|value| (value, 1)))
+                }
+                Statement::If {
+                    condition,
+                    then_block,
+                    else_block,
+                    ..
+                } => {
+                    if block_depth == MAX_STRUCTURAL_DEPTH {
+                        return Err(span);
+                    }
+                    pending.push((condition, 1));
+                    if let Some(body) = else_block {
+                        statements.extend(
+                            body.iter()
+                                .rev()
+                                .map(|statement| (statement, block_depth + 1)),
+                        );
+                    }
+                    statements.extend(
+                        then_block
+                            .iter()
+                            .rev()
+                            .map(|statement| (statement, block_depth + 1)),
+                    );
+                }
+                Statement::While {
+                    condition, body, ..
+                } => {
+                    if block_depth == MAX_STRUCTURAL_DEPTH {
+                        return Err(span);
+                    }
+                    pending.push((condition, 1));
+                    statements.extend(
+                        body.iter()
+                            .rev()
+                            .map(|statement| (statement, block_depth + 1)),
+                    );
+                }
+            }
             while let Some((expression, depth)) = pending.pop() {
                 if depth > MAX_STRUCTURAL_DEPTH {
                     return Err(expression.span);
@@ -48,13 +101,13 @@ pub(super) fn check_program_depth(program: &Program) -> Result<(), Span> {
                         pending.push((callee, depth + 1));
                     }
                     ExpressionKind::FieldAccess { receiver, .. } => {
-                        pending.push((receiver, depth + 1));
+                        pending.push((receiver, depth + 1))
                     }
                     ExpressionKind::StructLiteral { fields, .. } => {
-                        pending.extend(fields.iter().rev().map(|(_, value)| (value, depth + 1)));
+                        pending.extend(fields.iter().rev().map(|(_, value)| (value, depth + 1)))
                     }
                     ExpressionKind::ArrayLiteral(items) => {
-                        pending.extend(items.iter().rev().map(|value| (value, depth + 1)));
+                        pending.extend(items.iter().rev().map(|value| (value, depth + 1)))
                     }
                     ExpressionKind::Index { target, index } => {
                         pending.push((index, depth + 1));
@@ -67,21 +120,26 @@ pub(super) fn check_program_depth(program: &Program) -> Result<(), Span> {
     }
     Ok(())
 }
-
 // Scan iteratively before any recursive parsing. Strings/comments are already
 // tokenized, so delimiter text inside them does not consume nesting depth.
 pub(super) fn check_nesting(tokens: &[Token], include_blocks: bool) -> Result<(), Span> {
     let mut parentheses = 0usize;
     let mut blocks = 0usize;
+    let mut brackets = 0usize;
     for token in tokens {
         match token.kind {
             TokenKind::Punctuation('(') => parentheses += 1,
             TokenKind::Punctuation(')') => parentheses = parentheses.saturating_sub(1),
+            TokenKind::Punctuation('[') => brackets += 1,
+            TokenKind::Punctuation(']') => brackets = brackets.saturating_sub(1),
             TokenKind::Punctuation('{') if include_blocks => blocks += 1,
             TokenKind::Punctuation('}') if include_blocks => blocks = blocks.saturating_sub(1),
             _ => {}
         }
-        if parentheses > MAX_STRUCTURAL_DEPTH || blocks > MAX_STRUCTURAL_DEPTH {
+        if parentheses > MAX_STRUCTURAL_DEPTH
+            || blocks > MAX_STRUCTURAL_DEPTH
+            || brackets > MAX_STRUCTURAL_DEPTH
+        {
             return Err(token.span);
         }
     }
@@ -92,6 +150,72 @@ pub(super) fn check_nesting(tokens: &[Token], include_blocks: bool) -> Result<()
 mod tests {
     use super::*;
     use crate::compiler::ast::Expression;
+
+    #[test]
+    fn ast_guard_checks_nested_bodies_assignment_targets_and_block_depth() {
+        let span = Span {
+            start: 0,
+            end: 1,
+            line: 0,
+            column: 0,
+        };
+        let leaf = || Expression {
+            kind: ExpressionKind::Boolean(true),
+            span,
+        };
+        for context in 0..4 {
+            let mut expression = leaf();
+            for _ in 0..128 {
+                expression = Expression {
+                    kind: ExpressionKind::FieldAccess {
+                        receiver: Box::new(expression),
+                        field: "x".into(),
+                    },
+                    span,
+                };
+            }
+            let statement = match context {
+                0 => Statement::If {
+                    condition: leaf(),
+                    then_block: vec![],
+                    else_block: Some(vec![Statement::Expression(expression)]),
+                    span,
+                },
+                1 => Statement::While {
+                    condition: leaf(),
+                    body: vec![Statement::Expression(expression)],
+                    span,
+                },
+                2 => Statement::Assign {
+                    target: expression,
+                    value: leaf(),
+                    span,
+                },
+                _ => {
+                    expression.drop_iterative();
+                    let mut statement = Statement::Expression(leaf());
+                    for _ in 0..128 {
+                        statement = Statement::If {
+                            condition: leaf(),
+                            then_block: vec![statement],
+                            else_block: None,
+                            span,
+                        };
+                    }
+                    statement
+                }
+            };
+            let mut program = crate::compiler::parser::Parser::new()
+                .parse_source("fn main() {}")
+                .unwrap();
+            program.functions[0].body.push(statement);
+            assert_eq!(
+                check_program_depth(&program),
+                Err(span),
+                "context {context}"
+            );
+        }
+    }
 
     #[test]
     fn ast_depth_checks_initializers_returns_callees_and_arguments() {

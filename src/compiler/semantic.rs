@@ -6,6 +6,8 @@ use crate::compiler::ast::{Expression, ExpressionKind, Function, Program, Statem
 use crate::compiler::diagnostics::{Diagnostic, Diagnostics, Severity, Span};
 use crate::compiler::stdlib;
 
+mod type_scopes;
+
 /// The types understood by the initial semantic checker.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
@@ -80,7 +82,7 @@ impl Type {
 /// Result of successful semantic analysis.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedProgram {
-    /// The validated source program.
+    /// The validated program, with module-local type references qualified.
     pub program: Program,
 }
 
@@ -111,6 +113,8 @@ impl SemanticAnalyzer {
             diagnostics.push(diagnostic("E3018", super::limits::depth_message(), span));
             return Err(diagnostics);
         }
+        let mut resolved_program = type_scopes::resolve(program)?;
+        let program = &resolved_program;
         let named_types = collect_named_types(program, &mut diagnostics);
         let struct_fields = collect_struct_fields(program, &named_types, &mut diagnostics);
         let mut declared_functions = HashMap::new();
@@ -222,8 +226,9 @@ impl SemanticAnalyzer {
             }
         }
         if diagnostics.is_empty() {
+            type_scopes::canonicalize_alias_targets(&mut resolved_program, &named_types);
             Ok(TypedProgram {
-                program: program.clone(),
+                program: resolved_program,
             })
         } else {
             Err(diagnostics)
@@ -289,20 +294,12 @@ fn collect_named_types(program: &Program, diagnostics: &mut Diagnostics) -> Hash
         for declaration in &module.type_declarations {
             let qualified = format!("{}::{}", module.name, declaration.name);
             insert_alias(
-                &declaration.name,
-                &declaration.target,
-                declaration.span,
-                &mut aliases,
-                diagnostics,
-            );
-            insert_alias(
                 &qualified,
                 &declaration.target,
                 declaration.span,
                 &mut aliases,
                 diagnostics,
             );
-            type_declarations.insert(declaration.name.clone(), declaration);
             type_declarations.insert(qualified.clone(), declaration);
         }
     }
@@ -318,12 +315,6 @@ fn collect_named_types(program: &Program, diagnostics: &mut Diagnostics) -> Hash
     for module in &program.modules {
         for declaration in &module.struct_declarations {
             insert_struct(
-                &declaration.name,
-                declaration,
-                &mut structured_names,
-                diagnostics,
-            );
-            insert_struct(
                 &format!("{}::{}", module.name, declaration.name),
                 declaration,
                 &mut structured_names,
@@ -331,13 +322,15 @@ fn collect_named_types(program: &Program, diagnostics: &mut Diagnostics) -> Hash
             );
         }
     }
-    for alias_name in aliases.keys() {
-        if structured_names.contains(alias_name) {
+    let mut ordered_aliases: Vec<_> = aliases.keys().collect();
+    ordered_aliases.sort();
+    for alias_name in &ordered_aliases {
+        if structured_names.contains(*alias_name) {
             diagnostics.push(diagnostic(
                 "E3008",
                 format!("duplicate type `{alias_name}`"),
                 type_declarations
-                    .get(alias_name)
+                    .get(*alias_name)
                     .map(|declaration| declaration.span)
                     .unwrap_or(Span {
                         start: 0,
@@ -354,15 +347,12 @@ fn collect_named_types(program: &Program, diagnostics: &mut Diagnostics) -> Hash
         resolved.insert(name.clone(), Type::Named(name.clone()));
     }
 
-    let mut visiting = HashSet::new();
-    for name in aliases.keys() {
+    for name in ordered_aliases {
         resolve_type_alias(
             name,
             &aliases,
-            &structured_names,
             &type_declarations,
             &mut resolved,
-            &mut visiting,
             diagnostics,
         );
     }
@@ -372,17 +362,19 @@ fn collect_named_types(program: &Program, diagnostics: &mut Diagnostics) -> Hash
 fn resolve_type_alias(
     name: &str,
     aliases: &HashMap<String, String>,
-    structured_names: &HashSet<String>,
     declarations: &HashMap<String, &crate::compiler::ast::TypeDeclaration>,
     resolved: &mut HashMap<String, Type>,
-    visiting: &mut HashSet<String>,
     diagnostics: &mut Diagnostics,
 ) -> Type {
-    if let Some(resolved_type) = resolved.get(name) {
-        return resolved_type.clone();
-    }
-    if !visiting.insert(name.to_owned()) {
-        if let Some(declaration) = declarations.get(name) {
+    let mut current = name;
+    let mut path = Vec::new();
+    let mut visiting = HashSet::new();
+    let result = loop {
+        if let Some(result) = resolved.get(current) {
+            break result.clone();
+        }
+        let declaration = declarations[current];
+        if !visiting.insert(current) {
             diagnostics.push(diagnostic(
                 "E3017",
                 format!(
@@ -391,75 +383,34 @@ fn resolve_type_alias(
                 ),
                 declaration.span,
             ));
+            break Type::Unknown;
         }
-        return Type::Unknown;
-    }
-
-    let target = aliases
-        .get(name)
-        .cloned()
-        .unwrap_or_else(|| name.to_owned());
-    let resolved_type = if target == name {
-        diagnostics.push(diagnostic(
-            "E3017",
-            format!("type `{}` cannot alias itself", name),
-            declarations
-                .get(name)
-                .map(|decl| decl.span)
-                .unwrap_or(Span {
-                    start: 0,
-                    end: 0,
-                    line: 0,
-                    column: 0,
-                }),
-        ));
-        Type::Unknown
-    } else {
-        match type_from_name(&target) {
-            Type::Unknown => {
-                if resolved.contains_key(&target) {
-                    resolved[&target].clone()
-                } else if aliases.contains_key(&target) {
-                    resolve_type_alias(
-                        &target,
-                        aliases,
-                        structured_names,
-                        declarations,
-                        resolved,
-                        visiting,
-                        diagnostics,
-                    )
-                } else if structured_names.contains(&target) {
-                    Type::Named(target.clone())
-                } else {
-                    diagnostics.push(diagnostic(
-                        "E3017",
-                        format!(
-                            "unknown type `{}`; expected Unit, Bool, Int, Float, String or a declared alias",
-                            target
-                        ),
-                        declarations
-                            .get(name)
-                            .map(|decl| decl.span)
-                            .unwrap_or(Span {
-                                start: 0,
-                                end: 0,
-                                line: 0,
-                                column: 0,
-                            }),
-                    ));
-                    Type::Unknown
-                }
-            }
-            resolved_target => resolved_target,
+        path.push(current);
+        let target = aliases[current].as_str();
+        if target == current {
+            diagnostics.push(diagnostic(
+                "E3017",
+                format!("type `{current}` cannot alias itself"),
+                declaration.span,
+            ));
+            break Type::Unknown;
+        }
+        let primitive = type_from_name(target);
+        if primitive != Type::Unknown {
+            break primitive;
+        }
+        if aliases.contains_key(target) || resolved.contains_key(target) {
+            current = target;
+        } else {
+            diagnostics.push(diagnostic("E3017", format!("unknown type `{target}`; expected Unit, Bool, Int, Float, String or a declared alias"), declaration.span));
+            break Type::Unknown;
         }
     };
-
-    visiting.remove(name);
-    resolved.insert(name.to_owned(), resolved_type.clone());
-    resolved_type
+    for alias in path {
+        resolved.insert(alias.to_owned(), result.clone());
+    }
+    result
 }
-
 fn collect_struct_fields(
     program: &Program,
     named_types: &HashMap<String, Type>,
@@ -508,7 +459,6 @@ fn collect_struct_fields(
     }
     for module in &program.modules {
         for declaration in &module.struct_declarations {
-            insert_struct(&declaration.name, declaration);
             insert_struct(
                 &format!("{}::{}", module.name, declaration.name),
                 declaration,
@@ -589,16 +539,17 @@ pub(crate) fn exported_record_fields(
     records: &HashMap<String, String>,
 ) -> Result<Vec<crate::compiler::ast::StructDeclaration>, Diagnostics> {
     let mut result = Vec::new();
-    for record in owner
+    for (identity, record) in owner
         .struct_declarations
         .iter()
-        .chain(
-            owner
-                .modules
+        .map(|record| (record.name.clone(), record))
+        .chain(owner.modules.iter().flat_map(|module| {
+            module
+                .struct_declarations
                 .iter()
-                .flat_map(|module| &module.struct_declarations),
-        )
-        .filter(|record| record.is_exported)
+                .map(move |record| (format!("{}::{}", module.name, record.name), record))
+        }))
+        .filter(|(_, record)| record.is_exported)
     {
         // Reuse signature resolution for field annotations, keeping their source spans.
         let signature = Function {
@@ -621,7 +572,7 @@ pub(crate) fn exported_record_fields(
         };
         let normalized = normalize_imported_signatures(owner, &[&signature], records)?;
         let mut record = record.clone();
-        record.name = records[&record.name].clone();
+        record.name = records[&identity].clone();
         for (field, parameter) in record.fields.iter_mut().zip(&normalized[0].parameters) {
             field.type_name = parameter.type_name.clone().unwrap();
         }
@@ -1579,6 +1530,108 @@ fn diagnostic(code: &'static str, message: impl Into<String>, span: Span) -> Dia
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn long_module_alias_chains_resolve_without_native_recursion() {
+        let mut source = String::from("mod chain { ");
+        for index in 0..4096 {
+            source.push_str(&format!(
+                "type T{index} = {}; ",
+                if index == 4095 {
+                    "Float".into()
+                } else {
+                    format!("T{}", index + 1)
+                }
+            ));
+        }
+        source.push_str(
+            "export fn value(x: T0) -> T0 { return x } } fn main() { print(chain::value(3) / 2); }",
+        );
+        let parsed = Parser::new().parse_source(&source).unwrap();
+        let typed = SemanticAnalyzer::new().analyze(&parsed).unwrap();
+        assert_eq!(
+            typed.program.modules[0].functions[0].parameters[0]
+                .type_name
+                .as_deref(),
+            Some("chain::T0")
+        );
+        assert!(typed.program.modules[0]
+            .type_declarations
+            .iter()
+            .all(|alias| alias.target == "Float"));
+        let lowered = crate::compiler::ir::lower(&typed);
+        assert_eq!(
+            crate::compiler::interpreter::run(&lowered).unwrap(),
+            ["1.5"]
+        );
+    }
+
+    #[test]
+    fn module_types_do_not_leak_bare_names_or_nominal_identity() {
+        for source in [
+            "mod a { struct Point { x: Int } } fn read(p: Point) {}",
+            "mod a { type Scalar = Int; } mod b { fn read(x: Scalar) {} }",
+            "mod a { struct Point { x: Int } } mod b { struct Point { x: Int } export fn read(p: Point) {} } fn main() { b::read(a::Point { x: 1 }); }",
+        ] {
+            let program = crate::compiler::parser::Parser::new().parse_source(source).unwrap();
+            assert!(SemanticAnalyzer::new().analyze(&program).is_err(), "{source}");
+        }
+    }
+
+    #[test]
+    fn module_type_resolution_preserves_input_spans_and_is_idempotent() {
+        let source = "mod a { type Scalar = Float; struct Point { x: Scalar } fn make(p: Point) -> Point { if (true) { let q: Point = Point { x: 3 }; return q } else { return p } } }";
+        let parsed = Parser::new().parse_source(source).unwrap();
+        let original = parsed.clone();
+        let typed = SemanticAnalyzer::new().analyze(&parsed).unwrap();
+        assert_eq!(parsed, original);
+        let function = &typed.program.modules[0].functions[0];
+        assert_eq!(
+            function.parameters[0].type_name.as_deref(),
+            Some("a::Point")
+        );
+        assert_eq!(
+            function.parameters[0].type_span,
+            original.modules[0].functions[0].parameters[0].type_span
+        );
+        assert_eq!(
+            typed,
+            SemanticAnalyzer::new().analyze(&typed.program).unwrap()
+        );
+        let shadowed = Parser::new().parse_source("struct Point { x: String } type GlobalPoint = Point; mod a { struct Point { x: Int } type Alias = GlobalPoint; fn read(p: Alias) -> String { return p.x } }").unwrap();
+        let typed = SemanticAnalyzer::new().analyze(&shadowed).unwrap();
+        assert_eq!(
+            typed,
+            SemanticAnalyzer::new().analyze(&typed.program).unwrap()
+        );
+    }
+
+    #[test]
+    fn duplicate_and_unresolved_module_types_still_fail_in_their_owner() {
+        for source in [
+            "mod a { type X = Int; type X = Float; }",
+            "mod a { struct X {} struct X {} }",
+            "mod a { struct X {} type X = Int; }",
+            "mod a { type Float = Int; }",
+            "mod a { struct Int {} }",
+            "mod a { type X = Y; type Y = X; }",
+            "mod a { type X = Missing; } mod b { type Missing = Int; }",
+        ] {
+            let parsed = Parser::new().parse_source(source).unwrap();
+            let errors = SemanticAnalyzer::new().analyze(&parsed).unwrap_err();
+            assert!(
+                errors
+                    .items
+                    .iter()
+                    .all(|error| ["E3008", "E3017"].contains(&error.code)),
+                "{errors:?}"
+            );
+            assert!(errors
+                .items
+                .iter()
+                .all(|error| error.span.end <= source.len()));
+        }
+    }
 
     #[test]
     fn manually_constructed_ast_respects_structural_depth() {
