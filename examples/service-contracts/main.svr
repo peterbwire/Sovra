@@ -1,0 +1,11 @@
+service metrics {
+    fn scale(value: Float) -> Float;
+    fn enabled() -> Bool;
+    fn log(value: String);
+}
+
+fn main() {
+    metrics.log("checking service contracts")
+    metrics.scale(3)
+    metrics.enabled()
+}

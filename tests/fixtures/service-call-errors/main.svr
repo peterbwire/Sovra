@@ -1,4 +1,4 @@
 service mail {
-    fn send(value: Text)
+    fn send(value: String)
 }
 fn main() { std::println(mail.send()); std::println(mail.missing()); }

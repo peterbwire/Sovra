@@ -1,5 +1,172 @@
 # Development log
 
+## 2026-10-04: Structured application control flow
+
+- Validation: **258 library + 42 CLI = 300 passed**, no failures/skips, with
+  required Windows CLI execution (`target/v1-control-flow-tests.log`). Strict
+  all-target/all-feature Clippy, formatting and whitespace checks passed.
+
+- Reproduced rejection of a valid conditional service-call body before extending
+  structured inspection to if/else-if/else and while. Calls, local types and
+  returns are retained in each lexical block; malformed bodies still reject the
+  entire file. Older incomplete-coverage fixtures now use malformed conditionals.
+- Function inspection retains a conservative return-path result. E4123 requires
+  both conditional arms to return; loops may execute zero times, and a later
+  unconditional return can establish completeness. E4124 identifies known
+  non-Bool condition expressions. Unknown condition types remain unresolved.
+- Added tests for conditional paths, loops, scope isolation, bounded else-if
+  chain depth and CLI coverage/diagnostics. No runtime execution is added.
+- Next: resolve unknown expressions and ordinary calls; complete application
+  parsing/typing and runtime remain open before version 1.0.
+
+## 2026-10-04: Missing returns in supported service bodies
+
+- Validation: **255 library + 42 CLI = 297 passed**, no failures/skips, with
+  required Windows CLI execution (`target/v1-missing-returns-tests.log`). Strict
+  all-target/all-feature Clippy, formatting and whitespace checks passed.
+
+- Reproduced a non-Unit service body accepted without a return. Added E4123 at
+  the full function range when a resolved non-Unit implementation has no explicit
+  return. Unit bodies and external declaration-only contracts remain exempt.
+- The rule relies on the inspector's restricted straight-line statements and
+  unconditional nested blocks. Branches/loops still reject full-file inspection
+  with E4096; this is not general control-flow analysis. Unknown return expression
+  types remain unresolved rather than being treated as compatible.
+- Added regression and CLI coverage for missing returns, nested returns, Unit
+  bodies, declaration-only contracts, unknown expressions and diagnostic spans.
+- Next: structured control-flow inspection, unresolved return expressions and
+  ordinary function result types. Full application typing/runtime remain unfinished.
+
+## 2026-10-03: Explicit service implementation returns
+
+- Validation: **254 library + 42 CLI = 296 passed**, no failures/skips, with
+  required Windows CLI execution (`target/v1-service-returns-tests.log`). Strict
+  all-target/all-feature Clippy, formatting and whitespace checks passed.
+
+- Reproduced three missed return mismatches (zero diagnostics instead of three).
+  Function inspection now retains explicit return type evidence and source ranges,
+  resetting it between declarations and respecting nested lexical scopes.
+- Resolved service implementations compare known returns with their owning
+  file/service contract. E4122 identifies incompatible expressions or bare return
+  keywords. Bare returns are Unit; Int-to-Float widening remains valid.
+- Added regressions for return ranges, scope shadowing, unknown expressions,
+  declaration isolation, default Unit contracts and CLI reporting.
+- Remaining: missing-return/return-path checks, unknown return expression types,
+  ordinary function results and full implementation validation. No execution
+  support or complete M12 claim is implied.
+
+## 2026-10-03: Service call result propagation
+
+- Validation: **252 library + 42 CLI = 294 passed**, no failures/skips, with
+  required Windows CLI execution (`target/v1-service-results-tests.log`). Strict
+  all-target/all-feature Clippy, formatting and whitespace checks passed.
+
+- Reproduced missing diagnostics for an imported Float-returning service used
+  directly and through a local in an Int argument position (zero instead of two).
+- Project inspection now supplies canonical resolved contracts to expression
+  typing. Existing public source/body inspection entry points retain their
+  signatures and remain contract-free unless called through project inspection.
+- Call results propagate only for visible unshadowed/unambiguous services with
+  correct arity and known compatible arguments. Invalid/unknown calls do not
+  produce misleading downstream type errors. Added imported-call, shadowing,
+  invalid-inner-call, unknown-argument and CLI regressions.
+- Remaining: ordinary function call results, named application types, service
+  implementation return/body validation and execution. This does not complete M12.
+
+## 2026-10-03: Primitive compound expression checking
+
+- Validation: **250 library + 42 CLI = 292 passed**, no failures/skips, with
+  required Windows CLI execution (`target/v1-compound-types-tests.log`). Strict
+  all-target/all-feature Clippy, formatting and whitespace checks passed. Added
+  `docs/course/service-argument-types.md` for the verified checker subset.
+
+- Reproduced missing Float type evidence for a mixed numeric service argument.
+  The application expression representation now retains binary operators and
+  propagates primitive results into arguments and inferred/annotated locals.
+- Matched existing scalar rules for arithmetic, numeric widening, String `+`,
+  numeric/String ordering and numeric/String/Bool equality. Known invalid operands
+  produce E4121 at their expression range; unresolved operands remain unknown.
+  Invalid inner expressions do not produce cascading outer type errors.
+- Added result-type, nested-invalid-expression and CLI coverage for valid and
+  invalid compound arguments. This is type validation, not evaluation: overflow,
+  division by zero, call-result resolution and complete body typing remain outside
+  this application-checking slice.
+
+## 2026-10-03: Primitive annotated local initializers
+
+- Validation: **248 library + 42 CLI = 290 passed**, no failures/skips, with
+  required Windows CLI execution (`target/v1-local-initializers-tests.log`).
+  Strict all-target/all-feature Clippy, formatting and whitespace checks passed.
+
+- Reproduced two missing diagnostics for an incompatible String initializer and
+  a widened Float local passed to an Int service parameter (zero instead of two).
+- Added retained initializer mismatch records to function inspection and E4120
+  diagnostics through opt-in service checking. Known compatible primitive
+  initializers propagate the declared type, preserving Int-to-Float widening.
+  Invalid initializers do not cause misleading downstream argument errors.
+- Added regressions for unknown initializers/annotations, diagnostic spans,
+  per-function isolation, valid String initializers and CLI error behavior.
+- Remaining: compound expressions, unknown initializer resolution, named
+  application types and complete implementation typing. Ordinary project checks
+  remain partial wiring checks; `inspect_body` remains a call-inspection API.
+
+## 2026-10-03: Lexical service argument types
+
+- Validation: **246 library + 42 CLI = 288 passed**, no failures/skips, with
+  required Windows CLI execution (`target/v1-service-variable-tests.log`).
+  Strict all-target/all-feature Clippy, formatting and whitespace checks passed.
+
+- Extended the existing application scope with optional primitive binding types;
+  retained the untyped binding API and literal evidence field. Argument records
+  expose additional binding evidence through `resolved_type()`.
+- Primitive declaration parameters and unannotated locals initialized from known
+  literals/bindings now participate in E4119 service argument checks. Reverse
+  lexical lookup respects initializer visibility, nested scopes and unknown
+  bindings that hide outer known types.
+- Added a nested-scope regression and CLI cases for parameter/copy mismatches and
+  valid inner shadowing. Annotated locals conservatively remain unresolved until
+  initializer compatibility is validated; no unknown type is treated as proof
+  of compatibility. Compound expressions and implementation typing remain next.
+
+## 2026-10-03: Literal service-call argument validation
+
+- Reproduced acceptance of `mail.send((true))` for a String parameter (expected
+  one diagnostic, received zero). The inspector now retains positional literal
+  type evidence and argument ranges, including parentheses and nested calls.
+- Resolved service contracts reject literal mismatches with E4119. Existing
+  Int-to-Float widening is accepted; arity failures do not cascade into type
+  errors. Receiver shadowing and unresolved receivers retain their prior rules.
+- Added CLI fixtures for String/Int/Float/Bool mismatches and valid widening,
+  plus regressions for argument spans and deliberately unresolved expressions.
+- Full Windows suite passed: 244 library and 42 CLI tests, no failures/skips,
+  with required CLI execution (`target/v1-service-arguments-tests.log`). A further
+  argument-evidence regression was added and checked separately.
+- Remaining: variables, compound expressions, implementation return/body types,
+  named application types and runtime execution. Literal success is not complete
+  argument validation; JSON schema and syntax coverage semantics are unchanged.
+
+## 2026-10-03: Resolved primitive service signatures
+
+- Added `project::service_types` with typed parameters/operations, canonical
+  service ownership and declaration spans. Only fully resolved contracts enter
+  the typed result. Unit, Bool, Int, Float and String are supported; omitted
+  returns resolve to Unit. Missing annotations retain E4097, unresolved types
+  use E4117 and owner-path failures use E4118.
+- Connected signature diagnostics to opt-in `check --service-calls`. Reproduced
+  the missing integration first: the regression expected two unresolved-type
+  diagnostics and received zero. Ordinary scanner metadata and JSON schema 1
+  remain unchanged. Added `examples/service-contracts` as a checker-only example.
+- Coverage includes all five primitives, default returns, invalid-operation
+  omission, canonical identities, missing annotations/owners, CRLF/Unicode
+  declaration spans and CLI JSON/exit behavior. Existing arity fixtures now use
+  supported primitive contracts; the generic metadata fixture remains intact.
+- Validation: **243 library + 42 CLI = 285 passed**, no failures or skips, with
+  `SOVRA_REQUIRE_CLI_EXECUTION=1`; see `target/v1-service-signatures-tests.log`.
+  Strict all-target/all-feature Clippy and formatting passed; doc stage: 0 tests.
+- Remaining: retain argument expressions for type checking, connect application
+  named types and check implementation bodies. This does not complete M12 or
+  supply application execution or registry publishing for version 1.0.
+
 ## 2026-10-03: Module-scoped named types and iterative alias resolution
 
 - **Upgrade:** Added a dedicated type-scope resolution pass under accepted ADR

@@ -1,0 +1,16 @@
+service mail {
+    fn complete(flag: Bool) -> Int {
+        if flag { return 1; } else { return 2; }
+    }
+    fn partial(flag: Bool) -> Int {
+        if flag { return 1; }
+    }
+    fn loop_only(flag: Bool) -> Int {
+        while flag { return 1; }
+    }
+    fn invalid_condition() {
+        if 1 {}
+        while "wrong" {}
+    }
+}
+fn main() { mail.complete(true); }

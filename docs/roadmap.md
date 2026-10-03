@@ -104,13 +104,28 @@ The partial multiline service scanner now includes duplicate-operation E4025
 checks and excludes service signatures from route/task callable targets.
 Code and regression cases have been executed successfully on Windows.
 Structured headers, parameter records and return annotations now feed retained
-Rust service-operation metadata. This does not implement service calls, signature
-type resolution or full application parsing. Experimental opt-in
-`check --service-calls` now checks operation existence and argument counts in
+Rust service-operation metadata. This does not implement service execution or
+full application parsing. Experimental opt-in
+`check --service-calls` now resolves primitive service signatures and checks
+operation existence and argument counts in
 supported function/task and service-operation bodies, with explicit per-file
 coverage. ADR 0008 defines explicit service calls and lexical shadowing. Unsupported
 syntax produces E4096;
 complete coverage does not mean full application type checking.
+Literal argument checking is implemented with Int-to-Float widening and E4119
+for mismatches. Primitive parameters and inferred locals now contribute argument
+types with lexical shadowing. Primitive annotated locals validate known initializers
+with E4120 before propagating declared types. Primitive binary arithmetic and
+comparisons propagate result types and reject known invalid operands with E4121.
+Resolved service calls propagate return types after receiver/argument validation.
+Known explicit implementation returns validate against service contracts with
+E4122. E4123 rejects missing returns in fully inspected non-Unit straight-line
+service bodies. Structured if/else and while inspection now extends return-path
+checks; loops alone never guarantee return. E4124 rejects known non-Bool conditions.
+Unknown return/condition types remain unresolved.
+Named application types, general argument and implementation body typing
+remain unfinished. Unsupported signature types produce E4117 rather than typed
+placeholder records. See `examples/service-contracts` for the checked subset.
 
 Before expanding this surface, the handoff assessment recommends hardening the
 existing executable subset. Module bodies, numeric widening/bounds, Int

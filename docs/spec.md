@@ -531,7 +531,44 @@ Experimental `project::application::check_service_calls` validates calls in file
 that the inspector can fully parse. E4093 identifies a missing service operation,
 E4094 a positional argument-count mismatch and E4095 an ambiguous service receiver.
 Locations identify the member expression in its original file. Local/unresolved
-receivers are outside this service rule. Parameter/return types are not checked.
+receivers are outside this service rule. Service parameter/return annotations
+resolve to Unit, Bool, Int, Float or String; omitted returns mean Unit. Unknown
+annotations, including application named types and generic forms not yet linked
+to this checker, produce E4117. Source-owner canonicalization failures produce
+E4118. These diagnostics retain the whole declaration range in its original file.
+The Rust `project::service_types::resolve_service_signatures` API retains only
+fully resolved operation signatures with canonical source/service identity.
+Literal service arguments, including parenthesized literals, are checked against
+resolved parameters. Int may widen to Float; other mismatches produce E4119 at
+the argument expression range. Primitive function/task/service parameters and
+unannotated locals initialized from known literals or bindings also contribute
+argument types. Bindings become visible after their initializer; nested bindings
+do not escape their block, and unknown bindings hide outer type evidence.
+Primitive annotated locals with known initializers are checked for compatibility,
+including Int-to-Float widening. E4120 reports mismatches at the initializer range.
+Only compatible known initializers propagate the declared type to later calls;
+unsupported annotations and unknown initializers remain unresolved.
+Supported binary expressions now retain their operator and infer primitive result
+types: numeric arithmetic, String concatenation with `+`, numeric/String ordering,
+and numeric/String/Bool equality. Mixed numeric arithmetic yields Float; comparison
+yields Bool. E4121 reports known incompatible operands at the expression range.
+Invalid or unresolved expressions do not supply downstream type evidence.
+Project inspection resolves service call result types through canonical contracts,
+including direct imports. Results propagate only for unambiguous, unshadowed
+service receivers with correct arity and known compatible arguments. Invalid or
+unknown arguments prevent result propagation. Known explicit service implementation
+returns are compared with the owning resolved contract. E4122 reports incompatible
+types at the returned expression, or at the `return` keyword for a bare Unit return.
+Int may widen to Float. Non-Unit service bodies without explicit returns produce
+E4123 at the full function range when an inspected body can fall through.
+Inspection supports `if`/`else if`/`else` and `while`. Both conditional arms must
+guarantee return; a missing else can fall through. Loops conservatively may execute
+zero times, even for literal true conditions. A subsequent unconditional return
+satisfies the rule. E4124 identifies known non-Bool conditions at their expression
+ranges; unknown condition types remain unresolved. Branch/loop bindings do not
+escape their blocks. Declaration-only contracts need no body return.
+Unknown return expression types remain unresolved. Ordinary function call results and
+complete implementation typing remain unfinished.
 The result retains per-file inspection outcomes alongside diagnostics and emits
 E4096 for every unsupported file, including through the Rust API. Callers must first
 obtain a successful ProjectCheck, which validates service manifest bindings.

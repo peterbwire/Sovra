@@ -1,0 +1,7 @@
+[project]
+name = "service-contracts"
+version = "1.0.0"
+entry = "main.svr"
+
+[services]
+metrics = "external"

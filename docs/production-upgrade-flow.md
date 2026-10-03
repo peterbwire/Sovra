@@ -22,6 +22,21 @@ do not treat successful packaging as release approval.
 
 ## Current Checkpoint
 
+Primitive service signature resolution is implemented behind
+`project::service_types::resolve_service_signatures` and opt-in
+`check --service-calls`. It retains canonical owners and resolved types; unknown
+annotations produce E4117 and owner failures E4118. Literal argument checking now
+reports E4119 and permits Int-to-Float widening. Primitive parameters and inferred
+locals now propagate through lexical scopes. Primitive annotated initializers are
+checked with E4120 and widening; only validated types propagate. Primitive binary
+arithmetic/comparisons now propagate types and report incompatible operands with
+E4121. Valid resolved service calls now propagate contract return types, including
+direct imports. Known explicit service returns now validate against contracts with
+E4122. E4123 now checks non-Unit return paths through if/else and while bodies,
+conservatively treating loops as potentially skipped. E4124 rejects known non-Bool
+conditions. Next, connect unresolved expressions, ordinary call results and application named types.
+Ordinary project checks remain partial wiring checks.
+
 M12 now validates manifest metadata, source discovery, service bindings, app
 routes, page routes, auth target wiring, app data model references, and
 scheduled task targets. This pass also validates auth policy shape and policy

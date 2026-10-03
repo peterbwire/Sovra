@@ -22,7 +22,8 @@ Standalone `.svr` checks retain their source-only behavior and do not load manif
 ## Experimental service-call checking
 
 Use `svr check --service-calls --format json <project-directory>` to request
-service operation/positional-arity validation after ordinary project validation.
+service operation/positional-arity and primitive signature validation after ordinary
+project validation.
 The flag is project-only; source-file use or repeated flags return usage exit 2.
 Normal checks are unchanged. Once inspection runs, the version-one report adds:
 
@@ -38,7 +39,29 @@ fit the supported inspection syntax, not that application types or all ordinary
 member calls were validated. E4093/E4094/E4095 report resolved service-call errors.
 Unsupported files add E4096 with null diagnostic location; their paths/reasons
 appear in coverage. Incomplete inspection returns exit 1 and success false even
-when no service-call errors were found. Successful complete inspection exits 0.
+when no service-call errors were found. Complete inspection with valid signatures
+and no call errors exits 0. E4117 reports unresolved service parameter/return
+annotations, including named types and generic forms not yet connected to this
+checker. Supported types are Unit, Bool, Int, Float and String; omitted returns
+mean Unit. E4118 reports a failure to canonicalize the signature's source owner.
+Both use the original file and whole declaration range, not an annotation range.
+E4119 reports literal argument type mismatches at the argument expression range.
+Int may widen to Float. Primitive parameters and inferred literal/binding locals
+also participate in E4119 checks with lexical shadowing. Primitive annotated
+locals propagate their declared type only after a known compatible initializer;
+E4120 identifies incompatible initializers at their expression ranges. Unknown
+initializers and unsupported annotations remain unresolved. Supported primitive
+binary arithmetic/comparison expressions contribute argument and initializer types.
+E4121 reports incompatible known operands at the expression range. Resolved service
+call results contribute types when receiver, arity and all argument types validate;
+invalid or unknown arguments prevent result propagation. E4122 reports known
+service return mismatches at the expression range (the keyword for bare returns).
+E4123 reports a non-Unit service body that can fall through at the full function
+range. Both if/else arms must return; while loops alone never guarantee return.
+E4124 identifies known non-Bool if/while conditions at their expression ranges.
+Unknown condition/return types and ordinary call results remain
+unchecked. Typed signature
+records are available through the Rust API, not additional JSON fields.
 If initial manifest/import/wiring validation fails, inspection does not run and
 the ordinary diagnostic report has no service_coverage field. Service-call reports
 do not currently include service_operations; use ordinary project JSON for metadata.

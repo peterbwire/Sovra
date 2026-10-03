@@ -3,6 +3,7 @@
 //! Callers must supply scopes and bindings from structured syntax. This module
 //! does not scan source text or establish that an application body was parsed.
 
+use crate::compiler::semantic::Type;
 use std::collections::BTreeSet;
 
 /// Identity of a service declaration, qualified by its source module.
@@ -35,8 +36,9 @@ pub enum Receiver {
 #[derive(Debug, Default)]
 pub struct Scope<'a> {
     parent: Option<&'a Scope<'a>>,
-    bindings: Vec<(String, usize)>,
+    bindings: Vec<(String, usize, Option<Type>)>,
     services: BTreeSet<ServiceIdentity>,
+    operations: Vec<super::service_types::TypedServiceOperation>,
 }
 
 impl<'a> Scope<'a> {
@@ -51,18 +53,62 @@ impl<'a> Scope<'a> {
             parent: Some(self),
             bindings: Vec::new(),
             services: BTreeSet::new(),
+            operations: Vec::new(),
         }
     }
 
     /// Record a parameter/local/closure binding and its visibility start offset.
     pub fn bind(&mut self, name: impl Into<String>, visible_from: usize) {
-        self.bindings.push((name.into(), visible_from));
+        self.bind_typed(name, visible_from, None);
+    }
+
+    pub(super) fn bind_typed(
+        &mut self,
+        name: impl Into<String>,
+        visible_from: usize,
+        kind: Option<Type>,
+    ) {
+        self.bindings.push((name.into(), visible_from, kind));
+    }
+
+    pub(super) fn binding_type(&self, name: &str, offset: usize) -> Option<Type> {
+        if let Some((_, _, kind)) = self
+            .bindings
+            .iter()
+            .rev()
+            .find(|(binding, start, _)| binding == name && *start <= offset)
+        {
+            return kind.clone();
+        }
+        self.parent
+            .and_then(|parent| parent.binding_type(name, offset))
     }
 
     /// Make an explicitly resolved service declaration visible in this scope.
     /// Repeated imports of the same declaration are idempotent.
     pub fn add_service(&mut self, service: ServiceIdentity) {
         self.services.insert(service);
+    }
+
+    pub(super) fn add_operations(
+        &mut self,
+        operations: &[super::service_types::TypedServiceOperation],
+    ) {
+        self.operations.extend_from_slice(operations);
+    }
+
+    pub(super) fn operation(
+        &self,
+        service: &ServiceIdentity,
+        name: &str,
+    ) -> Option<&super::service_types::TypedServiceOperation> {
+        self.operations
+            .iter()
+            .find(|operation| operation.service == *service && operation.name == name)
+            .or_else(|| {
+                self.parent
+                    .and_then(|parent| parent.operation(service, name))
+            })
     }
 
     /// Resolve a receiver at a source byte offset. Lexical bindings take
@@ -83,7 +129,7 @@ impl<'a> Scope<'a> {
     fn has_binding(&self, name: &str, offset: usize) -> bool {
         self.bindings
             .iter()
-            .any(|(binding, start)| binding == name && *start <= offset)
+            .any(|(binding, start, _)| binding == name && *start <= offset)
             || self
                 .parent
                 .is_some_and(|parent| parent.has_binding(name, offset))

@@ -5,6 +5,7 @@ mod imports;
 pub mod packages;
 pub mod scope;
 mod service_contract;
+pub mod service_types;
 
 use service_contract::BodyStart;
 use std::collections::BTreeSet;
@@ -36,7 +37,7 @@ pub struct ProjectCheck {
     pub declared_services: Vec<String>,
     /// Service declarations with file identity, including services with no operations.
     pub service_declarations: Vec<ServiceDeclaration>,
-    /// Parsed service operation declarations; application types remain unresolved.
+    /// Parsed service declarations; use `service_types` for primitive type resolution.
     pub service_operations: Vec<ServiceOperation>,
     /// Validated project-relative application imports, without service-call resolution.
     pub imports: Vec<ProjectImport>,
@@ -1870,6 +1871,218 @@ mod tests {
     }
 
     #[test]
+    fn service_signature_resolution_rejects_missing_annotations_and_owner_failures() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"types\"\nentry = \"main.svr\"\n[services]\nmail = \"external\"",
+        );
+        project.write_file("main.svr", "service mail {\nfn send(value: String);\n}\n");
+        let checked = check_project(project.path()).unwrap();
+        let good = service_types::resolve_service_signatures(&checked);
+        assert!(good.diagnostics.is_empty());
+        assert_eq!(
+            good.operations[0].return_type,
+            crate::compiler::semantic::Type::Unit
+        );
+        assert!(!good.operations[0].has_body);
+        let mut missing = checked.clone();
+        missing.service_operations[0].parameters[0].annotation = None;
+        let report = service_types::resolve_service_signatures(&missing);
+        assert!(report.operations.is_empty());
+        assert_eq!(report.diagnostics.items[0].code, "E4097");
+        let mut missing_owner = checked;
+        missing_owner.service_operations[0].source_file = project.path().join("missing.svr");
+        let report = service_types::resolve_service_signatures(&missing_owner);
+        assert!(report.operations.is_empty());
+        assert_eq!(report.diagnostics.items[0].code, "E4118");
+    }
+
+    #[test]
+    fn service_nonunit_bodies_require_returns_in_supported_syntax() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"returns\"\nentry = \"main.svr\"\n[services]\nmail = \"external\"",
+        );
+        let source = "service mail {\nfn absent() -> Int { let value = 1; }\nfn nested() -> Int { { return 1; } }\nfn external() -> Int;\nfn unit() {}\nfn unresolved() -> Int { return unknown; }\n}\nfn main() {}";
+        project.write_file("main.svr", source);
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert_eq!(report.diagnostics.items.len(), 1);
+        let error = &report.diagnostics.items[0];
+        assert_eq!(error.code, "E4123");
+        assert_eq!(
+            &source[error.span.start..error.span.end],
+            "fn absent() -> Int { let value = 1; }"
+        );
+    }
+
+    #[test]
+    fn service_implementation_returns_match_resolved_contracts() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"returns\"\nentry = \"main.svr\"\n[services]\nmail = \"external\"",
+        );
+        let source = "service mail {\nfn bad() -> String { return 1; }\nfn empty() -> Int { return; }\nfn widened() -> Float { return 1; }\nfn unit() { return true; }\n}\nfn main() {}";
+        project.write_file("main.svr", source);
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert_eq!(report.diagnostics.items.len(), 3);
+        for (error, expected) in report.diagnostics.items.iter().zip(["1", "return", "true"]) {
+            assert_eq!(error.code, "E4122");
+            assert_eq!(&source[error.span.start..error.span.end], expected);
+        }
+    }
+
+    #[test]
+    fn service_result_types_do_not_escape_invalid_or_unknown_calls() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"results\"\nentry = \"main.svr\"\n[services]\nmail = \"external\"",
+        );
+        project.write_file("main.svr", "service mail {\nfn echo(value: String) -> String;\nfn count(value: Int);\n}\nfn main() { mail.count(mail.echo(true)); mail.count(mail.echo()); mail.count(mail.echo(unknown)); }\n");
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert_eq!(
+            report
+                .diagnostics
+                .items
+                .iter()
+                .map(|error| error.code)
+                .collect::<Vec<_>>(),
+            ["E4119", "E4094"]
+        );
+    }
+
+    #[test]
+    fn service_results_flow_through_nested_calls_and_locals() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"results\"\nentry = \"main.svr\"\n[services]\nmail = \"external\"",
+        );
+        project.write_file(
+            "service.svr",
+            "service mail {\nfn amount() -> Float;\nfn count(value: Int);\n}\n",
+        );
+        let source = "use service\nfn main() { mail.count(mail.amount()); let amount = mail.amount(); mail.count(amount); }\nfn shadow(mail: String) { mail.count(mail.amount()); }";
+        project.write_file("main.svr", source);
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert_eq!(report.diagnostics.items.len(), 2);
+        for (error, expected) in report
+            .diagnostics
+            .items
+            .iter()
+            .zip(["mail.amount()", "amount"])
+        {
+            assert_eq!(error.code, "E4119");
+            assert_eq!(&source[error.span.start..error.span.end], expected);
+        }
+    }
+
+    #[test]
+    fn annotated_service_locals_validate_before_propagating() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"locals\"\nentry = \"main.svr\"\n[services]\nmail = \"external\"",
+        );
+        let source = "service mail {\nfn count(value: Int);\n}\nfn main() { let widened: Float = 1; mail.count(widened); let invalid: String = true; mail.count(invalid); }";
+        project.write_file("main.svr", source);
+        let checked = check_project(project.path()).unwrap();
+        let report = application::check_service_calls(&checked);
+        assert_eq!(report.diagnostics.items.len(), 2);
+        assert!(report
+            .diagnostics
+            .items
+            .iter()
+            .any(|error| error.code == "E4119"
+                && &source[error.span.start..error.span.end] == "widened"));
+        assert!(report
+            .diagnostics
+            .items
+            .iter()
+            .any(|error| error.code == "E4120"
+                && &source[error.span.start..error.span.end] == "true"));
+    }
+
+    #[test]
+    fn service_literal_arguments_respect_contracts_and_widening() {
+        let project = TestProject::new();
+        project.write_file("sovra.toml", "[project]\nname = \"arguments\"\nentry = \"main.svr\"\n[services]\nmail = \"external\"");
+        let source = "service mail {\nfn send(value: String);\nfn scale(value: Float);\n}\nfn main() { mail.send((true)); mail.scale(1); mail.scale(1.5); mail.send(\"ok\"); }\nfn local(mail: String) { mail.send(false); }\n";
+        project.write_file("main.svr", source);
+        let checked = check_project(project.path()).unwrap();
+        let report = application::check_service_calls(&checked);
+        assert_eq!(report.diagnostics.items.len(), 1);
+        let error = &report.diagnostics.items[0];
+        assert_eq!(error.code, "E4119");
+        assert_eq!(&source[error.span.start..error.span.end], "(true)");
+        assert!(error.source_file.as_ref().unwrap().ends_with("main.svr"));
+    }
+
+    #[test]
+    fn service_signature_resolution_keeps_only_complete_canonical_contracts() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"types\"\nentry = \"main.svr\"\n[services]\nmail = \"external\"",
+        );
+        let source = "// Unicode: λ\r\nservice mail {\r\nfn send(value: String, count: Int, ratio: Float, enabled: Bool, context: Unit) -> String;\r\nfn ping() {}\r\nfn invalid(value: Text) -> Receipt;\r\n}\r\nfn main() { mail.invalid(1); }\r\n";
+        project.write_file("main.svr", source);
+        let checked = check_project(project.path()).unwrap();
+        let original = checked.clone();
+        let resolved = service_types::resolve_service_signatures(&checked);
+        assert_eq!(checked, original);
+        assert_eq!(resolved.operations.len(), 2);
+        assert_eq!(resolved.diagnostics.items.len(), 2);
+        let send = &resolved.operations[0];
+        assert_eq!(send.return_type, crate::compiler::semantic::Type::String);
+        assert_eq!(
+            send.parameters
+                .iter()
+                .map(|parameter| parameter.parameter_type.clone())
+                .collect::<Vec<_>>(),
+            [
+                crate::compiler::semantic::Type::String,
+                crate::compiler::semantic::Type::Int,
+                crate::compiler::semantic::Type::Float,
+                crate::compiler::semantic::Type::Bool,
+                crate::compiler::semantic::Type::Unit
+            ]
+        );
+        assert_eq!(
+            resolved.operations[1].return_type,
+            crate::compiler::semantic::Type::Unit
+        );
+        assert!(resolved.operations[1].has_body);
+        assert_eq!(
+            send.service.module,
+            project
+                .path()
+                .join("main.svr")
+                .canonicalize()
+                .unwrap()
+                .to_string_lossy()
+        );
+        for diagnostic in &resolved.diagnostics.items {
+            assert_eq!(diagnostic.code, "E4117");
+            assert_eq!(diagnostic.span.line, 4);
+            assert_eq!(
+                &source[diagnostic.span.start..diagnostic.span.end],
+                "fn invalid(value: Text) -> Receipt;"
+            );
+        }
+        let report = application::check_service_calls(&checked);
+        assert_eq!(report.diagnostics.items.len(), 2);
+        assert!(report
+            .diagnostics
+            .items
+            .iter()
+            .all(|error| error.code == "E4117"));
+    }
+
+    #[test]
     fn service_call_checks_respect_resolution_and_partial_coverage() {
         let project = TestProject::new();
         project.write_file(
@@ -1878,14 +2091,14 @@ mod tests {
         );
         project.write_file(
             "services.svr",
-            "service mail {\nfn send(value: Text) -> Receipt\n}\n",
+            "service mail {\nfn send(value: Int) -> Unit\n}\n",
         );
         let source = "use services\nfn main() { mail.send(); mail.missing(1); mail.send(1); }\nfn local(mail: Object) { mail.missing(); }\n";
         project.write_file("main.svr", source);
         project.write_file("unresolved.svr", "fn caller() { mail.missing(); }");
         project.write_file(
             "partial.svr",
-            "use services\nfn caller() { mail.missing(); if true {} }",
+            "use services\nfn caller() { mail.missing(); if true }",
         );
         let checked = check_project(project.path()).unwrap();
         let report = application::check_service_calls(&checked);
@@ -1924,8 +2137,8 @@ mod tests {
             "sovra.toml",
             "[project]\nname = \"sample\"\nentry = \"main.svr\"\n[services]\nmail = \"external\"\nrelay = \"external\"",
         );
-        project.write_file("services.svr", "service mail {\nfn send(value: Text);\n}\n");
-        let source = "use services\r\n// λ preserves byte offsets\r\nservice relay {\r\nfn forward() { mail.send(); mail.missing(1); mail.send(1); }\r\nfn shadow(mail: Client) { mail.missing(); }\r\nfn again() { mail.send(1); }\r\n}\r\n";
+        project.write_file("services.svr", "service mail {\nfn send(value: Int);\n}\n");
+        let source = "use services\r\n// λ preserves byte offsets\r\nservice relay {\r\nfn forward() { mail.send(); mail.missing(1); mail.send(1); }\r\nfn shadow(mail: String) { mail.missing(); }\r\nfn again() { mail.send(1); }\r\n}\r\n";
         project.write_file("main.svr", source);
         let checked = check_project(project.path()).unwrap();
         let report = application::check_service_calls(&checked);
@@ -1984,7 +2197,7 @@ mod tests {
         );
         project.write_file("bridge.svr", "use services\n");
         project.write_file("unimported.svr", "use bridge\nfn other() { mail.send(); }");
-        project.write_file("partial.svr", "fn unsupported() { if true {} }");
+        project.write_file("partial.svr", "fn unsupported() { if true }");
         let checked = check_project(project.path()).unwrap();
         let inspections = application::inspect_project(&checked);
         let get = |name: &str| {

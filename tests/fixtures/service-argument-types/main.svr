@@ -1,0 +1,54 @@
+service mail {
+    fn missing_return() -> Int {}
+    fn wrong_return() -> String { return 1; }
+    fn amount() -> Float;
+    fn echo(value: String) -> String;
+    fn send(value: String);
+    fn count(value: Int);
+    fn scale(value: Float);
+    fn flag(value: Bool);
+}
+fn variables(value: Bool) {
+    mail.send(value);
+    let copied = value;
+    mail.send(copied);
+    {
+        let copied = "valid";
+        mail.send(copied);
+    }
+    mail.send(copied);
+}
+fn main() {
+    mail.send((true));
+    mail.count(1.5);
+    mail.scale("wrong");
+    mail.flag(1);
+    mail.scale(1);
+    mail.scale(1.5);
+    mail.flag(false);
+    mail.send("valid");
+}
+fn annotated() {
+    let widened: Float = 1;
+    mail.count(widened);
+    let invalid: String = true;
+    mail.send(invalid);
+    let valid: String = "ok";
+    mail.send(valid);
+}
+fn compound() {
+    mail.count(1 + 2.5);
+    mail.send(1 < 2);
+    mail.count(true + 1);
+    mail.send("a" + "b");
+    mail.flag(1 < 2);
+    let amount = 1 + 2;
+    mail.count(amount);
+}
+fn results() {
+    mail.count(mail.amount());
+    let amount = mail.amount();
+    mail.count(amount);
+    mail.send(mail.echo("ok"));
+    mail.count(mail.echo(true));
+}

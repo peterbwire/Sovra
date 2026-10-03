@@ -735,7 +735,20 @@ fn check_json_exposes_unresolved_service_metadata() {
 fn service_call_cli_reports_errors_and_incomplete_coverage() {
     let root = env!("CARGO_MANIFEST_DIR");
     for (relative, exit, codes, complete) in [
-        ("tests/fixtures/service-metadata", 0, "[]", true),
+        ("examples/service-contracts", 0, "[]", true),
+        ("tests/fixtures/service-control-flow", 1, "['E4123', 'E4123', 'E4124', 'E4124']", true),
+        (
+            "tests/fixtures/service-argument-types",
+            1,
+            "['E4123', 'E4122', 'E4119', 'E4119', 'E4119', 'E4119', 'E4119', 'E4119', 'E4119', 'E4120', 'E4119', 'E4121', 'E4119', 'E4119', 'E4119', 'E4119', 'E4119']",
+            true,
+        ),
+        (
+            "tests/fixtures/service-metadata",
+            1,
+            "['E4117', 'E4117']",
+            true,
+        ),
         ("tests/fixtures/service-body-coverage", 1, "['E4093']", true),
         (
             "tests/fixtures/service-call-errors",
@@ -765,7 +778,7 @@ fn service_call_cli_reports_errors_and_incomplete_coverage() {
                 assert.equal(typeof call.operation, 'string');
             }}
             if ({complete}) assert.ok(report.member_calls.some(c => c.receiver.kind === 'service'));
-            if ('{relative}' === 'tests/fixtures/service-body-coverage') {{
+              if ('{relative}' === 'tests/fixtures/service-body-coverage') {{
                 const call = report.member_calls.find(c => c.function === 'mail.send');
                 assert.ok(call);
                 assert.equal(call.is_task, false);
@@ -773,8 +786,17 @@ fn service_call_cli_reports_errors_and_incomplete_coverage() {
                 assert.equal(call.receiver.kind, 'service');
                 const bytes = require('node:fs').readFileSync(call.location.file);
                 assert.equal(bytes.subarray(call.location.start, call.location.end).toString(), 'mail.missing');
-                assert.deepEqual(report.diagnostics[0].location, call.location);
-            }}
+                  assert.deepEqual(report.diagnostics[0].location, call.location);
+              }}
+              if ('{relative}' === 'tests/fixtures/service-metadata') {{
+                  for (const error of report.diagnostics) {{
+                      assert.equal(error.code, 'E4117');
+                      assert.equal(error.location.line, 1);
+                      const bytes = require('node:fs').readFileSync(error.location.file);
+                      assert.equal(bytes.subarray(error.location.start, error.location.end).toString().trim(),
+                          'fn send(value: Result<Text, Error>, context: Int) -> Receipt;');
+                  }}
+              }}
             if ({codes} !== null) assert.deepEqual(report.diagnostics.map(d => d.code), {codes});
             else {{
                 assert.ok(report.diagnostics.some(d => d.code === 'E4096'));

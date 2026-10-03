@@ -1,0 +1,6 @@
+[project]
+name = "service-argument-types"
+entry = "main.svr"
+
+[services]
+mail = "external"

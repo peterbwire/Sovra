@@ -1,6 +1,56 @@
 # Full development status
 
-Updated: 2026-10-03. Status terms: Implemented, Partial, Experimental, Stub, Planned.
+Updated: 2026-10-04. Status terms: Implemented, Partial, Experimental, Stub, Planned.
+
+Structured if/else-if/else and while inspection now retains calls and lexical
+types in each block. E4123 requires both conditional arms to return and treats
+loops as potentially skipped. E4124 rejects known non-Bool conditions; unresolved
+conditions remain outside full validation. Else-if chain depth is bounded.
+
+Non-Unit service implementations now require an explicit return within the
+supported straight-line/unconditional-block syntax (E4123). Unit bodies and
+declaration-only contracts are exempt. Branches/loops remain unsupported;
+unknown return types are not validated by this presence check.
+
+Known explicit service implementation returns now validate against resolved
+contracts with E4122, including bare Unit returns and Int-to-Float widening.
+This does not prove return-path completeness or resolve unknown return expressions.
+
+Service call result types now propagate through nested calls, local bindings and
+binary expressions using canonical contracts and existing direct import visibility.
+Shadowed/ambiguous receivers, wrong arity and invalid/unknown arguments do not
+supply result types. Ordinary function calls and implementation typing remain open.
+
+Primitive binary expression typing is now implemented in the opt-in application
+checker, including numeric widening, String concatenation and comparisons. E4121
+rejects known incompatible operands. Call results and full body typing remain open.
+
+Primitive annotated local initializers now validate known type compatibility
+with E4120. Compatible initializers propagate the declared type, including Float
+after Int widening. Invalid/unknown initializers do not supply type evidence.
+Compound expressions and full application body typing remain unfinished.
+
+Service argument checking now follows primitive parameters and inferred locals
+through lexical scopes, including nested shadowing and unknown binding barriers.
+Annotated locals and compound expressions remain outside the typed subset.
+
+Literal service-call argument validation is now implemented within the partial
+opt-in checker: E4119 reports mismatches, Int may widen to Float, and argument
+ranges are preserved. Variables and compound expressions remain unresolved.
+The full suite passed 244 library and 42 CLI tests with no skips; an additional
+argument-evidence regression verifies unresolved expressions and nested calls.
+
+## 2026-10-03 primitive service contracts: Partial
+
+The opt-in service checker now resolves primitive parameter/return annotations,
+defaults omitted returns to Unit and rejects unresolved types with E4117.
+The new Rust signature API preserves canonical source/service identity and omits
+invalid operations instead of retaining unknown types. E4118 identifies source
+owner failures. Ordinary project inspection still retains raw annotation text.
+Named application types, argument values and implementation bodies are not yet
+typed; application execution and library publishing remain unfinished.
+Validation: **243 library + 42 CLI = 285 passed**, no skips, with required Windows
+CLI execution; strict Clippy, formatting and the documentation test stage passed.
 
 ## 2026-10-03 exported-record package interfaces
 
