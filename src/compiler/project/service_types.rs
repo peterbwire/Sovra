@@ -1,4 +1,4 @@
-//! Resolved primitive service contracts, separate from partial source inspection.
+//! Resolved scalar service contracts, including file-local aliases.
 
 use std::path::PathBuf;
 
@@ -46,16 +46,52 @@ pub struct ServiceSignatures {
 /// Resolve service contract annotations using the executable primitive types.
 ///
 /// Requires checked project metadata. No body or call-argument typing is implied.
-/// Application named types, generics and executable package type imports are not
+/// Application records, generics and executable package type imports are not
 /// connected yet and produce E4117 rather than becoming placeholder types.
+/// File-local scalar alias errors retain executable E3008/E3017 diagnostics.
 /// Missing annotations retain E4097. Owner-path failures produce E4118.
 /// Source locations are declaration ranges, not individual annotation ranges.
 pub fn resolve_service_signatures(project: &ProjectCheck) -> ServiceSignatures {
+    let sources = project
+        .source_files
+        .iter()
+        .map(|file| {
+            (
+                file.clone(),
+                std::fs::read_to_string(file).map_err(|error| error.to_string()),
+            )
+        })
+        .collect();
+    resolve_with_sources(project, &sources)
+}
+
+pub(super) fn resolve_with_sources(
+    project: &ProjectCheck,
+    sources: &std::collections::BTreeMap<PathBuf, Result<String, String>>,
+) -> ServiceSignatures {
     let mut report = ServiceSignatures {
         operations: Vec::new(),
         diagnostics: Diagnostics::new(),
     };
+    let mut aliases_by_file = std::collections::BTreeMap::new();
+    for file in &project.source_files {
+        let Some(Ok(source)) = sources.get(file) else {
+            continue;
+        };
+        let Ok(tokens) = crate::compiler::lexer::Lexer::new().tokenize(source) else {
+            continue;
+        };
+        let Ok(mut aliases) = super::application_types::Aliases::collect(&tokens) else {
+            continue;
+        };
+        for diagnostic in &mut aliases.diagnostics.items {
+            diagnostic.source_file = Some(file.to_string_lossy().into_owned());
+        }
+        report.diagnostics.items.extend(aliases.diagnostics.items);
+        aliases_by_file.insert(file.clone(), aliases.types);
+    }
     for operation in &project.service_operations {
+        let aliases = aliases_by_file.get(&operation.source_file);
         let start_errors = report.diagnostics.items.len();
         let mut emit = |code, message| {
             report.diagnostics.push(Diagnostic {
@@ -85,7 +121,7 @@ pub fn resolve_service_signatures(project: &ProjectCheck) -> ServiceSignatures {
                 emit("E4097", format!("parameter `{}` in service operation `{}.{}` requires an explicit type annotation", parameter.name, operation.service, operation.name));
                 continue;
             };
-            let parameter_type = Type::from_name_with_known(annotation, None);
+            let parameter_type = Type::from_name_with_known(annotation, aliases);
             if parameter_type == Type::Unknown {
                 emit("E4117", format!("unresolved service parameter type `{annotation}` for `{}.{}.{}`; supported contract types are Unit, Bool, Int, Float and String", operation.service, operation.name, parameter.name));
             } else {
@@ -98,7 +134,7 @@ pub fn resolve_service_signatures(project: &ProjectCheck) -> ServiceSignatures {
         let return_type = match operation.return_annotation.as_deref() {
             None => Type::Unit,
             Some(annotation) => {
-                let resolved = Type::from_name_with_known(annotation, None);
+                let resolved = Type::from_name_with_known(annotation, aliases);
                 if resolved == Type::Unknown {
                     emit("E4117", format!("unresolved service return type `{annotation}` for `{}.{}`; supported contract types are Unit, Bool, Int, Float and String", operation.service, operation.name));
                 }

@@ -1,6 +1,7 @@
 //! Project-level validation for `svr check`.
 
 pub mod application;
+mod application_types;
 mod imports;
 pub mod packages;
 pub mod scope;
@@ -1896,6 +1897,235 @@ mod tests {
         let report = service_types::resolve_service_signatures(&missing_owner);
         assert!(report.operations.is_empty());
         assert_eq!(report.diagnostics.items[0].code, "E4118");
+    }
+
+    #[test]
+    fn application_integer_literals_enforce_signed_64_bit_bounds() {
+        let project = TestProject::new();
+        project.write_file("sovra.toml", "[project]\nname = \"integer-bounds\"\nentry = \"main.svr\"");
+        let source = "fn value() -> Int { return 9223372036854775808; }\nfn main() { let large = 18446744073709551616; print(999999999999999999999999); 9223372036854775807; }";
+        project.write_file("main.svr", source);
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        let errors: Vec<_> = report.diagnostics.items.iter().filter(|error| error.code == "E3012").collect();
+        assert_eq!(errors.len(), 3);
+        for (error, spelling) in errors.iter().zip(["9223372036854775808", "18446744073709551616", "999999999999999999999999"]) {
+            assert_eq!(&source[error.span.start..error.span.end], spelling);
+            assert!(error.source_file.as_ref().unwrap().ends_with("main.svr"));
+        }
+    }
+
+    #[test]
+    fn application_service_aliases_resolve_from_the_supplied_snapshot() {
+        let project = TestProject::new();
+        project.write_file("sovra.toml", "[project]\nname = \"alias-snapshot\"\nentry = \"main.svr\"\n[services]\nmail = \"external\"");
+        let original = "type Amount = Float;\nservice mail {\nfn send(value: Amount);\n}";
+        project.write_file("main.svr", original);
+        let checked = check_project(project.path()).unwrap();
+        let sources = checked
+            .source_files
+            .iter()
+            .map(|file| (file.clone(), Ok(original.to_owned())))
+            .collect();
+        project.write_file(
+            "main.svr",
+            "type Amount = String;\nservice mail {\nfn send(value: Amount);\n}",
+        );
+        let report = service_types::resolve_with_sources(&checked, &sources);
+        assert!(report.diagnostics.is_empty());
+        assert_eq!(
+            report.operations[0].parameters[0].parameter_type,
+            crate::compiler::semantic::Type::Float
+        );
+        let current = service_types::resolve_service_signatures(&checked);
+        assert_eq!(
+            current.operations[0].parameters[0].parameter_type,
+            crate::compiler::semantic::Type::String
+        );
+    }
+
+    #[test]
+    fn application_aliases_apply_to_service_bodies_and_task_parameters() {
+        let project = TestProject::new();
+        project.write_file("sovra.toml", "[project]\nname = \"alias-bodies\"\nentry = \"main.svr\"\n[services]\nmail = \"external\"");
+        project.write_file("main.svr", "type Amount = Float;\nservice mail {\nfn relay(value: Amount) -> Amount { let copy: Amount = value; return copy; }\n}\ntask refresh(value: Amount) { mail.relay(value); }\nfn main() { mail.relay(1); }");
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(
+            report.diagnostics.is_empty(),
+            "{:?}",
+            report.diagnostics.items
+        );
+        let functions = report.files[0].functions.as_ref().unwrap();
+        assert_eq!(
+            functions[0].returns[0].known_type,
+            Some(crate::compiler::semantic::Type::Float)
+        );
+        assert!(functions[1].is_task);
+        assert_eq!(
+            functions[1].calls[0].argument_types[0].resolved_type(),
+            Some(&crate::compiler::semantic::Type::Float)
+        );
+    }
+
+    #[test]
+    fn malformed_and_nested_application_aliases_are_not_claimed_as_covered() {
+        for source in [
+            "type Amount = Float\nfn main() {}",
+            "export type Amount = Float;\nfn main() {}",
+            "fn main() { type Amount = Float; }",
+        ] {
+            let project = TestProject::new();
+            project.write_file(
+                "sovra.toml",
+                "[project]\nname = \"alias-syntax\"\nentry = \"main.svr\"",
+            );
+            project.write_file("main.svr", source);
+            let report = application::check_service_calls(&check_project(project.path()).unwrap());
+            assert!(report.files[0].functions.is_err(), "{source}");
+            assert!(report
+                .diagnostics
+                .items
+                .iter()
+                .any(|error| error.code == "E4096"));
+        }
+    }
+
+    #[test]
+    fn imported_application_aliases_keep_declaring_file_meaning() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"alias-imports\"\nentry = \"main.svr\"",
+        );
+        project.write_file(
+            "app/helpers.svr",
+            "type Scalar = Float;\nexport fn scale(value: Scalar) -> Scalar { return value; }",
+        );
+        project.write_file("main.svr", "use app.helpers;\ntype Scalar = String;\nfn main() { let text: Scalar = \"value\"; let value = app::helpers::scale(1); }");
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(
+            report.diagnostics.is_empty(),
+            "{:?}",
+            report.diagnostics.items
+        );
+        let main = report
+            .files
+            .iter()
+            .find(|file| file.source_file.ends_with("main.svr"))
+            .unwrap();
+        let functions = main.functions.as_ref().unwrap();
+        assert_eq!(
+            functions[0].local_bindings[0].resolved_type,
+            Some(crate::compiler::semantic::Type::String)
+        );
+        assert_eq!(
+            functions[0].local_bindings[1].resolved_type,
+            Some(crate::compiler::semantic::Type::Float)
+        );
+        project.write_file("main.svr", "use app.helpers;\nfn main() { app::helpers::scale(\"wrong\"); let hidden: Scalar = 1; }");
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(report
+            .diagnostics
+            .items
+            .iter()
+            .any(|error| error.code == "E4129"));
+        assert!(report
+            .diagnostics
+            .items
+            .iter()
+            .any(|error| error.code == "E4135"));
+    }
+
+    #[test]
+    fn unused_application_alias_errors_retain_owning_file_and_ranges() {
+        for (source, expected) in [
+            ("// λ\r\ntype Value = Missing;\r\nfn main() {}", "E3017"),
+            (
+                "type Value = Int;\ntype Value = Float;\nfn main() {}",
+                "E3008",
+            ),
+            ("type A = B; type B = A;\nfn main() {}", "E3017"),
+        ] {
+            let project = TestProject::new();
+            project.write_file(
+                "sovra.toml",
+                "[project]\nname = \"bad-aliases\"\nentry = \"main.svr\"",
+            );
+            project.write_file("main.svr", source);
+            let report = application::check_service_calls(&check_project(project.path()).unwrap());
+            assert!(report.files.iter().all(|file| file.functions.is_ok()));
+            assert!(!report.diagnostics.is_empty());
+            for error in &report.diagnostics.items {
+                assert_eq!(error.code, expected);
+                assert!(error.source_file.as_ref().unwrap().ends_with("main.svr"));
+                assert!(source[error.span.start..error.span.end].starts_with("type "));
+            }
+        }
+    }
+
+    #[test]
+    fn application_scalar_aliases_resolve_in_functions_services_and_locals() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"aliases\"\nentry = \"main.svr\"\n[services]\nmail = \"external\"",
+        );
+        project.write_file("main.svr", "type Amount = Scalar;\ntype Scalar = Float;\nservice mail {\nfn send(value: Amount) -> Amount;\n}\nfn echo(value: Amount) -> Amount { return value; }\nfn main() { let value: Amount = echo(1); mail.send(value); }");
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(
+            report.diagnostics.is_empty(),
+            "{:?}",
+            report.diagnostics.items
+        );
+        let functions = report.files[0].functions.as_ref().unwrap();
+        assert_eq!(
+            functions[1].local_bindings[0].resolved_type,
+            Some(crate::compiler::semantic::Type::Float)
+        );
+    }
+
+    #[test]
+    fn discarded_application_expressions_require_resolved_types() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"discarded\"\nentry = \"main.svr\"",
+        );
+        let source = "fn main() { missing; { absent + 1; } if true { unknown.field; } let valid = 1; valid; true && false; print(valid); }";
+        project.write_file("main.svr", source);
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert_eq!(report.diagnostics.items.len(), 3);
+        for (error, spelling) in
+            report
+                .diagnostics
+                .items
+                .iter()
+                .zip(["missing", "absent + 1", "unknown.field"])
+        {
+            assert_eq!(error.code, "E4137");
+            assert_eq!(&source[error.span.start..error.span.end], spelling);
+        }
+    }
+
+    #[test]
+    fn unresolved_application_local_types_fail_even_when_unused() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"locals\"\nentry = \"main.svr\"",
+        );
+        let source =
+            "fn main() { let typed: Text = 1; let known: Int = unknown; let inferred = missing; }";
+        project.write_file("main.svr", source);
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert_eq!(report.diagnostics.items.len(), 3);
+        for (error, (code, spelling)) in report.diagnostics.items.iter().zip([
+            ("E4135", "Text"),
+            ("E4136", "unknown"),
+            ("E4136", "missing"),
+        ]) {
+            assert_eq!(error.code, code);
+            assert_eq!(&source[error.span.start..error.span.end], spelling);
+        }
     }
 
     #[test]

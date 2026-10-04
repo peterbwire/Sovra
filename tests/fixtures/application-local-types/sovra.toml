@@ -1,0 +1,5 @@
+[project]
+name = "application-local-types"
+entry = "main.svr"
+[services]
+mail = "external"

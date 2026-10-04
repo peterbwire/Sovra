@@ -4,7 +4,7 @@ service metrics {
 }
 fn main() {
     let amount: Float = metrics.scale(3);
-    if even(4) { metrics.log(label(amount)); }
+    if even(4) && amount > 0 || odd(3) { metrics.log(label(amount)); }
 }
 fn widen(value: Float) -> Float { return value; }
 fn label(value: Float) -> String { return "measured: " + std::to_string(value); }

@@ -1,0 +1,6 @@
+type Amount = Float;
+type Units = Int;
+
+export fn price(quantity: Units) -> Amount {
+    return quantity * 1.5;
+}

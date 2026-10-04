@@ -1,0 +1,5 @@
+[project]
+name = "application-logical-guards"
+entry = "main.svr"
+[services]
+mail = "external"

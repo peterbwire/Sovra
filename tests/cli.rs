@@ -736,6 +736,11 @@ fn service_call_cli_reports_errors_and_incomplete_coverage() {
     let root = env!("CARGO_MANIFEST_DIR");
     for (relative, exit, codes, complete) in [
         ("examples/service-contracts", 0, "[]", true),
+        ("examples/application-aliases", 0, "[]", true),
+        ("tests/fixtures/application-alias-errors", 1, "['E4129', 'E4120', 'E4119']", true),
+        ("tests/fixtures/application-discarded-expressions", 1, "['E4137', 'E4137', 'E4137']", true),
+        ("tests/fixtures/application-local-types", 1, "['E4135', 'E4136', 'E4136']", true),
+        ("tests/fixtures/application-logical-guards", 1, "['E4125', 'E4125', 'E4121', 'E4121']", true),
         ("examples/application-imports", 0, "[]", true),
         ("tests/fixtures/application-import-errors", 1, "['E4133', 'E4129']", true),
         ("tests/fixtures/ordinary-unknown-annotations", 1, "['E4134', 'E4134']", true),
@@ -754,7 +759,7 @@ fn service_call_cli_reports_errors_and_incomplete_coverage() {
         (
             "tests/fixtures/service-metadata",
             1,
-            "['E4131', 'E4130', 'E4117', 'E4117']",
+            "['E4131', 'E4130', 'E4135', 'E4117', 'E4117']",
             true,
         ),
         ("tests/fixtures/service-body-coverage", 1, "['E4093']", true),
@@ -782,6 +787,28 @@ fn service_call_cli_reports_errors_and_incomplete_coverage() {
             assert.ok(report.service_coverage.files.length > 0);
             assert.ok(Array.isArray(report.member_calls));
             assert.ok(Array.isArray(report.ordinary_calls));
+            assert.ok(Array.isArray(report.local_bindings));
+            if ('{relative}' === 'examples/application-aliases') {{
+                const call = report.ordinary_calls.find(c => c.callee === 'app::pricing::price');
+                assert.equal(call.declared_return_type, 'Float');
+                assert.equal(call.arguments[0].type, 'Int');
+                assert.ok(call.declaration_file.endsWith('pricing.svr'));
+                const value = report.local_bindings.find(b => b.name === 'value');
+                assert.equal(value.declared_type, 'Float');
+                assert.equal(value.initializer_type, 'Float');
+                assert.equal(value.resolved_type, 'Float');
+            }}
+            if ('{relative}' === 'tests/fixtures/application-discarded-expressions') {{
+                const source = require('fs').readFileSync(report.diagnostics[0].location.file);
+                assert.deepEqual(report.diagnostics.map(d => source.subarray(d.location.start, d.location.end).toString()), ['missing', 'absent + 1', 'unknown.field']);
+            }}
+            if ('{relative}' === 'tests/fixtures/application-local-types') {{
+                assert.deepEqual(report.local_bindings.map(b => b.resolved_type), [null, null, null, 'Float']);
+                for (const error of report.diagnostics) {{
+                    assert.ok(error.location.file.endsWith('main.svr'));
+                    assert.ok(error.location.end > error.location.start);
+                }}
+            }}
             for (const call of report.ordinary_calls) {{
                 assert.ok(report.service_coverage.files.some(f => f.file === call.location.file && f.inspected));
                 assert.ok(['builtin', 'ordinary', 'unresolved'].includes(call.kind));
@@ -816,7 +843,8 @@ fn service_call_cli_reports_errors_and_incomplete_coverage() {
               if ('{relative}' === 'tests/fixtures/service-metadata') {{
                   assert.equal(report.diagnostics[0].code, 'E4131');
                   assert.equal(report.diagnostics[1].code, 'E4130');
-                  for (const error of report.diagnostics.slice(2)) {{
+                  assert.equal(report.diagnostics[2].code, 'E4135');
+                  for (const error of report.diagnostics.slice(3)) {{
                       assert.equal(error.code, 'E4117');
                       assert.equal(error.location.line, 1);
                       const bytes = require('node:fs').readFileSync(error.location.file);

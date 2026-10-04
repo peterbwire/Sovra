@@ -22,6 +22,12 @@ do not treat successful packaging as release approval.
 
 ## Current Checkpoint
 
+File-local scalar aliases now reuse the executable parser and iterative type
+resolver. They apply to service/function/local annotations and exported function
+interfaces retain declaring-file meaning. E3008/E3017 reject invalid alias graphs;
+application record types and runtime remain unfinished. See the application-aliases
+example and course lesson for the supported boundary.
+
 Primitive service signature resolution is implemented behind
 `project::service_types::resolve_service_signatures` and opt-in
 `check --service-calls`. It retains canonical owners and resolved types; unknown
@@ -48,6 +54,12 @@ Ordinary unknown parameter annotations now produce E4134 even for unused functio
 ADR 0013 Option A is accepted and implemented for primitive function interfaces:
 explicit export fn, qualified direct calls, private helpers and no transitive exposure.
 Ordinary project checks remain partial wiring checks.
+Unused locals now reject unresolved annotations/initializers with E4135/E4136.
+JSON local-binding evidence preserves widening, unknown types and lexical ranges.
+Discarded non-call expressions reject unresolved types with E4137, including
+nested control-flow bodies. Direct calls retain their existing diagnostics.
+Application guards now support existing &&/|| semantics and executable precedence;
+static inspection checks both operands, preserving source ranges and depth limits.
 
 M12 now validates manifest metadata, source discovery, service bindings, app
 routes, page routes, auth target wiring, app data model references, and

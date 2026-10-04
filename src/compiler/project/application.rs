@@ -36,13 +36,13 @@ pub struct ServiceCheck {
 /// Unsupported files remain in `files` as errors and produce E4096 diagnostics.
 /// Local and unresolved receivers are not service calls.
 /// Primitive service and same-file ordinary contracts, arguments, return paths
-/// and conditions are checked. Named types, ordinary imports and unsupported
-/// expressions still require complete application typing.
+/// and conditions are checked. File-local scalar aliases and direct exported
+/// ordinary imports are resolved; records and unsupported expressions still
+/// require complete application typing.
 pub fn check_service_calls(project: &super::ProjectCheck) -> ServiceCheck {
     use crate::compiler::diagnostics::{Diagnostic, Diagnostics, Severity};
-    let files = inspect_project(project);
+    let (files, signatures) = imports::inspect(project);
     let mut diagnostics = Diagnostics::new();
-    let signatures = super::service_types::resolve_service_signatures(project);
     let mut operations = std::collections::BTreeMap::new();
     for operation in &project.service_operations {
         if let Ok(module) = operation.source_file.canonicalize() {
@@ -62,6 +62,42 @@ pub fn check_service_calls(project: &super::ProjectCheck) -> ServiceCheck {
         };
         ordinary::check(functions, &file.source_file, &mut diagnostics);
         for function in functions {
+            for span in &function.unresolved_discarded_expressions {
+                diagnostics.push(Diagnostic {
+                    source_file: Some(file.source_file.to_string_lossy().into_owned()),
+                    severity: Severity::Error,
+                    code: "E4137",
+                    message: "cannot validate discarded application expression: type is unresolved"
+                        .into(),
+                    span: *span,
+                });
+            }
+            for binding in &function.local_bindings {
+                let issue = if binding.declared_type == Some(Type::Unknown) {
+                    Some((
+                        "E4135",
+                        "local annotation is unresolved",
+                        binding.annotation_span.expect("annotated binding"),
+                    ))
+                } else if binding.initializer_type.is_none() {
+                    Some((
+                        "E4136",
+                        "local initializer type is unresolved",
+                        binding.initializer_span,
+                    ))
+                } else {
+                    None
+                };
+                if let Some((code, message, span)) = issue {
+                    diagnostics.push(Diagnostic {
+                        source_file: Some(file.source_file.to_string_lossy().into_owned()),
+                        severity: Severity::Error,
+                        code,
+                        message: format!("{message} for `{}`", binding.name),
+                        span,
+                    });
+                }
+            }
             if let Some(signature) = signatures.operations.iter().find(|signature| {
                 signature.has_body
                     && signature.source_file == file.source_file
@@ -250,14 +286,14 @@ pub fn check_service_calls(project: &super::ProjectCheck) -> ServiceCheck {
 /// Unsupported files return errors individually; this does not change check
 /// success, enforce service contracts, or treat dependencies as transitive imports.
 pub fn inspect_project(project: &super::ProjectCheck) -> Vec<FileInspection> {
-    imports::inspect(project)
+    imports::inspect(project).0
 }
 
 fn inspect_project_local(
     project: &super::ProjectCheck,
     sources: &std::collections::BTreeMap<std::path::PathBuf, Result<String, String>>,
+    signatures: &super::service_types::ServiceSignatures,
 ) -> Vec<FileInspection> {
-    let signatures = super::service_types::resolve_service_signatures(project);
     project
         .source_files
         .iter()
@@ -347,6 +383,7 @@ fn binary_type(operator: &str, left: &Type, right: &Type) -> Option<Type> {
         matches!(left, Type::Int | Type::Float) && matches!(right, Type::Int | Type::Float);
     let strings = *left == Type::String && *right == Type::String;
     match operator {
+        "&&" | "||" if *left == Type::Bool && *right == Type::Bool => Some(Type::Bool),
         "+" if strings => Some(Type::String),
         "+" | "-" | "*" | "/" if numeric => {
             Some(if *left == Type::Float || *right == Type::Float {
@@ -469,6 +506,10 @@ impl Expression {
 /// A function or task inspected from a complete source file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionCalls {
+    /// Discarded non-call expressions without a resolved type, in source order.
+    pub unresolved_discarded_expressions: Vec<Span>,
+    /// Local binding type evidence in source order, including unresolved bindings.
+    pub local_bindings: Vec<LocalBinding>,
     /// Whether this top-level ordinary function explicitly exports its interface.
     pub is_exported: bool,
     /// Same-file ordinary signature; absent for tasks and service operations.
@@ -495,6 +536,25 @@ pub struct FunctionCalls {
     pub always_returns: bool,
     /// Condition type evidence and original expression ranges.
     pub conditions: Vec<(Option<Type>, Span)>,
+}
+
+/// Type evidence for one local declaration; None does not establish compatibility.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocalBinding {
+    /// Declared local name.
+    pub name: String,
+    /// Annotation type; None means inferred, Unknown means unsupported annotation.
+    pub declared_type: Option<Type>,
+    /// Known initializer type before widening.
+    pub initializer_type: Option<Type>,
+    /// Validated binding type after widening, if known.
+    pub resolved_type: Option<Type>,
+    /// Full declaration range excluding optional semicolon.
+    pub span: Span,
+    /// Annotation range, if explicitly written.
+    pub annotation_span: Option<Span>,
+    /// Initializer expression range.
+    pub initializer_span: Span,
 }
 
 /// Ordinary or builtin function interface retained by structured inspection.
@@ -643,11 +703,15 @@ fn parse_functions(
         .tokenize(source)
         .map_err(|_| "file contains unsupported lexical syntax".to_owned())?;
     check_nesting(&tokens)?;
+    let aliases = super::application_types::Aliases::collect(&tokens)?;
     let mut parser = BodyParser {
+        aliases: &aliases.types,
         tokens: &tokens,
         position: 0,
         calls: Vec::new(),
         initializer_mismatches: Vec::new(),
+        unresolved_discarded_expressions: Vec::new(),
+        local_bindings: Vec::new(),
         operator_errors: Vec::new(),
         returns: Vec::new(),
         conditions: Vec::new(),
@@ -658,6 +722,10 @@ fn parse_functions(
     };
     let mut functions = Vec::new();
     while parser.peek() != &TokenKind::Eof {
+        if let Some(end) = aliases.ends.get(&parser.position) {
+            parser.position = *end;
+            continue;
+        }
         let start = tokens[parser.position].span;
         if parser.consume(TokenKind::Keyword("use")) {
             while parser.peek() != &TokenKind::Eof
@@ -732,10 +800,13 @@ pub fn inspect_body(
         .map_err(|_| "body contains unsupported lexical syntax".to_owned())?;
     check_nesting(&tokens)?;
     let mut parser = BodyParser {
+        aliases: &Default::default(),
         tokens: &tokens,
         position: 0,
         calls: Vec::new(),
         initializer_mismatches: Vec::new(),
+        unresolved_discarded_expressions: Vec::new(),
+        local_bindings: Vec::new(),
         operator_errors: Vec::new(),
         returns: Vec::new(),
         conditions: Vec::new(),
@@ -759,6 +830,9 @@ pub fn inspect_body(
 }
 
 struct BodyParser<'a> {
+    aliases: &'a std::collections::HashMap<String, Type>,
+    unresolved_discarded_expressions: Vec<Span>,
+    local_bindings: Vec<LocalBinding>,
     unresolved_calls: Vec<UnresolvedCall>,
     ordinary: &'a std::collections::BTreeMap<String, Option<FunctionSignature>>,
     function_calls: Vec<FunctionCall>,
@@ -844,12 +918,16 @@ impl BodyParser<'_> {
         for parameter in &operation.declarations {
             let kind = parameter
                 .annotation
-                .map(|annotation| Type::from_name_with_known(annotation, None))
+                .map(|annotation| Type::from_name_with_known(annotation, Some(self.aliases)))
                 .filter(|kind| *kind != Type::Unknown);
             scope.bind_typed(parameter.name, start.start, kind);
         }
         let always_returns = self.block(&scope)?;
         Ok(Some(FunctionCalls {
+            unresolved_discarded_expressions: std::mem::take(
+                &mut self.unresolved_discarded_expressions,
+            ),
+            local_bindings: std::mem::take(&mut self.local_bindings),
             is_exported: false,
             signature: if owner.is_none() && !is_task {
                 Some(FunctionSignature {
@@ -859,13 +937,16 @@ impl BodyParser<'_> {
                         .declarations
                         .iter()
                         .map(|parameter| {
-                            Type::from_name_with_known(parameter.annotation.unwrap_or(""), None)
+                            Type::from_name_with_known(
+                                parameter.annotation.unwrap_or(""),
+                                Some(self.aliases),
+                            )
                         })
                         .collect(),
                     return_type: operation
                         .return_annotation
                         .map_or(Type::Unit, |annotation| {
-                            Type::from_name_with_known(annotation, None)
+                            Type::from_name_with_known(annotation, Some(self.aliases))
                         }),
                 })
             } else {
@@ -957,6 +1038,7 @@ impl BodyParser<'_> {
                 continue;
             }
             if self.consume(TokenKind::Keyword("let")) {
+                let declaration_start = self.tokens[self.position - 1].span;
                 let TokenKind::Identifier(name) = self.peek().clone() else {
                     return Err("expected local binding name".into());
                 };
@@ -968,7 +1050,7 @@ impl BodyParser<'_> {
                 }
                 let declared = if annotated && self.position == annotation_start + 1 {
                     if let TokenKind::Identifier(name) = &self.tokens[annotation_start].kind {
-                        Some(Type::from_name_with_known(name, None))
+                        Some(Type::from_name_with_known(name, Some(self.aliases)))
                             .filter(|kind| *kind != Type::Unknown)
                     } else {
                         None
@@ -976,10 +1058,20 @@ impl BodyParser<'_> {
                 } else {
                     None
                 };
+                let annotation_span = annotated.then(|| Span {
+                    end: self.tokens[self.position - 1].span.end,
+                    ..self.tokens[annotation_start].span
+                });
                 self.require(TokenKind::Operator("="))?;
                 let mut expression = self.expression()?;
                 self.inspect(&expression, &scope);
                 let actual = expression.known_type(&scope);
+                let recorded_declared = if annotated {
+                    Some(declared.clone().unwrap_or(Type::Unknown))
+                } else {
+                    None
+                };
+                let recorded_actual = actual.clone();
                 let kind = if annotated {
                     match (declared, actual) {
                         (Some(expected), Some(actual))
@@ -1002,6 +1094,18 @@ impl BodyParser<'_> {
                 } else {
                     actual
                 };
+                self.local_bindings.push(LocalBinding {
+                    name: name.clone(),
+                    declared_type: recorded_declared,
+                    initializer_type: recorded_actual,
+                    resolved_type: kind.clone(),
+                    span: Span {
+                        end: expression.span().end,
+                        ..declaration_start
+                    },
+                    annotation_span,
+                    initializer_span: *expression.span(),
+                });
                 scope.bind_typed(name, self.tokens[self.position - 1].span.end, kind);
             } else {
                 let return_span = self.tokens[self.position].span;
@@ -1015,6 +1119,13 @@ impl BodyParser<'_> {
                             known_type: expression.known_type(&scope),
                             span: *expression.span(),
                         });
+                    } else if !matches!(expression, Expression::Call(_, _, _))
+                        && expression.known_type(&scope).is_none()
+                    {
+                        // Calls already validate their callable contracts and arguments.
+                        // Other discarded values must not bypass type validation.
+                        self.unresolved_discarded_expressions
+                            .push(*expression.span());
                     }
                 } else {
                     self.returns.push(ReturnType {
@@ -1065,9 +1176,11 @@ impl BodyParser<'_> {
         let mut left = self.postfix_expression()?;
         loop {
             let precedence = match self.tokens[self.position].kind {
-                TokenKind::Operator("==" | "!=" | "<" | "<=" | ">" | ">=") => 1,
-                TokenKind::Operator("+" | "-") => 2,
-                TokenKind::Operator("*" | "/") => 3,
+                TokenKind::Operator("||") => 1,
+                TokenKind::Operator("&&") => 2,
+                TokenKind::Operator("==" | "!=" | "<" | "<=" | ">" | ">=") => 3,
+                TokenKind::Operator("+" | "-") => 4,
+                TokenKind::Operator("*" | "/") => 5,
                 _ => break,
             };
             if precedence < minimum {
@@ -1308,6 +1421,49 @@ impl BodyParser<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn discarded_expression_evidence_is_scoped_to_each_function() {
+        let source = "fn bad() { while false { missing; } } fn good() { 1; print(1); }";
+        let functions = inspect_functions(source, &[]).unwrap();
+        assert_eq!(functions[0].unresolved_discarded_expressions.len(), 1);
+        let span = functions[0].unresolved_discarded_expressions[0];
+        assert_eq!(&source[span.start..span.end], "missing");
+        assert!(functions[1].unresolved_discarded_expressions.is_empty());
+    }
+
+    #[test]
+    fn logical_operands_are_checked_even_on_short_circuit_paths() {
+        let source = "fn main() { if false && (1 || true) {} if true || missing() {} }";
+        let functions = inspect_functions(source, &[]).unwrap();
+        assert_eq!(functions[0].operator_errors.len(), 1);
+        let span = functions[0].operator_errors[0].0;
+        assert_eq!(&source[span.start..span.end], "(1 || true)");
+        assert_eq!(functions[0].unresolved_calls.len(), 1);
+        assert!(functions[0]
+            .conditions
+            .iter()
+            .all(|(kind, _)| kind.is_none()));
+    }
+
+    #[test]
+    fn logical_call_order_and_depth_limits_are_preserved() {
+        let calls = inspect_body(
+            "{ maps.first() || maps.second() && maps.third(); }",
+            &[],
+            &[service()],
+        )
+        .unwrap();
+        assert_eq!(
+            calls
+                .iter()
+                .map(|call| call.operation.as_str())
+                .collect::<Vec<_>>(),
+            ["first", "second", "third"]
+        );
+        let source = format!("fn main() {{ if {}true {{}} }}", "true && ".repeat(140));
+        assert!(inspect_functions(&source, &[]).is_err());
+    }
 
     #[test]
     fn application_logical_guards_follow_executable_precedence() {
@@ -1962,7 +2118,7 @@ mod tests {
             "{ maps.send(",
             "{ maps.send();",
             "{ let x: = 1; }",
-            "{ maps.send() && true; }",
+            "{ maps.send() && ; }",
         ] {
             assert!(inspect_body(source, &[], &[service()]).is_err(), "{source}");
         }

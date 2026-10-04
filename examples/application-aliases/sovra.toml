@@ -1,0 +1,5 @@
+[project]
+name = "application-aliases"
+entry = "main.svr"
+[services]
+metrics = "external"

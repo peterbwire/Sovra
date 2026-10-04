@@ -1,0 +1,21 @@
+use app.pricing;
+
+type Amount = Scalar;
+type Scalar = Float;
+type Label = String;
+
+service metrics {
+    fn record(value: Amount);
+}
+
+fn relay(value: Amount) -> Amount {
+    let widened: Amount = value;
+    return widened;
+}
+
+fn main() {
+    let label: Label = "price";
+    let value: Amount = app::pricing::price(2);
+    metrics.record(relay(value));
+    std::println(label);
+}

@@ -6,7 +6,9 @@ use std::path::PathBuf;
 use super::{FileInspection, FunctionSignature};
 use crate::compiler::project::{scope::ServiceIdentity, service_types, ProjectCheck};
 
-pub(super) fn inspect(project: &ProjectCheck) -> Vec<FileInspection> {
+pub(super) fn inspect(
+    project: &ProjectCheck,
+) -> (Vec<FileInspection>, service_types::ServiceSignatures) {
     let sources: BTreeMap<_, _> = project
         .source_files
         .iter()
@@ -17,7 +19,8 @@ pub(super) fn inspect(project: &ProjectCheck) -> Vec<FileInspection> {
             )
         })
         .collect();
-    let preliminary = super::inspect_project_local(project, &sources);
+    let signatures = service_types::resolve_with_sources(project, &sources);
+    let preliminary = super::inspect_project_local(project, &sources, &signatures);
     let mut interfaces: BTreeMap<PathBuf, BTreeMap<String, Option<FunctionSignature>>> =
         BTreeMap::new();
     for file in &preliminary {
@@ -39,8 +42,7 @@ pub(super) fn inspect(project: &ProjectCheck) -> Vec<FileInspection> {
         }
         interfaces.insert(owner, exports);
     }
-    let signatures = service_types::resolve_service_signatures(project);
-    preliminary
+    let files = preliminary
         .into_iter()
         .map(|mut file| {
             // Never extract interfaces or records from a partially parsed file.
@@ -101,5 +103,6 @@ pub(super) fn inspect(project: &ProjectCheck) -> Vec<FileInspection> {
             })();
             file
         })
-        .collect()
+        .collect();
+    (files, signatures)
 }

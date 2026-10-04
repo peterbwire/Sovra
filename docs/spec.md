@@ -482,24 +482,23 @@ local bindings with optional structural annotations, nested blocks, returns,
 literals, grouping, positional calls, member access, and binary arithmetic
 (`+`, `-`, `*`, `/`) and comparisons (`==`, `!=`, `<`, `<=`, `>`, `>=`).
 Binary expressions use the executable subset's precedence and left associativity;
-inspection visits calls in both operands without evaluating or type-checking them.
-Two-component qualified names and calls (`module::function(...)`) are also
-recognized, following the existing executable syntax. Calls nested in their
-arguments are inspected. Namespace existence, exports and qualified callable
-types are outside service inspection; `maps::send` is not a dotted service
-reference. Malformed paths and longer namespace chains reject inspection.
+inspection visits calls in both operands without evaluating them and retains
+primitive type evidence. Qualified names and calls (`module::function(...)`,
+including multi-segment paths) are recognized. Project inspection supplies
+direct exported interfaces under ADR 0013; body-only inspection has no import
+context. `maps::send` is not a dotted service reference. Malformed paths reject inspection.
 Results retain operation names, argument counts,
 receiver classifications and member-expression ranges relative to the supplied
 body. Local initializers resolve before their binding becomes visible.
 Comments and strings do not create call references. Complex receiver expressions
-remain unresolved. Unsupported forms (including closures, conditionals and logical
-operators) fail the whole inspection rather than returning a
+remain unresolved. If/else, while and logical operators are supported. Unsupported
+forms such as closures fail the whole inspection rather than returning a
 partial list. The opt-in service-call check uses this API; ordinary project
 checks do not. This does not imply that Fielddesk bodies parse or execute.
 
 Local annotation scanning preserves the initializer boundary through balanced
-generic, tuple/function-like and array-like delimiters. Type names remain
-unresolved; these spellings do not imply implemented application types. Empty,
+generic, tuple/function-like and array-like delimiters. Scalar aliases resolve;
+these compound spellings do not imply implemented application types. Empty,
 unclosed or mismatched annotations make the file inspection partial. Initializer
 calls resolve before the local name shadows an imported service.
 
@@ -507,7 +506,7 @@ Experimental `project::application::inspect_functions` accepts whole files made
 of top-level function/task declarations in that same limited body subset. It
 derives parameter bindings from structured signatures and returns per-declaration
 call records with original file-relative spans, including across CRLF and UTF-8
-comments. Annotations remain unresolved; functions have independent scopes.
+comments. Scalar annotations and file-local aliases resolve; functions have independent scopes.
 Callers still provide visible services. Service operation bodies use the same
 file/import visibility and independent lexical scopes as functions (ADR 0008).
 Calls to the enclosing service are explicit, such as `mail.send(message)`;
@@ -533,11 +532,23 @@ E4094 a positional argument-count mismatch and E4095 an ambiguous service receiv
 Locations identify the member expression in its original file. Local/unresolved
 receivers are outside this service rule. Service parameter/return annotations
 resolve to Unit, Bool, Int, Float or String; omitted returns mean Unit. Unknown
-annotations, including application named types and generic forms not yet linked
+annotations, including application records and generic forms not yet linked
 to this checker, produce E4117. Source-owner canonicalization failures produce
 E4118. These diagnostics retain the whole declaration range in its original file.
 The Rust `project::service_types::resolve_service_signatures` API retains only
 fully resolved operation signatures with canonical source/service identity.
+File-local scalar aliases use the existing `type Name = Target;` syntax and
+executable alias resolver. Forward references and alias chains are supported;
+terminal targets are Unit, Bool, Int, Float and String. These aliases resolve in
+service contracts, function/task parameters, ordinary returns and local annotations.
+Duplicate declarations/primitive-name collisions retain E3008; cycles and unknown
+targets retain E3017 with the original declaring file and ranges, including unused
+aliases. Invalid alias sets supply no validated alias types. Malformed aliases
+leave inspection incomplete. Exported ordinary function interfaces carry canonical
+scalar types resolved in the declaring file; consumers cannot reinterpret them
+with same-named aliases. Alias names are not imported or exported. Record identity,
+record aliases and qualified package types are unchanged and are not implemented
+by this application slice. See [application aliases](course/application-aliases.md).
 Literal service arguments, including parenthesized literals, are checked against
 resolved parameters. Int may widen to Float; other mismatches produce E4119 at
 the argument expression range. Primitive function/task/service parameters and
@@ -547,11 +558,22 @@ do not escape their block, and unknown bindings hide outer type evidence.
 Primitive annotated locals with known initializers are checked for compatibility,
 including Int-to-Float widening. E4120 reports mismatches at the initializer range.
 Only compatible known initializers propagate the declared type to later calls;
-unsupported annotations and unknown initializers remain unresolved.
+unsupported annotations produce E4135 at the annotation range, and unknown
+initializers with no unresolved annotation produce E4136 at the initializer range.
+Discarded non-call expressions also require a resolved type: `missing;` and
+`missing + 1;` produce E4137 at the full expression range. This includes nested
+blocks and statically inspected branches/loops, even when unreachable at runtime.
+Direct call statements retain their existing callable/argument diagnostics.
+Known values may be discarded; this does not impose a Unit-only statement rule.
+Both apply even to unused locals. No placeholder type is propagated as validated.
 Supported binary expressions now retain their operator and infer primitive result
 types: numeric arithmetic, String concatenation with `+`, numeric/String ordering,
 and numeric/String/Bool equality. Mixed numeric arithmetic yields Float; comparison
 yields Bool. E4121 reports known incompatible operands at the expression range.
+Application inspection also supports && and || with Bool operands. Precedence
+from lowest to highest is ||, &&, comparisons, +/-, */. Both sides are inspected
+statically, including calls on a potentially skipped short-circuit branch. Unknown
+operand types remain unresolved; general unary expressions remain unsupported.
 Invalid or unresolved expressions do not supply downstream type evidence.
 Project inspection resolves service call result types through canonical contracts,
 including direct imports. Results propagate only for unambiguous, unshadowed
@@ -610,6 +632,10 @@ the containing function/task, callee (null for computed expressions), resolution
 kind, unresolved reason, declared return type, positional type evidence and original
 call/argument locations. A resolved signature is not proof of call validity; clients
 must inspect diagnostics. Only fully inspected files contribute records.
+The additive `local_bindings` array retains names, declared/initializer/resolved
+primitive types and declaration/annotation/initializer ranges in source order.
+Invalid or unresolved bindings have no resolved type. Annotation location
+distinguishes an absent annotation from an unsupported one.
 
 Under accepted ADR 0013, `use app.helpers` exposes only that source's top-level
 `export fn` declarations as `app::helpers::name(...)`. Bare names remain local;

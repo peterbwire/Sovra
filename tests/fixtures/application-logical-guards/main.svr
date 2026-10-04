@@ -1,0 +1,8 @@
+service mail {
+    fn ready() -> Bool;
+}
+fn main() {
+    if mail.ready() && 1 < 2 || false { print("valid"); }
+    if true && 1 {}
+    while false || "invalid" {}
+}

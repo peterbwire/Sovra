@@ -1,6 +1,22 @@
 # Full development status
 
-Updated: 2026-10-04. Status terms: Implemented, Partial, Experimental, Stub, Planned.
+File-local scalar aliases now resolve in application service/function/local
+annotations, including forward chains and exported function interfaces. Existing
+E3008/E3017 diagnostics reject invalid alias graphs. Application record types,
+exported aliases and the application runtime remain unfinished.
+
+Discarded application non-call expressions now reject unresolved types with
+E4137 under `check --service-calls`; known values and valid calls remain accepted.
+
+Updated: 2026-10-05. Status terms: Implemented, Partial, Experimental, Stub, Planned.
+
+Unresolved local annotations/initializers now fail with E4135/E4136 even when
+unused. JSON local_bindings retains declared, initializer and validated primitive
+types with source ranges; unsupported types remain explicit rather than validated.
+
+Application guards now support && and || with Bool operands and executable
+precedence. Both operands/calls are inspected statically; known invalid operands
+produce E4121. Unary syntax and full application execution remain unfinished.
 
 Accepted ADR 0013 Option A is implemented for primitive application function
 interfaces. Direct imports expose export fn declarations through qualified module

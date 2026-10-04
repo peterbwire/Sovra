@@ -1,0 +1,13 @@
+type Amount = Float;
+
+service metrics {
+    fn record(value: Amount);
+}
+
+fn identity(value: Amount) -> Amount { return value; }
+
+fn main() {
+    let value: Amount = "wrong";
+    identity(true);
+    metrics.record("wrong");
+}

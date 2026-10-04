@@ -1,0 +1,5 @@
+[project]
+name = "application-alias-errors"
+entry = "main.svr"
+[services]
+metrics = "external"

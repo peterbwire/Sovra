@@ -100,6 +100,48 @@ pub(super) fn append(output: &mut String, report: &ServiceCheck) {
         }
     }
     output.push(']');
+    append_locals(output, report);
+}
+
+fn append_locals(output: &mut String, report: &ServiceCheck) {
+    output.push_str(",\"local_bindings\":[");
+    let mut first = true;
+    for file in &report.files {
+        let Ok(functions) = &file.functions else {
+            continue;
+        };
+        let file_name = file.source_file.to_string_lossy();
+        for function in functions {
+            for binding in &function.local_bindings {
+                if !first {
+                    output.push(',');
+                }
+                first = false;
+                output.push_str("{\"function\":");
+                super::push_string(output, &function.name);
+                let _ = write!(output, ",\"is_task\":{},\"name\":", function.is_task);
+                super::push_string(output, &binding.name);
+                output.push_str(",\"declared_type\":");
+                push_type(output, binding.declared_type.as_ref());
+                output.push_str(",\"initializer_type\":");
+                push_type(output, binding.initializer_type.as_ref());
+                output.push_str(",\"resolved_type\":");
+                push_type(output, binding.resolved_type.as_ref());
+                output.push_str(",\"location\":");
+                push_location(output, &file_name, binding.span);
+                output.push_str(",\"annotation_location\":");
+                if let Some(span) = binding.annotation_span {
+                    push_location(output, &file_name, span);
+                } else {
+                    output.push_str("null");
+                }
+                output.push_str(",\"initializer_location\":");
+                push_location(output, &file_name, binding.initializer_span);
+                output.push('}');
+            }
+        }
+    }
+    output.push(']');
 }
 
 fn push_type(output: &mut String, kind: Option<&Type>) {

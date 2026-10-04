@@ -136,8 +136,16 @@ inspection without claiming full application validation.
 Unused ordinary functions now reject unresolved parameter annotations with E4134.
 ADR 0013 Option A is accepted: qualified direct imports expose only exported
 functions, retain source ownership and do not expose private/transitive helpers.
-Named application types, general argument and implementation body typing
-remain unfinished. Unsupported signature types produce E4117 rather than typed
+Application Boolean guards now support &&/|| with executable precedence and
+static checking of both operands. General unary expressions remain unsupported.
+Unresolved local annotations and initializers now produce E4135/E4136 even when
+unused. JSON local_bindings exposes primitive evidence and source ranges.
+Discarded non-call expressions now require resolved types (E4137), closing an
+unchecked expression-statement path without changing existing call diagnostics.
+File-local scalar aliases now reuse the executable resolver for forward chains,
+service/function/local annotations and declaring-file imported interfaces.
+Application records and broader implementation body typing remain unfinished.
+Unsupported signature types produce E4117 rather than typed
 placeholder records. See `examples/service-contracts` for the checked subset.
 
 Before expanding this surface, the handoff assessment recommends hardening the

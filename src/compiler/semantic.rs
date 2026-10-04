@@ -236,7 +236,12 @@ impl SemanticAnalyzer {
     }
 }
 
-fn collect_named_types(program: &Program, diagnostics: &mut Diagnostics) -> HashMap<String, Type> {
+/// Resolve declared type interfaces without checking function bodies.
+/// Shared with application scalar alias inspection to preserve type rules.
+pub(crate) fn collect_named_types(
+    program: &Program,
+    diagnostics: &mut Diagnostics,
+) -> HashMap<String, Type> {
     let mut aliases = HashMap::new();
     let mut structured_names = HashSet::new();
     let mut type_declarations = HashMap::new();

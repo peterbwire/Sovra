@@ -1,5 +1,86 @@
 # Development log
 
+## 2026-10-05: File-local scalar aliases in application checking
+
+- Validation: **293 library + 42 CLI = 335 passed**, with required Windows CLI
+  execution (`target/v1-application-aliases-tests.log`). Strict all-target,
+  all-feature Clippy, formatting and whitespace checks passed.
+  Optimized build passed the alias example with imported Float JSON evidence;
+  the invalid fixture returned exit 1 with E4129/E4120/E4119 as expected.
+- Reproduced rejection of scalar aliases across service, function and local
+  annotations. Added top-level alias token extraction and reused the executable
+  parser and iterative alias resolver rather than defining another type system.
+- Forward aliases now resolve to canonical scalar types before ordinary interface
+  collection and service/body checks. Imported exported functions retain their
+  owner's resolved signature. Alias names stay private to their declaring file;
+  no exported aliases, record equivalence or new source syntax was introduced.
+- Invalid graphs retain E3008/E3017 with source ownership, even when unused. No
+  validated alias map escapes an invalid graph. Malformed/nested declarations
+  retain incomplete inspection rather than silently disappearing.
+- Signature aliases, imported interfaces and body inspection share one source
+  snapshot; a regression changes the on-disk alias after snapshot capture and
+  verifies the supplied snapshot still determines the resolved service type.
+- Added unit, integration and CLI coverage for valid/invalid aliases, owner-local
+  imports, source ranges, a 5,000-alias chain, tasks, service bodies and JSON type
+  evidence. Added the application-aliases example and course lesson.
+- Remaining: application record types/construction/fields, broader body typing,
+  runtime and publishing. Ordinary project checks remain partial wiring checks.
+
+## 2026-10-05: Validate discarded application expressions
+
+- Validation: **282 library + 42 CLI = 324 passed**, with required Windows CLI
+  execution (`target/v1-discarded-expressions-tests.log`). The CLI fixture checks
+  failure status, complete inspection coverage and exact JSON expression ranges.
+  Strict all-target/all-feature Clippy, formatting and whitespace checks passed.
+- Reproduced three silently accepted unresolved expression statements before
+  fixing inspection. E4137 now rejects unresolved non-call statement types at
+  their full expression ranges. Known discarded values remain valid; direct
+  calls retain their existing contract diagnostics.
+- Added project regression, per-function evidence isolation and nested/skipped
+  loop coverage, plus a CLI fixture for structured diagnostics and exit failure.
+- Remaining: named application types, broader expression support, application
+  runtime and publishing. This is incremental M12 validation, not M12 completion.
+
+## 2026-10-05: Local binding validation and JSON type evidence
+
+- Validation: **280 library + 42 CLI = 322 passed**, with required Windows CLI
+  execution (`target/v1-local-type-evidence-tests.log`). Strict all-target,
+  all-feature Clippy, formatting and whitespace checks passed. The optimized
+  build verified E4135/E4136 failures and Int-to-Float JSON widening evidence;
+  the valid application-functions example also passed its service-call check.
+- Reproduced silent acceptance of three unused unresolved locals. Added E4135
+  at unsupported annotation ranges and E4136 at unresolved initializer ranges.
+  An unresolved annotation takes precedence over an unresolved initializer to
+  avoid duplicate incomplete-validation diagnostics for the same declaration.
+- Retained local binding records with declared/initializer/validated types and
+  all three source ranges. Known incompatibilities still use E4120 and invalid
+  bindings do not propagate types. Added schema-one local_bindings inspection
+  metadata with lexical occurrences, preserving shadowed names and widening.
+- Added source-range, Unicode/CRLF, shadowing, unknown-type and CLI regressions.
+  Generic metadata fixtures retain their original annotations and now expect
+  the corresponding local annotation diagnostic.
+- Remaining: implement named application types and unresolved expression support;
+  explicit rejection is not a substitute for those features or runtime execution.
+
+## 2026-10-05: Boolean guards in application inspection
+
+- Validation: **278 library + 42 CLI = 320 passed**, no failures/skips, with
+  required Windows CLI execution (`target/v1-logical-guards-tests.log`). Strict
+  all-target/all-feature Clippy, formatting and whitespace checks passed.
+
+- Reproduced rejection of a valid mixed comparison/logical condition. Application
+  expressions now support the existing && and || operators with executable
+  precedence: ||, &&, comparisons, addition/subtraction, multiplication/division.
+- Both operands must have known Bool types to propagate a Bool result. Known
+  invalid operands use E4121; unresolved conditions retain E4125. Both sides are
+  inspected statically even when runtime short-circuiting could skip one side.
+- Added operator precedence, source-range, nested-call ordering, unresolved-call
+  and structural-depth regressions, plus valid/invalid CLI coverage. Updated the
+  application-functions example with a combined guard. No unary syntax or new
+  execution semantics were introduced.
+- Remaining: named application interfaces and broader structured application
+  syntax/type validation, runtime execution and publication infrastructure.
+
 ## 2026-10-04: Exported cross-file application functions (ADR 0013)
 
 - Validation: **275 library + 42 CLI = 317 passed**, no failures/skips, with

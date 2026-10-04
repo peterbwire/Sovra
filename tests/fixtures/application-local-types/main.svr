@@ -1,0 +1,10 @@
+service mail {
+    fn ping();
+}
+fn main() {
+    let typed: Text = 1;
+    let known: Int = unknown;
+    let inferred = missing;
+    let widened: Float = 1;
+    mail.ping();
+}

@@ -253,6 +253,40 @@ mod tests {
     use crate::compiler::diagnostics::Diagnostic;
 
     #[test]
+    fn local_binding_json_preserves_widening_unknowns_and_locations() {
+        use crate::compiler::project::application::{
+            inspect_functions, FileInspection, ServiceCheck,
+        };
+        let source = "// λ\r\nfn main() { let value: Float = 1; { let value = true; } let bad: Text = \"λ\"; let unknown = missing; }";
+        let report = ServiceCheck {
+            files: vec![FileInspection {
+                source_file: "main.svr".into(),
+                functions: inspect_functions(source, &[]),
+            }],
+            diagnostics: Diagnostics::new(),
+        };
+        assert_report(
+            &render_service_check("project", &report),
+            r#"
+            const source = Buffer.from('// λ\r\nfn main() { let value: Float = 1; { let value = true; } let bad: Text = "λ"; let unknown = missing; }');
+            const locals = report.local_bindings;
+            assert.deepEqual(locals.map(v => v.name), ['value', 'value', 'bad', 'unknown']);
+            assert.deepEqual(locals.map(v => v.resolved_type), ['Float', 'Bool', null, null]);
+            assert.equal(locals[0].initializer_type, 'Int');
+            assert.equal(locals[0].declared_type, 'Float');
+            assert.equal(locals[1].annotation_location, null);
+            assert.equal(locals[2].declared_type, null);
+            const annotation = locals[2].annotation_location;
+            assert.equal(source.subarray(annotation.start, annotation.end).toString(), 'Text');
+            const initializer = locals[2].initializer_location;
+            assert.equal(source.subarray(initializer.start, initializer.end).toString(), '"λ"');
+            assert.equal(locals[3].initializer_type, null);
+            for (const local of locals) { assert.equal(local.function, 'main'); assert.equal(local.location.file, 'main.svr'); }
+        "#,
+        );
+    }
+
+    #[test]
     fn ordinary_json_preserves_resolved_unresolved_and_computed_calls() {
         use crate::compiler::project::application::{
             inspect_functions, FileInspection, ServiceCheck,

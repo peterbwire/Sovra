@@ -50,9 +50,13 @@ Int may widen to Float. Primitive parameters and inferred literal/binding locals
 also participate in E4119 checks with lexical shadowing. Primitive annotated
 locals propagate their declared type only after a known compatible initializer;
 E4120 identifies incompatible initializers at their expression ranges. Unknown
-initializers and unsupported annotations remain unresolved. Supported primitive
+initializers produce E4136 at their expression ranges; unsupported local annotations
+produce E4135 at annotation ranges instead. These checks include unused locals. Supported primitive
 binary arithmetic/comparison expressions contribute argument and initializer types.
 E4121 reports incompatible known operands at the expression range. Resolved service
+and ordinary calls inside &&/|| are inspected on both sides; invalid logical
+operand types also produce E4121. Logical conditions retain E4125 when their type
+cannot be resolved. Resolved service
 call results contribute types when receiver, arity and all argument types validate;
 invalid or unknown arguments prevent result propagation. E4122 reports known
 service return mismatches at the expression range (the keyword for bare returns).
@@ -94,6 +98,25 @@ result. A computed callee has null `callee`. Calls are sorted by source range
 within each function, not evaluation order. Only fully inspected files contribute.
 An empty array does not establish full project coverage. Plain source/project
 reports omit this opt-in field. Existing schema-version-one fields retain their meaning.
+
+Unresolved discarded non-call expressions produce E4137 with the complete
+expression location and owning file in `diagnostics`. File-local scalar aliases
+appear as their canonical scalar type in call and binding evidence (for example,
+an annotation `Amount` targeting `Float` reports `Float`). E3008/E3017 alias
+diagnostics retain their declaring file and declaration ranges.
+These errors do not mark parsing coverage incomplete: inspected syntax can still
+fail type validation.
+Direct call statements retain their existing callable/argument diagnostics.
+
+Opt-in reports also add `local_bindings`, with `function`, `is_task`, `name`,
+nullable `declared_type`, `initializer_type` and `resolved_type`, and `location`,
+nullable `annotation_location` and `initializer_location`. Ranges use the existing
+file/byte/line/column shape. Declarations exclude the optional trailing semicolon.
+Only supported primitive evidence is serialized; null is not proof of validity.
+An absent annotation has null annotation_location, while an unsupported annotation
+retains its location and has null declared_type. Entries are lexical occurrences
+in source order, not a flattened symbol table: nested bindings may reuse names.
+Only fully inspected files contribute, and plain source/project reports omit it.
 If initial manifest/import/wiring validation fails, inspection does not run and
 the ordinary diagnostic report has no service_coverage field. Service-call reports
 do not currently include service_operations; use ordinary project JSON for metadata.

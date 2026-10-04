@@ -1,0 +1,18 @@
+service mail {
+    fn ping();
+}
+
+fn main() {
+    missing;
+    { absent + 1; }
+    if true { unknown.field; }
+    let valid = 1;
+    valid;
+    true && false;
+    print(valid);
+    mail.ping();
+}
+
+fn clean() {
+    std::println("valid discarded call");
+}

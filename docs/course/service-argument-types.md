@@ -34,6 +34,11 @@ imports are shown in `examples/application-imports`: `use app.helpers` exposes
 imports stay inaccessible. Named application types and full implementation typing remain unfinished.
 Complete syntax coverage does not mean complete type coverage.
 
+Guards may combine Bool expressions with && and ||. Comparisons bind more tightly
+than &&, which binds more tightly than ||. Both sides are type-checked even when
+runtime short-circuit evaluation might skip one side. General unary expressions
+are not part of this application subset.
+
 The existing stdlib is also recognized: `std::len("hello")` contributes Int,
 `std::to_string(12)` contributes String, and print/println contribute Unit.
 Wrong arity or argument types fail ordinary call checks. An unknown argument is
@@ -46,6 +51,18 @@ array shows resolution kinds and argument types; use its diagnostics and file
 coverage too. A declared return type alone does not mean the call is valid.
 E4134 rejects unresolved ordinary parameter annotations even in unused functions.
 Use canonical primitive names; Any is not a user-defined wildcard annotation.
+Expression statements must also be checkable: `missing;` or `missing + 1;`
+produce E4137 rather than silently discarding unresolved values. A known local
+such as `let count = 1; count;` remains valid. Calls retain their existing
+callable and argument checks. This validation applies inside branches and loops.
+
+File-local [scalar aliases](application-aliases.md) now work in service/function
+signatures and local annotations, with canonical scalar evidence in JSON.
+
+Locals with unsupported annotations produce E4135; unresolved initializer types
+produce E4136 when the annotation is not already unresolved. The JSON local_bindings
+records show the initializer type separately from the validated binding type, so
+Int-to-Float widening is visible. Null resolved_type does not indicate success.
 
 Known explicit returns inside service implementations are checked against their
 contract with E4122. A bare `return` has Unit type; Int may widen to Float.
