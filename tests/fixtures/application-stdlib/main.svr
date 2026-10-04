@@ -1,0 +1,11 @@
+service mail {
+    fn send(value: String);
+}
+fn main() {
+    std::len(1);
+    std::len();
+    std::to_string(unknown);
+    mail.send(std::to_string(12));
+    print(true);
+    std::println("valid");
+}

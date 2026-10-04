@@ -59,9 +59,36 @@ service return mismatches at the expression range (the keyword for bare returns)
 E4123 reports a non-Unit service body that can fall through at the full function
 range. Both if/else arms must return; while loops alone never guarantee return.
 E4124 identifies known non-Bool if/while conditions at their expression ranges.
-Unknown condition/return types and ordinary call results remain
-unchecked. Typed signature
+Unresolved condition types produce E4125 and unresolved service return types
+produce E4126, at the expression range. Both fail the check even when syntax
+coverage is complete; they report incomplete validation rather than a mismatch.
+Same-file ordinary call results now resolve from primitive signatures. E4127
+reports duplicate ordinary declarations, E4128 wrong arity, E4129 incompatible
+arguments, E4130 unresolved call signature/argument types, and E4131 ordinary
+return-contract errors. Arity uses the whole call range; argument errors use
+argument ranges. Return annotation/fallthrough errors use the declaration range;
+explicit returns use expression/keyword ranges. Cross-file ordinary calls remain
+unresolved. JSON schema 1 now adds `ordinary_calls`, retaining the existing
+member-call metadata and diagnostics. Records include calls resolved through
+the Rust stdlib registry. Stdlib arity,
+argument mismatch and unresolved-argument failures use E4128/E4129/E4130. E4132
+identifies an ordinary declaration colliding with a builtin callable. User Any
+annotations do not acquire builtin wildcard behavior. Typed signature
 records are available through the Rust API, not additional JSON fields.
+E4133 reports unresolved ordinary callees (including local/computed function values
+and unsupported imports) at the whole call range. It is an incomplete-validation
+error, not a claim that every unresolved name is absent from the project.
+
+Each `ordinary_calls` record contains `function`, `is_task`, nullable `callee`,
+`kind` (`ordinary`, `builtin`, or `unresolved`), nullable `reason`, nullable
+`declared_return_type`, an `arguments` array and `location`. Each argument has a
+nullable `type` and `location`. Types currently use Unit/Bool/Int/Float/String;
+null means no supported primitive type evidence. The declared return type describes
+the signature, even when arguments fail validation; it is not a validated call
+result. A computed callee has null `callee`. Calls are sorted by source range
+within each function, not evaluation order. Only fully inspected files contribute.
+An empty array does not establish full project coverage. Plain source/project
+reports omit this opt-in field. Existing schema-version-one fields retain their meaning.
 If initial manifest/import/wiring validation fails, inspection does not run and
 the ordinary diagnostic report has no service_coverage field. Service-call reports
 do not currently include service_operations; use ordinary project JSON for metadata.

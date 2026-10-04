@@ -1,0 +1,5 @@
+[project]
+name = "application-functions"
+entry = "main.svr"
+[services]
+metrics = "external"

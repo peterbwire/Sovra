@@ -1,0 +1,8 @@
+service mail {
+    fn value() -> Int { return unknown; }
+}
+fn main() {
+    if missing {}
+    while unresolved {}
+    mail.value();
+}

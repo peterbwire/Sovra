@@ -1899,6 +1899,50 @@ mod tests {
     }
 
     #[test]
+    fn unresolved_ordinary_calls_fail_with_original_ranges() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"unknowncalls\"\nentry = \"main.svr\"",
+        );
+        let source = "fn main() { missing(); std::missing(); let helper = 1; helper(); }";
+        project.write_file("main.svr", source);
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert_eq!(report.diagnostics.items.len(), 3);
+        for (error, spelling) in
+            report
+                .diagnostics
+                .items
+                .iter()
+                .zip(["missing()", "std::missing()", "helper()"])
+        {
+            assert_eq!(error.code, "E4133");
+            assert_eq!(&source[error.span.start..error.span.end], spelling);
+        }
+    }
+
+    #[test]
+    fn unresolved_service_returns_and_conditions_are_reported() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"unknowns\"\nentry = \"main.svr\"\n[services]\nmail = \"external\"",
+        );
+        let source = "service mail {\nfn value() -> Int { return unknown; }\n}\nfn main() { if missing {} while unresolved {} }";
+        project.write_file("main.svr", source);
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert_eq!(report.diagnostics.items.len(), 3);
+        for (error, (code, spelling)) in report.diagnostics.items.iter().zip([
+            ("E4126", "unknown"),
+            ("E4125", "missing"),
+            ("E4125", "unresolved"),
+        ]) {
+            assert_eq!(error.code, code);
+            assert_eq!(&source[error.span.start..error.span.end], spelling);
+        }
+    }
+
+    #[test]
     fn service_nonunit_bodies_require_returns_in_supported_syntax() {
         let project = TestProject::new();
         project.write_file(
@@ -1908,7 +1952,8 @@ mod tests {
         let source = "service mail {\nfn absent() -> Int { let value = 1; }\nfn nested() -> Int { { return 1; } }\nfn external() -> Int;\nfn unit() {}\nfn unresolved() -> Int { return unknown; }\n}\nfn main() {}";
         project.write_file("main.svr", source);
         let report = application::check_service_calls(&check_project(project.path()).unwrap());
-        assert_eq!(report.diagnostics.items.len(), 1);
+        assert_eq!(report.diagnostics.items.len(), 2);
+        assert_eq!(report.diagnostics.items[1].code, "E4126");
         let error = &report.diagnostics.items[0];
         assert_eq!(error.code, "E4123");
         assert_eq!(

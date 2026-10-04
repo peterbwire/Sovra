@@ -24,12 +24,30 @@ These checks do not evaluate expressions or prove absence of overflow or divisio
 by zero. Resolved service call results contribute types when all arguments are
 known compatible and the receiver resolves to one service. Local shadowing and
 direct import visibility apply. Invalid or unknown calls do not supply types.
-Ordinary function results, named application types and full implementation typing are
-still unfinished. Complete syntax coverage does not mean complete type coverage.
+Same-file ordinary function results now resolve from primitive signatures,
+including forward and recursive calls. Arguments must have known compatible
+types and correct arity. Locals/parameters shadow ordinary names. E4127-E4131
+cover duplicate declarations, call errors and ordinary return-contract errors.
+See `examples/application-functions` for a checked example. Cross-file ordinary
+calls, named application types and full implementation typing are still unfinished.
+Complete syntax coverage does not mean complete type coverage.
+
+The existing stdlib is also recognized: `std::len("hello")` contributes Int,
+`std::to_string(12)` contributes String, and print/println contribute Unit.
+Wrong arity or argument types fail ordinary call checks. An unknown argument is
+still unresolved even when a builtin accepts Any; user-written Any annotations
+are not wildcard types. E4132 rejects declarations colliding with builtin names.
+
+Unresolved ordinary calls now produce E4133. This includes names without a supported
+signature and calls through local bindings/function values. The JSON `ordinary_calls`
+array shows resolution kinds and argument types; use its diagnostics and file
+coverage too. A declared return type alone does not mean the call is valid.
 
 Known explicit returns inside service implementations are checked against their
 contract with E4122. A bare `return` has Unit type; Int may widen to Float.
 Non-Unit bodies that can fall through produce E4123. Both if/else arms must return;
 a while loop alone never guarantees return. A return after the loop can satisfy
-the rule. Known non-Bool conditions produce E4124. Unknown condition and return
-expression types remain unchecked. Branch and loop bindings stay inside their blocks.
+the rule. Known non-Bool conditions produce E4124. Unresolved conditions produce
+E4125 and unresolved service returns produce E4126. These indicate that type
+validation cannot finish, rather than a known mismatch. Branch and loop bindings
+stay inside their blocks.

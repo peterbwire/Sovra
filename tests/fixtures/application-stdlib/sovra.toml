@@ -1,0 +1,5 @@
+[project]
+name = "application-stdlib"
+entry = "main.svr"
+[services]
+mail = "external"

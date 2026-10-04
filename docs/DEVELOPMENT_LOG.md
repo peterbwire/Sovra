@@ -1,5 +1,97 @@
 # Development log
 
+## 2026-10-04: Explicit ordinary call resolution and JSON inspection
+
+- Validation: **269 library + 42 CLI = 311 passed**, no failures/skips, with
+  required Windows CLI execution (`target/v1-call-inspection-tests.log`). Strict
+  all-target/all-feature Clippy, formatting and whitespace checks passed; doc stage
+  completed with 0 tests.
+  Optimized build checks verified valid stdlib inspection metadata and the expected
+  three E4133 failures/unresolved records for the negative call fixture.
+
+- Reproduced silently accepted missing, misspelled stdlib and locally shadowed
+  callees (zero instead of three diagnostics). Retained unresolved bare/qualified
+  and computed call records; opt-in checking now emits E4133 at whole call ranges.
+  Existing member-call receiver boundaries remain separate.
+- Added schema-one `ordinary_calls` metadata for resolved ordinary/builtin and
+  unresolved calls, containing declared return types, argument evidence, reasons
+  and source ranges. Only fully inspected files contribute; resolved signature
+  metadata is explicitly not proof that a call's arguments validate.
+- Added Unicode/CRLF range, nested/computed-call, mixed-coverage JSON tests and CLI
+  checks. Updated shadowing/duplicate tests to require the new unresolved-call
+  diagnostic while preserving their original resolution assertions.
+- Remaining: implement cross-file ordinary resolution and general callable/type
+  semantics rather than treating these explicit rejections as feature completion.
+  Application runtime, native testing and registry publication remain unfinished.
+
+## 2026-10-04: Application stdlib contract resolution
+
+- Validation: **267 library + 42 CLI = 309 passed**, no failures/skips, with
+  required Windows CLI execution (`target/v1-application-stdlib-tests.log`). Strict
+  all-target/all-feature Clippy, formatting and whitespace checks passed; doc stage
+  completed with 0 tests. A compiled stdlib smoke program produced identical
+  interpreter/JavaScript output (`value: 12`, `5`).
+  Optimized build passed the application-functions check; the invalid stdlib
+  fixture returned exit 1 with the expected E4129/E4128/E4130 diagnostics.
+
+- Reproduced lost result evidence for std::len/std::to_string/print calls. Qualified
+  expression nodes now retain names as well as spans; the existing Rust-owned
+  registry supplies builtin signatures and the bare print compatibility alias.
+- Builtin arity, known argument types and unresolved arguments use the ordinary
+  checker diagnostics. Builtin Any slots are explicit metadata and never grant
+  wildcard behavior to a user annotation. Validated builtin results propagate
+  into application expressions, locals and return contracts.
+- Added E4132 for ordinary declarations colliding with builtins. Local bindings
+  still shadow bare print. Regression coverage includes result types, invalid
+  calls, unresolved arguments, shadowing and user Any rejection; added CLI fixture
+  and upgraded the application-functions example to use std::to_string.
+- Remaining: cross-file ordinary calls, named application types, complete unknown
+  name/expression resolution and runtime execution. No new stdlib runtime APIs
+  were introduced and this does not complete M12.
+
+## 2026-10-04: Ordinary application functions and contracts
+
+- Validation: **264 library + 42 CLI = 306 passed**, no failures/skips, with
+  required Windows CLI execution (`target/v1-ordinary-functions-tests.log`).
+  Strict all-target/all-feature Clippy, formatting and whitespace checks passed;
+  documentation test stage completed with 0 tests.
+  The optimized release build checked `examples/application-functions` successfully;
+  the negative ordinary-call fixture returned exit 1 with the expected five codes.
+
+- Reproduced missing result types for forward ordinary calls. Reused the existing
+  structured parser in signature collection and body inspection passes, retaining
+  public entry points. No separate line-scanned function resolver was introduced.
+- Added same-file primitive interfaces and ordinary call records. Forward and
+  mutually recursive calls propagate validated results through conditions, locals,
+  service arguments and returns. Lexical bindings shadow function names; duplicate
+  names supply no selectable signature. Task/service names remain separate.
+- Added E4127 duplicate declarations, E4128 call arity, E4129 argument mismatches,
+  E4130 unresolved call contracts/arguments and E4131 ordinary return failures.
+  Ordinary returns use the existing conservative branch/loop completeness rules.
+- Added recursion, shadowing, duplicate, call-boundary, source-range and return
+  regressions, CLI positive/negative fixtures, and `examples/application-functions`.
+  The existing generic metadata fixture now also reports its previously unchecked
+  ordinary return expression; its original raw metadata remains intact.
+- Remaining: cross-file/qualified ordinary calls, named application types and
+  general unresolved expression handling. Same-file body validation does not
+  implement the application runtime or complete M12.
+
+## 2026-10-04: Explicit unresolved condition and return diagnostics
+
+- Validation: **259 library + 42 CLI = 301 passed**, no failures/skips, with
+  required Windows CLI execution (`target/v1-unresolved-types-tests.log`). Strict
+  all-target/all-feature Clippy, formatting and whitespace checks passed.
+
+- Reproduced silent acceptance of unresolved conditions/service returns (zero
+  instead of three diagnostics). Added E4125 for unresolved condition types and
+  E4126 for unresolved service return types, retaining expression source ranges.
+- These are incomplete-validation errors, distinct from known mismatches.
+  Complete syntax coverage can coexist with failed type validation. Ordinary
+  project scans and raw inspection remain separate from opt-in contract checks.
+- Added project regression and human/JSON CLI coverage. Ordinary calls, named
+  application types and other unresolved expressions still need actual resolution;
+  this change does not claim full type checking or runtime readiness.
+
 ## 2026-10-04: Structured application control flow
 
 - Validation: **258 library + 42 CLI = 300 passed**, no failures/skips, with

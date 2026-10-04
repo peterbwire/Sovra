@@ -1,0 +1,11 @@
+service mail {
+    fn send(value: String);
+}
+fn main() {
+    helper();
+    helper(true);
+    helper(unknown);
+    mail.send(helper(1));
+}
+fn helper(value: Int) -> Float { return value; }
+fn broken() -> Int {}

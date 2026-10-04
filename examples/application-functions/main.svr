@@ -1,0 +1,16 @@
+service metrics {
+    fn scale(value: Int) -> Float { return widen(value); }
+    fn log(value: String);
+}
+fn main() {
+    let amount: Float = metrics.scale(3);
+    if even(4) { metrics.log(label(amount)); }
+}
+fn widen(value: Float) -> Float { return value; }
+fn label(value: Float) -> String { return "measured: " + std::to_string(value); }
+fn even(value: Int) -> Bool {
+    if value == 0 { return true; } else { return odd(value - 1); }
+}
+fn odd(value: Int) -> Bool {
+    if value == 0 { return false; } else { return even(value - 1); }
+}

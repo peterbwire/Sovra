@@ -1,13 +1,15 @@
 //! Experimental structured body parsing and receiver inspection.
 //!
 //! Supports bindings, nested blocks, returns, literals, qualified/member calls,
-//! and arithmetic/comparison expressions without application type checking.
+//! and arithmetic/comparison expressions with partial primitive type checking.
 //! Unsupported syntax fails the whole inspection; no partial call list escapes.
 
 use super::scope::{Receiver, Scope, ServiceIdentity};
 use crate::compiler::diagnostics::Span;
 use crate::compiler::lexer::{Lexer, Token, TokenKind};
 use crate::compiler::semantic::Type;
+
+mod ordinary;
 
 /// Explicit per-file outcome for experimental project receiver inspection.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,9 +34,9 @@ pub struct ServiceCheck {
 /// Requires a successfully checked project (including service manifest bindings).
 /// Unsupported files remain in `files` as errors and produce E4096 diagnostics.
 /// Local and unresolved receivers are not service calls.
-/// Contract annotations must resolve through `service_types`. Literal arguments
-/// and known lexical arguments are checked, allowing Int-to-Float widening. Other expressions and
-/// implementation bodies are not yet type-checked by this inspector.
+/// Primitive service and same-file ordinary contracts, arguments, return paths
+/// and conditions are checked. Named types, ordinary imports and unsupported
+/// expressions still require complete application typing.
 pub fn check_service_calls(project: &super::ProjectCheck) -> ServiceCheck {
     use crate::compiler::diagnostics::{Diagnostic, Diagnostics, Severity};
     let files = inspect_project(project);
@@ -57,6 +59,7 @@ pub fn check_service_calls(project: &super::ProjectCheck) -> ServiceCheck {
         let Ok(functions) = &file.functions else {
             continue;
         };
+        ordinary::check(functions, &file.source_file, &mut diagnostics);
         for function in functions {
             if let Some(signature) = signatures.operations.iter().find(|signature| {
                 signature.has_body
@@ -76,6 +79,15 @@ pub fn check_service_calls(project: &super::ProjectCheck) -> ServiceCheck {
                     });
                 }
                 for returned in &function.returns {
+                    if returned.known_type.is_none() {
+                        diagnostics.push(Diagnostic {
+                            source_file: Some(file.source_file.to_string_lossy().into_owned()),
+                            severity: Severity::Error,
+                            code: "E4126",
+                            message: format!("cannot validate return type for service operation `{}`: expression type is unresolved", function.name),
+                            span: returned.span,
+                        });
+                    }
                     if let Some(actual) = &returned.known_type {
                         let expected = &signature.return_type;
                         if actual != expected && !(actual == &Type::Int && expected == &Type::Float)
@@ -95,6 +107,17 @@ pub fn check_service_calls(project: &super::ProjectCheck) -> ServiceCheck {
                 }
             }
             for (kind, span) in &function.conditions {
+                if kind.is_none() {
+                    diagnostics.push(Diagnostic {
+                        source_file: Some(file.source_file.to_string_lossy().into_owned()),
+                        severity: Severity::Error,
+                        code: "E4125",
+                        message:
+                            "cannot validate application condition: expression type is unresolved"
+                                .into(),
+                        span: *span,
+                    });
+                }
                 if kind.as_ref().is_some_and(|kind| *kind != Type::Bool) {
                     diagnostics.push(Diagnostic {
                         source_file: Some(file.source_file.to_string_lossy().into_owned()),
@@ -300,7 +323,7 @@ impl ArgumentType {
 enum Expression {
     Name(String, Span),
     // Namespace resolution is outside service inspection; retain the full range.
-    QualifiedName(Span),
+    QualifiedName(String, Span),
     Literal(Type, Span),
     Member(Box<Expression>, String, Span),
     Call(Box<Expression>, Vec<Expression>, Span),
@@ -329,11 +352,45 @@ fn binary_type(operator: &str, left: &Type, right: &Type) -> Option<Type> {
 }
 
 impl Expression {
+    fn argument_type(&self, scope: &Scope<'_>) -> ArgumentType {
+        let span = match self {
+            Self::Name(_, span)
+            | Self::QualifiedName(_, span)
+            | Self::Literal(_, span)
+            | Self::Member(_, _, span)
+            | Self::Call(_, _, span)
+            | Self::Binary(_, _, _, span) => *span,
+        };
+        let (literal_type, binding_type) = match self {
+            Self::Literal(kind, _) => (Some(kind.clone()), None),
+            _ => (None, self.known_type(scope)),
+        };
+        ArgumentType {
+            literal_type,
+            binding_type,
+            span,
+        }
+    }
     fn known_type(&self, scope: &Scope<'_>) -> Option<Type> {
         match self {
             Self::Literal(kind, _) => Some(kind.clone()),
             Self::Name(name, span) => scope.binding_type(name, span.start),
             Self::Call(callee, arguments, _) => {
+                if let Self::Name(name, span) | Self::QualifiedName(name, span) = callee.as_ref() {
+                    let signature = scope.function(name, span.start)?;
+                    if arguments.len() != signature.parameters.len()
+                        || signature.return_type == Type::Unknown
+                    {
+                        return None;
+                    }
+                    for (index, argument) in arguments.iter().enumerate() {
+                        let actual = argument.known_type(scope)?;
+                        if !signature.accepts(index, &actual) {
+                            return None;
+                        }
+                    }
+                    return Some(signature.return_type.clone());
+                }
                 let Self::Member(receiver, name, _) = callee.as_ref() else {
                     return None;
                 };
@@ -388,7 +445,7 @@ impl Expression {
     fn span(&mut self) -> &mut Span {
         match self {
             Self::Name(_, span)
-            | Self::QualifiedName(span)
+            | Self::QualifiedName(_, span)
             | Self::Literal(_, span)
             | Self::Member(_, _, span)
             | Self::Call(_, _, span)
@@ -400,6 +457,12 @@ impl Expression {
 /// A function or task inspected from a complete source file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionCalls {
+    /// Same-file ordinary signature; absent for tasks and service operations.
+    pub signature: Option<FunctionSignature>,
+    /// Resolved ordinary calls; unresolved names and shadowed bindings are excluded.
+    pub function_calls: Vec<FunctionCall>,
+    /// Bare, qualified or computed calls whose callable contract is unresolved.
+    pub unresolved_calls: Vec<UnresolvedCall>,
     /// Declaration name.
     pub name: String,
     /// Whether this is a task rather than an ordinary function.
@@ -418,6 +481,52 @@ pub struct FunctionCalls {
     pub always_returns: bool,
     /// Condition type evidence and original expression ranges.
     pub conditions: Vec<(Option<Type>, Span)>,
+}
+
+/// Ordinary or builtin function interface retained by structured inspection.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionSignature {
+    /// Positional types; unsupported annotations retain Unknown.
+    pub parameters: Vec<Type>,
+    /// Rust-owned builtin Any slots; user annotations are never wildcards.
+    pub any_parameters: Vec<bool>,
+    /// Declared return type, defaulting to Unit.
+    pub return_type: Type,
+}
+
+impl FunctionSignature {
+    fn accepts(&self, index: usize, actual: &Type) -> bool {
+        self.any_parameters.get(index).copied().unwrap_or(false)
+            || self.parameters.get(index).is_some_and(|expected| {
+                expected == actual || (*expected == Type::Float && *actual == Type::Int)
+            })
+    }
+}
+
+/// Resolved same-file ordinary or builtin call and type evidence.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionCall {
+    /// Declared function name.
+    pub name: String,
+    /// Resolved declaration interface.
+    pub signature: FunctionSignature,
+    /// Positional argument evidence.
+    pub arguments: Vec<ArgumentType>,
+    /// Whole call expression range.
+    pub span: Span,
+}
+
+/// An ordinary call retained even when no callable signature can be resolved.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnresolvedCall {
+    /// Callee spelling, or None for a computed callee expression.
+    pub name: Option<String>,
+    /// Explanation of the unresolved boundary, not a callable type assertion.
+    pub reason: String,
+    /// Positional argument evidence.
+    pub arguments: Vec<ArgumentType>,
+    /// Whole call expression range.
+    pub span: Span,
 }
 
 /// An inspected explicit return; this does not prove return-path completeness.
@@ -444,7 +553,8 @@ pub struct InitializerMismatch {
 
 /// Inspect a file containing top-level function/task declarations.
 ///
-/// Signature annotations remain unresolved. Visible services must be supplied
+/// Same-file primitive ordinary signatures are collected before body inspection.
+/// Named annotations remain unresolved. Visible services must be supplied
 /// by the caller; this API does not infer imports. Unsupported top-level or body
 /// syntax rejects the whole inspection. All spans are relative to `source`.
 pub fn inspect_functions(
@@ -459,6 +569,44 @@ fn inspect_functions_with_signatures(
     services: &[ServiceIdentity],
     signatures: &[super::service_types::TypedServiceOperation],
 ) -> Result<Vec<FunctionCalls>, String> {
+    let preliminary = parse_functions(source, services, signatures, &Default::default())?;
+    let mut ordinary = std::collections::BTreeMap::new();
+    for builtin in crate::compiler::stdlib::functions() {
+        let signature = FunctionSignature {
+            parameters: builtin
+                .parameters
+                .iter()
+                .map(|name| Type::from_name_with_known(name, None))
+                .collect(),
+            any_parameters: builtin
+                .parameters
+                .iter()
+                .map(|name| crate::compiler::stdlib::is_any_type(name))
+                .collect(),
+            return_type: Type::from_name_with_known(builtin.return_type, None),
+        };
+        ordinary.insert(builtin.name.to_owned(), Some(signature.clone()));
+        if builtin.name == "std::print" {
+            ordinary.insert("print".into(), Some(signature));
+        }
+    }
+    for function in &preliminary {
+        if let Some(signature) = &function.signature {
+            ordinary
+                .entry(function.name.clone())
+                .and_modify(|entry| *entry = None)
+                .or_insert(Some(signature.clone()));
+        }
+    }
+    parse_functions(source, services, signatures, &ordinary)
+}
+
+fn parse_functions(
+    source: &str,
+    services: &[ServiceIdentity],
+    signatures: &[super::service_types::TypedServiceOperation],
+    ordinary: &std::collections::BTreeMap<String, Option<FunctionSignature>>,
+) -> Result<Vec<FunctionCalls>, String> {
     let tokens = Lexer::new()
         .tokenize(source)
         .map_err(|_| "file contains unsupported lexical syntax".to_owned())?;
@@ -472,6 +620,9 @@ fn inspect_functions_with_signatures(
         returns: Vec::new(),
         conditions: Vec::new(),
         signatures,
+        ordinary,
+        function_calls: Vec::new(),
+        unresolved_calls: Vec::new(),
     };
     let mut functions = Vec::new();
     while parser.peek() != &TokenKind::Eof {
@@ -546,6 +697,9 @@ pub fn inspect_body(
         returns: Vec::new(),
         conditions: Vec::new(),
         signatures: &[],
+        ordinary: &Default::default(),
+        function_calls: Vec::new(),
+        unresolved_calls: Vec::new(),
     };
     let mut root = Scope::new();
     for service in services {
@@ -562,6 +716,9 @@ pub fn inspect_body(
 }
 
 struct BodyParser<'a> {
+    unresolved_calls: Vec<UnresolvedCall>,
+    ordinary: &'a std::collections::BTreeMap<String, Option<FunctionSignature>>,
+    function_calls: Vec<FunctionCall>,
     conditions: Vec<(Option<Type>, Span)>,
     returns: Vec<ReturnType>,
     signatures: &'a [super::service_types::TypedServiceOperation],
@@ -636,6 +793,7 @@ impl BodyParser<'_> {
             return Ok(None);
         }
         let mut scope = Scope::new();
+        scope.add_functions(self.ordinary);
         scope.add_operations(self.signatures);
         for service in services {
             scope.add_service(service.clone());
@@ -649,6 +807,27 @@ impl BodyParser<'_> {
         }
         let always_returns = self.block(&scope)?;
         Ok(Some(FunctionCalls {
+            signature: if owner.is_none() && !is_task {
+                Some(FunctionSignature {
+                    any_parameters: vec![false; operation.declarations.len()],
+                    parameters: operation
+                        .declarations
+                        .iter()
+                        .map(|parameter| {
+                            Type::from_name_with_known(parameter.annotation.unwrap_or(""), None)
+                        })
+                        .collect(),
+                    return_type: operation
+                        .return_annotation
+                        .map_or(Type::Unit, |annotation| {
+                            Type::from_name_with_known(annotation, None)
+                        }),
+                })
+            } else {
+                None
+            },
+            function_calls: std::mem::take(&mut self.function_calls),
+            unresolved_calls: std::mem::take(&mut self.unresolved_calls),
             name: owner.map_or_else(
                 || operation.name.to_owned(),
                 |owner| format!("{owner}.{}", operation.name),
@@ -904,16 +1083,22 @@ impl BodyParser<'_> {
             }
         };
         if self.consume(TokenKind::Operator("::")) {
-            let Expression::Name(_, start) = expression else {
+            let Expression::Name(module, start) = expression else {
                 return Err("expected a module name before `::`".into());
             };
             if !matches!(self.peek(), TokenKind::Identifier(_)) {
                 return Err("expected a module member name after `::`".into());
             }
-            expression = Expression::QualifiedName(Span {
-                end: self.tokens[self.position].span.end,
-                ..start
-            });
+            let TokenKind::Identifier(member) = self.peek() else {
+                unreachable!()
+            };
+            expression = Expression::QualifiedName(
+                format!("{module}::{member}"),
+                Span {
+                    end: self.tokens[self.position].span.end,
+                    ..start
+                },
+            );
             self.position += 1;
         }
         loop {
@@ -967,10 +1152,50 @@ impl BodyParser<'_> {
     }
     fn inspect(&mut self, expression: &Expression, scope: &Scope<'_>) {
         match expression {
-            Expression::Call(callee, arguments, _) => {
+            Expression::Call(callee, arguments, call_span) => {
                 self.inspect(callee, scope);
                 for argument in arguments {
                     self.inspect(argument, scope);
+                }
+                if let Expression::Name(name, span) | Expression::QualifiedName(name, span) =
+                    callee.as_ref()
+                {
+                    if let Some(signature) = scope.function(name, span.start) {
+                        self.function_calls.push(FunctionCall {
+                            name: name.clone(),
+                            signature: signature.clone(),
+                            arguments: arguments
+                                .iter()
+                                .map(|argument| argument.argument_type(scope))
+                                .collect(),
+                            span: *call_span,
+                        });
+                    } else {
+                        let reason = if matches!(scope.resolve(name, span.start), Receiver::Local) {
+                            "callee is a local binding; callable values are not resolved"
+                        } else {
+                            "no unique supported callable signature is available"
+                        };
+                        self.unresolved_calls.push(UnresolvedCall {
+                            name: Some(name.clone()),
+                            reason: reason.into(),
+                            arguments: arguments
+                                .iter()
+                                .map(|argument| argument.argument_type(scope))
+                                .collect(),
+                            span: *call_span,
+                        });
+                    }
+                } else if !matches!(callee.as_ref(), Expression::Member(_, _, _)) {
+                    self.unresolved_calls.push(UnresolvedCall {
+                        name: None,
+                        reason: "computed callable expressions are not resolved".into(),
+                        arguments: arguments
+                            .iter()
+                            .map(|argument| argument.argument_type(scope))
+                            .collect(),
+                        span: *call_span,
+                    });
                 }
                 if let Expression::Member(receiver, operation, span) = callee.as_ref() {
                     let receiver = match receiver.as_ref() {
@@ -986,7 +1211,7 @@ impl BodyParser<'_> {
                                 let (literal_type, span) = match argument {
                                     Expression::Literal(kind, span) => (Some(kind.clone()), *span),
                                     Expression::Name(_, span)
-                                    | Expression::QualifiedName(span)
+                                    | Expression::QualifiedName(_, span)
                                     | Expression::Member(_, _, span)
                                     | Expression::Call(_, _, span)
                                     | Expression::Binary(_, _, _, span) => (None, *span),
@@ -1025,7 +1250,9 @@ impl BodyParser<'_> {
                     }
                 }
             }
-            Expression::Name(_, _) | Expression::QualifiedName(_) | Expression::Literal(_, _) => {}
+            Expression::Name(_, _)
+            | Expression::QualifiedName(_, _)
+            | Expression::Literal(_, _) => {}
         }
     }
 }
@@ -1033,6 +1260,172 @@ impl BodyParser<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn builtin_calls_validate_arity_types_and_preserve_shadowing() {
+        let source = "fn main() { std::len(1); std::len(); std::to_string(unknown); print(1); std::println(false); } fn local(print: String) { mail.send(print(1)); mail.send(std::len(\"ok\")); }";
+        let functions = inspect_functions(source, &[]).unwrap();
+        let mut diagnostics = crate::compiler::diagnostics::Diagnostics::new();
+        ordinary::check(
+            &functions,
+            std::path::Path::new("main.svr"),
+            &mut diagnostics,
+        );
+        assert_eq!(
+            diagnostics
+                .items
+                .iter()
+                .map(|error| error.code)
+                .collect::<Vec<_>>(),
+            ["E4129", "E4128", "E4130", "E4133"]
+        );
+        assert_eq!(
+            functions[1].calls[0].argument_types[0].resolved_type(),
+            None
+        );
+        assert_eq!(
+            functions[1].calls[1].argument_types[0].resolved_type(),
+            Some(&Type::Int)
+        );
+    }
+
+    #[test]
+    fn builtin_collision_and_user_any_annotations_are_not_callable_wildcards() {
+        let functions =
+            inspect_functions("fn print(value: Int) {} fn main() { print(1); }", &[]).unwrap();
+        let mut diagnostics = crate::compiler::diagnostics::Diagnostics::new();
+        ordinary::check(
+            &functions,
+            std::path::Path::new("main.svr"),
+            &mut diagnostics,
+        );
+        assert_eq!(diagnostics.items.len(), 2);
+        assert_eq!(diagnostics.items[0].code, "E4132");
+        assert_eq!(diagnostics.items[1].code, "E4133");
+        let functions =
+            inspect_functions("fn user(value: Any) {} fn main() { user(1); }", &[]).unwrap();
+        let mut diagnostics = crate::compiler::diagnostics::Diagnostics::new();
+        ordinary::check(
+            &functions,
+            std::path::Path::new("main.svr"),
+            &mut diagnostics,
+        );
+        assert_eq!(diagnostics.items[0].code, "E4130");
+    }
+
+    #[test]
+    fn standard_library_results_feed_application_types() {
+        let source = "fn main() { mail.send(std::len(\"hello\")); mail.send(std::to_string(12)); mail.send(print(true)); }";
+        let functions = inspect_functions(source, &[]).unwrap();
+        for (call, expected) in functions[0]
+            .calls
+            .iter()
+            .zip([Type::Int, Type::String, Type::Unit])
+        {
+            assert_eq!(call.argument_types[0].resolved_type(), Some(&expected));
+        }
+    }
+
+    #[test]
+    fn ordinary_result_inference_excludes_invalid_calls_and_task_names() {
+        let functions = inspect_functions("fn helper(value: Int) -> Float { return value; } task work() -> Int { return 1; } fn caller() { mail.send(helper(true)); mail.send(helper()); mail.send(helper(unknown)); mail.send(work()); mail.send(other::helper(1)); }", &[]).unwrap();
+        let calls = &functions[2].calls;
+        assert_eq!(calls.len(), 5);
+        assert!(calls
+            .iter()
+            .all(|call| call.argument_types[0].resolved_type().is_none()));
+        assert_eq!(functions[2].function_calls.len(), 3);
+        let isolated = inspect_functions("fn caller() { mail.send(helper(1)); }", &[]).unwrap();
+        assert_eq!(isolated[0].calls[0].argument_types[0].resolved_type(), None);
+    }
+
+    #[test]
+    fn ordinary_return_checks_cover_unknown_annotations_and_paths() {
+        for (source, count) in [
+            ("fn value() -> Int {}", 1),
+            ("fn value() -> Int { return; }", 1),
+            ("fn value() -> Float { return 1; }", 0),
+            (
+                "fn value(flag: Bool) -> Int { if flag { return 1; } else { return 2; } }",
+                0,
+            ),
+            ("fn value() -> Int { return unknown; }", 1),
+            ("fn value() -> Missing { return 1; }", 1),
+        ] {
+            let functions = inspect_functions(source, &[]).unwrap();
+            let mut diagnostics = crate::compiler::diagnostics::Diagnostics::new();
+            ordinary::check(
+                &functions,
+                std::path::Path::new("main.svr"),
+                &mut diagnostics,
+            );
+            assert_eq!(diagnostics.items.len(), count, "{source}");
+            assert!(diagnostics.items.iter().all(|error| error.code == "E4131"));
+        }
+    }
+
+    #[test]
+    fn ordinary_calls_respect_shadowing_recursion_and_duplicate_boundaries() {
+        let source = "fn value(n: Int) -> Int { if n == 0 { return 0; } else { return value(n - 1); } } fn caller(value: String) { mail.send(value(1)); } fn sibling() { mail.send(value(1)); }";
+        let functions = inspect_functions(source, &[]).unwrap();
+        assert_eq!(functions[0].returns[1].known_type, Some(Type::Int));
+        assert!(functions[1].function_calls.is_empty());
+        assert_eq!(
+            functions[1].calls[0].argument_types[0].resolved_type(),
+            None
+        );
+        assert_eq!(
+            functions[2].calls[0].argument_types[0].resolved_type(),
+            Some(&Type::Int)
+        );
+        let duplicate = inspect_functions("fn value() -> Int { return 1; } fn value() -> Float { return 1; } fn caller() { mail.send(value()); }", &[]).unwrap();
+        assert_eq!(
+            duplicate[2].calls[0].argument_types[0].resolved_type(),
+            None
+        );
+        let mut diagnostics = crate::compiler::diagnostics::Diagnostics::new();
+        ordinary::check(
+            &duplicate,
+            std::path::Path::new("main.svr"),
+            &mut diagnostics,
+        );
+        assert_eq!(diagnostics.items.len(), 2);
+        assert_eq!(diagnostics.items[0].code, "E4127");
+        assert_eq!(diagnostics.items[1].code, "E4133");
+    }
+
+    #[test]
+    fn ordinary_contract_checks_preserve_ranges_and_unknowns() {
+        let source = "fn main() { take(); take(true); take(unknown); } fn take(value: Float) -> Int { return \"bad\"; }";
+        let functions = inspect_functions(source, &[]).unwrap();
+        let mut diagnostics = crate::compiler::diagnostics::Diagnostics::new();
+        ordinary::check(
+            &functions,
+            std::path::Path::new("main.svr"),
+            &mut diagnostics,
+        );
+        for (error, (code, spelling)) in diagnostics.items.iter().zip([
+            ("E4128", "take()"),
+            ("E4129", "true"),
+            ("E4130", "unknown"),
+            ("E4131", "\"bad\""),
+        ]) {
+            assert_eq!(error.code, code);
+            assert_eq!(&source[error.span.start..error.span.end], spelling);
+        }
+        assert_eq!(diagnostics.items.len(), 4);
+    }
+
+    #[test]
+    fn ordinary_forward_calls_propagate_primitive_results() {
+        let source = "fn main() { mail.send(amount(1)); if ready() { mail.send(2); } } fn amount(value: Float) -> Float { return value; } fn ready() -> Bool { return true; }";
+        let functions = inspect_functions(source, &[]).unwrap();
+        assert_eq!(
+            functions[0].calls[0].argument_types[0].resolved_type(),
+            Some(&Type::Float)
+        );
+        assert_eq!(functions[0].conditions[0].0, Some(Type::Bool));
+    }
 
     #[test]
     fn structured_return_paths_are_conservative() {

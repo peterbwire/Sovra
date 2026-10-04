@@ -39,6 +39,7 @@ pub struct Scope<'a> {
     bindings: Vec<(String, usize, Option<Type>)>,
     services: BTreeSet<ServiceIdentity>,
     operations: Vec<super::service_types::TypedServiceOperation>,
+    functions: std::collections::BTreeMap<String, Option<super::application::FunctionSignature>>,
 }
 
 impl<'a> Scope<'a> {
@@ -54,6 +55,7 @@ impl<'a> Scope<'a> {
             bindings: Vec::new(),
             services: BTreeSet::new(),
             operations: Vec::new(),
+            functions: std::collections::BTreeMap::new(),
         }
     }
 
@@ -109,6 +111,34 @@ impl<'a> Scope<'a> {
                 self.parent
                     .and_then(|parent| parent.operation(service, name))
             })
+    }
+
+    pub(super) fn add_functions(
+        &mut self,
+        functions: &std::collections::BTreeMap<
+            String,
+            Option<super::application::FunctionSignature>,
+        >,
+    ) {
+        self.functions.clone_from(functions);
+    }
+
+    pub(super) fn function(
+        &self,
+        name: &str,
+        offset: usize,
+    ) -> Option<&super::application::FunctionSignature> {
+        if self.has_binding(name, offset) {
+            return None;
+        }
+        self.find_function(name)
+    }
+
+    fn find_function(&self, name: &str) -> Option<&super::application::FunctionSignature> {
+        if let Some(signature) = self.functions.get(name) {
+            return signature.as_ref();
+        }
+        self.parent.and_then(|parent| parent.find_function(name))
     }
 
     /// Resolve a receiver at a source byte offset. Lexical bindings take

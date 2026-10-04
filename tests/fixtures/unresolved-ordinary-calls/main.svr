@@ -1,0 +1,10 @@
+service mail {
+    fn ping();
+}
+fn main() {
+    missing();
+    std::missing();
+    let helper = 1;
+    helper();
+    mail.ping();
+}

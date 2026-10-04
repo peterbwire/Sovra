@@ -2,6 +2,28 @@
 
 Updated: 2026-10-04. Status terms: Implemented, Partial, Experimental, Stub, Planned.
 
+Ordinary calls without a unique supported signature now fail with E4133 rather
+than disappearing from validation. Additive JSON `ordinary_calls` records expose
+ordinary/builtin/unresolved classifications, argument type evidence, declared
+return types and source ranges. This advances partial inspection; signature
+resolution is not call validity, and cross-file ordinary resolution remains open.
+
+Application ordinary-call resolution now consumes the existing Rust stdlib registry.
+Qualified names preserve their identity; stdlib results propagate and invalid
+arguments fail checking. Bare print is preserved, user Any annotations remain
+unsupported and ordinary builtin collisions produce E4132.
+
+Same-file ordinary function checking now collects primitive signatures before
+body analysis, supporting forward references and mutual recursion. Arguments,
+duplicate declarations and ordinary return contracts are checked; validated
+results flow into conditions, service arguments and locals. Shadowed names, task
+names and qualified/cross-file ordinary calls do not acquire ordinary signatures.
+`examples/application-functions` demonstrates the checker subset, not execution.
+
+Unresolved condition and service return types now fail opt-in checks with E4125
+and E4126. These report incomplete type validation at expression ranges without
+claiming a proven mismatch. Syntax coverage can remain complete while typing fails.
+
 Structured if/else-if/else and while inspection now retains calls and lexical
 types in each block. E4123 requires both conditional arms to return and treats
 loops as potentially skipped. E4124 rejects known non-Bool conditions; unresolved

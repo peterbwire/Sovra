@@ -1,0 +1,5 @@
+[project]
+name = "unresolved-ordinary-calls"
+entry = "main.svr"
+[services]
+mail = "external"

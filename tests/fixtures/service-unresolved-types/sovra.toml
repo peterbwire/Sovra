@@ -1,0 +1,5 @@
+[project]
+name = "service-unresolved-types"
+entry = "main.svr"
+[services]
+mail = "external"

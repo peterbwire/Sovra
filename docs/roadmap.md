@@ -122,7 +122,16 @@ Known explicit implementation returns validate against service contracts with
 E4122. E4123 rejects missing returns in fully inspected non-Unit straight-line
 service bodies. Structured if/else and while inspection now extends return-path
 checks; loops alone never guarantee return. E4124 rejects known non-Bool conditions.
-Unknown return/condition types remain unresolved.
+Unknown service return/condition types now fail with E4126/E4125 respectively;
+their type resolution remains unfinished.
+Same-file ordinary function calls now support primitive signatures, forward and
+recursive references, argument checks and return-contract validation. Cross-file
+ordinary functions and general unknown-name resolution remain unfinished.
+Application checking now resolves existing stdlib call contracts and results,
+including bare print, with E4132 guarding builtin callable collisions.
+Unresolved ordinary calls produce E4133. Opt-in JSON `ordinary_calls` now exposes
+resolved/unresolved callees and primitive type evidence, advancing partial M15
+inspection without claiming full application validation.
 Named application types, general argument and implementation body typing
 remain unfinished. Unsupported signature types produce E4117 rather than typed
 placeholder records. See `examples/service-contracts` for the checked subset.

@@ -565,10 +565,49 @@ Inspection supports `if`/`else if`/`else` and `while`. Both conditional arms mus
 guarantee return; a missing else can fall through. Loops conservatively may execute
 zero times, even for literal true conditions. A subsequent unconditional return
 satisfies the rule. E4124 identifies known non-Bool conditions at their expression
-ranges; unknown condition types remain unresolved. Branch/loop bindings do not
+ranges; unresolved condition types produce E4125. Branch/loop bindings do not
 escape their blocks. Declaration-only contracts need no body return.
-Unknown return expression types remain unresolved. Ordinary function call results and
-complete implementation typing remain unfinished.
+Unresolved service return expression types produce E4126. These errors indicate
+incomplete type validation, not a proven type mismatch.
+
+Ordinary same-file function signatures are collected before body inspection, so
+forward and recursive calls resolve without declaration-order dependence. Primitive
+call results propagate only after known compatible positional arguments and arity
+are validated. Parameters/locals shadow ordinary names; duplicate declarations
+are rejected and do not provide a selectable signature. Tasks and service operations
+are excluded from bare ordinary function resolution. Ordinary cross-file imports,
+qualified ordinary calls, named application types and general unknown-name resolution
+remain unfinished. Unsupported parameter annotations retain Unknown; calls using
+such interfaces fail validation rather than supplying result types.
+
+E4127 identifies duplicate ordinary declarations. E4128 identifies wrong arity at
+the whole call; E4129 identifies incompatible arguments at the argument expression;
+E4130 identifies unresolved call signatures or argument types. E4131 identifies
+ordinary return-contract failures: unresolved return annotations, possible fallthrough,
+unknown returned expression types or known mismatches. It uses the full declaration
+for annotation/fallthrough errors and the expression/keyword for explicit returns.
+Ordinary return paths use the same conservative branch/loop rules as services.
+Complete application implementation typing remains unfinished.
+
+Application checking now resolves the existing Rust-owned `std::print`,
+`std::println`, `std::len` and `std::to_string` registry, including the bare `print`
+compatibility alias. Qualified names retain their spelling and range. Builtin
+results feed ordinary/service calls, locals and returns after argument validation.
+Builtin Any slots accept known values of any type; unresolved arguments still
+produce E4130. User annotations named Any remain unsupported, not wildcards.
+E4132 rejects ordinary declarations colliding with builtin callables. Local
+bindings still shadow bare print; explicit std-qualified calls remain available.
+E4133 reports bare, qualified or computed ordinary calls without a unique supported
+callable signature. This includes shadowing local bindings, missing names and
+currently unsupported ordinary imports/function values. The checker does not
+silently assume a callable contract for these expressions. Member receiver
+classification retains its separate service/local/unresolved rules.
+
+Opt-in JSON reports add `ordinary_calls` alongside `member_calls`. Records identify
+the containing function/task, callee (null for computed expressions), resolution
+kind, unresolved reason, declared return type, positional type evidence and original
+call/argument locations. A resolved signature is not proof of call validity; clients
+must inspect diagnostics. Only fully inspected files contribute records.
 The result retains per-file inspection outcomes alongside diagnostics and emits
 E4096 for every unsupported file, including through the Rust API. Callers must first
 obtain a successful ProjectCheck, which validates service manifest bindings.

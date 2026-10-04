@@ -736,6 +736,11 @@ fn service_call_cli_reports_errors_and_incomplete_coverage() {
     let root = env!("CARGO_MANIFEST_DIR");
     for (relative, exit, codes, complete) in [
         ("examples/service-contracts", 0, "[]", true),
+        ("tests/fixtures/unresolved-ordinary-calls", 1, "['E4133', 'E4133', 'E4133']", true),
+        ("tests/fixtures/application-stdlib", 1, "['E4129', 'E4128', 'E4130']", true),
+        ("examples/application-functions", 0, "[]", true),
+        ("tests/fixtures/ordinary-function-types", 1, "['E4128', 'E4129', 'E4130', 'E4131', 'E4119']", true),
+        ("tests/fixtures/service-unresolved-types", 1, "['E4126', 'E4125', 'E4125']", true),
         ("tests/fixtures/service-control-flow", 1, "['E4123', 'E4123', 'E4124', 'E4124']", true),
         (
             "tests/fixtures/service-argument-types",
@@ -746,14 +751,14 @@ fn service_call_cli_reports_errors_and_incomplete_coverage() {
         (
             "tests/fixtures/service-metadata",
             1,
-            "['E4117', 'E4117']",
+            "['E4131', 'E4130', 'E4117', 'E4117']",
             true,
         ),
         ("tests/fixtures/service-body-coverage", 1, "['E4093']", true),
         (
             "tests/fixtures/service-call-errors",
             1,
-            "['E4094', 'E4093']",
+            "['E4130', 'E4130', 'E4094', 'E4093']",
             true,
         ),
         ("examples/fielddesk", 1, "null", false),
@@ -773,6 +778,16 @@ fn service_call_cli_reports_errors_and_incomplete_coverage() {
             assert.equal(report.service_coverage.complete, {complete});
             assert.ok(report.service_coverage.files.length > 0);
             assert.ok(Array.isArray(report.member_calls));
+            assert.ok(Array.isArray(report.ordinary_calls));
+            for (const call of report.ordinary_calls) {{
+                assert.ok(report.service_coverage.files.some(f => f.file === call.location.file && f.inspected));
+                assert.ok(['builtin', 'ordinary', 'unresolved'].includes(call.kind));
+                assert.ok(Array.isArray(call.arguments));
+            }}
+            if ('{relative}' === 'tests/fixtures/unresolved-ordinary-calls') {{
+                assert.deepEqual(report.ordinary_calls.map(c => c.kind), ['unresolved', 'unresolved', 'unresolved']);
+                assert.deepEqual(report.ordinary_calls.map(c => c.callee), ['missing', 'std::missing', 'helper']);
+            }}
             for (const call of report.member_calls) {{
                 assert.ok(report.service_coverage.files.some(f => f.file === call.location.file && f.inspected));
                 assert.equal(typeof call.operation, 'string');
@@ -789,7 +804,9 @@ fn service_call_cli_reports_errors_and_incomplete_coverage() {
                   assert.deepEqual(report.diagnostics[0].location, call.location);
               }}
               if ('{relative}' === 'tests/fixtures/service-metadata') {{
-                  for (const error of report.diagnostics) {{
+                  assert.equal(report.diagnostics[0].code, 'E4131');
+                  assert.equal(report.diagnostics[1].code, 'E4130');
+                  for (const error of report.diagnostics.slice(2)) {{
                       assert.equal(error.code, 'E4117');
                       assert.equal(error.location.line, 1);
                       const bytes = require('node:fs').readFileSync(error.location.file);

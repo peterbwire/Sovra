@@ -34,7 +34,16 @@ E4121. Valid resolved service calls now propagate contract return types, includi
 direct imports. Known explicit service returns now validate against contracts with
 E4122. E4123 now checks non-Unit return paths through if/else and while bodies,
 conservatively treating loops as potentially skipped. E4124 rejects known non-Bool
-conditions. Next, connect unresolved expressions, ordinary call results and application named types.
+conditions. E4125/E4126 now prevent unresolved conditions/service returns from
+passing silently. Same-file ordinary calls now resolve primitive interfaces before
+body inspection, validate arguments and propagate result types. Call
+checking also resolves the Rust-owned stdlib registry, including bare print,
+without granting wildcard semantics to user Any annotations. Ordinary return
+contracts and duplicate declarations are checked. Next, resolve cross-file ordinary
+calls, application named types and remaining unknown expressions.
+Unresolved ordinary calls now fail explicitly with E4133. JSON ordinary-call
+records expose resolution kind, primitive type evidence and source ranges to
+support inspection while these remaining boundaries are implemented.
 Ordinary project checks remain partial wiring checks.
 
 M12 now validates manifest metadata, source discovery, service bindings, app

@@ -14,3 +14,7 @@ The curriculum is being built incrementally around the executable language.
 
 The full application syntax in Fielddesk remains a proposal; it is not part
 of these executable lessons.
+
+For the separately checked application subset, see
+[Service and ordinary argument types](service-argument-types.md). Its application
+examples demonstrate validation and do not supply application execution.

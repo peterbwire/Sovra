@@ -134,6 +134,8 @@ fn push_optional_string(output: &mut String, value: Option<&str>) {
     }
 }
 
+mod ordinary;
+
 /// Render opt-in service diagnostics and explicit per-file syntax coverage.
 pub fn render_service_check(
     target: &str,
@@ -192,7 +194,9 @@ pub fn render_service_check(
             }
         }
     }
-    output.push_str("]}");
+    output.push(']');
+    ordinary::append(&mut output, report);
+    output.push('}');
     output
 }
 
@@ -247,6 +251,53 @@ mod tests {
 
     use super::*;
     use crate::compiler::diagnostics::Diagnostic;
+
+    #[test]
+    fn ordinary_json_preserves_resolved_unresolved_and_computed_calls() {
+        use crate::compiler::project::application::{
+            inspect_functions, FileInspection, ServiceCheck,
+        };
+        let source = "// λ\r\nfn main() { print(helper(1)); missing(\"λ\"); helper()(); } fn helper(value: Int) -> Int { return value; }";
+        let report = ServiceCheck {
+            files: vec![
+                FileInspection {
+                    source_file: "main.svr".into(),
+                    functions: inspect_functions(source, &[]),
+                },
+                FileInspection {
+                    source_file: "partial.svr".into(),
+                    functions: Err("unsupported".into()),
+                },
+            ],
+            diagnostics: Diagnostics::new(),
+        };
+        assert_report(
+            &render_service_check("project", &report),
+            r#"
+            const source = Buffer.from('// λ\r\nfn main() { print(helper(1)); missing("λ"); helper()(); } fn helper(value: Int) -> Int { return value; }');
+            const calls = report.ordinary_calls;
+            assert.equal(report.schema_version, 1);
+            assert.equal(report.service_coverage.complete, false);
+            assert.deepEqual(calls.map(c => c.callee), ['print', 'helper', 'missing', 'helper', null]);
+            assert.deepEqual(calls.map(c => c.kind), ['builtin', 'ordinary', 'unresolved', 'ordinary', 'unresolved']);
+            assert.equal(calls[0].declared_return_type, 'Unit');
+            assert.equal(calls[0].arguments[0].type, 'Int');
+            assert.equal(calls[2].declared_return_type, null);
+            assert.equal(typeof calls[2].reason, 'string');
+            assert.equal(calls[0].reason, null);
+            const loc = calls[2].arguments[0].location;
+            assert.equal(source.subarray(loc.start, loc.end).toString(), '"λ"');
+            assert.equal(calls[2].arguments[0].type, 'String');
+            assert.equal(calls[3].declared_return_type, 'Int'); // signature, not call validity
+            for (const call of calls) {
+                assert.equal(call.location.file, 'main.svr');
+                assert.equal(call.function, 'main');
+                assert.equal(call.is_task, false);
+                assert.equal(call.location.line, 1);
+            }
+        "#,
+        );
+    }
 
     #[test]
     fn service_report_exposes_resolved_and_unresolved_member_calls() {
