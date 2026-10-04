@@ -15,6 +15,7 @@ The label helper uses `std::to_string`; builtin contracts come from the existing
 Rust registry and are checked alongside ordinary calls. Bare `print` is retained.
 
 Parameters and local bindings shadow function names. Tasks and service operation
-names do not become bare ordinary functions. Cross-file ordinary imports, named
-application types and general unresolved names remain unfinished. The `external`
+names do not become bare ordinary functions. Direct exported ordinary imports are
+demonstrated in `../application-imports`. Named application types and general
+unresolved names remain unfinished. The `external`
 service binding does not provide a runtime implementation.

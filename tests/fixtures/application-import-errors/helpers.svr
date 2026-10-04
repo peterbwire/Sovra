@@ -1,0 +1,2 @@
+fn hidden() -> Int { return 1; }
+export fn take(value: Int) -> Int { return value; }

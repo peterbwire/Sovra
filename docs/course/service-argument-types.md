@@ -28,8 +28,10 @@ Same-file ordinary function results now resolve from primitive signatures,
 including forward and recursive calls. Arguments must have known compatible
 types and correct arity. Locals/parameters shadow ordinary names. E4127-E4131
 cover duplicate declarations, call errors and ordinary return-contract errors.
-See `examples/application-functions` for a checked example. Cross-file ordinary
-calls, named application types and full implementation typing are still unfinished.
+See `examples/application-functions` for a checked example. Direct exported ordinary
+imports are shown in `examples/application-imports`: `use app.helpers` exposes
+`export fn format` as `app::helpers::format(...)`. Private helpers and transitive
+imports stay inaccessible. Named application types and full implementation typing remain unfinished.
 Complete syntax coverage does not mean complete type coverage.
 
 The existing stdlib is also recognized: `std::len("hello")` contributes Int,
@@ -42,6 +44,8 @@ Unresolved ordinary calls now produce E4133. This includes names without a suppo
 signature and calls through local bindings/function values. The JSON `ordinary_calls`
 array shows resolution kinds and argument types; use its diagnostics and file
 coverage too. A declared return type alone does not mean the call is valid.
+E4134 rejects unresolved ordinary parameter annotations even in unused functions.
+Use canonical primitive names; Any is not a user-defined wildcard annotation.
 
 Known explicit returns inside service implementations are checked against their
 contract with E4122. A bare `return` has Unit type; Int may widen to Float.

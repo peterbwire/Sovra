@@ -1,0 +1,7 @@
+use app.helpers;
+service metrics {
+    fn log(value: String);
+}
+fn main() {
+    metrics.log(app::helpers::format(12));
+}

@@ -1,0 +1,5 @@
+[project]
+name = "ordinary-unknown-annotations"
+entry = "main.svr"
+[services]
+mail = "external"

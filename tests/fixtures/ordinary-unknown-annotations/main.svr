@@ -1,0 +1,5 @@
+service mail {
+    fn ping();
+}
+fn unused(value: Text, other: Any) {}
+fn main() { mail.ping(); }

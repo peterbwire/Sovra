@@ -575,10 +575,12 @@ forward and recursive calls resolve without declaration-order dependence. Primit
 call results propagate only after known compatible positional arguments and arity
 are validated. Parameters/locals shadow ordinary names; duplicate declarations
 are rejected and do not provide a selectable signature. Tasks and service operations
-are excluded from bare ordinary function resolution. Ordinary cross-file imports,
-qualified ordinary calls, named application types and general unknown-name resolution
+are excluded from bare ordinary function resolution. Named application types and general unknown-name resolution
 remain unfinished. Unsupported parameter annotations retain Unknown; calls using
 such interfaces fail validation rather than supplying result types.
+E4134 also rejects each unresolved ordinary parameter annotation at its owning
+declaration range, even when the function is unused. This implements ADR 0009's
+annotation requirement rather than treating absence of calls as validation.
 
 E4127 identifies duplicate ordinary declarations. E4128 identifies wrong arity at
 the whole call; E4129 identifies incompatible arguments at the argument expression;
@@ -599,7 +601,7 @@ E4132 rejects ordinary declarations colliding with builtin callables. Local
 bindings still shadow bare print; explicit std-qualified calls remain available.
 E4133 reports bare, qualified or computed ordinary calls without a unique supported
 callable signature. This includes shadowing local bindings, missing names and
-currently unsupported ordinary imports/function values. The checker does not
+unsupported imports/function values. The checker does not
 silently assume a callable contract for these expressions. Member receiver
 classification retains its separate service/local/unresolved rules.
 
@@ -608,6 +610,17 @@ the containing function/task, callee (null for computed expressions), resolution
 kind, unresolved reason, declared return type, positional type evidence and original
 call/argument locations. A resolved signature is not proof of call validity; clients
 must inspect diagnostics. Only fully inspected files contribute records.
+
+Under accepted ADR 0013, `use app.helpers` exposes only that source's top-level
+`export fn` declarations as `app::helpers::name(...)`. Bare names remain local;
+unexported helpers remain private. Direct imports are not transitive and do not
+re-export imported symbols. Qualified module paths are separate from local value
+bindings. Duplicate imports are idempotent; cyclic imports collect interfaces
+before body inspection. Only fully parsed files supply interfaces, and duplicate
+function declarations do not supply a selectable exported signature. Each check
+uses one snapshot per discovered source. Imported calls retain canonical declaring
+file identity in the Rust interface and JSON `declaration_file`; their call spans
+remain in the caller. Executable package imports and service visibility are unchanged.
 The result retains per-file inspection outcomes alongside diagnostics and emits
 E4096 for every unsupported file, including through the Rust API. Callers must first
 obtain a successful ProjectCheck, which validates service manifest bindings.

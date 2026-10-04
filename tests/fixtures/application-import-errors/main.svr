@@ -1,0 +1,9 @@
+use helpers;
+service mail {
+    fn ping();
+}
+fn main() {
+    helpers::hidden();
+    helpers::take(true);
+    mail.ping();
+}

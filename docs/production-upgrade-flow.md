@@ -39,11 +39,14 @@ passing silently. Same-file ordinary calls now resolve primitive interfaces befo
 body inspection, validate arguments and propagate result types. Call
 checking also resolves the Rust-owned stdlib registry, including bare print,
 without granting wildcard semantics to user Any annotations. Ordinary return
-contracts and duplicate declarations are checked. Next, resolve cross-file ordinary
-calls, application named types and remaining unknown expressions.
+contracts and duplicate declarations are checked. Direct exported ordinary imports
+now resolve under ADR 0013. Next, resolve application named types and remaining unknown expressions.
 Unresolved ordinary calls now fail explicitly with E4133. JSON ordinary-call
 records expose resolution kind, primitive type evidence and source ranges to
 support inspection while these remaining boundaries are implemented.
+Ordinary unknown parameter annotations now produce E4134 even for unused functions.
+ADR 0013 Option A is accepted and implemented for primitive function interfaces:
+explicit export fn, qualified direct calls, private helpers and no transitive exposure.
 Ordinary project checks remain partial wiring checks.
 
 M12 now validates manifest metadata, source discovery, service bindings, app

@@ -67,8 +67,8 @@ reports duplicate ordinary declarations, E4128 wrong arity, E4129 incompatible
 arguments, E4130 unresolved call signature/argument types, and E4131 ordinary
 return-contract errors. Arity uses the whole call range; argument errors use
 argument ranges. Return annotation/fallthrough errors use the declaration range;
-explicit returns use expression/keyword ranges. Cross-file ordinary calls remain
-unresolved. JSON schema 1 now adds `ordinary_calls`, retaining the existing
+explicit returns use expression/keyword ranges. Direct exported application
+function imports resolve under ADR 0013. JSON schema 1 adds `ordinary_calls`, retaining the existing
 member-call metadata and diagnostics. Records include calls resolved through
 the Rust stdlib registry. Stdlib arity,
 argument mismatch and unresolved-argument failures use E4128/E4129/E4130. E4132
@@ -78,10 +78,15 @@ records are available through the Rust API, not additional JSON fields.
 E4133 reports unresolved ordinary callees (including local/computed function values
 and unsupported imports) at the whole call range. It is an incomplete-validation
 error, not a claim that every unresolved name is absent from the project.
+E4134 identifies unresolved ordinary parameter annotations at the owning function
+declaration range, including unused functions. It emits one diagnostic per parameter.
 
 Each `ordinary_calls` record contains `function`, `is_task`, nullable `callee`,
 `kind` (`ordinary`, `builtin`, or `unresolved`), nullable `reason`, nullable
-`declared_return_type`, an `arguments` array and `location`. Each argument has a
+`declared_return_type`, an `arguments` array and `location`. A nullable
+`declaration_file` is also present on each call: canonical owner for imported
+functions, the current file for local ordinary functions, null for builtins and
+unresolved calls. Each argument has a
 nullable `type` and `location`. Types currently use Unit/Bool/Int/Float/String;
 null means no supported primitive type evidence. The declared return type describes
 the signature, even when arguments fail validation; it is not a validated call

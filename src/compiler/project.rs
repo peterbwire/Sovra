@@ -1899,6 +1899,169 @@ mod tests {
     }
 
     #[test]
+    fn invalid_application_export_interfaces_are_not_consumed() {
+        for (source, expected) in [
+            (
+                "export fn value() -> Int { return 1; }\nfn value() -> Int { return 2; }",
+                "E4127",
+            ),
+            (
+                "export fn value() -> Int { return 1; }\nfn broken() { if true }",
+                "E4096",
+            ),
+        ] {
+            let project = TestProject::new();
+            project.write_file(
+                "sovra.toml",
+                "[project]\nname = \"invalidexports\"\nentry = \"main.svr\"",
+            );
+            project.write_file("helpers.svr", source);
+            project.write_file("main.svr", "use helpers;\nfn main() { helpers::value(); }");
+            let report = application::check_service_calls(&check_project(project.path()).unwrap());
+            assert!(
+                report
+                    .diagnostics
+                    .items
+                    .iter()
+                    .any(|error| error.code == expected),
+                "{:?}",
+                report.diagnostics.items
+            );
+            assert!(report
+                .diagnostics
+                .items
+                .iter()
+                .any(|error| error.code == "E4133"));
+        }
+    }
+
+    #[test]
+    fn application_function_imports_preserve_private_and_nontransitive_boundaries() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"imports\"\nentry = \"main.svr\"",
+        );
+        project.write_file(
+            "a.svr",
+            "fn hidden() -> Int { return 1; }\nexport fn value() -> Int { return hidden(); }",
+        );
+        project.write_file("b.svr", "export fn value() -> String { return \"b\"; }");
+        project.write_file(
+            "bridge.svr",
+            "use a;\nexport fn bridge() -> Int { return a::value(); }",
+        );
+        project.write_file("main.svr", "use bridge;\nuse b;\nfn main() { print(bridge::bridge()); print(b::value()); a::value(); b::hidden(); value(); }");
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert_eq!(
+            report.diagnostics.items.len(),
+            3,
+            "{:?}",
+            report.diagnostics.items
+        );
+        assert!(report
+            .diagnostics
+            .items
+            .iter()
+            .all(|error| error.code == "E4133"
+                && error.source_file.as_ref().unwrap().ends_with("main.svr")));
+    }
+
+    #[test]
+    fn application_function_import_cycles_and_duplicate_imports_are_bounded() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"cycles\"\nentry = \"main.svr\"",
+        );
+        project.write_file("a.svr", "use b;\nexport fn first(value: Int) -> Int { if value == 0 { return 0; } else { return b::second(value - 1); } }");
+        project.write_file(
+            "b.svr",
+            "use a;\nexport fn second(value: Int) -> Int { return a::first(value); }",
+        );
+        project.write_file(
+            "main.svr",
+            "use a;\nuse a;\nfn main() { let a = \"local\"; print(a::first(3)); }",
+        );
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(
+            report.diagnostics.items.is_empty(),
+            "{:?}",
+            report.diagnostics.items
+        );
+        let main = report
+            .files
+            .iter()
+            .find(|file| file.source_file.ends_with("main.svr"))
+            .unwrap();
+        let call = main.functions.as_ref().unwrap()[0]
+            .function_calls
+            .iter()
+            .find(|call| call.name == "a::first")
+            .unwrap();
+        assert_eq!(
+            call.signature.source_file.as_ref().unwrap(),
+            &project.path().join("a.svr").canonicalize().unwrap()
+        );
+    }
+
+    #[test]
+    fn imported_function_errors_retain_declaring_file_and_caller_ranges() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"errors\"\nentry = \"main.svr\"",
+        );
+        project.write_file(
+            "helpers.svr",
+            "export fn bad(value: Int) -> String { return 1; }",
+        );
+        project.write_file(
+            "main.svr",
+            "use helpers;\nfn main() { helpers::bad(true); }",
+        );
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert_eq!(
+            report.diagnostics.items.len(),
+            2,
+            "{:?}",
+            report.diagnostics.items
+        );
+        assert!(report
+            .diagnostics
+            .items
+            .iter()
+            .any(|error| error.code == "E4131"
+                && error.source_file.as_ref().unwrap().ends_with("helpers.svr")));
+        assert!(report
+            .diagnostics
+            .items
+            .iter()
+            .any(|error| error.code == "E4129"
+                && error.source_file.as_ref().unwrap().ends_with("main.svr")));
+    }
+
+    #[test]
+    fn exported_application_functions_resolve_direct_qualified_imports() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"imports\"\nentry = \"main.svr\"",
+        );
+        project.write_file(
+            "main.svr",
+            "use app.helpers;\nfn main() { print(app::helpers::format(12)); }",
+        );
+        project.write_file("app/helpers.svr", "fn prefix() -> String { return \"value: \"; }\nexport fn format(value: Int) -> String { return prefix() + std::to_string(value); }");
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(
+            report.diagnostics.items.is_empty(),
+            "{:?}",
+            report.diagnostics.items
+        );
+    }
+
+    #[test]
     fn unresolved_ordinary_calls_fail_with_original_ranges() {
         let project = TestProject::new();
         project.write_file(
@@ -2138,7 +2301,7 @@ mod tests {
             "services.svr",
             "service mail {\nfn send(value: Int) -> Unit\n}\n",
         );
-        let source = "use services\nfn main() { mail.send(); mail.missing(1); mail.send(1); }\nfn local(mail: Object) { mail.missing(); }\n";
+        let source = "use services\nfn main() { mail.send(); mail.missing(1); mail.send(1); }\nfn local(mail: String) { mail.missing(); }\n";
         project.write_file("main.svr", source);
         project.write_file("unresolved.svr", "fn caller() { mail.missing(); }");
         project.write_file(
@@ -2234,7 +2397,7 @@ mod tests {
         );
         project.write_file(
             "main.svr",
-            "use services;\nfn main() { mail.send(); }\nfn shadow(mail: Object) { mail.send(); }",
+            "use services;\nfn main() { mail.send(); }\nfn shadow(mail: String) { mail.send(); }",
         );
         project.write_file(
             "services.svr",

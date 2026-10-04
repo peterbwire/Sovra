@@ -12,6 +12,7 @@ struct CallRecord<'a> {
     kind: &'static str,
     reason: Option<&'a str>,
     declared_return: Option<&'a Type>,
+    declaration_file: Option<&'a std::path::Path>,
     arguments: &'a [ArgumentType],
     span: Span,
 }
@@ -36,6 +37,14 @@ pub(super) fn append(output: &mut String, report: &ServiceCheck) {
                     },
                     reason: None,
                     declared_return: Some(&call.signature.return_type),
+                    declaration_file: if crate::compiler::stdlib::lookup(&call.name).is_some() {
+                        None
+                    } else {
+                        call.signature
+                            .source_file
+                            .as_deref()
+                            .or(Some(file.source_file.as_path()))
+                    },
                     arguments: &call.arguments,
                     span: call.span,
                 });
@@ -46,6 +55,7 @@ pub(super) fn append(output: &mut String, report: &ServiceCheck) {
                     kind: "unresolved",
                     reason: Some(&call.reason),
                     declared_return: None,
+                    declaration_file: None,
                     arguments: &call.arguments,
                     span: call.span,
                 });
@@ -66,6 +76,12 @@ pub(super) fn append(output: &mut String, report: &ServiceCheck) {
                 super::push_optional_string(output, call.reason);
                 output.push_str(",\"declared_return_type\":");
                 push_type(output, call.declared_return);
+                output.push_str(",\"declaration_file\":");
+                if let Some(file) = call.declaration_file {
+                    super::push_string(output, &file.to_string_lossy());
+                } else {
+                    output.push_str("null");
+                }
                 output.push_str(",\"arguments\":[");
                 for (index, argument) in call.arguments.iter().enumerate() {
                     if index != 0 {

@@ -9,6 +9,7 @@ use crate::compiler::diagnostics::Span;
 use crate::compiler::lexer::{Lexer, Token, TokenKind};
 use crate::compiler::semantic::Type;
 
+mod imports;
 mod ordinary;
 
 /// Explicit per-file outcome for experimental project receiver inspection.
@@ -249,6 +250,13 @@ pub fn check_service_calls(project: &super::ProjectCheck) -> ServiceCheck {
 /// Unsupported files return errors individually; this does not change check
 /// success, enforce service contracts, or treat dependencies as transitive imports.
 pub fn inspect_project(project: &super::ProjectCheck) -> Vec<FileInspection> {
+    imports::inspect(project)
+}
+
+fn inspect_project_local(
+    project: &super::ProjectCheck,
+    sources: &std::collections::BTreeMap<std::path::PathBuf, Result<String, String>>,
+) -> Vec<FileInspection> {
     let signatures = super::service_types::resolve_service_signatures(project);
     project
         .source_files
@@ -275,8 +283,12 @@ pub fn inspect_project(project: &super::ProjectCheck) -> Vec<FileInspection> {
                         });
                     }
                 }
-                let source = std::fs::read_to_string(file).map_err(|error| error.to_string())?;
-                inspect_functions_with_signatures(&source, &services, &signatures.operations)
+                let source = sources
+                    .get(file)
+                    .expect("discovered source snapshot")
+                    .as_ref()
+                    .map_err(Clone::clone)?;
+                inspect_functions_with_signatures(source, &services, &signatures.operations)
             })();
             FileInspection {
                 source_file: file.clone(),
@@ -457,6 +469,8 @@ impl Expression {
 /// A function or task inspected from a complete source file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionCalls {
+    /// Whether this top-level ordinary function explicitly exports its interface.
+    pub is_exported: bool,
     /// Same-file ordinary signature; absent for tasks and service operations.
     pub signature: Option<FunctionSignature>,
     /// Resolved ordinary calls; unresolved names and shadowed bindings are excluded.
@@ -486,6 +500,8 @@ pub struct FunctionCalls {
 /// Ordinary or builtin function interface retained by structured inspection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionSignature {
+    /// Canonical declaring file for an imported function; None for local/builtin interfaces.
+    pub source_file: Option<std::path::PathBuf>,
     /// Positional types; unsupported annotations retain Unknown.
     pub parameters: Vec<Type>,
     /// Rust-owned builtin Any slots; user annotations are never wildcards.
@@ -569,10 +585,20 @@ fn inspect_functions_with_signatures(
     services: &[ServiceIdentity],
     signatures: &[super::service_types::TypedServiceOperation],
 ) -> Result<Vec<FunctionCalls>, String> {
+    inspect_functions_with_imports(source, services, signatures, &Default::default())
+}
+
+fn inspect_functions_with_imports(
+    source: &str,
+    services: &[ServiceIdentity],
+    signatures: &[super::service_types::TypedServiceOperation],
+    imported: &std::collections::BTreeMap<String, Option<FunctionSignature>>,
+) -> Result<Vec<FunctionCalls>, String> {
     let preliminary = parse_functions(source, services, signatures, &Default::default())?;
     let mut ordinary = std::collections::BTreeMap::new();
     for builtin in crate::compiler::stdlib::functions() {
         let signature = FunctionSignature {
+            source_file: None,
             parameters: builtin
                 .parameters
                 .iter()
@@ -597,6 +623,12 @@ fn inspect_functions_with_signatures(
                 .and_modify(|entry| *entry = None)
                 .or_insert(Some(signature.clone()));
         }
+    }
+    for (name, signature) in imported {
+        ordinary
+            .entry(name.clone())
+            .and_modify(|entry| *entry = None)
+            .or_insert_with(|| signature.clone());
     }
     parse_functions(source, services, signatures, &ordinary)
 }
@@ -658,6 +690,10 @@ fn parse_functions(
             }
             continue;
         }
+        let is_exported = parser.consume(TokenKind::Keyword("export"));
+        if is_exported && parser.peek() != &TokenKind::Keyword("fn") {
+            return Err("application exports require a top-level function".into());
+        }
         let is_task = match parser.peek() {
             TokenKind::Keyword("fn") => false,
             TokenKind::Keyword("task") => true,
@@ -669,7 +705,14 @@ fn parse_functions(
                 ))
             }
         };
-        if let Some(function) = parser.declaration(source, services, None, is_task)? {
+        if let Some(mut function) = parser.declaration(source, services, None, is_task)? {
+            function.is_exported = is_exported;
+            if is_exported {
+                function.span = Span {
+                    end: function.span.end,
+                    ..start
+                };
+            }
             functions.push(function);
         }
     }
@@ -807,8 +850,10 @@ impl BodyParser<'_> {
         }
         let always_returns = self.block(&scope)?;
         Ok(Some(FunctionCalls {
+            is_exported: false,
             signature: if owner.is_none() && !is_task {
                 Some(FunctionSignature {
+                    source_file: None,
                     any_parameters: vec![false; operation.declarations.len()],
                     parameters: operation
                         .declarations
@@ -1082,9 +1127,12 @@ impl BodyParser<'_> {
                 ))
             }
         };
-        if self.consume(TokenKind::Operator("::")) {
-            let Expression::Name(module, start) = expression else {
-                return Err("expected a module name before `::`".into());
+        while self.consume(TokenKind::Operator("::")) {
+            let (module, start) = match expression {
+                Expression::Name(module, start) | Expression::QualifiedName(module, start) => {
+                    (module, start)
+                }
+                _ => return Err("expected a module name before `::`".into()),
             };
             if !matches!(self.peek(), TokenKind::Identifier(_)) {
                 return Err("expected a module member name after `::`".into());
@@ -1262,6 +1310,28 @@ mod tests {
     use super::*;
 
     #[test]
+    fn application_logical_guards_follow_executable_precedence() {
+        let source = "fn main() { if 1 < 2 && false || true { print(1); } }";
+        let functions = inspect_functions(source, &[]).unwrap();
+        assert_eq!(functions[0].conditions[0].0, Some(Type::Bool));
+        assert!(functions[0].operator_errors.is_empty());
+    }
+
+    #[test]
+    fn unused_ordinary_parameters_still_require_resolved_annotations() {
+        let source = "fn unused(value: Text, other: Any) {}";
+        let functions = inspect_functions(source, &[]).unwrap();
+        let mut diagnostics = crate::compiler::diagnostics::Diagnostics::new();
+        ordinary::check(
+            &functions,
+            std::path::Path::new("main.svr"),
+            &mut diagnostics,
+        );
+        assert_eq!(diagnostics.items.len(), 2);
+        assert!(diagnostics.items.iter().all(|error| error.code == "E4134"));
+    }
+
+    #[test]
     fn builtin_calls_validate_arity_types_and_preserve_shadowing() {
         let source = "fn main() { std::len(1); std::len(); std::to_string(unknown); print(1); std::println(false); } fn local(print: String) { mail.send(print(1)); mail.send(std::len(\"ok\")); }";
         let functions = inspect_functions(source, &[]).unwrap();
@@ -1310,7 +1380,9 @@ mod tests {
             std::path::Path::new("main.svr"),
             &mut diagnostics,
         );
-        assert_eq!(diagnostics.items[0].code, "E4130");
+        assert_eq!(diagnostics.items.len(), 2);
+        assert_eq!(diagnostics.items[0].code, "E4134");
+        assert_eq!(diagnostics.items[1].code, "E4130");
     }
 
     #[test]
@@ -1723,7 +1795,7 @@ mod tests {
             "std::(1)",
             "1::send()",
             "maps.send::other()",
-            "std::io::print(1)",
+            "std::io::(1)",
         ] {
             let source = format!("{{ maps.first(); {expression}; }}");
             assert!(

@@ -1,0 +1,4 @@
+fn prefix() -> String { return "value: "; }
+export fn format(value: Int) -> String {
+    return prefix() + std::to_string(value);
+}

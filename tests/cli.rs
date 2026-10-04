@@ -736,6 +736,9 @@ fn service_call_cli_reports_errors_and_incomplete_coverage() {
     let root = env!("CARGO_MANIFEST_DIR");
     for (relative, exit, codes, complete) in [
         ("examples/service-contracts", 0, "[]", true),
+        ("examples/application-imports", 0, "[]", true),
+        ("tests/fixtures/application-import-errors", 1, "['E4133', 'E4129']", true),
+        ("tests/fixtures/ordinary-unknown-annotations", 1, "['E4134', 'E4134']", true),
         ("tests/fixtures/unresolved-ordinary-calls", 1, "['E4133', 'E4133', 'E4133']", true),
         ("tests/fixtures/application-stdlib", 1, "['E4129', 'E4128', 'E4130']", true),
         ("examples/application-functions", 0, "[]", true),
@@ -787,6 +790,13 @@ fn service_call_cli_reports_errors_and_incomplete_coverage() {
             if ('{relative}' === 'tests/fixtures/unresolved-ordinary-calls') {{
                 assert.deepEqual(report.ordinary_calls.map(c => c.kind), ['unresolved', 'unresolved', 'unresolved']);
                 assert.deepEqual(report.ordinary_calls.map(c => c.callee), ['missing', 'std::missing', 'helper']);
+            }}
+            if ('{relative}' === 'examples/application-imports') {{
+                const imported = report.ordinary_calls.find(c => c.callee === 'app::helpers::format');
+                assert.equal(imported.kind, 'ordinary');
+                assert.equal(imported.declared_return_type, 'String');
+                assert.ok(imported.declaration_file.endsWith('helpers.svr'));
+                assert.ok(imported.location.file.endsWith('main.svr'));
             }}
             for (const call of report.member_calls) {{
                 assert.ok(report.service_coverage.files.some(f => f.file === call.location.file && f.inspected));

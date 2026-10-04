@@ -1,0 +1,5 @@
+[project]
+name = "application-imports"
+entry = "main.svr"
+[services]
+metrics = "external"

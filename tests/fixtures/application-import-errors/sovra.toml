@@ -1,0 +1,5 @@
+[project]
+name = "application-import-errors"
+entry = "main.svr"
+[services]
+mail = "external"

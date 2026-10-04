@@ -2,11 +2,21 @@
 
 Updated: 2026-10-04. Status terms: Implemented, Partial, Experimental, Stub, Planned.
 
+Accepted ADR 0013 Option A is implemented for primitive application function
+interfaces. Direct imports expose export fn declarations through qualified module
+paths, with private helpers, nontransitive visibility and canonical declaring-file
+metadata. Snapshot/interface collection supports cyclic and repeated imports.
+This is checking and inspection, not application execution or registry publication.
+
+Unused ordinary functions now reject unresolved parameter annotations (E4134),
+following accepted ADR 0009. Accepted ADR 0013 now supplies direct exported,
+qualified cross-file application function checking as described above.
+
 Ordinary calls without a unique supported signature now fail with E4133 rather
 than disappearing from validation. Additive JSON `ordinary_calls` records expose
 ordinary/builtin/unresolved classifications, argument type evidence, declared
 return types and source ranges. This advances partial inspection; signature
-resolution is not call validity, and cross-file ordinary resolution remains open.
+resolution is not call validity; unsupported imports remain explicit errors.
 
 Application ordinary-call resolution now consumes the existing Rust stdlib registry.
 Qualified names preserve their identity; stdlib results propagate and invalid
@@ -17,7 +27,7 @@ Same-file ordinary function checking now collects primitive signatures before
 body analysis, supporting forward references and mutual recursion. Arguments,
 duplicate declarations and ordinary return contracts are checked; validated
 results flow into conditions, service arguments and locals. Shadowed names, task
-names and qualified/cross-file ordinary calls do not acquire ordinary signatures.
+names and unsupported qualified calls do not acquire ordinary signatures.
 `examples/application-functions` demonstrates the checker subset, not execution.
 
 Unresolved condition and service return types now fail opt-in checks with E4125

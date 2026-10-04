@@ -35,6 +35,19 @@ pub(super) fn check(functions: &[FunctionCalls], file: &Path, diagnostics: &mut 
             );
         }
         if let Some(signature) = &function.signature {
+            for (index, kind) in signature.parameters.iter().enumerate() {
+                if *kind == Type::Unknown {
+                    emit(
+                        "E4134",
+                        format!(
+                            "parameter {} of ordinary function `{}` has an unresolved annotation",
+                            index + 1,
+                            function.name
+                        ),
+                        function.span,
+                    );
+                }
+            }
             if crate::compiler::stdlib::lookup(&function.name).is_some() {
                 emit(
                     "E4132",

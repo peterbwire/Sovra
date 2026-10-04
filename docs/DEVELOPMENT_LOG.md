@@ -1,5 +1,51 @@
 # Development log
 
+## 2026-10-04: Exported cross-file application functions (ADR 0013)
+
+- Validation: **275 library + 42 CLI = 317 passed**, no failures/skips, with
+  required Windows CLI execution (`target/v1-function-imports-tests.log`). Strict
+  all-target/all-feature Clippy, formatting and whitespace checks passed.
+  Optimized build passed the exported import example and declaring-file JSON
+  assertions; private access and argument mismatch failures returned the expected
+  exit 1 with E4133/E4129 in the negative fixture.
+
+- Recorded the user's affirmative continuation as approval of the concrete
+  Option A proposal. Added top-level export fn recognition and multi-segment
+  qualified calls such as app::helpers::format through existing direct imports.
+- Project inspection reads one source snapshot per discovered file, collects
+  interfaces from fully parsed files and then checks bodies against direct exported
+  interfaces. Cycles do not recursively load bodies; duplicate imports are
+  idempotent. Bare helpers remain in their own file and imports are nontransitive.
+- Imported signatures retain canonical declaring files. JSON ordinary-call records
+  add declaration_file while preserving caller/argument locations. Duplicate or
+  partially parsed declarations do not provide selectable exported interfaces.
+- Added positive/negative CLI fixtures, examples/application-imports, and regressions
+  for private/nontransitive access, cycles, duplicate imports, lexical/module
+  namespace separation, owner-correct errors and invalid export interfaces.
+- Remaining: named application interfaces, complete application parsing/typing,
+  runtime execution and package publication. Existing executable package imports
+  and service visibility rules remain separate.
+
+## 2026-10-04: Unused ordinary parameter annotation validation
+
+- Validation: **270 library + 42 CLI = 312 passed**, no failures/skips, with
+  required Windows CLI execution (`target/v1-ordinary-annotations-tests.log`).
+  The pre-fix regression reproduced zero diagnostics instead of two. Formatting
+  and whitespace checks passed; strict all-target/all-feature Clippy passed.
+
+- Added E4134 for unresolved ordinary parameter annotations even when no call
+  reaches the function, applying accepted ADR 0009. Diagnostics retain the owning
+  declaration range and are emitted once per unresolved parameter.
+- Added regression and CLI coverage for Text/Any annotations; scope-only project
+  fixtures now use canonical String annotations so their original receiver and
+  shadowing assertions continue to isolate those rules.
+- Reviewed ADR 0006/0009 before cross-file ordinary work. Their existing service
+  and type import rules do not specify ordinary callable visibility/spelling.
+  Prepared ADR 0013 with exported module-qualified calls and requested approval
+  under AGENTS.md; no imported-call syntax or visibility was silently selected.
+- Next: implement approved cross-file function import semantics after a decision;
+  named application types and full execution remain unfinished.
+
 ## 2026-10-04: Explicit ordinary call resolution and JSON inspection
 
 - Validation: **269 library + 42 CLI = 311 passed**, no failures/skips, with

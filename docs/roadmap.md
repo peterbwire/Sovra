@@ -125,13 +125,17 @@ checks; loops alone never guarantee return. E4124 rejects known non-Bool conditi
 Unknown service return/condition types now fail with E4126/E4125 respectively;
 their type resolution remains unfinished.
 Same-file ordinary function calls now support primitive signatures, forward and
-recursive references, argument checks and return-contract validation. Cross-file
-ordinary functions and general unknown-name resolution remain unfinished.
+recursive references, argument checks and return-contract validation. Direct
+exported application functions now resolve with qualified calls under ADR 0013;
+general unknown-name resolution remains unfinished.
 Application checking now resolves existing stdlib call contracts and results,
 including bare print, with E4132 guarding builtin callable collisions.
 Unresolved ordinary calls produce E4133. Opt-in JSON `ordinary_calls` now exposes
 resolved/unresolved callees and primitive type evidence, advancing partial M15
 inspection without claiming full application validation.
+Unused ordinary functions now reject unresolved parameter annotations with E4134.
+ADR 0013 Option A is accepted: qualified direct imports expose only exported
+functions, retain source ownership and do not expose private/transitive helpers.
 Named application types, general argument and implementation body typing
 remain unfinished. Unsupported signature types produce E4117 rather than typed
 placeholder records. See `examples/service-contracts` for the checked subset.
