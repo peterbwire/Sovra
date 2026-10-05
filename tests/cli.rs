@@ -736,6 +736,7 @@ fn service_call_cli_reports_errors_and_incomplete_coverage() {
     let root = env!("CARGO_MANIFEST_DIR");
     for (relative, exit, codes, complete) in [
         ("examples/service-contracts", 0, "[]", true),
+        ("tests/fixtures/application-integer-bounds", 1, "['E3012', 'E3012', 'E3012']", true),
         ("examples/application-aliases", 0, "[]", true),
         ("tests/fixtures/application-alias-errors", 1, "['E4129', 'E4120', 'E4119']", true),
         ("tests/fixtures/application-discarded-expressions", 1, "['E4137', 'E4137', 'E4137']", true),
@@ -788,6 +789,10 @@ fn service_call_cli_reports_errors_and_incomplete_coverage() {
             assert.ok(Array.isArray(report.member_calls));
             assert.ok(Array.isArray(report.ordinary_calls));
             assert.ok(Array.isArray(report.local_bindings));
+            if ('{relative}' === 'tests/fixtures/application-integer-bounds') {{
+                const source = require('fs').readFileSync(report.diagnostics[0].location.file);
+                assert.deepEqual(report.diagnostics.map(d => source.subarray(d.location.start, d.location.end).toString()), ['9223372036854775808', '18446744073709551616', '999999999999999999999999']);
+            }}
             if ('{relative}' === 'examples/application-aliases') {{
                 const call = report.ordinary_calls.find(c => c.callee === 'app::pricing::price');
                 assert.equal(call.declared_return_type, 'Float');

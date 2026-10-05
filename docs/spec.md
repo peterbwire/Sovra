@@ -565,6 +565,11 @@ Discarded non-call expressions also require a resolved type: `missing;` and
 blocks and statically inspected branches/loops, even when unreachable at runtime.
 Direct call statements retain their existing callable/argument diagnostics.
 Known values may be discarded; this does not impose a Unit-only statement rule.
+Application integer literals now enforce the executable signed 64-bit limit with
+E3012 at the literal token range, including unused locals and statically skipped
+branches. Parentheses do not expand that diagnostic range. Type evidence remains
+Int, matching executable semantic analysis; it does not certify numeric validity.
+This check does not evaluate arithmetic or prove absence of runtime overflow.
 Both apply even to unused locals. No placeholder type is propagated as validated.
 Supported binary expressions now retain their operator and infer primitive result
 types: numeric arithmetic, String concatenation with `+`, numeric/String ordering,

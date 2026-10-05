@@ -89,6 +89,9 @@ The next roadmap turns the foundation into the application language shown in
 
 ## M12 — Project Checker (started)
 
+Application integer literal range validation now matches the executable E3012
+rule, including unused and statically skipped expressions.
+
 Make `svr check <project>` validate project manifests, modules, app routes,
 models, auth policies, standard-library calls, service contracts, and page
 bindings before execution.

@@ -1,0 +1,5 @@
+[project]
+name = "application-integer-bounds"
+entry = "main.svr"
+[services]
+metrics = "external"

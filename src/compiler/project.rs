@@ -1902,13 +1902,25 @@ mod tests {
     #[test]
     fn application_integer_literals_enforce_signed_64_bit_bounds() {
         let project = TestProject::new();
-        project.write_file("sovra.toml", "[project]\nname = \"integer-bounds\"\nentry = \"main.svr\"");
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"integer-bounds\"\nentry = \"main.svr\"",
+        );
         let source = "fn value() -> Int { return 9223372036854775808; }\nfn main() { let large = 18446744073709551616; print(999999999999999999999999); 9223372036854775807; }";
         project.write_file("main.svr", source);
         let report = application::check_service_calls(&check_project(project.path()).unwrap());
-        let errors: Vec<_> = report.diagnostics.items.iter().filter(|error| error.code == "E3012").collect();
+        let errors: Vec<_> = report
+            .diagnostics
+            .items
+            .iter()
+            .filter(|error| error.code == "E3012")
+            .collect();
         assert_eq!(errors.len(), 3);
-        for (error, spelling) in errors.iter().zip(["9223372036854775808", "18446744073709551616", "999999999999999999999999"]) {
+        for (error, spelling) in errors.iter().zip([
+            "9223372036854775808",
+            "18446744073709551616",
+            "999999999999999999999999",
+        ]) {
             assert_eq!(&source[error.span.start..error.span.end], spelling);
             assert!(error.source_file.as_ref().unwrap().ends_with("main.svr"));
         }

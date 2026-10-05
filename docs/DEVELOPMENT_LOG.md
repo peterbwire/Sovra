@@ -1,5 +1,16 @@
 # Development log
 
+## 2026-10-05: Application integer literal bounds
+
+- Reproduced silent acceptance of three oversized integer literals. Application
+  inspection now reports executable diagnostic E3012 at original token ranges,
+  including unused initializers, calls, returns and statically skipped branches.
+- Preserved Int type evidence as in executable semantic analysis. Diagnostics
+  determine validity; type evidence alone does not prove a value fits its domain.
+- Added boundary, grouping, Unicode/CRLF, function-isolation and CLI JSON checks.
+- Remaining: application records and field typing, runtime and publishing. This
+  check does not evaluate arithmetic or prove runtime overflow cannot occur.
+
 ## 2026-10-05: File-local scalar aliases in application checking
 
 - Validation: **293 library + 42 CLI = 335 passed**, with required Windows CLI

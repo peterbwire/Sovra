@@ -62,6 +62,15 @@ pub fn check_service_calls(project: &super::ProjectCheck) -> ServiceCheck {
         };
         ordinary::check(functions, &file.source_file, &mut diagnostics);
         for function in functions {
+            for span in &function.invalid_integer_literals {
+                diagnostics.push(Diagnostic {
+                    source_file: Some(file.source_file.to_string_lossy().into_owned()),
+                    severity: Severity::Error,
+                    code: "E3012",
+                    message: "integer literal is outside the signed 64-bit range".into(),
+                    span: *span,
+                });
+            }
             for span in &function.unresolved_discarded_expressions {
                 diagnostics.push(Diagnostic {
                     source_file: Some(file.source_file.to_string_lossy().into_owned()),
@@ -506,6 +515,8 @@ impl Expression {
 /// A function or task inspected from a complete source file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionCalls {
+    /// Integer literal token ranges outside the executable signed 64-bit domain.
+    pub invalid_integer_literals: Vec<Span>,
     /// Discarded non-call expressions without a resolved type, in source order.
     pub unresolved_discarded_expressions: Vec<Span>,
     /// Local binding type evidence in source order, including unresolved bindings.
@@ -706,6 +717,7 @@ fn parse_functions(
     let aliases = super::application_types::Aliases::collect(&tokens)?;
     let mut parser = BodyParser {
         aliases: &aliases.types,
+        invalid_integer_literals: Vec::new(),
         tokens: &tokens,
         position: 0,
         calls: Vec::new(),
@@ -801,6 +813,7 @@ pub fn inspect_body(
     check_nesting(&tokens)?;
     let mut parser = BodyParser {
         aliases: &Default::default(),
+        invalid_integer_literals: Vec::new(),
         tokens: &tokens,
         position: 0,
         calls: Vec::new(),
@@ -830,6 +843,7 @@ pub fn inspect_body(
 }
 
 struct BodyParser<'a> {
+    invalid_integer_literals: Vec<Span>,
     aliases: &'a std::collections::HashMap<String, Type>,
     unresolved_discarded_expressions: Vec<Span>,
     local_bindings: Vec<LocalBinding>,
@@ -924,6 +938,7 @@ impl BodyParser<'_> {
         }
         let always_returns = self.block(&scope)?;
         Ok(Some(FunctionCalls {
+            invalid_integer_literals: std::mem::take(&mut self.invalid_integer_literals),
             unresolved_discarded_expressions: std::mem::take(
                 &mut self.unresolved_discarded_expressions,
             ),
@@ -1214,6 +1229,11 @@ impl BodyParser<'_> {
             | TokenKind::Integer(_)
             | TokenKind::Float(_)
             | TokenKind::Keyword("true" | "false") => {
+                if let TokenKind::Integer(value) = &token.kind {
+                    if value.parse::<i64>().is_err() {
+                        self.invalid_integer_literals.push(token.span);
+                    }
+                }
                 self.position += 1;
                 let literal_type = match token.kind {
                     TokenKind::String(_) => Type::String,
@@ -1421,6 +1441,16 @@ impl BodyParser<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn integer_range_evidence_preserves_token_spans_and_function_isolation() {
+        let source = "// λ\r\nfn bad() { if false { print((9223372036854775808)); } } fn good() { 0; 9223372036854775807; }";
+        let functions = inspect_functions(source, &[]).unwrap();
+        assert_eq!(functions[0].invalid_integer_literals.len(), 1);
+        let span = functions[0].invalid_integer_literals[0];
+        assert_eq!(&source[span.start..span.end], "9223372036854775808");
+        assert!(functions[1].invalid_integer_literals.is_empty());
+    }
 
     #[test]
     fn discarded_expression_evidence_is_scoped_to_each_function() {

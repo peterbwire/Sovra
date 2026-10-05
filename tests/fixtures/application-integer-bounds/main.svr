@@ -1,0 +1,10 @@
+service metrics {
+    fn record(value: Int);
+}
+
+fn main() {
+    metrics.record(9223372036854775807);
+    metrics.record((9223372036854775808));
+    let invalid = 18446744073709551616;
+    if false { print(999999999999999999999999); }
+}
