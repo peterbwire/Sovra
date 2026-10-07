@@ -183,6 +183,14 @@ pub fn render_service_check(
                 push_string(&mut output, &call.operation);
                 let _ = write!(output, ",\"arguments\":{},\"receiver\":", call.arguments);
                 push_receiver(&mut output, &call.receiver);
+                output.push_str(",\"argument_type_info\":[");
+                for (index, argument) in call.argument_types.iter().enumerate() {
+                    if index != 0 {
+                        output.push(',');
+                    }
+                    ordinary::push_type_info(&mut output, argument.resolved_type());
+                }
+                output.push(']');
                 output.push_str(",\"location\":{\"file\":");
                 push_string(&mut output, &file.source_file.to_string_lossy());
                 let span = call.span;
@@ -251,6 +259,37 @@ mod tests {
 
     use super::*;
     use crate::compiler::diagnostics::Diagnostic;
+
+    #[test]
+    fn nominal_json_distinguishes_records_scalars_and_unresolved_types() {
+        use crate::compiler::project::application::{
+            inspect_functions, FileInspection, ServiceCheck,
+        };
+        let source = "struct A { x: Float } struct B { x: Float } fn identity(value: A) -> A { return value; } fn main() { let a = identity(A { x: 1 }); let b = B { x: 2 }; let x = a.x; let unknown = missing; }";
+        let report = ServiceCheck {
+            files: vec![FileInspection {
+                source_file: "main.svr".into(),
+                functions: inspect_functions(source, &[]),
+            }],
+            diagnostics: Diagnostics::new(),
+        };
+        assert_report(
+            &render_service_check("project", &report),
+            r#"
+            const [a,b,x,unknown] = report.local_bindings;
+            assert.equal(a.resolved_type, null);
+            assert.equal(a.resolved_type_info.kind, 'record');
+            assert.notEqual(a.resolved_type_info.identity, b.resolved_type_info.identity);
+            assert.deepEqual(a.initializer_type_info, a.resolved_type_info);
+            assert.equal(a.declared_type_info, null);
+            assert.deepEqual(x.resolved_type_info, {kind:'scalar',name:'Float'});
+            assert.equal(unknown.resolved_type_info, null);
+            const call = report.ordinary_calls.find(c => c.callee === 'identity');
+            assert.deepEqual(call.declared_return_type_info, a.resolved_type_info);
+            assert.deepEqual(call.arguments[0].type_info, a.resolved_type_info);
+        "#,
+        );
+    }
 
     #[test]
     fn local_binding_json_preserves_widening_unknowns_and_locations() {

@@ -23,6 +23,16 @@ pub(super) fn check(functions: &[FunctionCalls], file: &Path, diagnostics: &mut 
         });
     };
     for function in functions {
+        for parameter in &function.unresolved_task_parameters {
+            emit(
+                "E4134",
+                format!(
+                    "parameter `{parameter}` of task `{}` has an unresolved annotation",
+                    function.name
+                ),
+                function.span,
+            );
+        }
         for call in &function.unresolved_calls {
             emit(
                 "E4133",
@@ -35,6 +45,16 @@ pub(super) fn check(functions: &[FunctionCalls], file: &Path, diagnostics: &mut 
             );
         }
         if let Some(signature) = &function.signature {
+            if function.is_exported && signature.exposes_private_records() {
+                emit(
+                    "E4116",
+                    format!(
+                        "exported function `{}` exposes a private application record",
+                        function.name
+                    ),
+                    function.span,
+                );
+            }
             for (index, kind) in signature.parameters.iter().enumerate() {
                 if *kind == Type::Unknown {
                     emit(

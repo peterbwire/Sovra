@@ -1,0 +1,5 @@
+[project]
+name = "application-record-contracts"
+entry = "main.svr"
+[services]
+store = "external"

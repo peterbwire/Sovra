@@ -1,0 +1,6 @@
+export struct Point { x: Float, y: Float }
+export struct Snapshot { point: Point }
+service store {
+    fn load() -> Snapshot;
+    fn save(value: Point);
+}

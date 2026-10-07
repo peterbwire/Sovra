@@ -736,6 +736,11 @@ fn service_call_cli_reports_errors_and_incomplete_coverage() {
     let root = env!("CARGO_MANIFEST_DIR");
     for (relative, exit, codes, complete) in [
         ("examples/service-contracts", 0, "[]", true),
+        ("examples/application-record-imports", 0, "[]", true),
+        ("tests/fixtures/application-constructor-errors", 1, "['E4139', 'E4136']", true),
+        ("tests/fixtures/application-field-errors", 1, "['E4133', 'E4138', 'E4137']", true),
+        ("examples/application-record-contracts", 0, "[]", true),
+        ("tests/fixtures/application-record-mismatch", 1, "['E4119']", true),
         ("tests/fixtures/application-integer-bounds", 1, "['E3012', 'E3012', 'E3012']", true),
         ("examples/application-aliases", 0, "[]", true),
         ("tests/fixtures/application-alias-errors", 1, "['E4129', 'E4120', 'E4119']", true),
@@ -745,6 +750,7 @@ fn service_call_cli_reports_errors_and_incomplete_coverage() {
         ("examples/application-imports", 0, "[]", true),
         ("tests/fixtures/application-import-errors", 1, "['E4133', 'E4129']", true),
         ("tests/fixtures/ordinary-unknown-annotations", 1, "['E4134', 'E4134']", true),
+        ("tests/fixtures/task-unknown-annotations", 1, "['E4134']", true),
         ("tests/fixtures/unresolved-ordinary-calls", 1, "['E4133', 'E4133', 'E4133']", true),
         ("tests/fixtures/application-stdlib", 1, "['E4129', 'E4128', 'E4130']", true),
         ("examples/application-functions", 0, "[]", true),
@@ -789,6 +795,23 @@ fn service_call_cli_reports_errors_and_incomplete_coverage() {
             assert.ok(Array.isArray(report.member_calls));
             assert.ok(Array.isArray(report.ordinary_calls));
             assert.ok(Array.isArray(report.local_bindings));
+            if ('{relative}' === 'examples/application-record-imports') {{
+                const created = report.local_bindings.find(b => b.name === 'created');
+                assert.equal(created.resolved_type, null);
+                assert.equal(created.resolved_type_info.kind, 'record');
+                assert.deepEqual(created.declared_type_info, created.resolved_type_info);
+                const save = report.member_calls.find(c => c.operation === 'save');
+                assert.deepEqual(save.argument_type_info[0], created.resolved_type_info);
+                const x = report.local_bindings.find(b => b.name === 'x');
+                assert.deepEqual(x.resolved_type_info, {{kind:'scalar', name:'Float'}});
+                const wrapped = report.local_bindings.find(b => b.name === 'wrapped_x');
+                assert.deepEqual(wrapped.resolved_type_info, {{kind:'scalar', name:'Float'}});
+                const made = report.local_bindings.find(b => b.name === 'made');
+                assert.deepEqual(made.resolved_type_info, created.resolved_type_info);
+                const make = report.ordinary_calls.find(c => c.callee === 'app::factory::make');
+                assert.deepEqual(make.declared_return_type_info, made.resolved_type_info);
+                assert.ok(make.declaration_file.endsWith('factory.svr'));
+            }}
             if ('{relative}' === 'tests/fixtures/application-integer-bounds') {{
                 const source = require('fs').readFileSync(report.diagnostics[0].location.file);
                 assert.deepEqual(report.diagnostics.map(d => source.subarray(d.location.start, d.location.end).toString()), ['9223372036854775808', '18446744073709551616', '999999999999999999999999']);

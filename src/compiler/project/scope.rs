@@ -37,6 +37,7 @@ pub enum Receiver {
 pub struct Scope<'a> {
     parent: Option<&'a Scope<'a>>,
     bindings: Vec<(String, usize, Option<Type>)>,
+    fields: std::collections::HashMap<String, std::collections::HashMap<String, Type>>,
     services: BTreeSet<ServiceIdentity>,
     operations: Vec<super::service_types::TypedServiceOperation>,
     functions: std::collections::BTreeMap<String, Option<super::application::FunctionSignature>>,
@@ -53,10 +54,40 @@ impl<'a> Scope<'a> {
         Scope {
             parent: Some(self),
             bindings: Vec::new(),
+            fields: Default::default(),
             services: BTreeSet::new(),
             operations: Vec::new(),
             functions: std::collections::BTreeMap::new(),
         }
+    }
+
+    pub(super) fn add_fields(
+        &mut self,
+        fields: &std::collections::HashMap<String, std::collections::HashMap<String, Type>>,
+    ) {
+        self.fields.extend(fields.clone());
+    }
+
+    pub(super) fn field_type(&self, kind: &Type, name: &str) -> Option<Type> {
+        let Type::Named(record) = kind else {
+            return None;
+        };
+        if let Some(fields) = self.fields.get(record) {
+            return fields.get(name).cloned();
+        }
+        self.parent.and_then(|parent| parent.field_type(kind, name))
+    }
+
+    pub(super) fn record_fields(
+        &self,
+        kind: &Type,
+    ) -> Option<&std::collections::HashMap<String, Type>> {
+        let Type::Named(record) = kind else {
+            return None;
+        };
+        self.fields
+            .get(record)
+            .or_else(|| self.parent.and_then(|parent| parent.record_fields(kind)))
     }
 
     /// Record a parameter/local/closure binding and its visibility start offset.
@@ -96,6 +127,13 @@ impl<'a> Scope<'a> {
         &mut self,
         operations: &[super::service_types::TypedServiceOperation],
     ) {
+        for operation in operations {
+            for (name, fields) in operation.record_fields.iter() {
+                self.fields
+                    .entry(name.clone())
+                    .or_insert_with(|| fields.clone());
+            }
+        }
         self.operations.extend_from_slice(operations);
     }
 
@@ -121,6 +159,13 @@ impl<'a> Scope<'a> {
         >,
     ) {
         self.functions.clone_from(functions);
+        for signature in functions.values().flatten() {
+            for (identity, fields) in signature.record_fields.iter() {
+                self.fields
+                    .entry(identity.clone())
+                    .or_insert_with(|| fields.clone());
+            }
+        }
     }
 
     pub(super) fn function(

@@ -82,8 +82,9 @@ records are available through the Rust API, not additional JSON fields.
 E4133 reports unresolved ordinary callees (including local/computed function values
 and unsupported imports) at the whole call range. It is an incomplete-validation
 error, not a claim that every unresolved name is absent from the project.
-E4134 identifies unresolved ordinary parameter annotations at the owning function
-declaration range, including unused functions. It emits one diagnostic per parameter.
+E4134 identifies unresolved ordinary function or task parameter annotations at the
+owning declaration range, including unused declarations. It emits one diagnostic
+per parameter.
 
 Each `ordinary_calls` record contains `function`, `is_task`, nullable `callee`,
 `kind` (`ordinary`, `builtin`, or `unresolved`), nullable `reason`, nullable
@@ -113,6 +114,30 @@ nullable `declared_type`, `initializer_type` and `resolved_type`, and `location`
 nullable `annotation_location` and `initializer_location`. Ranges use the existing
 file/byte/line/column shape. Declarations exclude the optional trailing semicolon.
 Only supported primitive evidence is serialized; null is not proof of validity.
+Nominal application record evidence also currently serializes as null in these
+scalar fields. Scalar field reads, such as a Float `point.x`, supply canonical
+scalar evidence. Invalid member expressions produce E4138 with original ranges.
+Invalid record constructors produce E4139 at the full constructor range and do
+not provide a resolved local/argument type. Valid nominal results retain the
+existing null scalar representation; their scalar field reads provide type evidence.
+A valid record contract can therefore have null type evidence;
+use diagnostics and coverage rather than interpreting null as an error by itself.
+
+Additive schema-one type descriptors distinguish valid nominal evidence from
+unresolved evidence without changing the existing scalar fields:
+
+- Locals add `declared_type_info`, `initializer_type_info`, `resolved_type_info`.
+- Ordinary calls add `declared_return_type_info`; their arguments add `type_info`.
+- Member calls add positional `argument_type_info`, preserving the numeric
+  `arguments` field.
+
+A descriptor is `{"kind":"scalar","name":"Float"}`, for example, or
+`{"kind":"record","identity":"..."}`. Unresolved/unsupported evidence is null.
+Record identity is an opaque equality token derived from the declaring source
+module and record; do not parse it or treat it as a portable package identifier.
+Aliases to the same record share identity, while identical layouts from different
+declarations do not. Type evidence does not replace diagnostics or establish
+runtime validity. Plain reports still omit these opt-in inspection records.
 An absent annotation has null annotation_location, while an unsupported annotation
 retains its location and has null declared_type. Entries are lexical occurrences
 in source order, not a flattened symbol table: nested bindings may reuse names.

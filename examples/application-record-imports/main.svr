@@ -1,0 +1,25 @@
+use app.store;
+use app.envelope;
+use app.factory;
+
+type Position = app::store::Point;
+
+// This local declaration must not reinterpret the imported Point's fields.
+struct Point { x: String }
+
+service relay {
+    fn echo(value: app::store::Point) -> app::store::Point { return value; }
+}
+
+fn main() {
+    let created: Position = Position { x: 1, y: 2 };
+    let envelope = app::envelope::Envelope { point: created };
+    let wrapped_x: Float = envelope.point.x;
+    let made = app::factory::make(3);
+    let made_x: Float = made.x;
+    app::factory::read_x(made);
+    store.save(relay.echo(created));
+    let snapshot = store.load();
+    let x: Float = snapshot.point.x;
+    std::println(x);
+}

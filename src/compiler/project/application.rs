@@ -37,7 +37,7 @@ pub struct ServiceCheck {
 /// Local and unresolved receivers are not service calls.
 /// Primitive service and same-file ordinary contracts, arguments, return paths
 /// and conditions are checked. File-local scalar aliases and direct exported
-/// ordinary imports are resolved; records and unsupported expressions still
+/// ordinary imports are resolved; record construction and unsupported expressions still
 /// require complete application typing.
 pub fn check_service_calls(project: &super::ProjectCheck) -> ServiceCheck {
     use crate::compiler::diagnostics::{Diagnostic, Diagnostics, Severity};
@@ -62,6 +62,24 @@ pub fn check_service_calls(project: &super::ProjectCheck) -> ServiceCheck {
         };
         ordinary::check(functions, &file.source_file, &mut diagnostics);
         for function in functions {
+            for span in &function.constructor_errors {
+                diagnostics.push(Diagnostic {
+                    source_file: Some(file.source_file.to_string_lossy().into_owned()),
+                    severity: Severity::Error,
+                    code: "E4139",
+                    message: "invalid record construction: require a known record and each declared field exactly once with a compatible value".into(),
+                    span: *span,
+                });
+            }
+            for (span, message) in &function.field_errors {
+                diagnostics.push(Diagnostic {
+                    source_file: Some(file.source_file.to_string_lossy().into_owned()),
+                    severity: Severity::Error,
+                    code: "E4138",
+                    message: message.clone(),
+                    span: *span,
+                });
+            }
             for span in &function.invalid_integer_literals {
                 diagnostics.push(Diagnostic {
                     source_file: Some(file.source_file.to_string_lossy().into_owned()),
@@ -302,6 +320,7 @@ fn inspect_project_local(
     project: &super::ProjectCheck,
     sources: &std::collections::BTreeMap<std::path::PathBuf, Result<String, String>>,
     signatures: &super::service_types::ServiceSignatures,
+    modules: &std::collections::BTreeMap<std::path::PathBuf, super::application_types::Aliases>,
 ) -> Vec<FileInspection> {
     project
         .source_files
@@ -333,7 +352,20 @@ fn inspect_project_local(
                     .expect("discovered source snapshot")
                     .as_ref()
                     .map_err(Clone::clone)?;
-                inspect_functions_with_signatures(source, &services, &signatures.operations)
+                inspect_functions_in_module(
+                    source,
+                    &services,
+                    &signatures.operations,
+                    &Default::default(),
+                    &file
+                        .canonicalize()
+                        .map_err(|error| error.to_string())?
+                        .to_string_lossy(),
+                    &imports::Records {
+                        module: modules.get(file).cloned(),
+                        ..Default::default()
+                    },
+                )
             })();
             FileInspection {
                 source_file: file.clone(),
@@ -378,6 +410,7 @@ impl ArgumentType {
 
 #[derive(Debug)]
 enum Expression {
+    Record(Type, Vec<(String, Expression)>, Span),
     Name(String, Span),
     // Namespace resolution is outside service inspection; retain the full range.
     QualifiedName(String, Span),
@@ -410,8 +443,24 @@ fn binary_type(operator: &str, left: &Type, right: &Type) -> Option<Type> {
 }
 
 impl Expression {
+    fn record_valid(kind: &Type, fields: &[(String, Expression)], scope: &Scope<'_>) -> bool {
+        let Some(expected) = scope.record_fields(kind) else {
+            return false;
+        };
+        let mut seen = std::collections::BTreeSet::new();
+        fields.len() == expected.len()
+            && fields.iter().all(|(name, value)| {
+                seen.insert(name)
+                    && expected.get(name).is_some_and(|expected| {
+                        value.known_type(scope).is_some_and(|actual| {
+                            actual == *expected || (actual == Type::Int && *expected == Type::Float)
+                        })
+                    })
+            })
+    }
     fn argument_type(&self, scope: &Scope<'_>) -> ArgumentType {
         let span = match self {
+            Self::Record(_, _, span) => *span,
             Self::Name(_, span)
             | Self::QualifiedName(_, span)
             | Self::Literal(_, span)
@@ -431,6 +480,10 @@ impl Expression {
     }
     fn known_type(&self, scope: &Scope<'_>) -> Option<Type> {
         match self {
+            Self::Record(kind, fields, _) => {
+                Self::record_valid(kind, fields, scope).then(|| kind.clone())
+            }
+            Self::Member(receiver, name, _) => scope.field_type(&receiver.known_type(scope)?, name),
             Self::Literal(kind, _) => Some(kind.clone()),
             Self::Name(name, span) => scope.binding_type(name, span.start),
             Self::Call(callee, arguments, _) => {
@@ -486,6 +539,9 @@ impl Expression {
         while let Some((expression, depth)) = pending.pop() {
             maximum = maximum.max(depth);
             match expression {
+                Self::Record(_, fields, _) => {
+                    pending.extend(fields.iter().map(|(_, value)| (value, depth + 1)))
+                }
                 Self::Binary(left, _, right, _) => {
                     pending.push((left, depth + 1));
                     pending.push((right, depth + 1));
@@ -502,6 +558,7 @@ impl Expression {
     }
     fn span(&mut self) -> &mut Span {
         match self {
+            Self::Record(_, _, span) => span,
             Self::Name(_, span)
             | Self::QualifiedName(_, span)
             | Self::Literal(_, span)
@@ -515,6 +572,12 @@ impl Expression {
 /// A function or task inspected from a complete source file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionCalls {
+    /// Names of task parameters whose annotations could not be resolved.
+    pub unresolved_task_parameters: Vec<String>,
+    /// Invalid record constructor ranges; no valid type is propagated for them.
+    pub constructor_errors: Vec<Span>,
+    /// Invalid field accesses on known receivers, with original expression ranges.
+    pub field_errors: Vec<(Span, String)>,
     /// Integer literal token ranges outside the executable signed 64-bit domain.
     pub invalid_integer_literals: Vec<Span>,
     /// Discarded non-call expressions without a resolved type, in source order.
@@ -571,6 +634,10 @@ pub struct LocalBinding {
 /// Ordinary or builtin function interface retained by structured inspection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionSignature {
+    /// Public nominal field interfaces carried with record arguments/results.
+    /// This metadata never imports a source type name into the consumer.
+    pub record_fields:
+        std::sync::Arc<std::collections::HashMap<String, std::collections::HashMap<String, Type>>>,
     /// Canonical declaring file for an imported function; None for local/builtin interfaces.
     pub source_file: Option<std::path::PathBuf>,
     /// Positional types; unsupported annotations retain Unknown.
@@ -582,6 +649,11 @@ pub struct FunctionSignature {
 }
 
 impl FunctionSignature {
+    pub(super) fn exposes_private_records(&self) -> bool {
+        self.parameters.iter().chain(std::iter::once(&self.return_type)).any(|kind| {
+            matches!(kind, Type::Named(identity) if !self.record_fields.contains_key(identity))
+        })
+    }
     fn accepts(&self, index: usize, actual: &Type) -> bool {
         self.any_parameters.get(index).copied().unwrap_or(false)
             || self.parameters.get(index).is_some_and(|expected| {
@@ -665,10 +737,36 @@ fn inspect_functions_with_imports(
     signatures: &[super::service_types::TypedServiceOperation],
     imported: &std::collections::BTreeMap<String, Option<FunctionSignature>>,
 ) -> Result<Vec<FunctionCalls>, String> {
-    let preliminary = parse_functions(source, services, signatures, &Default::default())?;
+    inspect_functions_in_module(
+        source,
+        services,
+        signatures,
+        imported,
+        "<source>",
+        &Default::default(),
+    )
+}
+
+fn inspect_functions_in_module(
+    source: &str,
+    services: &[ServiceIdentity],
+    signatures: &[super::service_types::TypedServiceOperation],
+    imported: &std::collections::BTreeMap<String, Option<FunctionSignature>>,
+    owner: &str,
+    records: &imports::Records,
+) -> Result<Vec<FunctionCalls>, String> {
+    let preliminary = parse_functions(
+        source,
+        services,
+        signatures,
+        &Default::default(),
+        owner,
+        records,
+    )?;
     let mut ordinary = std::collections::BTreeMap::new();
     for builtin in crate::compiler::stdlib::functions() {
         let signature = FunctionSignature {
+            record_fields: Default::default(),
             source_file: None,
             parameters: builtin
                 .parameters
@@ -701,7 +799,7 @@ fn inspect_functions_with_imports(
             .and_modify(|entry| *entry = None)
             .or_insert_with(|| signature.clone());
     }
-    parse_functions(source, services, signatures, &ordinary)
+    parse_functions(source, services, signatures, &ordinary, owner, records)
 }
 
 fn parse_functions(
@@ -709,14 +807,26 @@ fn parse_functions(
     services: &[ServiceIdentity],
     signatures: &[super::service_types::TypedServiceOperation],
     ordinary: &std::collections::BTreeMap<String, Option<FunctionSignature>>,
+    owner: &str,
+    records: &imports::Records,
 ) -> Result<Vec<FunctionCalls>, String> {
     let tokens = Lexer::new()
         .tokenize(source)
         .map_err(|_| "file contains unsupported lexical syntax".to_owned())?;
     check_nesting(&tokens)?;
-    let aliases = super::application_types::Aliases::collect(&tokens)?;
+    let mut aliases = match &records.module {
+        Some(module) => module.clone(),
+        None => super::application_types::Aliases::collect_in_module(&tokens, owner)?,
+    };
+    aliases.types.extend(records.types.clone());
+    aliases.fields.extend(records.fields.clone());
     let mut parser = BodyParser {
         aliases: &aliases.types,
+        public_fields: std::sync::Arc::new(aliases.visible_fields.clone()),
+        allow_record: true,
+        constructor_errors: Vec::new(),
+        fields: &aliases.fields,
+        field_errors: Vec::new(),
         invalid_integer_literals: Vec::new(),
         tokens: &tokens,
         position: 0,
@@ -813,6 +923,11 @@ pub fn inspect_body(
     check_nesting(&tokens)?;
     let mut parser = BodyParser {
         aliases: &Default::default(),
+        public_fields: Default::default(),
+        allow_record: true,
+        constructor_errors: Vec::new(),
+        fields: &Default::default(),
+        field_errors: Vec::new(),
         invalid_integer_literals: Vec::new(),
         tokens: &tokens,
         position: 0,
@@ -843,6 +958,12 @@ pub fn inspect_body(
 }
 
 struct BodyParser<'a> {
+    public_fields:
+        std::sync::Arc<std::collections::HashMap<String, std::collections::HashMap<String, Type>>>,
+    allow_record: bool,
+    constructor_errors: Vec<Span>,
+    fields: &'a std::collections::HashMap<String, std::collections::HashMap<String, Type>>,
+    field_errors: Vec<(Span, String)>,
     invalid_integer_literals: Vec<Span>,
     aliases: &'a std::collections::HashMap<String, Type>,
     unresolved_discarded_expressions: Vec<Span>,
@@ -925,6 +1046,7 @@ impl BodyParser<'_> {
         }
         let mut scope = Scope::new();
         scope.add_functions(self.ordinary);
+        scope.add_fields(self.fields);
         scope.add_operations(self.signatures);
         for service in services {
             scope.add_service(service.clone());
@@ -938,6 +1060,20 @@ impl BodyParser<'_> {
         }
         let always_returns = self.block(&scope)?;
         Ok(Some(FunctionCalls {
+            unresolved_task_parameters: operation
+                .declarations
+                .iter()
+                .filter(|parameter| {
+                    is_task
+                        && Type::from_name_with_known(
+                            parameter.annotation.unwrap_or(""),
+                            Some(self.aliases),
+                        ) == Type::Unknown
+                })
+                .map(|parameter| parameter.name.to_owned())
+                .collect(),
+            constructor_errors: std::mem::take(&mut self.constructor_errors),
+            field_errors: std::mem::take(&mut self.field_errors),
             invalid_integer_literals: std::mem::take(&mut self.invalid_integer_literals),
             unresolved_discarded_expressions: std::mem::take(
                 &mut self.unresolved_discarded_expressions,
@@ -946,6 +1082,7 @@ impl BodyParser<'_> {
             is_exported: false,
             signature: if owner.is_none() && !is_task {
                 Some(FunctionSignature {
+                    record_fields: self.public_fields.clone(),
                     source_file: None,
                     any_parameters: vec![false; operation.declarations.len()],
                     parameters: operation
@@ -1008,7 +1145,10 @@ impl BodyParser<'_> {
         }
     }
     fn condition(&mut self, scope: &Scope<'_>) -> Result<(), String> {
-        let mut expression = self.expression()?;
+        let previous = std::mem::replace(&mut self.allow_record, false);
+        let expression = self.expression();
+        self.allow_record = previous;
+        let mut expression = expression?;
         self.inspect(&expression, scope);
         self.conditions
             .push((expression.known_type(scope), *expression.span()));
@@ -1063,13 +1203,26 @@ impl BodyParser<'_> {
                 if annotated {
                     self.local_annotation()?;
                 }
-                let declared = if annotated && self.position == annotation_start + 1 {
-                    if let TokenKind::Identifier(name) = &self.tokens[annotation_start].kind {
-                        Some(Type::from_name_with_known(name, Some(self.aliases)))
-                            .filter(|kind| *kind != Type::Unknown)
-                    } else {
-                        None
-                    }
+                let declared = if annotated {
+                    let tokens = &self.tokens[annotation_start..self.position];
+                    let mut name = String::new();
+                    let valid = tokens
+                        .iter()
+                        .enumerate()
+                        .all(|(index, token)| match &token.kind {
+                            TokenKind::Identifier(part) if index % 2 == 0 => {
+                                name.push_str(part);
+                                true
+                            }
+                            TokenKind::Operator("::") if index % 2 == 1 => {
+                                name.push_str("::");
+                                true
+                            }
+                            _ => false,
+                        });
+                    (valid && tokens.len() % 2 == 1)
+                        .then(|| Type::from_name_with_known(&name, Some(self.aliases)))
+                        .filter(|kind| *kind != Type::Unknown)
                 } else {
                     None
                 };
@@ -1176,7 +1329,7 @@ impl BodyParser<'_> {
                     }
                 }
                 TokenKind::Punctuation(',') if !delimiters.is_empty() => {}
-                TokenKind::Operator("->") => {}
+                TokenKind::Operator("->" | "::") => {}
                 _ => return Err("unsupported or incomplete local annotation".into()),
             }
             self.position += 1;
@@ -1245,7 +1398,10 @@ impl BodyParser<'_> {
             }
             TokenKind::Punctuation('(') => {
                 self.position += 1;
-                let mut value = self.expression()?;
+                let previous = std::mem::replace(&mut self.allow_record, true);
+                let value = self.expression();
+                self.allow_record = previous;
+                let mut value = value?;
                 self.require(TokenKind::Punctuation(')'))?;
                 *value.span() = Span {
                     end: self.tokens[self.position - 1].span.end,
@@ -1282,6 +1438,44 @@ impl BodyParser<'_> {
             );
             self.position += 1;
         }
+        if self.allow_record && self.peek() == &TokenKind::Punctuation('{') {
+            if let Expression::Name(name, start) | Expression::QualifiedName(name, start) =
+                &expression
+            {
+                let kind = Type::from_name_with_known(name, Some(self.aliases));
+                let start = *start;
+                self.position += 1;
+                let mut fields = Vec::new();
+                while self.peek() != &TokenKind::Punctuation('}') {
+                    let TokenKind::Identifier(field) = self.peek().clone() else {
+                        return Err("expected record field name".into());
+                    };
+                    self.position += 1;
+                    self.require(TokenKind::Punctuation(':'))?;
+                    fields.push((field, self.expression()?));
+                    if !self.consume(TokenKind::Punctuation(',')) {
+                        break;
+                    }
+                }
+                self.require(TokenKind::Punctuation('}'))?;
+                check_depth(
+                    1 + fields
+                        .iter()
+                        .map(|(_, value)| value.depth())
+                        .max()
+                        .unwrap_or(0),
+                    start,
+                )?;
+                expression = Expression::Record(
+                    kind,
+                    fields,
+                    Span {
+                        end: self.tokens[self.position - 1].span.end,
+                        ..start
+                    },
+                );
+            }
+        }
         loop {
             if self.consume(TokenKind::Punctuation('.')) {
                 let token = &self.tokens[self.position];
@@ -1303,7 +1497,10 @@ impl BodyParser<'_> {
                 let mut arguments = Vec::new();
                 if !self.consume(TokenKind::Punctuation(')')) {
                     loop {
-                        arguments.push(self.expression()?);
+                        let previous = std::mem::replace(&mut self.allow_record, true);
+                        let argument = self.expression();
+                        self.allow_record = previous;
+                        arguments.push(argument?);
                         if self.consume(TokenKind::Punctuation(')')) {
                             break;
                         }
@@ -1333,8 +1530,31 @@ impl BodyParser<'_> {
     }
     fn inspect(&mut self, expression: &Expression, scope: &Scope<'_>) {
         match expression {
+            Expression::Record(kind, fields, span) => {
+                for (_, value) in fields {
+                    self.inspect(value, scope);
+                }
+                if !Expression::record_valid(kind, fields, scope) {
+                    self.constructor_errors.push(*span);
+                }
+            }
             Expression::Call(callee, arguments, call_span) => {
-                self.inspect(callee, scope);
+                if let Expression::Member(receiver, name, _) = callee.as_ref() {
+                    self.inspect(receiver, scope);
+                    if matches!(receiver.known_type(scope), Some(Type::Named(_))) {
+                        self.unresolved_calls.push(UnresolvedCall {
+                            name: Some(name.clone()),
+                            reason: "record fields are values, not callable operations".into(),
+                            arguments: arguments
+                                .iter()
+                                .map(|argument| argument.argument_type(scope))
+                                .collect(),
+                            span: *call_span,
+                        });
+                    }
+                } else {
+                    self.inspect(callee, scope);
+                }
                 for argument in arguments {
                     self.inspect(argument, scope);
                 }
@@ -1391,7 +1611,8 @@ impl BodyParser<'_> {
                             .map(|argument| {
                                 let (literal_type, span) = match argument {
                                     Expression::Literal(kind, span) => (Some(kind.clone()), *span),
-                                    Expression::Name(_, span)
+                                    Expression::Record(_, _, span)
+                                    | Expression::Name(_, span)
                                     | Expression::QualifiedName(_, span)
                                     | Expression::Member(_, _, span)
                                     | Expression::Call(_, _, span)
@@ -1415,7 +1636,15 @@ impl BodyParser<'_> {
                     });
                 }
             }
-            Expression::Member(receiver, _, _) => self.inspect(receiver, scope),
+            Expression::Member(receiver, name, span) => {
+                self.inspect(receiver, scope);
+                if let Some(kind) = receiver.known_type(scope) {
+                    if scope.field_type(&kind, name).is_none() {
+                        self.field_errors
+                            .push((*span, format!("cannot resolve field `{name}` on {kind:?}")));
+                    }
+                }
+            }
             Expression::Binary(left, operator, right, span) => {
                 self.inspect(left, scope);
                 self.inspect(right, scope);
@@ -1441,6 +1670,21 @@ impl BodyParser<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn malformed_and_excessively_nested_record_constructors_reject_inspection() {
+        for expression in ["Point { x 1 }", "Point { x: }", "Point { x: 1 y: 2 }"] {
+            let source =
+                format!("struct Point {{ x: Int }} fn main() {{ let value = {expression}; }}");
+            assert!(inspect_functions(&source, &[]).is_err(), "{expression}");
+        }
+        let source = format!(
+            "struct Box {{ value: Box }} fn main() {{ let value = {}0{}; }}",
+            "Box { value: ".repeat(140),
+            " }".repeat(140)
+        );
+        assert!(inspect_functions(&source, &[]).is_err());
+    }
 
     #[test]
     fn integer_range_evidence_preserves_token_spans_and_function_isolation() {
@@ -1501,6 +1745,23 @@ mod tests {
         let functions = inspect_functions(source, &[]).unwrap();
         assert_eq!(functions[0].conditions[0].0, Some(Type::Bool));
         assert!(functions[0].operator_errors.is_empty());
+    }
+
+    #[test]
+    fn unused_task_parameters_still_require_resolved_annotations() {
+        let source = "task unused(value: Missing, other: Any) {} task valid(value: Int) {}";
+        let functions = inspect_functions(source, &[]).unwrap();
+        let mut diagnostics = crate::compiler::diagnostics::Diagnostics::new();
+        ordinary::check(
+            &functions,
+            std::path::Path::new("main.svr"),
+            &mut diagnostics,
+        );
+        assert_eq!(diagnostics.items.len(), 2);
+        assert!(diagnostics.items.iter().all(|error| error.code == "E4134"));
+        assert!(functions
+            .iter()
+            .all(|function| function.signature.is_none()));
     }
 
     #[test]

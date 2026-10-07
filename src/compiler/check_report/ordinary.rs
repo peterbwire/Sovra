@@ -76,6 +76,8 @@ pub(super) fn append(output: &mut String, report: &ServiceCheck) {
                 super::push_optional_string(output, call.reason);
                 output.push_str(",\"declared_return_type\":");
                 push_type(output, call.declared_return);
+                output.push_str(",\"declared_return_type_info\":");
+                push_type_info(output, call.declared_return);
                 output.push_str(",\"declaration_file\":");
                 if let Some(file) = call.declaration_file {
                     super::push_string(output, &file.to_string_lossy());
@@ -89,6 +91,8 @@ pub(super) fn append(output: &mut String, report: &ServiceCheck) {
                     }
                     output.push_str("{\"type\":");
                     push_type(output, argument.resolved_type());
+                    output.push_str(",\"type_info\":");
+                    push_type_info(output, argument.resolved_type());
                     output.push_str(",\"location\":");
                     push_location(output, &file_name, argument.span);
                     output.push('}');
@@ -127,6 +131,12 @@ fn append_locals(output: &mut String, report: &ServiceCheck) {
                 push_type(output, binding.initializer_type.as_ref());
                 output.push_str(",\"resolved_type\":");
                 push_type(output, binding.resolved_type.as_ref());
+                output.push_str(",\"declared_type_info\":");
+                push_type_info(output, binding.declared_type.as_ref());
+                output.push_str(",\"initializer_type_info\":");
+                push_type_info(output, binding.initializer_type.as_ref());
+                output.push_str(",\"resolved_type_info\":");
+                push_type_info(output, binding.resolved_type.as_ref());
                 output.push_str(",\"location\":");
                 push_location(output, &file_name, binding.span);
                 output.push_str(",\"annotation_location\":");
@@ -156,6 +166,22 @@ fn push_type(output: &mut String, kind: Option<&Type>) {
             _ => None,
         },
     );
+}
+
+pub(super) fn push_type_info(output: &mut String, kind: Option<&Type>) {
+    match kind {
+        Some(Type::Named(identity)) => {
+            output.push_str("{\"kind\":\"record\",\"identity\":");
+            super::push_string(output, identity);
+            output.push('}');
+        }
+        Some(Type::Unit | Type::Bool | Type::Int | Type::Float | Type::String) => {
+            output.push_str("{\"kind\":\"scalar\",\"name\":");
+            push_type(output, kind);
+            output.push('}');
+        }
+        _ => output.push_str("null"),
+    }
 }
 
 fn push_location(output: &mut String, file: &str, span: Span) {

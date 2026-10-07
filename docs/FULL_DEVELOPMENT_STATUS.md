@@ -1,5 +1,36 @@
 # Full development status
 
+Imported record alias targets and field declarations now resolve through shared
+module interfaces. Service contracts and bodies consume the same snapshot and
+resolved identities. Private, invalid and partially inspected exporters supply
+no usable interface; unresolved cross-file type-dependent cycles remain unsupported.
+
+Nominal JSON evidence is now implemented for opt-in locals and calls. Additive
+type descriptors distinguish scalar names, opaque record identities and unresolved
+evidence; existing scalar fields retain compatibility.
+
+Service parameters and returns now resolve direct imported exported record types.
+Returned exported field metadata travels with nominal values without re-exporting
+source type names. Private/transitive service annotations still fail with E4117.
+
+Qualified application record imports now support local annotations, ordinary
+signatures and construction. Only direct exported records are exposed; privacy
+and nominal identity are preserved. Imported types also resolve in service
+declarations, record fields and alias targets.
+
+Direct service imports now retain exported record field metadata across files.
+Nested fields use declaring-module identity; private records stay opaque and
+exported fields cannot expose private record types (E4116). Ordinary record-bearing
+exports now preserve public nominal interfaces and field metadata; private-record
+interfaces remain E4116 and unavailable to importers.
+
+Application record contracts: Partial. File-local declarations, field-type
+validation, aliases and nominal signature/local compatibility are implemented.
+Cross-file identity is preserved. File-local field reads propagate scalar/nested
+nominal types and reject invalid accesses with E4138. File-local constructors now
+validate required/unique compatible fields (E4139). Exported
+application record interfaces remain unfinished.
+
 File-local scalar aliases now resolve in application service/function/local
 annotations, including forward chains and exported function interfaces. Existing
 E3008/E3017 diagnostics reject invalid alias graphs. Application record types,

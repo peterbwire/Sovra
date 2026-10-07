@@ -89,6 +89,26 @@ The next roadmap turns the foundation into the application language shown in
 
 ## M12 — Project Checker (started)
 
+Ordinary exported functions now carry public record parameter/result interfaces,
+including imported aliases, while rejecting private record exposure. Return values
+retain field metadata without exposing transitive source type names.
+
+Shared application module type resolution now supports direct imported records
+in alias targets and field declarations, with nested exported metadata and nominal
+identity preserved. Unresolved cross-file type-dependent cycles remain E3017;
+full application runtime remains unfinished.
+
+Implemented: file-local record declaration validation and nominal contracts in
+service/function/local annotations. Partial: application records still lack
+exported type imports. File-local construction now validates field completeness,
+uniqueness and value compatibility (E4139). File-local field reads propagate
+validated types; exported field metadata now travels through imported service
+results. Private records remain opaque. Qualified imported record names now work
+in locals, ordinary signatures, service contracts and constructors. Imported types
+in record declarations/alias targets now resolve; ordinary exported record
+interfaces preserve public type identity and privacy. Same-shaped records from
+different declarations/files remain incompatible.
+
 Application integer literal range validation now matches the executable E3012
 rule, including unused and statically skipped expressions.
 
@@ -171,6 +191,10 @@ Make `svr run <project>` start an integrated application with APIs, pages,
 auth, background tasks, concurrency, and external services.
 
 ## M15 — Agent Inspection
+
+Implemented slice: opt-in local/call type descriptors now retain nominal record
+identity alongside scalar types and unresolved evidence, without replacing the
+existing scalar JSON fields.
 
 Expose structured project metadata, diagnostics, tests, routes, models, and
 dependency boundaries so AI agents can inspect and modify Sovra projects

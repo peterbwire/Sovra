@@ -1,0 +1,4 @@
+use app.store;
+
+type Position = app::store::Point;
+export struct Envelope { point: Position }

@@ -1,0 +1,9 @@
+service mail {
+    fn send(value: String);
+}
+
+task scheduled(value: Missing) {}
+
+fn main() {
+    mail.send("hello");
+}

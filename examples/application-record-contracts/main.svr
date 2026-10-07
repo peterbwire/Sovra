@@ -1,0 +1,21 @@
+type Coordinate = Float;
+struct Point { x: Coordinate, y: Coordinate }
+type Position = Point;
+
+service store {
+    fn load() -> Point;
+    fn save(value: Position);
+    fn record_x(value: Float);
+}
+
+fn identity(value: Position) -> Point {
+    return value;
+}
+
+fn main() {
+    let created: Position = Point { x: 1, y: 2 };
+    store.save(created);
+    let point: Position = store.load();
+    store.save(identity(point));
+    store.record_x(point.x);
+}

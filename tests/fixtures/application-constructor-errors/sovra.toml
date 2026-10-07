@@ -1,0 +1,5 @@
+[project]
+name = "application-constructor-errors"
+entry = "main.svr"
+[services]
+store = "external"

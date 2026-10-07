@@ -1900,6 +1900,561 @@ mod tests {
     }
 
     #[test]
+    fn task_parameters_resolve_local_aliases_and_direct_imported_records() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"task-types\"\nentry = \"main.svr\"",
+        );
+        project.write_file("app/shapes.svr", "export struct Point { x: Float }");
+        project.write_file("main.svr", "use app.shapes;\ntype Count = Int;\ntask scheduled(count: Count, point: app::shapes::Point) { let x: Float = point.x; }\nfn main() {}");
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(
+            report.diagnostics.is_empty(),
+            "{:?}",
+            report.diagnostics.items
+        );
+        project.write_file(
+            "main.svr",
+            "task scheduled(value: Missing) {}\nfn main() {}",
+        );
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert_eq!(report.diagnostics.items.len(), 1);
+        assert_eq!(report.diagnostics.items[0].code, "E4134");
+        assert!(report.diagnostics.items[0].source_file.is_some());
+    }
+
+    #[test]
+    fn application_duplicate_parameter_names_fail_for_all_callable_kinds() {
+        let project = TestProject::new();
+        project.write_file("sovra.toml", "[project]\nname = \"duplicate-parameters\"\nentry = \"main.svr\"\n[services]\nmail = \"external\"");
+        project.write_file("main.svr", "service mail {\nfn send(value: Int, value: Int);\n}\nfn ordinary(value: Int, value: Int) {}\ntask scheduled(value: Int, value: Int) {}\nfn main() {}");
+        let diagnostics = check_project(project.path()).unwrap_err();
+        assert_eq!(
+            diagnostics
+                .items
+                .iter()
+                .map(|error| error.code)
+                .collect::<Vec<_>>(),
+            ["E4027", "E4098", "E4098"]
+        );
+    }
+
+    #[test]
+    fn exported_function_results_carry_fields_without_transitive_type_names() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"factory-records\"\nentry = \"main.svr\"",
+        );
+        project.write_file("app/shapes.svr", "export struct Point { x: Float }");
+        project.write_file("app/factory.svr", "use app.shapes;\nexport fn make() -> app::shapes::Point { return app::shapes::Point { x: 1 }; }");
+        project.write_file("main.svr", "use app.factory;\nfn main() { let point = app::factory::make(); let x: Float = point.x; }");
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(
+            report.diagnostics.is_empty(),
+            "{:?}",
+            report.diagnostics.items
+        );
+        project.write_file(
+            "main.svr",
+            "use app.factory;\nfn main() { let point = app::shapes::Point { x: 1 }; }",
+        );
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(report
+            .diagnostics
+            .items
+            .iter()
+            .any(|error| error.code == "E4139"));
+    }
+
+    #[test]
+    fn exported_functions_cannot_smuggle_private_records_through_aliases() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"private-exports\"\nentry = \"main.svr\"",
+        );
+        project.write_file("app/factory.svr", "struct Secret { x: Int }\ntype Hidden = Secret;\nexport fn make() -> Hidden { return Hidden { x: 1 }; }");
+        project.write_file(
+            "main.svr",
+            "use app.factory;\nfn main() { app::factory::make(); }",
+        );
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(report
+            .diagnostics
+            .items
+            .iter()
+            .any(|error| error.code == "E4116"
+                && error
+                    .source_file
+                    .as_ref()
+                    .is_some_and(|file| file.ends_with("factory.svr"))));
+        assert!(report
+            .diagnostics
+            .items
+            .iter()
+            .any(|error| error.code == "E4133"
+                && error
+                    .source_file
+                    .as_ref()
+                    .is_some_and(|file| file.ends_with("main.svr"))));
+    }
+
+    #[test]
+    fn exported_application_functions_preserve_record_interfaces_and_fields() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"record-functions\"\nentry = \"main.svr\"",
+        );
+        project.write_file("app/shapes.svr", "export struct Point { x: Float }\ntype Position = Point;\nexport fn make(x: Float) -> Position { return Position { x: x }; }\nexport fn read(point: Position) -> Float { return point.x; }");
+        project.write_file("main.svr", "use app.shapes;\nstruct Point { x: String }\nfn main() { let point = app::shapes::make(1); let x: Float = point.x; let value = app::shapes::read(point); }");
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(
+            report.diagnostics.is_empty(),
+            "{:?}",
+            report.diagnostics.items
+        );
+    }
+
+    #[test]
+    fn application_type_graph_resolves_chains_without_transitive_names() {
+        let project = TestProject::new();
+        project.write_file("sovra.toml", "[project]\nname = \"type-chain\"\nentry = \"main.svr\"\n[services]\nstore = \"external\"");
+        project.write_file("app/n0.svr", "export struct R0 { x: Float }");
+        for index in 1..5 {
+            project.write_file(
+                &format!("app/n{index}.svr"),
+                &format!(
+                    "use app.n{};\nexport struct R{index} {{ next: app::n{}::R{} }}",
+                    index - 1,
+                    index - 1,
+                    index - 1
+                ),
+            );
+        }
+        project.write_file("main.svr", "use app.n4;\nservice store {\nfn load() -> app::n4::R4;\n}\nfn main() { let value = store.load(); let x: Float = value.next.next.next.next.x; }");
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(
+            report.diagnostics.is_empty(),
+            "{:?}",
+            report.diagnostics.items
+        );
+    }
+
+    #[test]
+    fn cyclic_application_record_dependencies_fail_without_placeholder_types() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"type-cycle\"\nentry = \"main.svr\"",
+        );
+        project.write_file("main.svr", "use app.a;\nfn main() {}");
+        project.write_file("app/a.svr", "use app.b;\nexport struct A { b: app::b::B }");
+        project.write_file("app/b.svr", "use app.a;\nexport struct B { a: app::a::A }");
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(report
+            .diagnostics
+            .items
+            .iter()
+            .any(|error| error.code == "E3017"));
+    }
+
+    #[test]
+    fn imported_record_aliases_and_fields_share_nominal_interfaces() {
+        let project = TestProject::new();
+        project.write_file("sovra.toml", "[project]\nname = \"type-graph\"\nentry = \"main.svr\"\n[services]\nstore = \"external\"");
+        project.write_file("app/shapes.svr", "export struct Point { x: Float }");
+        project.write_file("app/wrapper.svr", "use app.shapes;\ntype Position = app::shapes::Point;\nexport struct Box { point: Position }\nservice store {\nfn load() -> Box;\n}");
+        project.write_file("main.svr", "use app.wrapper;\nuse app.shapes;\ntype Position = app::shapes::Point;\nfn main() { let point: Position = Position { x: 1 }; let box = app::wrapper::Box { point: point }; let x: Float = box.point.x; let loaded = store.load(); let y: Float = loaded.point.x; }");
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(
+            report.diagnostics.is_empty(),
+            "{:?}",
+            report.diagnostics.items
+        );
+    }
+
+    #[test]
+    fn invalid_imported_record_graphs_never_supply_alias_or_field_types() {
+        for declaration in [
+            "struct Point { x: Float }",
+            "export struct Point { x: Missing }",
+            "export struct Point { x: Float }\nfn broken() { @ }",
+        ] {
+            let project = TestProject::new();
+            project.write_file(
+                "sovra.toml",
+                "[project]\nname = \"invalid-graph\"\nentry = \"main.svr\"",
+            );
+            project.write_file("app/shapes.svr", declaration);
+            project.write_file("main.svr", "use app.shapes;\ntype Position = app::shapes::Point;\nexport struct Box { point: Position }\nfn main() {}");
+            let report = application::check_service_calls(&check_project(project.path()).unwrap());
+            assert!(
+                report
+                    .diagnostics
+                    .items
+                    .iter()
+                    .any(|error| error.code == "E3017"
+                        && error
+                            .source_file
+                            .as_ref()
+                            .is_some_and(|file| file.ends_with("main.svr"))),
+                "{:?}",
+                report.diagnostics.items
+            );
+        }
+    }
+
+    #[test]
+    fn imported_service_contracts_carry_fields_without_reexporting_type_names() {
+        let project = TestProject::new();
+        project.write_file("sovra.toml", "[project]\nname = \"service-records\"\nentry = \"main.svr\"\n[services]\nstore = \"external\"");
+        project.write_file("app/shapes.svr", "export struct Point { x: Float }");
+        project.write_file(
+            "app/store.svr",
+            "use app.shapes;\nservice store {\nfn load() -> app::shapes::Point;\n}",
+        );
+        project.write_file(
+            "main.svr",
+            "use app.store;\nfn main() { let value = store.load(); let x: Float = value.x; }",
+        );
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(
+            report.diagnostics.is_empty(),
+            "{:?}",
+            report.diagnostics.items
+        );
+        project.write_file(
+            "main.svr",
+            "use app.store;\nfn main() { let value = app::shapes::Point { x: 1 }; }",
+        );
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(report
+            .diagnostics
+            .items
+            .iter()
+            .any(|error| error.code == "E4139"));
+    }
+
+    #[test]
+    fn service_record_annotations_reject_private_and_transitive_names() {
+        for (record, import) in [
+            ("struct Point { x: Float }", "use app.shapes;"),
+            ("export struct Point { x: Float }", "use app.bridge;"),
+        ] {
+            let project = TestProject::new();
+            project.write_file("sovra.toml", "[project]\nname = \"service-private\"\nentry = \"main.svr\"\n[services]\nstore = \"external\"");
+            project.write_file("app/shapes.svr", record);
+            project.write_file("app/bridge.svr", "use app.shapes;\nfn helper() {}");
+            project.write_file("main.svr", &format!("{import}\nservice store {{\nfn save(value: app::shapes::Point);\n}}\nfn main() {{}}"));
+            let checked = check_project(project.path()).unwrap();
+            let signatures = service_types::resolve_service_signatures(&checked);
+            assert!(signatures.operations.is_empty());
+            assert_eq!(signatures.diagnostics.items.len(), 1);
+            assert_eq!(signatures.diagnostics.items[0].code, "E4117");
+        }
+    }
+
+    #[test]
+    fn application_services_resolve_direct_imported_record_contracts() {
+        let project = TestProject::new();
+        project.write_file("sovra.toml", "[project]\nname = \"service-record-imports\"\nentry = \"main.svr\"\n[services]\nstore = \"external\"");
+        project.write_file("app/shapes.svr", "export struct Point { x: Float }");
+        project.write_file("main.svr", "use app.shapes;\nservice store {\nfn echo(value: app::shapes::Point) -> app::shapes::Point { return value; }\n}\nfn main() { let value = store.echo(app::shapes::Point { x: 1 }); let x: Float = value.x; }");
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(
+            report.diagnostics.is_empty(),
+            "{:?}",
+            report.diagnostics.items
+        );
+    }
+
+    #[test]
+    fn qualified_application_records_construct_and_typecheck_without_services() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"qualified-records\"\nentry = \"main.svr\"",
+        );
+        project.write_file("app/shapes.svr", "export struct Point { x: Float }");
+        project.write_file("main.svr", "use app.shapes;\nuse app.shapes;\nfn identity(value: app::shapes::Point) -> app::shapes::Point { return value; }\nfn main() { let point: app::shapes::Point = identity(app::shapes::Point { x: 1 }); let x: Float = point.x; }");
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(
+            report.diagnostics.is_empty(),
+            "{:?}",
+            report.diagnostics.items
+        );
+    }
+
+    #[test]
+    fn qualified_application_records_preserve_privacy_and_direct_import_boundaries() {
+        for (declaration, import) in [
+            ("struct Point { x: Float }", "use app.shapes;"),
+            ("export struct Point { x: Float }", "use app.bridge;"),
+        ] {
+            let project = TestProject::new();
+            project.write_file(
+                "sovra.toml",
+                "[project]\nname = \"private-records\"\nentry = \"main.svr\"",
+            );
+            project.write_file("app/shapes.svr", declaration);
+            project.write_file("app/bridge.svr", "use app.shapes;\nfn helper() {}");
+            project.write_file(
+                "main.svr",
+                &format!("{import}\nfn main() {{ let value = app::shapes::Point {{ x: 1 }}; }}"),
+            );
+            let report = application::check_service_calls(&check_project(project.path()).unwrap());
+            assert!(
+                report
+                    .diagnostics
+                    .items
+                    .iter()
+                    .any(|error| error.code == "E4139"),
+                "{:?}",
+                report.diagnostics.items
+            );
+        }
+    }
+
+    #[test]
+    fn same_named_imported_application_records_are_not_interchangeable() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"nominal-imports\"\nentry = \"main.svr\"",
+        );
+        for module in ["a", "b"] {
+            project.write_file(
+                &format!("app/{module}.svr"),
+                "export struct Point { x: Float }",
+            );
+        }
+        project.write_file("main.svr", "use app.a;\nuse app.b;\nfn take(value: app::a::Point) {}\nfn main() { take(app::b::Point { x: 1 }); }");
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert_eq!(
+            report.diagnostics.items.len(),
+            1,
+            "{:?}",
+            report.diagnostics.items
+        );
+        assert_eq!(report.diagnostics.items[0].code, "E4129");
+    }
+
+    #[test]
+    fn imported_service_records_expose_only_exported_fields() {
+        for exported in [true, false] {
+            let project = TestProject::new();
+            project.write_file("sovra.toml", "[project]\nname = \"public-fields\"\nentry = \"main.svr\"\n[services]\nstore = \"external\"");
+            let prefix = if exported { "export " } else { "" };
+            project.write_file("app/store.svr", &format!("{prefix}struct Point {{ x: Float }}\n{prefix}struct Box {{ point: Point }}\nservice store {{\nfn load() -> Box;\n}}"));
+            project.write_file("main.svr", "use app.store;\nstruct Point { x: String }\nfn main() { let value = store.load(); let x: Float = value.point.x; print(x); }");
+            let report = application::check_service_calls(&check_project(project.path()).unwrap());
+            assert!(report.files.iter().all(|file| file.functions.is_ok()));
+            if exported {
+                assert!(
+                    report.diagnostics.is_empty(),
+                    "{:?}",
+                    report.diagnostics.items
+                );
+            } else {
+                assert!(report
+                    .diagnostics
+                    .items
+                    .iter()
+                    .any(|error| error.code == "E4138"));
+            }
+        }
+    }
+
+    #[test]
+    fn exported_application_record_fields_cannot_expose_private_alias_targets() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"private-fields\"\nentry = \"main.svr\"",
+        );
+        let source = "struct Secret { value: Int }\ntype Hidden = Secret;\nexport struct Public { hidden: Hidden }\nfn main() {}";
+        project.write_file("main.svr", source);
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        let error = report
+            .diagnostics
+            .items
+            .iter()
+            .find(|error| error.code == "E4116")
+            .expect("private field diagnostic");
+        assert_eq!(&source[error.span.start..error.span.end], "hidden: Hidden");
+    }
+
+    #[test]
+    fn application_record_construction_validates_nested_values_and_widening() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"constructors\"\nentry = \"main.svr\"",
+        );
+        project.write_file("main.svr", "struct Point { x: Float }\nstruct Box { point: Point }\ntype Position = Point;\nfn valid(point: Point) -> Bool { return point.x > 0; }\nfn main() { let value = Box { point: Position { x: 1 } }; let x: Float = value.point.x; let flag = true; if flag {} if valid(Point { x: 2 }) {} if (Point { x: 3 }.x > 0) {} }");
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(
+            report.diagnostics.is_empty(),
+            "{:?}",
+            report.diagnostics.items
+        );
+    }
+
+    #[test]
+    fn invalid_application_record_constructors_do_not_propagate_types() {
+        for expression in [
+            "Point {}",
+            "Point { x: 1, x: 2 }",
+            "Point { y: 1 }",
+            "Point { x: true }",
+            "Point { x: missing }",
+            "Unknown { x: 1 }",
+            "Int { x: 1 }",
+        ] {
+            let project = TestProject::new();
+            project.write_file(
+                "sovra.toml",
+                "[project]\nname = \"constructors\"\nentry = \"main.svr\"",
+            );
+            let source =
+                format!("struct Point {{ x: Float }}\nfn main() {{ let invalid = {expression}; }}");
+            project.write_file("main.svr", &source);
+            let report = application::check_service_calls(&check_project(project.path()).unwrap());
+            let error = report
+                .diagnostics
+                .items
+                .iter()
+                .find(|error| error.code == "E4139")
+                .unwrap_or_else(|| panic!("{expression}: {:?}", report.diagnostics.items));
+            assert_eq!(&source[error.span.start..error.span.end], expression);
+            assert!(
+                report.files[0].functions.as_ref().unwrap()[0].local_bindings[0]
+                    .resolved_type
+                    .is_none()
+            );
+        }
+    }
+
+    #[test]
+    fn application_record_fields_propagate_nested_nominal_and_scalar_types() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"fields\"\nentry = \"main.svr\"\n[services]\nstore = \"external\"",
+        );
+        project.write_file("main.svr", "type Scalar = Float;\nstruct Point { x: Scalar }\nstruct Box { point: Point }\nservice store {\nfn load() -> Box;\nfn save(value: Float);\n}\nfn read(value: Box) -> Float { return value.point.x; }\nfn main() { let value = store.load(); { let point = value.point; store.save(point.x); } store.save(read(value)); }");
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(
+            report.diagnostics.is_empty(),
+            "{:?}",
+            report.diagnostics.items
+        );
+        let functions = report.files[0].functions.as_ref().unwrap();
+        assert_eq!(
+            functions[0].returns[0].known_type,
+            Some(crate::compiler::semantic::Type::Float)
+        );
+    }
+
+    #[test]
+    fn invalid_application_record_fields_and_field_calls_are_rejected() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"fields\"\nentry = \"main.svr\"",
+        );
+        let source = "struct Point { x: Float }\nfn inspect(point: Point) { point.absent; point.x(); 1.absent; }";
+        project.write_file("main.svr", source);
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        let errors: Vec<_> = report
+            .diagnostics
+            .items
+            .iter()
+            .filter(|error| error.code == "E4138")
+            .collect();
+        assert_eq!(errors.len(), 2, "{:?}", report.diagnostics.items);
+        assert_eq!(
+            &source[errors[0].span.start..errors[0].span.end],
+            "point.absent"
+        );
+        assert!(report
+            .diagnostics
+            .items
+            .iter()
+            .any(|error| error.code == "E4133"));
+    }
+
+    #[test]
+    fn application_record_contracts_preserve_nominal_identity() {
+        let project = TestProject::new();
+        project.write_file("sovra.toml", "[project]\nname = \"record-contracts\"\nentry = \"main.svr\"\n[services]\nsource = \"external\"\nsink = \"external\"");
+        project.write_file("main.svr", "use app.sink;\nstruct Point { x: Float }\ntype Position = Point;\nservice source {\nfn get() -> Point;\n}\nfn identity(value: Position) -> Point { return value; }\nfn main() { let point: Position = source.get(); identity(point); sink.put(point); }");
+        project.write_file(
+            "app/sink.svr",
+            "struct Point { x: Float }\nservice sink {\nfn put(value: Point);\n}",
+        );
+        let checked = check_project(project.path()).unwrap();
+        let report = application::check_service_calls(&checked);
+        assert!(report.files.iter().all(|file| file.functions.is_ok()));
+        assert_eq!(
+            report.diagnostics.items.len(),
+            1,
+            "{:?}",
+            report.diagnostics.items
+        );
+        assert_eq!(report.diagnostics.items[0].code, "E4119");
+        let signatures = service_types::resolve_service_signatures(&checked);
+        let get = signatures
+            .operations
+            .iter()
+            .find(|item| item.name == "get")
+            .unwrap();
+        let put = signatures
+            .operations
+            .iter()
+            .find(|item| item.name == "put")
+            .unwrap();
+        assert_ne!(get.return_type, put.parameters[0].parameter_type);
+    }
+
+    #[test]
+    fn application_record_declarations_validate_fields_and_privacy() {
+        for (source, expected) in [
+            ("struct Point { x: Missing }\nfn main() {}", "E3017"),
+            ("struct Point { x: Int, x: Float }\nfn main() {}", "E3008"),
+            (
+                "struct Point { x: Int }\ntype Point = Int;\nfn main() {}",
+                "E3008",
+            ),
+            (
+                "struct Point { x: Int }\nexport fn echo(value: Point) -> Point { return value; }",
+                "E4116",
+            ),
+        ] {
+            let project = TestProject::new();
+            project.write_file(
+                "sovra.toml",
+                "[project]\nname = \"record-errors\"\nentry = \"main.svr\"",
+            );
+            project.write_file("main.svr", source);
+            let report = application::check_service_calls(&check_project(project.path()).unwrap());
+            assert!(report.files[0].functions.is_ok(), "{source}");
+            assert!(
+                report
+                    .diagnostics
+                    .items
+                    .iter()
+                    .any(|error| error.code == expected),
+                "{:?}",
+                report.diagnostics.items
+            );
+        }
+    }
+
+    #[test]
     fn application_integer_literals_enforce_signed_64_bit_bounds() {
         let project = TestProject::new();
         project.write_file(

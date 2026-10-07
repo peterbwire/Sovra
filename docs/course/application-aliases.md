@@ -1,7 +1,8 @@
 # Scalar aliases in application checking
 
-Status: Implemented for the opt-in application checker. Application records,
-record aliases, exported aliases and runtime execution remain outside this slice.
+Status: Implemented for the opt-in application checker. File-local record aliases
+are now supported by [record contracts](application-record-contracts.md).
+Exported aliases and application runtime execution remain unfinished.
 
 Use the existing `type` declaration to name a scalar type:
 

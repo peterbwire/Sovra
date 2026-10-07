@@ -1,0 +1,6 @@
+[project]
+name = "application-record-imports"
+entry = "main.svr"
+[services]
+store = "external"
+relay = "external"

@@ -1,0 +1,9 @@
+use app.store;
+
+export fn make(x: Float) -> app::store::Point {
+    return app::store::Point { x: x, y: 0 };
+}
+
+export fn read_x(value: app::store::Point) -> Float {
+    return value.x;
+}

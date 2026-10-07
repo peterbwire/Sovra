@@ -1,7 +1,166 @@
 # Development log
 
+## 2026-10-07: Record-bearing exported application functions
+
+- Validation: **319 library + 42 CLI = 361 passed**, with required Windows CLI
+  execution (`target/v1-exported-record-functions-tests.log`). Strict all-target,
+  all-feature Clippy, formatting and whitespace checks passed.
+- Reproduced blanket rejection of public record function interfaces. Replaced it
+  with nominal visibility checks against validated public field metadata. E4116
+  still rejects private records, including aliases, and invalid private-record
+  exports no longer provide a selectable consumer signature.
+- Shared public field interfaces now travel with ordinary function signatures.
+  Imported results preserve declaring-module identity and readable fields without
+  re-exporting dependency type names. Scalar/builtin interfaces remain unchanged.
+- Added public/private alias, factory result, consumer-name collision and
+  transitive-name isolation tests. Extended the multi-file CLI example and its
+  JSON identity/declaration-owner assertions.
+- Remaining: broader application syntax/type coverage, recursive cross-file type
+  design, native test/runtime support and library publication/release qualification.
+
+## 2026-10-07: Shared application module type resolution
+
+- Validation: **316 library + 42 CLI = 358 passed**, with required Windows CLI
+  execution (`target/v1-module-types-tests.log`). Strict Clippy passed; the CLI
+  inspection matrix was rerun successfully after extending its example/JSON
+  assertions. Formatting and whitespace checks passed.
+- Extended the existing iterative executable alias resolver with an internal
+  imported-type registry; existing executable callers retain their original API.
+  Application modules now resolve direct imported alias targets and record fields.
+- Shared resolved module interfaces feed service contracts and body inspection
+  from one source snapshot. Bounded propagation follows validated exports; private,
+  invalid and partially inspected exporters do not provide usable interfaces.
+- Preserved canonical nominal identity and direct-name visibility while carrying
+  nested public field metadata through dependency chains. No structural record
+  equivalence, alias exports or placeholder records were introduced.
+- Added imported alias constructors, exported fields, multi-file chains, invalid
+  exporter and unresolved cycle coverage; extended the real CLI example and JSON
+  field evidence assertions.
+- Remaining: ordinary record-bearing exports, application runtime and publishing.
+  Cross-file type-dependent cycles requiring placeholder interfaces remain
+  unsupported (E3017); the pass does not claim full recursive-type support.
+
+## 2026-10-07: Nominal JSON type descriptors
+
+- Validation: **312 library + 42 CLI = 354 passed**, with required Windows CLI
+  execution (`target/v1-nominal-json-tests.log`). Strict all-target/all-feature
+  Clippy, formatting and whitespace checks passed.
+- Added schema-one descriptors for local declared/initializer/resolved types,
+  ordinary result/argument types and member-call arguments. Existing scalar fields
+  and argument counts remain unchanged. Records carry opaque nominal identity;
+  scalars carry canonical names; unresolved/unsupported evidence remains null.
+- Added same-layout distinct-record, constructor/call identity, scalar field and
+  unresolved-value assertions, including real multi-file CLI JSON parsing.
+- Imported alias targets and record fields remain unfinished and need a shared
+  module type-resolution pass. This slice closes the inspection gap where valid
+  records and unresolved values were indistinguishable in scalar-only JSON.
+
+## 2026-10-07: Imported record types in service contracts
+
+- Validation: **311 library + 42 CLI = 353 passed**, with required Windows CLI
+  execution (`target/v1-imported-service-contracts-tests.log`). Strict all-target,
+  all-feature Clippy, formatting and whitespace checks passed.
+- Reproduced unresolved direct-import service parameters/returns. Resolved them
+  from immutable declaring-module export interfaces, preserving nominal identity.
+- Service results retain exported field metadata even when the caller imports
+  only the service module. This does not make the type's source name transitively
+  visible. Private/transitive contract names remain E4117 and yield no signature.
+- Added service implementation/return, metadata propagation and visibility tests;
+  extended the multi-file CLI example with an imported record relay contract.
+- Remaining: imported alias targets/record fields, ordinary record-bearing
+  exports, nominal JSON evidence and application runtime/publishing.
+
+## 2026-10-07: Qualified application record names and constructors
+
+- Validation: **308 library + 42 CLI = 350 passed**, with required Windows CLI
+  execution (`target/v1-qualified-application-records-tests.log`). Strict
+  all-target/all-feature Clippy, formatting and whitespace checks passed.
+- Collected exported record interfaces from fully inspected source snapshots and
+  exposed qualified names only through direct imports. No source alias/private
+  record or transitive name is exported. Repeated imports remain idempotent.
+- Qualified record paths now resolve in locals and ordinary function signatures;
+  constructors share existing required-field, compatibility and depth checks.
+  Field metadata also works for imports from modules without any service.
+- Added direct/private/transitive, duplicate-import, declaring-identity and
+  same-name nominal mismatch tests. Extended the multi-file CLI example.
+- Remaining: imported types in service/record declarations and alias targets,
+  record-bearing ordinary exports, nominal JSON metadata, runtime and publishing.
+
+## 2026-10-07: Exported service record field metadata
+
+- Validation: **305 library + 42 CLI = 347 passed**, with required Windows CLI
+  execution (`target/v1-exported-service-records-tests.log`). Strict all-target,
+  all-feature Clippy, formatting and whitespace checks passed.
+- Applied approved explicit export-struct semantics to application service record
+  metadata. Direct imported service results retain exported field interfaces and
+  nested nominal identity; consumer aliases/declarations cannot reinterpret them.
+- Private records remain opaque across files. E4116 rejects exported field types
+  resolving to private records, including through aliases. Invalid type graphs
+  expose no metadata. Shared immutable interfaces avoid copying a module's record
+  map into each operation; scopes deduplicate repeated interfaces.
+- Added exported/private nested-field and alias privacy regressions plus a checked
+  multi-file example. Qualified imported type spellings/construction and ordinary
+  exported functions carrying records remain unfinished, as do runtime/publishing.
+
+## 2026-10-07: Application record construction
+
+- Validation: **303 library + 42 CLI = 345 passed**, with required Windows CLI
+  execution (`target/v1-application-constructors-tests.log`). Strict all-target,
+  all-feature Clippy, formatting and whitespace checks passed.
+- Added file-local and alias constructors with nested values, lexical call
+  inspection and existing structural-depth guards. E4139 rejects unknown record
+  types, missing/extra/duplicate fields and incompatible/unresolved field values.
+- Valid constructors propagate nominal identity. Int values can widen to Float
+  fields; invalid constructor types do not propagate to locals or arguments.
+- Preserved bare identifier conditions; parentheses enable record expressions in
+  conditions, and call arguments accept constructors. Added valid/invalid syntax,
+  type, nested, depth and CLI coverage and extended the checked record example.
+- Remaining: cross-file field metadata, exported application record types,
+  nominal JSON metadata and application runtime/publishing. Construction here is
+  statically checked, not executed by an application runtime.
+
+## 2026-10-07: Application record field reads
+
+- Validation: **300 library + 42 CLI = 342 passed**, with required Windows CLI
+  execution (`target/v1-application-fields-tests.log`). Strict all-target,
+  all-feature Clippy, formatting and whitespace checks passed.
+- Retained validated field interfaces with canonical nominal identities and
+  exposed them through lexical scopes. File-local field reads now propagate
+  primitive/nested nominal types through arguments, returns and local bindings.
+- Added E4138 for invalid member reads on known receivers. Record fields are not
+  callable service operations; field calls fail with E4133. Invalid field graphs
+  do not supply field metadata. Existing service receiver rules are preserved.
+- Added nested/aliased field, scope, invalid member/call and CLI regressions;
+  extended the record example with a field passed to a typed service operation.
+- Remaining: construction, cross-file field metadata, exported application
+  records, runtime and publishing. Field reads are implemented for records whose
+  declarations are available in the inspected file.
+
+## 2026-10-07: Nominal application record contracts
+
+- Validation: **298 library + 42 CLI = 340 passed**, with required Windows CLI
+  execution (`target/v1-application-record-contracts-tests.log`). Strict Clippy,
+  formatting and whitespace checks passed. CLI coverage includes a valid record
+  flow and rejection of same-shaped distinct records with E4119.
+- Added file-local record declaration parsing and field validation through the
+  existing executable parser/type checker. Alias and record names share duplicate
+  checks; unknown field types and duplicate fields keep E3017/E3008.
+- Record annotations now carry declaring-module identity through services,
+  ordinary functions and locals. Aliases preserve identity; same layouts or names
+  from different files do not imply compatibility. Raw single-file inspection
+  uses an isolated synthetic owner; project inspection uses canonical owners.
+- Exported ordinary functions exposing private record contracts fail with E4116.
+  Added checker examples and unit/CLI nominal-mismatch and invalid-field coverage.
+- Remaining: application record construction, field reads, exported type imports,
+  nominal JSON metadata, runtime and publishing. This is useful contract checking,
+  not complete record execution or complete M12 validation.
+
 ## 2026-10-05: Application integer literal bounds
 
+- Validation completed 2026-10-07: **295 library + 42 CLI = 337 passed**, with
+  required Windows CLI execution (`target/v1-application-integer-bounds-tests.log`).
+  Strict all-target/all-feature Clippy and formatting checks passed. Updated the
+  course and production checkpoint to describe the numeric validity boundary.
 - Reproduced silent acceptance of three oversized integer literals. Application
   inspection now reports executable diagnostic E3012 at original token ranges,
   including unused initializers, calls, returns and statically skipped branches.

@@ -1,0 +1,5 @@
+[project]
+name = "application-record-mismatch"
+entry = "main.svr"
+[services]
+store = "external"

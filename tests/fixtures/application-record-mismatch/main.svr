@@ -1,0 +1,9 @@
+struct Point { x: Float }
+struct OtherPoint { x: Float }
+service store {
+    fn load() -> Point;
+    fn save(value: OtherPoint);
+}
+fn main() {
+    store.save(store.load());
+}

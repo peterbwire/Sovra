@@ -1,4 +1,4 @@
-//! Resolved scalar service contracts, including file-local aliases.
+//! Resolved scalar and nominal record service contracts.
 
 use std::path::PathBuf;
 
@@ -18,6 +18,10 @@ pub struct TypedServiceParameter {
 /// A resolved service operation interface; this does not validate its body.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypedServiceOperation {
+    /// Exported record field interfaces from the declaring module, keyed by nominal identity.
+    /// Private records are deliberately omitted; no source type-name import is implied.
+    pub record_fields:
+        std::sync::Arc<std::collections::HashMap<String, std::collections::HashMap<String, Type>>>,
     /// Canonical source-module and service identity.
     pub service: ServiceIdentity,
     /// Source operation name.
@@ -46,8 +50,9 @@ pub struct ServiceSignatures {
 /// Resolve service contract annotations using the executable primitive types.
 ///
 /// Requires checked project metadata. No body or call-argument typing is implied.
-/// Application records, generics and executable package type imports are not
-/// connected yet and produce E4117 rather than becoming placeholder types.
+/// File-local record annotations retain canonical source-module identity.
+/// Generics and executable package type imports are not connected yet and
+/// produce E4117 rather than becoming placeholder types.
 /// File-local scalar alias errors retain executable E3008/E3017 diagnostics.
 /// Missing annotations retain E4097. Owner-path failures produce E4118.
 /// Source locations are declaration ranges, not individual annotation ranges.
@@ -69,26 +74,29 @@ pub(super) fn resolve_with_sources(
     project: &ProjectCheck,
     sources: &std::collections::BTreeMap<PathBuf, Result<String, String>>,
 ) -> ServiceSignatures {
+    let modules = super::application_types::resolve_modules(project, sources);
+    resolve_with_modules(project, &modules)
+}
+
+pub(super) fn resolve_with_modules(
+    project: &ProjectCheck,
+    modules: &std::collections::BTreeMap<PathBuf, super::application_types::Aliases>,
+) -> ServiceSignatures {
     let mut report = ServiceSignatures {
         operations: Vec::new(),
         diagnostics: Diagnostics::new(),
     };
     let mut aliases_by_file = std::collections::BTreeMap::new();
-    for file in &project.source_files {
-        let Some(Ok(source)) = sources.get(file) else {
-            continue;
-        };
-        let Ok(tokens) = crate::compiler::lexer::Lexer::new().tokenize(source) else {
-            continue;
-        };
-        let Ok(mut aliases) = super::application_types::Aliases::collect(&tokens) else {
-            continue;
-        };
-        for diagnostic in &mut aliases.diagnostics.items {
+    let mut fields_by_file = std::collections::BTreeMap::new();
+    for (file, aliases) in modules {
+        let mut diagnostics = aliases.diagnostics.clone();
+        for diagnostic in &mut diagnostics.items {
             diagnostic.source_file = Some(file.to_string_lossy().into_owned());
         }
-        report.diagnostics.items.extend(aliases.diagnostics.items);
-        aliases_by_file.insert(file.clone(), aliases.types);
+        report.diagnostics.items.extend(diagnostics.items);
+        aliases_by_file.insert(file.clone(), aliases.types.clone());
+        let fields = std::sync::Arc::new(aliases.visible_fields.clone());
+        fields_by_file.insert(file.clone(), fields);
     }
     for operation in &project.service_operations {
         let aliases = aliases_by_file.get(&operation.source_file);
@@ -143,6 +151,10 @@ pub(super) fn resolve_with_sources(
         };
         if report.diagnostics.items.len() == start_errors {
             report.operations.push(TypedServiceOperation {
+                record_fields: fields_by_file
+                    .get(&operation.source_file)
+                    .cloned()
+                    .unwrap_or_default(),
                 service: ServiceIdentity {
                     module,
                     name: operation.service.clone(),

@@ -1,0 +1,8 @@
+struct Point { x: Float }
+service store {
+    fn save(value: Point);
+}
+fn main() {
+    store.save(Point { x: 1 });
+    let invalid = Point { x: true };
+}

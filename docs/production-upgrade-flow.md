@@ -22,6 +22,28 @@ do not treat successful packaging as release approval.
 
 ## Current Checkpoint
 
+Nominal JSON type descriptors now distinguish record identity from unresolved
+evidence in locals and call interfaces while retaining existing scalar fields.
+Imported alias targets and record fields now use shared module resolution, also
+consumed by service contracts and body inspection. Only validated exports propagate.
+
+File-local record declarations and nominal contracts now work in the opt-in
+application checker. Source-qualified identity prevents same-shaped cross-file
+records from mixing. Field declarations reuse executable validation; exported
+ordinary functions cannot expose private records (E4116). File-local field reads
+now propagate scalar/nested record types; E4138 rejects invalid member access.
+File-local construction now validates required/unique fields and compatible values
+(E4139). Imported services now carry exported record field metadata, preserving
+private-record opacity and nested nominal identity. Qualified imported record
+names now work in locals, ordinary signatures, constructors, record declarations
+and alias targets. Ordinary exports now carry public record parameters/results
+and field metadata, while rejecting private record exposure.
+Service parameters/returns resolve direct imported record names;
+returned field metadata does not re-export transitive source names.
+
+Application integer literals now use the executable signed 64-bit range rule
+(E3012). Tests cover boundaries, unused values, grouped calls and skipped branches.
+
 File-local scalar aliases now reuse the executable parser and iterative type
 resolver. They apply to service/function/local annotations and exported function
 interfaces retain declaring-file meaning. E3008/E3017 reject invalid alias graphs;

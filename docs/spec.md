@@ -2,6 +2,51 @@
 
 ## Status
 
+Opt-in JSON inspection now includes additive type descriptors for locals,
+ordinary call results/arguments and member-call arguments. Scalars expose their
+canonical name; records expose opaque nominal identity; unresolved evidence is
+null. Existing scalar fields retain their schema-one meaning. See
+[check JSON](reference/check-json.md) for the descriptor contract.
+
+Application checking now supports file-local nominal record contracts under
+`check --service-calls`. Existing `struct` declarations and aliases to records
+resolve in service/function signatures and local annotations. Field declarations
+reuse executable validation (E3008 duplicates; E3017 unknown types). Identity
+includes the canonical declaring source file and record name; identical layouts
+never establish compatibility. Service results can retain these identities through
+ordinary calls and inferred locals. Exported ordinary functions exposing private
+record types fail with E4116. Field reads on records declared in the current file
+now propagate validated scalar or nested nominal types, including through aliases.
+E4138 rejects missing fields or unavailable field metadata on known receivers;
+calling a record field fails with E4133. File-local construction uses
+`Point { x: 1, y: 2 }`, including aliases and nested values. E4139 rejects unknown
+types, missing/duplicate/unknown fields or incompatible/unresolved field values.
+Int-to-Float field widening is accepted; only structurally valid constructors
+propagate nominal types. Use parentheses around record expressions in conditions;
+bare `if flag {}` retains its existing meaning. `export struct` now exposes field
+metadata for records carried by direct imported services. Nested exported records
+retain declaring-file types; private records stay opaque in consumers. E4116
+rejects exported fields exposing private record types, including through aliases.
+This does not preclude future explicit field visibility. Direct application imports
+now expose exported record names as paths such as `app::shapes::Point` in local
+annotations, ordinary function parameters/returns and constructors. Private types,
+type aliases and transitive imports do not introduce such names. Duplicate imports
+are idempotent and constructor results preserve declaring-file identity. Imported
+types in service parameters/returns now resolve under the same direct-import rule.
+Returned values carry exported field metadata without re-exporting type names.
+Direct imported records now also resolve in alias targets and record field
+declarations through a shared module type pass. Aliases preserve the imported
+nominal identity; exported nested field metadata can travel through dependency
+chains without re-exporting source names. Invalid or partially inspected exporters
+provide no usable interface. Cross-file type-dependent cycles that cannot resolve
+without placeholders remain unsupported and report E3017. Ordinary exported
+functions now accept and return public record identities, including aliases to
+directly imported records. Returned values carry public field metadata without
+re-exporting source type names. E4116 still rejects private record exposure, and
+those interfaces are not selectable by consumers. Record mutation remains unfinished;
+executable package record semantics are unchanged.
+See [application record contracts](course/application-record-contracts.md).
+
 Library/package boundaries are audited in
 [LIBRARY_ECOSYSTEM_ASSESSMENT.md](LIBRARY_ECOSYSTEM_ASSESSMENT.md). Executable
 inline modules are distinct from partial project-file imports and local package
@@ -539,16 +584,17 @@ The Rust `project::service_types::resolve_service_signatures` API retains only
 fully resolved operation signatures with canonical source/service identity.
 File-local scalar aliases use the existing `type Name = Target;` syntax and
 executable alias resolver. Forward references and alias chains are supported;
-terminal targets are Unit, Bool, Int, Float and String. These aliases resolve in
+terminal targets are Unit, Bool, Int, Float, String or a file-local record. These aliases resolve in
 service contracts, function/task parameters, ordinary returns and local annotations.
 Duplicate declarations/primitive-name collisions retain E3008; cycles and unknown
 targets retain E3017 with the original declaring file and ranges, including unused
 aliases. Invalid alias sets supply no validated alias types. Malformed aliases
 leave inspection incomplete. Exported ordinary function interfaces carry canonical
 scalar types resolved in the declaring file; consumers cannot reinterpret them
-with same-named aliases. Alias names are not imported or exported. Record identity,
-record aliases and qualified package types are unchanged and are not implemented
-by this application slice. See [application aliases](course/application-aliases.md).
+with same-named aliases. Alias names are not imported or exported. File-local
+record aliases retain nominal identity; exported private-record signatures fail
+with E4116. Qualified package types remain outside this application slice.
+See [application aliases](course/application-aliases.md).
 Literal service arguments, including parenthesized literals, are checked against
 resolved parameters. Int may widen to Float; other mismatches produce E4119 at
 the argument expression range. Primitive function/task/service parameters and
@@ -605,7 +651,7 @@ are rejected and do not provide a selectable signature. Tasks and service operat
 are excluded from bare ordinary function resolution. Named application types and general unknown-name resolution
 remain unfinished. Unsupported parameter annotations retain Unknown; calls using
 such interfaces fail validation rather than supplying result types.
-E4134 also rejects each unresolved ordinary parameter annotation at its owning
+E4134 also rejects each unresolved ordinary function or task parameter annotation at its owning
 declaration range, even when the function is unused. This implements ADR 0009's
 annotation requirement rather than treating absence of calls as validation.
 

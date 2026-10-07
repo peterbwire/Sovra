@@ -242,6 +242,15 @@ pub(crate) fn collect_named_types(
     program: &Program,
     diagnostics: &mut Diagnostics,
 ) -> HashMap<String, Type> {
+    collect_named_types_with_imports(program, &HashMap::new(), diagnostics)
+}
+
+/// Resolve local declarations against already resolved imported type identities.
+pub(crate) fn collect_named_types_with_imports(
+    program: &Program,
+    imported: &HashMap<String, Type>,
+    diagnostics: &mut Diagnostics,
+) -> HashMap<String, Type> {
     let mut aliases = HashMap::new();
     let mut structured_names = HashSet::new();
     let mut type_declarations = HashMap::new();
@@ -347,7 +356,7 @@ pub(crate) fn collect_named_types(
         }
     }
 
-    let mut resolved = HashMap::new();
+    let mut resolved = imported.clone();
     for name in structured_names.iter() {
         resolved.insert(name.clone(), Type::Named(name.clone()));
     }
@@ -416,7 +425,8 @@ fn resolve_type_alias(
     }
     result
 }
-fn collect_struct_fields(
+/// Validate record field interfaces without checking executable bodies.
+pub(crate) fn collect_struct_fields(
     program: &Program,
     named_types: &HashMap<String, Type>,
     diagnostics: &mut Diagnostics,

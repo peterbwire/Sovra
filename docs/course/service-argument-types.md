@@ -1,5 +1,10 @@
 # Checking service argument types
 
+Integer literals in the inspected application subset must fit signed 64-bit Int.
+For example, `9223372036854775807` is accepted; `9223372036854775808` produces
+E3012 at the literal token, including inside a call or a skipped branch. JSON
+may still classify the expression as Int; inspect diagnostics for validity.
+
 Status: Partial application checking. This lesson describes validation, not
 service execution. Run `svr check --service-calls examples/service-contracts`.
 
@@ -49,7 +54,9 @@ Unresolved ordinary calls now produce E4133. This includes names without a suppo
 signature and calls through local bindings/function values. The JSON `ordinary_calls`
 array shows resolution kinds and argument types; use its diagnostics and file
 coverage too. A declared return type alone does not mean the call is valid.
-E4134 rejects unresolved ordinary parameter annotations even in unused functions.
+E4134 rejects unresolved ordinary function and task parameter annotations even in
+unused declarations. Task parameters accept resolved aliases and directly imported
+exported records; this validation does not make tasks callable as ordinary functions.
 Use canonical primitive names; Any is not a user-defined wildcard annotation.
 Expression statements must also be checkable: `missing;` or `missing + 1;`
 produce E4137 rather than silently discarding unresolved values. A known local
