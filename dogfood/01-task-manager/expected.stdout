@@ -1,0 +1,29 @@
+tasks:
+count 0
+added 1
+added 2
+added 3
+error: capacity 3
+error: empty title
+completed 2
+completed 2
+error: missing 99
+tasks:
+1 | open | Write tests
+2 | done | Review café release
+3 | open | Ship documentation
+count 3
+deleted 1
+error: missing 1
+error: missing 0
+added 4
+tasks:
+4 | open | Replacement
+2 | done | Review café release
+3 | open | Ship documentation
+count 3
+deleted 2
+deleted 3
+deleted 4
+tasks:
+count 0

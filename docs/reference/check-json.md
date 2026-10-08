@@ -67,7 +67,8 @@ Unresolved condition types produce E4125 and unresolved service return types
 produce E4126, at the expression range. Both fail the check even when syntax
 coverage is complete; they report incomplete validation rather than a mismatch.
 Same-file ordinary call results now resolve from primitive signatures. E4127
-reports duplicate ordinary declarations, E4128 wrong arity, E4129 incompatible
+reports duplicate ordinary/task declarations (including function/task collisions),
+E4128 wrong arity, E4129 incompatible
 arguments, E4130 unresolved call signature/argument types, and E4131 ordinary
 return-contract errors. Arity uses the whole call range; argument errors use
 argument ranges. Return annotation/fallthrough errors use the declaration range;

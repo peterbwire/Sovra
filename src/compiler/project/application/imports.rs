@@ -54,6 +54,10 @@ pub(super) fn inspect(
         let mut seen = BTreeSet::new();
         let mut exports = BTreeMap::new();
         for function in functions {
+            if function.is_task {
+                seen.insert(&function.name);
+                exports.insert(function.name.clone(), None);
+            }
             if let Some(signature) = &function.signature {
                 if !seen.insert(&function.name) {
                     exports.insert(function.name.clone(), None);

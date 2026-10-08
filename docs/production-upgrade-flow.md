@@ -22,6 +22,11 @@ do not treat successful packaging as release approval.
 
 ## Current Checkpoint
 
+ADR 0014 Stage 1 is accepted and implemented for general executable process
+arguments, explicit EOF line input and immediate output. The task manager now
+executes interactive cases in both backends; durable file I/O is Stage 2 and
+still needs review.
+
 Unresolved member receivers now fail opt-in checking with E4133 rather than
 silently passing. Known and ambiguous services retain their specific diagnostics.
 

@@ -1,0 +1,4 @@
+fn main() {
+    print("before");
+    print(std::arg(0));
+}

@@ -1,0 +1,6 @@
+[project]
+name = "application-callable-collisions"
+entry = "main.svr"
+
+[services]
+mail = "external"

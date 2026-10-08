@@ -10,6 +10,11 @@ release plans are superseded; see the
 [production-readiness plan](docs/PRODUCTION_READINESS.md) for the audited gates
 and current implementation order.
 
+Repository-owned [dogfood applications](dogfood/README.md) exercise the local
+compiler and both execution engines. The task manager runs batch and interactive
+workflows; [dogfood status](docs/DOGFOOD_STATUS.md) records its persistence and
+capacity blockers and the remaining application roadmap.
+
 For the current module/stdlib/package boundaries, see the
 [library ecosystem assessment](docs/LIBRARY_ECOSYSTEM_ASSESSMENT.md) and
 [real HTTP dependency plan](docs/REAL_HTTP_APPLICATION_PLAN.md). The executable

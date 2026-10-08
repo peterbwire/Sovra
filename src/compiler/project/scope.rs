@@ -46,7 +46,15 @@ pub struct Scope<'a> {
 impl<'a> Scope<'a> {
     /// Create a root scope with no implicit service imports.
     pub fn new() -> Self {
-        Self::default()
+        let mut root = Self::default();
+        root.fields.insert(
+            crate::compiler::stdlib::INPUT_LINE_TYPE.to_owned(),
+            std::collections::HashMap::from([
+                ("eof".to_owned(), Type::Bool),
+                ("text".to_owned(), Type::String),
+            ]),
+        );
+        root
     }
 
     /// Create a nested scope. Its bindings cannot leak back into the parent.

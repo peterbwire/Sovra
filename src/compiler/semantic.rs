@@ -43,6 +43,7 @@ impl Type {
             "Int" => Self::Int,
             "Float" => Self::Float,
             "String" => Self::String,
+            "std::InputLine" => Self::Named("std::InputLine".to_owned()),
             _ => known_named_types
                 .and_then(|known| known.get(name).cloned())
                 .unwrap_or(Self::Unknown),
@@ -116,7 +117,14 @@ impl SemanticAnalyzer {
         let mut resolved_program = type_scopes::resolve(program)?;
         let program = &resolved_program;
         let named_types = collect_named_types(program, &mut diagnostics);
-        let struct_fields = collect_struct_fields(program, &named_types, &mut diagnostics);
+        let mut struct_fields = collect_struct_fields(program, &named_types, &mut diagnostics);
+        struct_fields.insert(
+            crate::compiler::stdlib::INPUT_LINE_TYPE.to_owned(),
+            HashMap::from([
+                ("eof".to_owned(), Type::Bool),
+                ("text".to_owned(), Type::String),
+            ]),
+        );
         let mut declared_functions = HashMap::new();
         for function in &program.functions {
             check_builtin_collision(&function.name, function.span, &mut diagnostics);
@@ -262,8 +270,10 @@ pub(crate) fn collect_named_types_with_imports(
         aliases: &mut HashMap<String, String>,
         diagnostics: &mut Diagnostics,
     ) {
-        if matches!(name, "Unit" | "Bool" | "Int" | "Float" | "String")
-            || aliases.contains_key(name)
+        if matches!(
+            name,
+            "Unit" | "Bool" | "Int" | "Float" | "String" | "std::InputLine"
+        ) || aliases.contains_key(name)
         {
             diagnostics.push(diagnostic(
                 "E3008",
@@ -281,8 +291,10 @@ pub(crate) fn collect_named_types_with_imports(
         structured_names: &mut HashSet<String>,
         diagnostics: &mut Diagnostics,
     ) {
-        if matches!(name, "Unit" | "Bool" | "Int" | "Float" | "String")
-            || structured_names.contains(name)
+        if matches!(
+            name,
+            "Unit" | "Bool" | "Int" | "Float" | "String" | "std::InputLine"
+        ) || structured_names.contains(name)
         {
             diagnostics.push(diagnostic(
                 "E3008",
@@ -357,6 +369,10 @@ pub(crate) fn collect_named_types_with_imports(
     }
 
     let mut resolved = imported.clone();
+    resolved.insert(
+        crate::compiler::stdlib::INPUT_LINE_TYPE.to_owned(),
+        Type::Named(crate::compiler::stdlib::INPUT_LINE_TYPE.to_owned()),
+    );
     for name in structured_names.iter() {
         resolved.insert(name.clone(), Type::Named(name.clone()));
     }
@@ -2038,6 +2054,27 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn process_input_builtins_reject_wrong_argument_contracts() {
+        let source = "fn main() { std::arg(\"zero\"); std::read_line(1); std::arg_count(1); }";
+        let program = crate::compiler::parser::Parser::new()
+            .parse_source(source)
+            .unwrap();
+        let diagnostics = SemanticAnalyzer::new().analyze(&program).unwrap_err();
+        let codes: Vec<_> = diagnostics.items.iter().map(|item| item.code).collect();
+        assert_eq!(codes, ["E3007", "E3006", "E3006"]);
+    }
+
+    #[test]
+    fn standard_input_line_identity_cannot_be_redeclared() {
+        let source = "mod std { export struct InputLine { eof: Bool, text: String } } fn main() {}";
+        let program = crate::compiler::parser::Parser::new()
+            .parse_source(source)
+            .unwrap();
+        let diagnostics = SemanticAnalyzer::new().analyze(&program).unwrap_err();
+        assert!(diagnostics.items.iter().any(|item| item.code == "E3008"));
     }
 
     #[test]

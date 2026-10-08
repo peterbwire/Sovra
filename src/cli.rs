@@ -86,7 +86,7 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
         return ExitCode::from(2);
     }
 
-    let help_requested = if command == "check" {
+    let help_requested = if command == "check" || command == "run" {
         args.iter()
             .take_while(|arg| arg.as_str() != "--")
             .any(|arg| arg == "--help" || arg == "-h")
@@ -100,7 +100,7 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
             println!("Usage: svr check [--format human|json] [--service-calls] <source.svr|project-directory>");
             println!("  --service-calls  Experimental project-only contract checks; incomplete coverage fails.");
         } else {
-            println!("Usage: svr run <source.svr|package-directory>");
+            println!("Usage: svr run <source.svr|package-directory> [-- <program-arg>...]");
         }
         return ExitCode::SUCCESS;
     }
@@ -127,7 +127,15 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
     }
 
     fn compile_command(command: &str, args: &[String]) -> ExitCode {
-        let (emit, source_args) = match parse_emit(command, args) {
+        let (compiler_args, program_args) = if command == "run" {
+            match args.iter().position(|argument| argument == "--") {
+                Some(index) => (&args[..index], &args[index + 1..]),
+                None => (args, &[][..]),
+            }
+        } else {
+            (args, &[][..])
+        };
+        let (emit, source_args) = match parse_emit(command, compiler_args) {
             Ok(parsed) => parsed,
             Err(message) => {
                 eprintln!("{message}");
@@ -141,7 +149,7 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
         let path = match source_args.first() {
             Some(path) if std::path::Path::new(path).is_dir() => {
                 return match compiler::project::packages::compile(path) {
-                    Ok(ir) => execute_ir(command, emit, &ir),
+                    Ok(ir) => execute_ir(command, emit, &ir, program_args),
                     Err(diagnostics) => {
                         print_diagnostics(diagnostics);
                         ExitCode::from(1)
@@ -181,14 +189,19 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
             }
         };
         let ir = compiler::ir::lower(&typed);
-        execute_ir(command, emit, &ir)
+        execute_ir(command, emit, &ir, program_args)
     }
     eprintln!("{message}.");
     eprintln!("See docs/roadmap.md for planned functionality.");
     ExitCode::from(1)
 }
 
-fn execute_ir(command: &str, emit: Emit, ir: &compiler::ir::IrProgram) -> ExitCode {
+fn execute_ir(
+    command: &str,
+    emit: Emit,
+    ir: &compiler::ir::IrProgram,
+    args: &[String],
+) -> ExitCode {
     if command == "build" {
         match emit {
             Emit::Ir => print!("{}", compiler::backend::render(ir)),
@@ -196,13 +209,9 @@ fn execute_ir(command: &str, emit: Emit, ir: &compiler::ir::IrProgram) -> ExitCo
         }
         return ExitCode::SUCCESS;
     }
-    match compiler::interpreter::run(ir) {
-        Ok(output) => {
-            for line in output {
-                println!("{line}");
-            }
-            ExitCode::SUCCESS
-        }
+    let mut host = compiler::interpreter::ProcessHost::new(args.to_vec());
+    match compiler::interpreter::run_with_host(ir, &mut host) {
+        Ok(_) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("svr: runtime error: {error}");
             ExitCode::from(1)

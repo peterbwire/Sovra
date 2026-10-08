@@ -66,6 +66,9 @@ rule applies to literals and scalar results of ordinary or service calls.
 Unknown receivers also fail: `missing.send()` and `missing.child.send()` produce
 E4133 because no callable contract is available. Import the declaring service
 directly and avoid shadowing it; the checker never assumes a service from its name.
+Functions and tasks in one source scope must have distinct declaration names.
+Duplicate tasks or a function/task name collision produce E4127; the conflicting
+function cannot be called locally or selected through an exported import.
 Use canonical primitive names; Any is not a user-defined wildcard annotation.
 Expression statements must also be checkable: `missing;` or `missing + 1;`
 produce E4137 rather than silently discarding unresolved values. A known local

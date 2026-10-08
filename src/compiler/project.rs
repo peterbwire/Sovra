@@ -1902,6 +1902,58 @@ mod tests {
     }
 
     #[test]
+    fn application_inspection_understands_standard_input_line_fields() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"input-inspection\"\nentry = \"main.svr\"",
+        );
+        project.write_file("main.svr", "fn main() { let line: std::InputLine = std::read_line(); if (line.eof) { print(line.text); } }");
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(
+            report.diagnostics.is_empty(),
+            "{:?}",
+            report.diagnostics.items
+        );
+        project.write_file(
+            "main.svr",
+            "fn main() { let line = std::read_line(); print(line.absent); }",
+        );
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(report
+            .diagnostics
+            .items
+            .iter()
+            .any(|item| item.code == "E4138"));
+    }
+
+    #[test]
+    fn task_collisions_with_exports_never_supply_imported_callables() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"collisions\"\nentry = \"main.svr\"",
+        );
+        project.write_file("main.svr", "use library;\nfn main() { library::work(); }");
+        for source in [
+            "export fn work() {}\ntask work() {}",
+            "task work() {}\nexport fn work() {}",
+        ] {
+            project.write_file("library.svr", source);
+            let report = application::check_service_calls(&check_project(project.path()).unwrap());
+            assert_eq!(
+                report
+                    .diagnostics
+                    .items
+                    .iter()
+                    .map(|error| error.code)
+                    .collect::<Vec<_>>(),
+                ["E4127", "E4133"]
+            );
+        }
+    }
+
+    #[test]
     fn task_parameters_resolve_local_aliases_and_direct_imported_records() {
         let project = TestProject::new();
         project.write_file(

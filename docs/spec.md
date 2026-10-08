@@ -357,6 +357,26 @@ the function's return value. Unresolved qualified names still produce E3004.
 
 ## M5 runtime contract
 
+### Process input (ADR 0014 Stage 1)
+
+`svr run <source.svr|package-directory> -- <argument>...` passes only arguments
+after the delimiter to the running program. `std::arg_count() -> Int` reports the
+count and `std::arg(index: Int) -> String` returns a zero-based argument; a
+negative or out-of-range index is a runtime error. Generated JavaScript accepts
+the corresponding arguments after its script path.
+
+`std::read_line() -> std::InputLine` returns the public nominal standard record
+with `eof: Bool` and `text: String`. EOF is distinct from an empty input line.
+One LF and its preceding CR are removed. Invalid UTF-8, read errors and lines
+longer than 1,048,576 UTF-8 bytes are runtime errors. The input-line identity is
+reserved; a source declaration cannot redefine `std::InputLine`.
+
+`print`, `std::print` and `std::println` write and flush their output line when
+called. Output produced before a later runtime error remains visible. The
+interpreter's Rust `run` API can still capture output for tests; process execution
+uses a streaming host. See [process input](course/process-input.md). Filesystem
+read/write APIs and persistent handles are outside this implemented stage.
+
 ### Numeric execution
 
 `Int` uses signed 64-bit values; out-of-range literals produce `E3012` during
@@ -659,7 +679,11 @@ aliases and direct imported records; unresolved names produce E4131 at the task
 declaration. This does not define omitted task results or validate task return
 paths, scheduling, or execution; those task contracts remain partial.
 
-E4127 identifies duplicate ordinary declarations. E4128 identifies wrong arity at
+E4127 identifies duplicate ordinary/task declarations in the same source scope,
+including function/task name collisions. Colliding names provide no selectable
+ordinary signature locally or through exported imports, regardless of declaration
+order. Service operation names remain scoped to their service.
+E4128 identifies wrong arity at
 the whole call; E4129 identifies incompatible arguments at the argument expression;
 E4130 identifies unresolved call signatures or argument types. E4131 identifies
 ordinary return-contract failures: unresolved return annotations, possible fallthrough,

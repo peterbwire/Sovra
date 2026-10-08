@@ -1,0 +1,184 @@
+// Bounded, in-memory batch application. No shared compound mutation is required.
+struct Task { id: Int, title: String, done: Bool }
+struct Tasks { first: Task, second: Task, third: Task, next_id: Int }
+
+fn empty_task() -> Task {
+    return Task { id: 0, title: "", done: false };
+}
+
+fn empty_tasks() -> Tasks {
+    return Tasks { first: empty_task(), second: empty_task(), third: empty_task(), next_id: 1 };
+}
+
+fn replace_task(tasks: Tasks, slot: Int, task: Task, next_id: Int) -> Tasks {
+    if slot == 1 {
+        return Tasks { first: task, second: tasks.second, third: tasks.third, next_id: next_id };
+    }
+    if slot == 2 {
+        return Tasks { first: tasks.first, second: task, third: tasks.third, next_id: next_id };
+    }
+    return Tasks { first: tasks.first, second: tasks.second, third: task, next_id: next_id };
+}
+
+fn add(tasks: Tasks, title: String) -> Tasks {
+    if std::len(title) == 0 {
+        print("error: empty title");
+        return tasks;
+    }
+    if find_title_slot(tasks, title) > 0 {
+        print("error: duplicate title");
+        return tasks;
+    }
+    let mut slot = 0;
+    if tasks.first.id == 0 { slot = 1; }
+    else if tasks.second.id == 0 { slot = 2; }
+    else if tasks.third.id == 0 { slot = 3; }
+    if slot == 0 {
+        print("error: capacity 3");
+        return tasks;
+    }
+    let task = Task { id: tasks.next_id, title: title, done: false };
+    print("added " + std::to_string(task.id));
+    return replace_task(tasks, slot, task, tasks.next_id + 1);
+}
+
+fn find_slot(tasks: Tasks, id: Int) -> Int {
+    if id <= 0 { return 0; }
+    if (tasks.first.id == id) { return 1; }
+    if (tasks.second.id == id) { return 2; }
+    if (tasks.third.id == id) { return 3; }
+    return 0;
+}
+
+fn find_title_slot(tasks: Tasks, title: String) -> Int {
+    if (tasks.first.id > 0 && tasks.first.title == title) { return 1; }
+    if (tasks.second.id > 0 && tasks.second.title == title) { return 2; }
+    if (tasks.third.id > 0 && tasks.third.title == title) { return 3; }
+    return 0;
+}
+
+fn task_at(tasks: Tasks, slot: Int) -> Task {
+    if slot == 1 { return tasks.first; }
+    if slot == 2 { return tasks.second; }
+    return tasks.third;
+}
+
+fn complete(tasks: Tasks, id: Int) -> Tasks {
+    let slot = find_slot(tasks, id);
+    if slot == 0 {
+        print("error: missing " + std::to_string(id));
+        return tasks;
+    }
+    let task = task_at(tasks, slot);
+    print("completed " + std::to_string(id));
+    return replace_task(tasks, slot, Task { id: task.id, title: task.title, done: true }, tasks.next_id);
+}
+
+fn remove(tasks: Tasks, id: Int) -> Tasks {
+    let slot = find_slot(tasks, id);
+    if slot == 0 {
+        print("error: missing " + std::to_string(id));
+        return tasks;
+    }
+    print("deleted " + std::to_string(id));
+    return replace_task(tasks, slot, empty_task(), tasks.next_id);
+}
+
+fn list(tasks: Tasks) {
+    print("tasks:");
+    let mut slot = 1;
+    let mut count = 0;
+    while slot <= 3 {
+        let task = task_at(tasks, slot);
+        if task.id > 0 {
+            let mut status = "open";
+            if (task.done) { status = "done"; }
+            print(std::to_string(task.id) + " | " + status + " | " + task.title);
+            count = count + 1;
+        }
+        slot = slot + 1;
+    }
+    print("count " + std::to_string(count));
+}
+
+fn complete_title(tasks: Tasks, title: String) -> Tasks {
+    let slot = find_title_slot(tasks, title);
+    if slot == 0 {
+        print("error: missing title " + title);
+        return tasks;
+    }
+    return complete(tasks, task_at(tasks, slot).id);
+}
+
+fn remove_title(tasks: Tasks, title: String) -> Tasks {
+    let slot = find_title_slot(tasks, title);
+    if slot == 0 {
+        print("error: missing title " + title);
+        return tasks;
+    }
+    return remove(tasks, task_at(tasks, slot).id);
+}
+
+fn interactive() {
+    let mut tasks = empty_tasks();
+    print("Task Manager");
+    print("commands: add, list, complete, delete, quit");
+    let mut running = true;
+    while (running) {
+        print("command:");
+        let command = std::read_line();
+        if (command.eof) {
+            print("bye");
+            return;
+        }
+        if command.text == "quit" {
+            print("bye");
+            running = false;
+        } else if command.text == "list" {
+            list(tasks);
+        } else if command.text == "add" || command.text == "complete" || command.text == "delete" {
+            print("title:");
+            let input = std::read_line();
+            if (input.eof) {
+                print("error: unexpected EOF");
+                return;
+            }
+            if command.text == "add" { tasks = add(tasks, input.text); }
+            else if command.text == "complete" { tasks = complete_title(tasks, input.text); }
+            else { tasks = remove_title(tasks, input.text); }
+        } else {
+            print("error: unknown command " + command.text);
+        }
+    }
+}
+
+fn main() {
+    if std::arg_count() > 0 {
+        if std::arg(0) == "interactive" {
+            interactive();
+            return;
+        }
+        print("error: expected interactive");
+        return;
+    }
+    let mut tasks = empty_tasks();
+    list(tasks);
+    tasks = add(tasks, "Write tests");
+    tasks = add(tasks, "Review café release");
+    tasks = add(tasks, "Ship documentation");
+    tasks = add(tasks, "Overflow");
+    tasks = add(tasks, "");
+    tasks = complete(tasks, 2);
+    tasks = complete(tasks, 2);
+    tasks = complete(tasks, 99);
+    list(tasks);
+    tasks = remove(tasks, 1);
+    tasks = remove(tasks, 1);
+    tasks = remove(tasks, 0);
+    tasks = add(tasks, "Replacement");
+    list(tasks);
+    tasks = remove(tasks, 2);
+    tasks = remove(tasks, 3);
+    tasks = remove(tasks, 4);
+    list(tasks);
+}

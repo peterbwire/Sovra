@@ -33,6 +33,17 @@ jobs:
       - run: cargo test --locked --all-targets
       - run: cargo test --locked --doc
       - run: cargo build --locked
+      - name: Dogfood application behavior (interpreter and JavaScript)
+        run: node scripts/test-dogfood.mjs
+      - name: Process input and streaming output parity
+        run: node scripts/test-host-input.mjs
+      - name: Upload dogfood evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dogfood-${{ matrix.os }}
+          path: target/dogfood/
+          if-no-files-found: ignore
       - run: node scripts/probe-compiler-depth.mjs --assert-limits
 
   msrv:

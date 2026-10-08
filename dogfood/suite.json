@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "applications": [
+    {
+      "id": "01-task-manager",
+      "source": "01-task-manager/main.svr",
+      "cases": [
+        { "id": "batch", "stdout": "01-task-manager/expected.stdout" },
+        { "id": "interactive", "args": ["interactive"], "stdin": "01-task-manager/interactive.stdin", "stdout": "01-task-manager/interactive.stdout" },
+        { "id": "empty-input", "args": ["interactive"], "stdout": "01-task-manager/empty-input.stdout" },
+        { "id": "mid-command-eof", "args": ["interactive"], "stdin": "01-task-manager/mid-command-eof.stdin", "stdout": "01-task-manager/mid-command-eof.stdout" }
+      ]
+    }
+  ]
+}

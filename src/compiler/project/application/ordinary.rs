@@ -23,6 +23,13 @@ pub(super) fn check(functions: &[FunctionCalls], file: &Path, diagnostics: &mut 
         });
     };
     for function in functions {
+        if (function.is_task || function.signature.is_some()) && !names.insert(&function.name) {
+            emit(
+                "E4127",
+                format!("duplicate application callable `{}`", function.name),
+                function.span,
+            );
+        }
         if function.task_return_annotation == Some(Type::Unknown) {
             emit(
                 "E4131",
@@ -85,13 +92,6 @@ pub(super) fn check(functions: &[FunctionCalls], file: &Path, diagnostics: &mut 
                         "ordinary function `{}` collides with a builtin callable",
                         function.name
                     ),
-                    function.span,
-                );
-            }
-            if !names.insert(&function.name) {
-                emit(
-                    "E4127",
-                    format!("duplicate ordinary function `{}`", function.name),
                     function.span,
                 );
             }

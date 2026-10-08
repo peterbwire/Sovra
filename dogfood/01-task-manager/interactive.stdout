@@ -1,0 +1,38 @@
+Task Manager
+commands: add, list, complete, delete, quit
+command:
+tasks:
+count 0
+command:
+title:
+added 1
+command:
+title:
+error: duplicate title
+command:
+title:
+added 2
+command:
+title:
+completed 1
+command:
+title:
+error: missing title missing
+command:
+tasks:
+1 | done | Review café release
+2 | open | Write tests
+count 2
+command:
+title:
+deleted 2
+command:
+title:
+added 3
+command:
+tasks:
+1 | done | Review café release
+3 | open | Replacement
+count 2
+command:
+bye

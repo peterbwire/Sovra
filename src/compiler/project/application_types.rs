@@ -116,6 +116,7 @@ impl Aliases {
                     .and_then(|fields| fields.get(&field.name))
                 {
                     if !exported.contains(target.as_str())
+                        && target != crate::compiler::stdlib::INPUT_LINE_TYPE
                         && !imported
                             .values()
                             .any(|kind| kind == &Type::Named(target.clone()))
@@ -136,7 +137,9 @@ impl Aliases {
         }
         let qualify = |kind: &mut Type| {
             if let Type::Named(name) = kind {
-                if !name.starts_with("application:") {
+                if !name.starts_with("application:")
+                    && name != crate::compiler::stdlib::INPUT_LINE_TYPE
+                {
                     *name = format!("application:{owner}::{name}");
                 }
             }
@@ -307,8 +310,12 @@ mod tests {
         let report = aliases(
             "fn main() { type Hidden = Int; } // type Comment = Bool;\ntype Visible = String;",
         );
-        assert_eq!(report.types.len(), 1);
+        assert_eq!(report.types.len(), 2);
         assert_eq!(report.types["Visible"], Type::String);
+        assert_eq!(
+            report.types[crate::compiler::stdlib::INPUT_LINE_TYPE],
+            Type::Named(crate::compiler::stdlib::INPUT_LINE_TYPE.to_owned())
+        );
     }
 
     #[test]

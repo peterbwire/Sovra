@@ -1,6 +1,7 @@
 //! Minimal stack-based interpreter for the current IR.
 
 use std::collections::HashMap;
+use std::io::{BufRead, Read, Write};
 
 use crate::compiler::ir::{Instruction, IrFunction, IrProgram, Literal, MAX_CALL_DEPTH};
 use crate::compiler::stdlib;
@@ -59,13 +60,98 @@ impl Value {
 
 /// Execute the `main` function and return captured `print` output.
 pub fn run(program: &IrProgram) -> Result<Vec<String>, String> {
+    run_with_host(program, &mut MemoryHost)
+}
+
+/// Host services consumed by general-purpose process input and output builtins.
+pub trait RuntimeHost {
+    /// Program arguments after the CLI delimiter.
+    fn arguments(&self) -> &[String];
+    /// Read one UTF-8 line, or return None at EOF.
+    fn read_line(&mut self) -> Result<Option<String>, String>;
+    /// Publish one output line when a print call executes.
+    fn write_line(&mut self, line: &str) -> Result<(), String>;
+}
+
+#[derive(Debug)]
+struct MemoryHost;
+
+impl RuntimeHost for MemoryHost {
+    fn arguments(&self) -> &[String] {
+        &[]
+    }
+    fn read_line(&mut self) -> Result<Option<String>, String> {
+        Ok(None)
+    }
+    fn write_line(&mut self, _: &str) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+/// Host backed by the current process streams; output is flushed before reads.
+#[derive(Debug)]
+pub struct ProcessHost {
+    arguments: Vec<String>,
+}
+
+impl ProcessHost {
+    /// Construct a process host with arguments supplied after `--`.
+    pub fn new(arguments: Vec<String>) -> Self {
+        Self { arguments }
+    }
+}
+
+impl RuntimeHost for ProcessHost {
+    fn arguments(&self) -> &[String] {
+        &self.arguments
+    }
+
+    fn read_line(&mut self) -> Result<Option<String>, String> {
+        let mut bytes = Vec::new();
+        let limit = (stdlib::MAX_INPUT_LINE_BYTES + 3) as u64;
+        let count = std::io::stdin()
+            .lock()
+            .take(limit)
+            .read_until(b'\n', &mut bytes)
+            .map_err(|error| format!("standard input read failed: {error}"))?;
+        if count == 0 {
+            return Ok(None);
+        }
+        let terminated = bytes.last() == Some(&b'\n');
+        if terminated {
+            bytes.pop();
+        }
+        if terminated && bytes.last() == Some(&b'\r') {
+            bytes.pop();
+        }
+        if bytes.len() > stdlib::MAX_INPUT_LINE_BYTES {
+            return Err("standard input line exceeds 1048576 bytes".into());
+        }
+        String::from_utf8(bytes)
+            .map(Some)
+            .map_err(|_| "standard input is not valid UTF-8".into())
+    }
+
+    fn write_line(&mut self, line: &str) -> Result<(), String> {
+        let mut stdout = std::io::stdout().lock();
+        writeln!(stdout, "{line}")
+            .and_then(|_| stdout.flush())
+            .map_err(|error| format!("standard output write failed: {error}"))
+    }
+}
+
+/// Execute `main` using a caller-supplied host, retaining output for inspection.
+pub fn run_with_host(
+    program: &IrProgram,
+    host: &mut dyn RuntimeHost,
+) -> Result<Vec<String>, String> {
     crate::compiler::ir::validate_declarations(program)?;
     let function = program
         .functions
         .iter()
         .find(|function| function.name == "main")
         .ok_or_else(|| "entry function `main` was not found".to_owned())?;
-    let (output, _) = execute_function(function, &[], program)?;
+    let (output, _) = execute_function(function, &[], program, host)?;
     Ok(output)
 }
 
@@ -103,6 +189,7 @@ fn execute_function(
     function: &IrFunction,
     arguments: &[Value],
     program: &IrProgram,
+    host: &mut dyn RuntimeHost,
 ) -> Result<(Vec<String>, Value), String> {
     let mut frames = vec![call_frame(function, arguments)?];
     let mut output = Vec::new();
@@ -332,7 +419,13 @@ fn execute_function(
                     }
                     call_arguments.reverse();
                     if stdlib::lookup(name).is_some() {
-                        execute_std_call(name, &call_arguments, &mut output, &mut frame.stack)?;
+                        execute_std_call(
+                            name,
+                            &call_arguments,
+                            &mut output,
+                            &mut frame.stack,
+                            host,
+                        )?;
                     } else {
                         let callee = program
                             .functions
@@ -378,6 +471,7 @@ fn execute_std_call(
     arguments: &[Value],
     output: &mut Vec<String>,
     stack: &mut Vec<Value>,
+    host: &mut dyn RuntimeHost,
 ) -> Result<(), String> {
     let function = stdlib::lookup(name).expect("standard-library call was already checked");
     if arguments.len() != function.parameters.len() {
@@ -388,8 +482,35 @@ fn execute_std_call(
     }
     match function.name {
         "std::print" | "std::println" => {
-            output.push(arguments[0].display());
+            let line = arguments[0].display();
+            host.write_line(&line)?;
+            output.push(line);
             stack.push(Value::Unit);
+        }
+        "std::arg_count" => {
+            let count = i64::try_from(host.arguments().len())
+                .map_err(|_| "program argument count exceeds Int range".to_owned())?;
+            stack.push(Value::Int(count));
+        }
+        "std::arg" => {
+            let Value::Int(index) = &arguments[0] else {
+                return Err("std::arg expects an Int index".into());
+            };
+            let value = usize::try_from(*index)
+                .ok()
+                .and_then(|index| host.arguments().get(index))
+                .ok_or_else(|| "program argument index out of bounds".to_owned())?;
+            stack.push(Value::String(value.clone()));
+        }
+        "std::read_line" => {
+            let line = host.read_line()?;
+            stack.push(Value::Struct(Box::new(StructValue {
+                type_name: stdlib::INPUT_LINE_TYPE.into(),
+                fields: vec![
+                    ("eof".into(), Value::Bool(line.is_none())),
+                    ("text".into(), Value::String(line.unwrap_or_default())),
+                ],
+            })));
         }
         "std::len" => {
             let value = match &arguments[0] {

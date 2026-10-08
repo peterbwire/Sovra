@@ -1,0 +1,12 @@
+fn main() {
+    print(std::arg_count());
+    if (std::arg_count() > 0) { print(std::arg(0)); }
+    let first: std::InputLine = std::read_line();
+    print(first.eof);
+    print(first.text);
+    let second = std::read_line();
+    print(second.eof);
+    print(second.text);
+    let third = std::read_line();
+    print(third.eof);
+}

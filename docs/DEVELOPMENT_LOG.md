@@ -1,5 +1,78 @@
 # Development log
 
+## 2026-10-08: General CLI input and interactive dogfood
+
+- User approved ADR 0014 Stage 1. Added `svr run <source|package> -- args`,
+  `std::arg_count`, `std::arg`, and `std::read_line() -> std::InputLine` with
+  distinct EOF and empty-line states. The public nominal record has Bool `eof`
+  and String `text` fields; source and application checkers validate field use.
+- Process output now flushes at each print call in the Rust host and generated
+  Node.js. Earlier printed lines remain visible on later failures. The Rust
+  `RuntimeHost` allows deterministic host tests; process input has a 1 MiB UTF-8
+  line limit, CRLF handling and matching argument-index errors.
+- The task manager now accepts interactive add/list/complete/delete/quit commands
+  by unique title. The dogfood runner supports multiple cases, program arguments
+  and stdin fixtures. Four cases cover batch, interaction, clean EOF and missing
+  command data. Separate subprocess tests verify parity for Unicode, empty lines,
+  malformed UTF-8, oversized input, invalid argument indices, output retained on
+  failure and prompt visibility before input in both engines.
+- Exact 1 MiB input and output were tested in both engines. Generated JavaScript
+  now loops over partial synchronous writes so long printed lines are not cut off.
+- A focused failing semantic regression reproduced redeclaration of
+  `std::InputLine`; E3008 now reserves its identity. Application nominal mapping
+  preserves that standard identity instead of rewriting it as a source-local
+  record. No task-manager-specific compiler behavior was introduced.
+- Validation: **330 library + 42 CLI = 372 passed**, with Windows CLI execution
+  required (`target/stage1-host-input-tests.log`). Local dogfood and host-input
+  scripts passed on interpreter and generated Node.js. Strict Clippy, formatting
+  and whitespace checks passed. Hosted CI execution remains to be observed.
+- A semantic test rejects invalid input-builtin arity and argument type. The CLI
+  delimiter treats `--help` after `--` as program data.
+- Stage 2 file persistence is still proposed; dynamic storage and release gates
+  remain open. ADR 0015 now proposes a concrete file I/O and atomic-write
+  contract. Parsing helpers are also needed before durable task state can be
+  claimed; expand dogfood into package and file workloads as capabilities land.
+
+## 2026-10-08: Establish repository dogfood infrastructure
+
+- Inspected project guidance, executable syntax, stdlib, CLI, Rust tests and CI;
+  reported capabilities, missing host I/O and approval boundaries before changes.
+- Added `dogfood/01-task-manager/main.svr`: bounded in-memory add/list/complete/
+  delete logic using existing records, functions, control flow and strings. Its
+  29-line behavioral transcript covers rejection, Unicode, idempotence, deletion,
+  slot reuse and final empty state. No application-specific compiler code exists.
+- Added a manifest-driven Node runner using the locally built binary for source
+  checks, IR/JS builds and real interpreter/JS execution. Missing binaries, errors,
+  timeouts and output mismatches fail; JSON/artifacts are retained per run. CI runs
+  it on the existing three-platform matrix after building and uploads evidence.
+- Added dogfood documentation and all seven roadmap applications to
+  `docs/DOGFOOD_STATUS.md`. Interactive input, persistence and scalable collections
+  remain blocked on general APIs/approved contracts. The task manager is Partial,
+  not a completed interactive CLI. No language decisions were silently selected.
+- Validation: dogfood passed on Windows in both engines; a missing compiler
+  produced exit 1 as required. Existing **327 library + 42 CLI = 369 tests passed**
+  with CLI execution required (`target/dogfood-compiler-tests.log`). Strict Clippy,
+  formatting and whitespace checks passed. Hosted CI execution is pending.
+- The source initially hit identifier-ended condition/record-literal ambiguity;
+  explicit parentheses use existing syntax. No compiler fix is claimed. Next:
+  propose general-purpose input/EOF/error contracts and add an interactive slice
+  after approval, while preserving the working batch regression baseline.
+
+## 2026-10-08: Reject duplicate task/callable declarations
+
+- Reproduced accepted duplicate tasks and function/task name collisions. E4127
+  now covers both in the source's callable scope; service operations retain their
+  own service scope. Colliding ordinary interfaces are unavailable locally and
+  to importing consumers, independent of declaration order.
+- Added local collision/call-resolution regressions, a cross-file test for both
+  declaration orders, and CLI JSON coverage for an invalid exported interface.
+- Validation: full suite passed **326 library + 42 CLI**, with Windows CLI
+  execution required (`target/v1-callable-collisions-tests.log`). The subsequently
+  added cross-file order regression also passed, bringing verified tests to
+  **369 total**. Strict Clippy, formatting and whitespace checks passed.
+- M12 remains partial. Next: audit remaining declaration namespace boundaries
+  and supported application syntax coverage; runtime and publishing remain open.
+
 ## 2026-10-08: Reject unresolved member-call contracts
 
 - Reproduced silently accepted calls on missing and nested unresolved receivers.

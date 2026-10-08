@@ -47,12 +47,54 @@ pub fn render_javascript(program: &IrProgram) -> String {
     let mut output = String::new();
     let _ = writeln!(output, "\"use strict\";");
     let _ = writeln!(output);
-    let _ = writeln!(output, "const svrOutput = [];");
+    let _ = writeln!(output, "const svrFs = require(\"node:fs\");");
+    let _ = writeln!(output, "const svrArgv = process.argv.slice(2);");
     let _ = writeln!(output, "const svrFunctions = Object.create(null);");
     let _ = writeln!(output, "let svrCallDepth = 0;");
     output.push_str(include_str!("numeric_runtime.js"));
     output.push_str(
         r#"
+let svrInputBuffer = Buffer.alloc(0);
+let svrInputEof = false;
+function svrReadLine() {
+  while (true) {
+    const newline = svrInputBuffer.indexOf(10);
+    if (newline !== -1 || svrInputEof) {
+      if (newline === -1 && svrInputBuffer.length === 0) {
+        return { __svrStruct: { typeName: "std::InputLine",
+          fields: { eof: true, text: "" }, fieldOrder: ["eof", "text"] } };
+      }
+      const length = newline === -1 ? svrInputBuffer.length : newline;
+      let bytes = svrInputBuffer.subarray(0, length);
+      svrInputBuffer = newline === -1 ? Buffer.alloc(0) : svrInputBuffer.subarray(newline + 1);
+      if (newline !== -1 && bytes.at(-1) === 13) bytes = bytes.subarray(0, bytes.length - 1);
+      if (bytes.length > 1048576) throw new Error("standard input line exceeds 1048576 bytes");
+      let text;
+      try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); }
+      catch { throw new Error("standard input is not valid UTF-8"); }
+      return { __svrStruct: { typeName: "std::InputLine",
+        fields: { eof: false, text }, fieldOrder: ["eof", "text"] } };
+    }
+    if (svrInputBuffer.length > 1048577) throw new Error("standard input line exceeds 1048576 bytes");
+    const chunk = Buffer.allocUnsafe(4096);
+    let count;
+    try { count = svrFs.readSync(0, chunk, 0, chunk.length, null); }
+    catch (error) { throw new Error("standard input read failed: " + (error.code ?? error.message)); }
+    if (count === 0) svrInputEof = true;
+    else svrInputBuffer = Buffer.concat([svrInputBuffer, chunk.subarray(0, count)]);
+  }
+}
+function svrWriteLine(value) {
+  const bytes = Buffer.from(svrDisplay(value) + "\n", "utf-8");
+  let written = 0;
+  while (written < bytes.length) {
+    let count;
+    try { count = svrFs.writeSync(1, bytes, written, bytes.length - written); }
+    catch (error) { throw new Error("standard output write failed: " + (error.code ?? error.message)); }
+    if (count <= 0) throw new Error("standard output write failed");
+    written += count;
+  }
+}
 function svrDisplay(value) {
   if (value === undefined) return "";
   if (Array.isArray(value)) return "[" + value.map(svrDisplay).join(", ") + "]";
@@ -85,10 +127,6 @@ function svrDisplay(value) {
         "if (!svrFunctions.main) throw new Error(\"entry function `main` was not found\");"
     );
     let _ = writeln!(output, "svrFunctions.main();");
-    let _ = writeln!(
-        output,
-        "for (const line of svrOutput) console.log(String(line));"
-    );
     output
 }
 
@@ -350,8 +388,19 @@ fn render_js_call(output: &mut String, name: &str, arguments: usize) {
     );
     match name {
         "print" | "std::print" | "std::println" => {
-            let _ = writeln!(output, "    svrOutput.push(svrDisplay(args[0]));");
+            let _ = writeln!(output, "    svrWriteLine(args[0]);");
             let _ = writeln!(output, "    stack.push(undefined);");
+        }
+        "std::arg_count" => {
+            let _ = writeln!(output, "    stack.push(BigInt(svrArgv.length));");
+        }
+        "std::arg" => {
+            let _ = writeln!(output, "    if (typeof args[0] !== \"bigint\") throw new Error(\"std::arg expects an Int index\");");
+            let _ = writeln!(output, "    if (args[0] < 0n || args[0] >= BigInt(svrArgv.length)) throw new Error(\"program argument index out of bounds\");");
+            let _ = writeln!(output, "    stack.push(svrArgv[Number(args[0])]);");
+        }
+        "std::read_line" => {
+            let _ = writeln!(output, "    stack.push(svrReadLine());");
         }
         "std::len" => {
             let _ = writeln!(output, "    if (typeof args[0] !== \"string\") throw new Error(\"std::len expects a String argument\");");
@@ -1669,6 +1718,6 @@ mod tests {
         });
         assert!(output.contains("function svr_fn_0()"));
         assert!(output.contains("svrFunctions[\"main\"] = svr_fn_0;"));
-        assert!(output.contains("console.log"));
+        assert!(output.contains("svrWriteLine(args[0])"));
     }
 }

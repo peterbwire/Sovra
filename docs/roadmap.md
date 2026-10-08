@@ -189,6 +189,12 @@ policy, and page tests.
 
 ## M14 — Application Runtime
 
+Implemented foundation (ADR 0014 Stage 1): executable program arguments,
+UTF-8 line input with explicit EOF, and immediately flushed output in the Rust
+interpreter and generated Node.js. The repository task manager dogfoods an
+interactive command loop. File persistence, resource lifecycle, HTTP hosting
+and scalable task storage remain open; see `docs/DOGFOOD_STATUS.md`.
+
 Make `svr run <project>` start an integrated application with APIs, pages,
 auth, background tasks, concurrency, and external services.
 

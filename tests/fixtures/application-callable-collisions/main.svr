@@ -1,0 +1,10 @@
+use library;
+
+service mail {
+    fn send(value: String);
+}
+
+fn main() {
+    mail.send("valid");
+    library::work();
+}

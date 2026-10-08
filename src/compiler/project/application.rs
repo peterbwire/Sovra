@@ -653,7 +653,7 @@ pub struct FunctionSignature {
 impl FunctionSignature {
     pub(super) fn exposes_private_records(&self) -> bool {
         self.parameters.iter().chain(std::iter::once(&self.return_type)).any(|kind| {
-            matches!(kind, Type::Named(identity) if !self.record_fields.contains_key(identity))
+            matches!(kind, Type::Named(identity) if identity != crate::compiler::stdlib::INPUT_LINE_TYPE && !self.record_fields.contains_key(identity))
         })
     }
     fn accepts(&self, index: usize, actual: &Type) -> bool {
@@ -788,6 +788,9 @@ fn inspect_functions_in_module(
         }
     }
     for function in &preliminary {
+        if function.is_task {
+            ordinary.insert(function.name.clone(), None);
+        }
         if let Some(signature) = &function.signature {
             ordinary
                 .entry(function.name.clone())
@@ -1774,6 +1777,29 @@ mod tests {
         let functions = inspect_functions(source, &[]).unwrap();
         assert_eq!(functions[0].conditions[0].0, Some(Type::Bool));
         assert!(functions[0].operator_errors.is_empty());
+    }
+
+    #[test]
+    fn duplicate_tasks_and_function_task_collisions_are_rejected() {
+        for source in [
+            "task work() {} task work() {}",
+            "fn work() {} task work() {}",
+            "task work() {} fn work() {}",
+        ] {
+            let functions = inspect_functions(source, &[]).unwrap();
+            let mut diagnostics = crate::compiler::diagnostics::Diagnostics::new();
+            ordinary::check(
+                &functions,
+                std::path::Path::new("main.svr"),
+                &mut diagnostics,
+            );
+            assert_eq!(diagnostics.items.len(), 1, "{source}");
+            assert_eq!(diagnostics.items[0].code, "E4127");
+            let with_call = format!("{source} fn main() {{ work(); }}");
+            let functions = inspect_functions(&with_call, &[]).unwrap();
+            assert!(functions.last().unwrap().function_calls.is_empty());
+            assert_eq!(functions.last().unwrap().unresolved_calls.len(), 1);
+        }
     }
 
     #[test]

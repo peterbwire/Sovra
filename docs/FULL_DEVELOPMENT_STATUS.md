@@ -1,5 +1,12 @@
 # Full development status
 
+ADR 0014 Stage 1 is accepted and implemented: source/package `run` passes program
+arguments after `--`, the standard library provides argument access and explicit
+EOF UTF-8 line input, and output is flushed when printed in both execution hosts.
+The in-memory task manager dogfoods an interactive loop. File persistence,
+growable storage, HTTP application execution and full M14 acceptance remain open.
+ADR 0015 proposes text-file I/O and atomic replacement; it is not yet approved.
+
 Imported record alias targets and field declarations now resolve through shared
 module interfaces. Service contracts and bodies consume the same snapshot and
 resolved identities. Private, invalid and partially inspected exporters supply

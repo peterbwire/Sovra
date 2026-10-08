@@ -736,6 +736,7 @@ fn service_call_cli_reports_errors_and_incomplete_coverage() {
     let root = env!("CARGO_MANIFEST_DIR");
     for (relative, exit, codes, complete) in [
         ("examples/service-contracts", 0, "[]", true),
+        ("tests/fixtures/application-callable-collisions", 1, "['E4127', 'E4133']", true),
         ("tests/fixtures/application-unresolved-members", 1, "['E4133', 'E4133']", true),
         ("tests/fixtures/application-scalar-member-calls", 1, "['E4133', 'E4133', 'E4133']", true),
         ("examples/application-record-imports", 0, "[]", true),
@@ -1181,7 +1182,7 @@ fn build_command_emits_javascript_backend() {
     let javascript = String::from_utf8_lossy(&output.stdout);
     assert!(javascript.contains("\"use strict\";"));
     assert!(javascript.contains("svrFunctions[\"main\"] = svr_fn_0;"));
-    assert!(javascript.contains("console.log"));
+    assert!(javascript.contains("svrWriteLine(args[0])"));
 }
 
 #[test]

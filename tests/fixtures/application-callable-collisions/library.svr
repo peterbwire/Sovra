@@ -1,0 +1,2 @@
+export fn work() {}
+task work() {}

@@ -14,6 +14,14 @@ pub struct StdFunction {
 const PRINT_PARAMETERS: &[&str] = &["Any"];
 const LEN_PARAMETERS: &[&str] = &["String"];
 const TO_STRING_PARAMETERS: &[&str] = &["Any"];
+const NO_PARAMETERS: &[&str] = &[];
+const INDEX_PARAMETERS: &[&str] = &["Int"];
+
+/// Maximum byte length of one line returned from standard input.
+pub const MAX_INPUT_LINE_BYTES: usize = 1024 * 1024;
+
+/// Public nominal identity of the standard input line record.
+pub const INPUT_LINE_TYPE: &str = "std::InputLine";
 
 const FUNCTIONS: &[StdFunction] = &[
     StdFunction {
@@ -35,6 +43,21 @@ const FUNCTIONS: &[StdFunction] = &[
         name: "std::to_string",
         parameters: TO_STRING_PARAMETERS,
         return_type: "String",
+    },
+    StdFunction {
+        name: "std::arg_count",
+        parameters: NO_PARAMETERS,
+        return_type: "Int",
+    },
+    StdFunction {
+        name: "std::arg",
+        parameters: INDEX_PARAMETERS,
+        return_type: "String",
+    },
+    StdFunction {
+        name: "std::read_line",
+        parameters: NO_PARAMETERS,
+        return_type: INPUT_LINE_TYPE,
     },
 ];
 
@@ -69,7 +92,15 @@ mod tests {
         let names: Vec<_> = functions().iter().map(|function| function.name).collect();
         assert_eq!(
             names,
-            vec!["std::print", "std::println", "std::len", "std::to_string"]
+            vec![
+                "std::print",
+                "std::println",
+                "std::len",
+                "std::to_string",
+                "std::arg_count",
+                "std::arg",
+                "std::read_line"
+            ]
         );
     }
 
