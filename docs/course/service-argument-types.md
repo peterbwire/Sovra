@@ -57,6 +57,15 @@ coverage too. A declared return type alone does not mean the call is valid.
 E4134 rejects unresolved ordinary function and task parameter annotations even in
 unused declarations. Task parameters accept resolved aliases and directly imported
 exported records; this validation does not make tasks callable as ordinary functions.
+Explicit task return annotations use the same name resolution. For example,
+`task refresh() -> Missing {}` fails with E4131 even if unused. Resolving the
+annotation does not yet establish task return-path or runtime correctness.
+Known scalar receivers cannot supply service operations: a parameter declared
+`mail: String` shadows service `mail`, so `mail.send()` produces E4133. The same
+rule applies to literals and scalar results of ordinary or service calls.
+Unknown receivers also fail: `missing.send()` and `missing.child.send()` produce
+E4133 because no callable contract is available. Import the declaring service
+directly and avoid shadowing it; the checker never assumes a service from its name.
 Use canonical primitive names; Any is not a user-defined wildcard annotation.
 Expression statements must also be checkable: `missing;` or `missing + 1;`
 produce E4137 rather than silently discarding unresolved values. A known local

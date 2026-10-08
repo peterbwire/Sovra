@@ -651,9 +651,13 @@ are rejected and do not provide a selectable signature. Tasks and service operat
 are excluded from bare ordinary function resolution. Named application types and general unknown-name resolution
 remain unfinished. Unsupported parameter annotations retain Unknown; calls using
 such interfaces fail validation rather than supplying result types.
-E4134 also rejects each unresolved ordinary function or task parameter annotation at its owning
-declaration range, even when the function is unused. This implements ADR 0009's
+E4134 also rejects each unresolved ordinary function or task parameter annotation
+at its owning declaration range, even when the declaration is unused. This implements ADR 0009's
 annotation requirement rather than treating absence of calls as validation.
+Explicit task return annotations also resolve in the declaring module, including
+aliases and direct imported records; unresolved names produce E4131 at the task
+declaration. This does not define omitted task results or validate task return
+paths, scheduling, or execution; those task contracts remain partial.
 
 E4127 identifies duplicate ordinary declarations. E4128 identifies wrong arity at
 the whole call; E4129 identifies incompatible arguments at the argument expression;
@@ -677,6 +681,13 @@ callable signature. This includes shadowing local bindings, missing names and
 unsupported imports/function values. The checker does not
 silently assume a callable contract for these expressions. Member receiver
 classification retains its separate service/local/unresolved rules.
+Member calls on known scalar receivers also produce E4133: primitive values do
+not supply callable members. This includes typed parameters, locals, literals,
+and resolved function/service results. A local scalar that shadows a service
+does not acquire that service's operations. Member calls on unresolved receivers
+also produce E4133, including unknown local types and computed receivers without
+a callable contract. Known and ambiguous service receivers retain their existing
+service diagnostics; no implicit service or dynamic-method contract is inferred.
 
 Opt-in JSON reports add `ordinary_calls` alongside `member_calls`. Records identify
 the containing function/task, callee (null for computed expressions), resolution

@@ -1,0 +1,6 @@
+[project]
+name = "application-scalar-member-calls"
+entry = "main.svr"
+
+[services]
+mail = "external"

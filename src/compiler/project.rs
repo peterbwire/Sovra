@@ -705,12 +705,14 @@ fn scan_source_file(
                 .callable_symbols
                 .insert(format!("{module_name}.{name}"));
         }
+        let mut is_task_declaration = false;
         if let Some(name) = parse_prefixed_identifier(trimmed, "task") {
             if trimmed
                 .strip_prefix("task")
                 .and_then(|rest| rest.trim_start().strip_prefix(&name))
                 .is_some_and(|rest| rest.trim_start().starts_with('('))
             {
+                is_task_declaration = true;
                 index.callable_symbols.insert(name.clone());
                 index
                     .callable_symbols
@@ -816,7 +818,7 @@ fn scan_source_file(
                     ),
                 }
             }
-            if starts_keyword(trimmed, "task") && trimmed.contains("->") {
+            if starts_keyword(trimmed, "task") && !is_task_declaration && trimmed.contains("->") {
                 match parse_app_task(trimmed) {
                     Some(task) => index.scheduled_tasks.push(location.locate(task)),
                     None => push_manifest_error(
@@ -1907,7 +1909,7 @@ mod tests {
             "[project]\nname = \"task-types\"\nentry = \"main.svr\"",
         );
         project.write_file("app/shapes.svr", "export struct Point { x: Float }");
-        project.write_file("main.svr", "use app.shapes;\ntype Count = Int;\ntask scheduled(count: Count, point: app::shapes::Point) { let x: Float = point.x; }\nfn main() {}");
+        project.write_file("main.svr", "use app.shapes;\ntype Count = Int;\ntask scheduled(count: Count, point: app::shapes::Point) -> app::shapes::Point { let x: Float = point.x; return point; }\ntask count() -> Count { return 1; }\nfn main() {}");
         let report = application::check_service_calls(&check_project(project.path()).unwrap());
         assert!(
             report.diagnostics.is_empty(),
@@ -2973,11 +2975,15 @@ mod tests {
         let source = "use service\nfn main() { mail.count(mail.amount()); let amount = mail.amount(); mail.count(amount); }\nfn shadow(mail: String) { mail.count(mail.amount()); }";
         project.write_file("main.svr", source);
         let report = application::check_service_calls(&check_project(project.path()).unwrap());
-        assert_eq!(report.diagnostics.items.len(), 2);
+        assert_eq!(report.diagnostics.items.len(), 4);
+        assert!(report.diagnostics.items[..2]
+            .iter()
+            .all(|error| error.code == "E4133"));
         for (error, expected) in report
             .diagnostics
             .items
             .iter()
+            .skip(2)
             .zip(["mail.amount()", "amount"])
         {
             assert_eq!(error.code, "E4119");
@@ -3019,8 +3025,9 @@ mod tests {
         project.write_file("main.svr", source);
         let checked = check_project(project.path()).unwrap();
         let report = application::check_service_calls(&checked);
-        assert_eq!(report.diagnostics.items.len(), 1);
-        let error = &report.diagnostics.items[0];
+        assert_eq!(report.diagnostics.items.len(), 2);
+        assert_eq!(report.diagnostics.items[0].code, "E4133");
+        let error = &report.diagnostics.items[1];
         assert_eq!(error.code, "E4119");
         assert_eq!(&source[error.span.start..error.span.end], "(true)");
         assert!(error.source_file.as_ref().unwrap().ends_with("main.svr"));
@@ -3107,16 +3114,24 @@ mod tests {
         );
         let checked = check_project(project.path()).unwrap();
         let report = application::check_service_calls(&checked);
-        assert_eq!(report.diagnostics.items.len(), 3);
-        assert_eq!(report.diagnostics.items[0].code, "E4094");
-        assert_eq!(report.diagnostics.items[1].code, "E4093");
-        assert_eq!(report.diagnostics.items[2].code, "E4096");
-        assert!(report.diagnostics.items[2].message.contains("partial.svr"));
-        assert!(report.diagnostics.items[2].source_file.is_none());
+        assert_eq!(report.diagnostics.items.len(), 5);
+        assert_eq!(report.diagnostics.items[0].code, "E4133");
+        assert_eq!(report.diagnostics.items[3].code, "E4133");
+        assert!(report.diagnostics.items[3]
+            .source_file
+            .as_ref()
+            .unwrap()
+            .ends_with("unresolved.svr"));
+        assert_eq!(report.diagnostics.items[1].code, "E4094");
+        assert_eq!(report.diagnostics.items[2].code, "E4093");
+        assert_eq!(report.diagnostics.items[4].code, "E4096");
+        assert!(report.diagnostics.items[4].message.contains("partial.svr"));
+        assert!(report.diagnostics.items[4].source_file.is_none());
         for (error, expected) in report
             .diagnostics
             .items
             .iter()
+            .skip(1)
             .zip(["mail.send", "mail.missing"])
         {
             assert_eq!(&source[error.span.start..error.span.end], expected);
@@ -3147,11 +3162,17 @@ mod tests {
         project.write_file("main.svr", source);
         let checked = check_project(project.path()).unwrap();
         let report = application::check_service_calls(&checked);
-        assert_eq!(report.diagnostics.items.len(), 2);
+        assert_eq!(report.diagnostics.items.len(), 3);
+        assert_eq!(report.diagnostics.items[0].code, "E4133");
+        assert_eq!(
+            &source[report.diagnostics.items[0].span.start..report.diagnostics.items[0].span.end],
+            "mail.missing()"
+        );
         for (error, (code, text)) in report
             .diagnostics
             .items
             .iter()
+            .skip(1)
             .zip([("E4094", "mail.send"), ("E4093", "mail.missing")])
         {
             assert_eq!(error.code, code);

@@ -1,5 +1,71 @@
 # Development log
 
+## 2026-10-08: Reject unresolved member-call contracts
+
+- Reproduced silently accepted calls on missing and nested unresolved receivers.
+  Structured inspection now records these as unresolved ordinary calls and emits
+  E4133 at the whole call range. Local/unresolved member metadata stays available.
+  Known service and ambiguous service receivers retain existing service checks.
+- Updated missing-import and unknown-local regressions to require errors rather
+  than treating receiver classification as validation. Added a CLI JSON fixture.
+- Validation: **325 library + 42 CLI = 367 passed**, with required Windows CLI
+  execution. Library results are in `target/v1-unresolved-members-tests.log`;
+  after updating the CLI's expected diagnostics, all CLI tests passed in
+  `target/v1-unresolved-members-cli-tests.log`. Strict Clippy, formatting and
+  whitespace checks passed.
+- M12 remains partial. Next: audit declaration coverage and retained application
+  types before enabling full default checking; runtime/publication gates remain.
+
+## 2026-10-08: Reject callable members on scalar receivers
+
+- Reproduced silent acceptance of member calls on scalar locals, literals and
+  ordinary function results. Structured inspection now emits E4133 with the whole
+  call range and a receiver-type explanation, retaining member-call metadata.
+- Service-shadowing tests now assert the new scalar-call errors alongside existing
+  service argument, arity and unknown-operation diagnostics. Record-field call
+  rejection remains unchanged. Added a CLI JSON regression fixture.
+- Validation: **324 library + 42 CLI = 366 passed**, with required Windows CLI
+  execution (`target/v1-scalar-member-calls-tests.log`). Strict Clippy, formatting
+  and whitespace checks passed.
+- Unknown receiver types remain a partial validation boundary. Next: audit
+  unresolved member receivers and their diagnostic/inspection coverage under
+  ADR 0009; runtime and library publication remain unfinished.
+
+## 2026-10-08: Resolve explicit task return annotations
+
+- Validation: **323 library + 42 CLI = 365 passed**, with required Windows CLI
+  execution (`target/v1-task-return-annotations-tests.log`). Strict all-target,
+  all-feature Clippy, formatting and whitespace checks passed.
+- Reproduced acceptance of unknown explicit task result annotations in structured
+  inspection. The checker now retains their resolved types and emits E4131 for
+  unknown names, even in unused tasks; omitted task results remain unspecified.
+- Project coverage exposed a separate scanner bug: task result arrows were also
+  parsed as scheduled-task wiring. Parenthesized task declarations now bypass
+  schedule parsing while existing scheduled-task validation remains intact.
+- Coverage includes primitive results, aliases, directly imported nominal records,
+  declaration diagnostic ranges and CLI JSON failure for an unknown result type.
+- Task return-path checking, scheduling execution and runtime result semantics
+  remain unfinished. This does not mark M12 or version 1.0 ready.
+- Next: define the remaining task result contract before implementing return-path
+  checks; continue other approved application validation work independently.
+
+## 2026-10-08: Validate unused task parameter annotations
+
+- Reproduced missing diagnostics for unused task parameters with unknown types.
+  Structured application checking now emits E4134 per unresolved task parameter,
+  retaining the owning declaration range and source file. Tasks remain excluded
+  from ordinary callable signatures.
+- Regression coverage includes unused unknown annotations, valid primitives,
+  local aliases and directly imported exported records, plus CLI JSON failure.
+  Duplicate parameters were already rejected by the project scanner; a regression
+  preserves E4027/E4098 across service, function and task declarations.
+- Validation: **322 library + 42 CLI = 364 passed**, with required Windows CLI
+  execution (`target/v1-task-annotations-tests.log`). Strict all-target/all-feature
+  Clippy, rustfmt and whitespace checks passed.
+- M12 remains partial; this is annotation validation, not task execution or
+  scheduling support. Next: audit remaining task contracts and application
+  validation boundaries before runtime and publishing release gates.
+
 ## 2026-10-07: Record-bearing exported application functions
 
 - Validation: **319 library + 42 CLI = 361 passed**, with required Windows CLI

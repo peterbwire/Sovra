@@ -82,9 +82,17 @@ records are available through the Rust API, not additional JSON fields.
 E4133 reports unresolved ordinary callees (including local/computed function values
 and unsupported imports) at the whole call range. It is an incomplete-validation
 error, not a claim that every unresolved name is absent from the project.
+Known scalar member calls also produce E4133, with the whole call range and an
+unresolved ordinary-call record explaining that the receiver has no callable
+members. Existing member-call receiver metadata is retained.
+Unresolved member receivers also emit E4133 and an unresolved ordinary-call record
+at the whole call range. Local/unresolved member metadata remains visible; its
+classification alone must not be interpreted as successful call validation.
 E4134 identifies unresolved ordinary function or task parameter annotations at the
 owning declaration range, including unused declarations. It emits one diagnostic
 per parameter.
+E4131 also reports unresolved explicit task return annotations at the owning
+declaration range. Task return-path validation remains unsupported.
 
 Each `ordinary_calls` record contains `function`, `is_task`, nullable `callee`,
 `kind` (`ordinary`, `builtin`, or `unresolved`), nullable `reason`, nullable

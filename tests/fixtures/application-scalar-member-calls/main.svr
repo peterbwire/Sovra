@@ -1,0 +1,13 @@
+service mail {
+    fn send(value: String);
+}
+
+fn text() -> String { return "value"; }
+
+fn main() {
+    mail.send("valid");
+    let value = 1;
+    value.send();
+    (true).send();
+    text().send();
+}

@@ -4,6 +4,8 @@ service mail {
 
 task scheduled(value: Missing) {}
 
+task unresolved_result() -> Missing {}
+
 fn main() {
     mail.send("hello");
 }

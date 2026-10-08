@@ -572,6 +572,8 @@ impl Expression {
 /// A function or task inspected from a complete source file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionCalls {
+    /// Explicit task result annotation; absent annotations do not infer a task result.
+    pub task_return_annotation: Option<Type>,
     /// Names of task parameters whose annotations could not be resolved.
     pub unresolved_task_parameters: Vec<String>,
     /// Invalid record constructor ranges; no valid type is propagated for them.
@@ -1060,6 +1062,13 @@ impl BodyParser<'_> {
         }
         let always_returns = self.block(&scope)?;
         Ok(Some(FunctionCalls {
+            task_return_annotation: if is_task {
+                operation
+                    .return_annotation
+                    .map(|annotation| Type::from_name_with_known(annotation, Some(self.aliases)))
+            } else {
+                None
+            },
             unresolved_task_parameters: operation
                 .declarations
                 .iter()
@@ -1541,10 +1550,30 @@ impl BodyParser<'_> {
             Expression::Call(callee, arguments, call_span) => {
                 if let Expression::Member(receiver, name, _) = callee.as_ref() {
                     self.inspect(receiver, scope);
-                    if matches!(receiver.known_type(scope), Some(Type::Named(_))) {
+                    let reason = match receiver.known_type(scope) {
+                        Some(Type::Named(_)) => {
+                            Some("record fields are values, not callable operations".into())
+                        }
+                        Some(kind) => {
+                            Some(format!("receiver type {kind:?} has no callable members"))
+                        }
+                        None => {
+                            let resolved = match receiver.as_ref() {
+                                Expression::Name(name, span) => scope.resolve(name, span.start),
+                                _ => Receiver::Unresolved,
+                            };
+                            match resolved {
+                                Receiver::Service(_) | Receiver::Ambiguous(_) => None,
+                                Receiver::Local | Receiver::Unresolved => {
+                                    Some("member receiver has no resolved callable contract".into())
+                                }
+                            }
+                        }
+                    };
+                    if let Some(reason) = reason {
                         self.unresolved_calls.push(UnresolvedCall {
                             name: Some(name.clone()),
-                            reason: "record fields are values, not callable operations".into(),
+                            reason,
                             arguments: arguments
                                 .iter()
                                 .map(|argument| argument.argument_type(scope))
@@ -1748,6 +1777,49 @@ mod tests {
     }
 
     #[test]
+    fn unresolved_member_receivers_require_a_callable_contract() {
+        let functions =
+            inspect_functions("fn main() { missing.send(); missing.child.send(); }", &[]).unwrap();
+        let mut diagnostics = crate::compiler::diagnostics::Diagnostics::new();
+        ordinary::check(
+            &functions,
+            std::path::Path::new("main.svr"),
+            &mut diagnostics,
+        );
+        assert_eq!(diagnostics.items.len(), 2);
+        assert!(diagnostics.items.iter().all(|item| item.code == "E4133"));
+    }
+
+    #[test]
+    fn scalar_receivers_cannot_supply_callable_members() {
+        let source = "fn text() -> String { return \"value\"; } fn main() { let value = 1; value.send(); (true).send(); text().send(); }";
+        let functions = inspect_functions(source, &[]).unwrap();
+        let mut diagnostics = crate::compiler::diagnostics::Diagnostics::new();
+        ordinary::check(
+            &functions,
+            std::path::Path::new("main.svr"),
+            &mut diagnostics,
+        );
+        assert_eq!(diagnostics.items.len(), 3);
+        assert!(diagnostics.items.iter().all(|item| item.code == "E4133"));
+    }
+
+    #[test]
+    fn task_return_annotations_must_resolve_even_when_unused() {
+        let source = "task unused() -> Missing {} task valid() -> Int { return 1; }";
+        let functions = inspect_functions(source, &[]).unwrap();
+        let mut diagnostics = crate::compiler::diagnostics::Diagnostics::new();
+        ordinary::check(
+            &functions,
+            std::path::Path::new("main.svr"),
+            &mut diagnostics,
+        );
+        assert_eq!(diagnostics.items.len(), 1);
+        assert_eq!(diagnostics.items[0].code, "E4131");
+        assert_eq!(diagnostics.items[0].span, functions[0].span);
+    }
+
+    #[test]
     fn unused_task_parameters_still_require_resolved_annotations() {
         let source = "task unused(value: Missing, other: Any) {} task valid(value: Int) {}";
         let functions = inspect_functions(source, &[]).unwrap();
@@ -1794,7 +1866,7 @@ mod tests {
                 .iter()
                 .map(|error| error.code)
                 .collect::<Vec<_>>(),
-            ["E4129", "E4128", "E4130", "E4133"]
+            ["E4129", "E4128", "E4130", "E4133", "E4133", "E4133"]
         );
         assert_eq!(
             functions[1].calls[0].argument_types[0].resolved_type(),
@@ -1908,9 +1980,10 @@ mod tests {
             std::path::Path::new("main.svr"),
             &mut diagnostics,
         );
-        assert_eq!(diagnostics.items.len(), 2);
+        assert_eq!(diagnostics.items.len(), 3);
         assert_eq!(diagnostics.items[0].code, "E4127");
         assert_eq!(diagnostics.items[1].code, "E4133");
+        assert_eq!(diagnostics.items[2].code, "E4133");
     }
 
     #[test]

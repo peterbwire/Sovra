@@ -23,6 +23,16 @@ pub(super) fn check(functions: &[FunctionCalls], file: &Path, diagnostics: &mut 
         });
     };
     for function in functions {
+        if function.task_return_annotation == Some(Type::Unknown) {
+            emit(
+                "E4131",
+                format!(
+                    "cannot validate unresolved return annotation for task `{}`",
+                    function.name
+                ),
+                function.span,
+            );
+        }
         for parameter in &function.unresolved_task_parameters {
             emit(
                 "E4134",

@@ -736,6 +736,8 @@ fn service_call_cli_reports_errors_and_incomplete_coverage() {
     let root = env!("CARGO_MANIFEST_DIR");
     for (relative, exit, codes, complete) in [
         ("examples/service-contracts", 0, "[]", true),
+        ("tests/fixtures/application-unresolved-members", 1, "['E4133', 'E4133']", true),
+        ("tests/fixtures/application-scalar-member-calls", 1, "['E4133', 'E4133', 'E4133']", true),
         ("examples/application-record-imports", 0, "[]", true),
         ("tests/fixtures/application-constructor-errors", 1, "['E4139', 'E4136']", true),
         ("tests/fixtures/application-field-errors", 1, "['E4133', 'E4138', 'E4137']", true),
@@ -750,7 +752,7 @@ fn service_call_cli_reports_errors_and_incomplete_coverage() {
         ("examples/application-imports", 0, "[]", true),
         ("tests/fixtures/application-import-errors", 1, "['E4133', 'E4129']", true),
         ("tests/fixtures/ordinary-unknown-annotations", 1, "['E4134', 'E4134']", true),
-        ("tests/fixtures/task-unknown-annotations", 1, "['E4134']", true),
+        ("tests/fixtures/task-unknown-annotations", 1, "['E4134', 'E4131']", true),
         ("tests/fixtures/unresolved-ordinary-calls", 1, "['E4133', 'E4133', 'E4133']", true),
         ("tests/fixtures/application-stdlib", 1, "['E4129', 'E4128', 'E4130']", true),
         ("examples/application-functions", 0, "[]", true),
@@ -766,7 +768,7 @@ fn service_call_cli_reports_errors_and_incomplete_coverage() {
         (
             "tests/fixtures/service-metadata",
             1,
-            "['E4131', 'E4130', 'E4135', 'E4117', 'E4117']",
+            "['E4133', 'E4131', 'E4130', 'E4135', 'E4117', 'E4117']",
             true,
         ),
         ("tests/fixtures/service-body-coverage", 1, "['E4093']", true),
@@ -869,10 +871,11 @@ fn service_call_cli_reports_errors_and_incomplete_coverage() {
                   assert.deepEqual(report.diagnostics[0].location, call.location);
               }}
               if ('{relative}' === 'tests/fixtures/service-metadata') {{
-                  assert.equal(report.diagnostics[0].code, 'E4131');
-                  assert.equal(report.diagnostics[1].code, 'E4130');
-                  assert.equal(report.diagnostics[2].code, 'E4135');
-                  for (const error of report.diagnostics.slice(3)) {{
+                  assert.equal(report.diagnostics[0].code, 'E4133');
+                  assert.equal(report.diagnostics[1].code, 'E4131');
+                  assert.equal(report.diagnostics[2].code, 'E4130');
+                  assert.equal(report.diagnostics[3].code, 'E4135');
+                  for (const error of report.diagnostics.slice(4)) {{
                       assert.equal(error.code, 'E4117');
                       assert.equal(error.location.line, 1);
                       const bytes = require('node:fs').readFileSync(error.location.file);

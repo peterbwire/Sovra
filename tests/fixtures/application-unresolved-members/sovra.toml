@@ -1,0 +1,6 @@
+[project]
+name = "application-unresolved-members"
+entry = "main.svr"
+
+[services]
+mail = "external"

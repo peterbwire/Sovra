@@ -1,0 +1,9 @@
+service mail {
+    fn send(value: String);
+}
+
+fn main() {
+    mail.send("valid");
+    missing.send();
+    missing.child.send();
+}

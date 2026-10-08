@@ -157,6 +157,8 @@ Unresolved ordinary calls produce E4133. Opt-in JSON `ordinary_calls` now expose
 resolved/unresolved callees and primitive type evidence, advancing partial M15
 inspection without claiming full application validation.
 Unused ordinary functions now reject unresolved parameter annotations with E4134.
+Tasks likewise reject unresolved parameters (E4134) and explicit return annotations
+(E4131), without claiming task return-path validation or execution.
 ADR 0013 Option A is accepted: qualified direct imports expose only exported
 functions, retain source ownership and do not expose private/transitive helpers.
 Application Boolean guards now support &&/|| with executable precedence and

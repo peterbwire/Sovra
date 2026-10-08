@@ -22,6 +22,12 @@ do not treat successful packaging as release approval.
 
 ## Current Checkpoint
 
+Unresolved member receivers now fail opt-in checking with E4133 rather than
+silently passing. Known and ambiguous services retain their specific diagnostics.
+
+Task parameter and explicit return annotations now reject unresolved names even
+when unused (E4134/E4131). Task return-path and runtime contracts remain partial.
+
 Nominal JSON type descriptors now distinguish record identity from unresolved
 evidence in locals and call interfaces while retaining existing scalar fields.
 Imported alias targets and record fields now use shared module resolution, also
