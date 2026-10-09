@@ -1,11 +1,12 @@
 // Differential subprocess tests for ADR 0015 bounded UTF-8 file operations.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, relative } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
+if (process.platform !== 'win32') process.umask(0o022);
 const commandLine = process.argv.slice(2);
 if (commandLine.length !== 0 && (commandLine.length !== 2 || commandLine[0] !== '--compiler')) {
     throw new Error('Usage: node scripts/test-text-files.mjs [--compiler PATH]');
@@ -53,8 +54,21 @@ for (const host of hosts) {
     const output = join(work, 'output.txt');
     writeFileSync(input, 'hello\ncafé\n');
     writeFileSync(output, 'old content');
+    if (process.platform !== 'win32') chmodSync(output, 0o600);
     assert.equal(host.copy(input, output), 'copied bytes: 12\n');
     assert.equal(readFileSync(output, 'utf8'), 'hello\ncafé\n');
+    if (process.platform !== 'win32') {
+        assert.equal(statSync(output).mode & 0o777, 0o600,
+            `${host.name} widened a private file's mode during replacement`);
+        const fresh = join(work, 'fresh.txt');
+        assert.equal(host.copy(input, fresh), 'copied bytes: 12\n');
+        assert.equal(statSync(fresh).mode & 0o777, 0o600,
+            `${host.name} created a text file with broader permissions than owner-only`);
+        chmodSync(output, 0o644);
+        assert.equal(host.copy(input, output), 'copied bytes: 12\n');
+        assert.equal(statSync(output).mode & 0o777, 0o600,
+            `${host.name} did not narrow a shared file's mode during replacement`);
+    }
     assert.equal(host.copy(relative(root, input), relative(root, output)), 'copied bytes: 12\n');
     assert.equal(host.copy(join(work, 'missing.txt'), output), 'read error: not_found\n');
     assert.equal(readFileSync(output, 'utf8'), 'hello\ncafé\n');

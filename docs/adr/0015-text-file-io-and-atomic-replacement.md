@@ -46,6 +46,8 @@ call returns `io`; it does not delete the old file and retry. This guarantees
 whole-file replacement to other readers on supported filesystems under normal
 operation. It does **not** promise durability across sudden power loss or across
 unsupported/network filesystems. Neither function creates directories.
+The later [ADR 0021](0021-private-text-file-replacement.md) specifies Unix
+owner-only creation mode for the replacement file.
 
 No open handles, append, locks, transactions, binary files or async I/O are added.
 The task manager will eventually store a versioned line format in a single text

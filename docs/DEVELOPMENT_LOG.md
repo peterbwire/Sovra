@@ -1,5 +1,39 @@
 # Development log
 
+## 2026-10-09: Implement Unix owner-only text-file replacement
+
+- Accepted ADR 0021 after the user directed the next implementation step. The
+  Rust interpreter now requests Unix `0600` mode for each exclusive temporary
+  file; generated JavaScript requests the same mode from Node. Existing shared
+  files narrow to owner-only mode on a successful replacement.
+- Added a cross-engine regression under a `022` umask for new files, replacement
+  of a `0600` file, and narrowing of a `0644` file. The Windows run checks the
+  existing behavior but cannot execute the conditional Unix mode assertions.
+  Windows ACL privacy, symlink paths and simultaneous writers remain limits.
+- Local Windows GNU validation passed: formatting, strict Clippy, 353 Rust unit
+  tests, 45 CLI tests, text-file parity, Task Manager persistence, and the
+  dogfood suite. Windows MSVC `cargo check --locked --all-targets` passed; this
+  machine still lacks the linker for an MSVC executable test.
+- `cargo package --locked --allow-dirty` passed. An isolated offline install
+  from that source archive ran the packaged Task Manager for fresh state and
+  legacy migration. This is local source-package evidence, not exact-commit
+  hosted artifact qualification.
+- Next: run Linux/macOS CI for the Unix permission assertions and qualify the
+  exact release commit and candidate artifacts before publishing version one.
+
+## 2026-10-09: Proposed private text-file creation policy
+
+- Audited ADR 0015's Rust and Node file replacements. Both currently create
+  their temporary file with the host-default mode, so a Unix `0600` task file
+  can become `0644` under a `022` umask after a successful edit.
+- Drafted ADR 0021 with an explicit choice: make `std::write_text` create
+  owner-only (`0600`) temporary files on Unix in both engines, including
+  replacement of previously shared files, or retain the current behavior.
+  Windows ACLs, symlink handling and multi-writer safety remain separate limits.
+- This changes a public file-I/O compatibility contract. Per AGENTS.md, pause
+  runtime/backend implementation until the user approves the policy. Existing
+  single-writer and private-directory guidance remains in force.
+
 ## 2026-10-09: Local committed-code qualification checkpoint
 
 - Code and release workflow changes are in local commit `23171d5` on `master`;

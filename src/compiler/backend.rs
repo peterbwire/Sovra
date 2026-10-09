@@ -136,7 +136,7 @@ function svrWriteText(path, text) {
     for (let attempt = 0; attempt < 16; attempt++) {
       temporary = svrPath.join(svrPath.dirname(path),
         svrPath.basename(path) + ".svr-tmp-" + process.pid + "-" + (svrTempSequence++));
-      try { fd = svrFs.openSync(temporary, "wx"); created = true; break; }
+      try { fd = svrFs.openSync(temporary, "wx", 0o600); created = true; break; }
       catch (error) { if (error.code !== "EEXIST") throw error; }
     }
     if (!created) return fail("io");

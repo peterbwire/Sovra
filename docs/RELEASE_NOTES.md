@@ -41,9 +41,11 @@ alias.
   supported-host release qualification remain required before version 1.0
 - Interactive Task Manager commands refresh external file changes and detect
   stale edits before saving. Simultaneous writers remain unsupported without
-  atomic conditional replacement or locking. Replacement can change custom
-  file permissions or replace a symlink rather than its target; use a regular
-  file in a private directory for sensitive titles
+  atomic conditional replacement or locking. Unix creation and replacement
+  request owner-only `0600` mode, narrowing previously group-shared files;
+  Windows custom ACLs are not preserved. A write can
+  replace a symlink rather than its target. Use a regular file in a private
+  directory for sensitive titles
 - Candidate archives bundle the Task Manager source for extracted-artifact
   verification; hosted qualification is still pending
 

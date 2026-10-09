@@ -7,7 +7,7 @@ failures can become compiler regressions without separate repository coordinatio
 
 | Application | Status | Verified scope / blockers | Next action |
 | --- | --- | --- | --- |
-| 01 Task Manager CLI | Partial; batch, interactive, direct commands and file-backed execution | Add/list/complete/delete by title, restart-safe state, validation, EOF, stable IDs and variable-length task rows; both engines. Direct and interactive commands share files and report status 1 on application errors. Interactive commands refresh external changes and reject edits that become stale before save; simultaneous writers remain unsupported. File replacement does not preserve custom permissions or symlink identity. Version-one files migrate on write. ADR 0020 preserves duplicate rejection and local Windows benchmark completes 5,000-task list/add/restart-list in under 4 seconds per operation in both engines. | Resolve file-permission policy and qualify exact hosted release artifacts and installation path; continue compiler/runtime hardening. |
+| 01 Task Manager CLI | Partial; batch, interactive, direct commands and file-backed execution | Add/list/complete/delete by title, restart-safe state, validation, EOF, stable IDs and variable-length task rows; both engines. Direct and interactive commands share files and report status 1 on application errors. Interactive commands refresh external changes and reject edits that become stale before save; simultaneous writers remain unsupported. ADR 0021 implements Unix owner-only file mode; Windows custom ACLs and symlink identity are not preserved. Version-one files migrate on write. ADR 0020 preserves duplicate rejection and local Windows benchmark completes 5,000-task list/add/restart-list in under 4 seconds per operation in both engines. | Qualify Unix mode behavior and exact hosted release artifacts; continue compiler/runtime hardening. |
 | 02 File Processor | Partial; streams, bounded copy and column extraction | Numbers/filters stdin lines, copies UTF-8 files, and extracts delimited first columns with validation before replacement in both engines. No binary I/O. | Expand text transforms and design binary/streaming APIs separately. |
 | 03 HTTP API | Planned | HTTP hosting and application lifecycle absent. | Follow the real HTTP application plan and approved runtime decisions. |
 | 04 Database Notes | Planned | Persistence, database drivers and transaction contracts absent. | Build on approved I/O, failure and resource contracts. |
@@ -40,6 +40,9 @@ ADR 0014 Stage 1 is accepted and implemented: argument delimiter, explicit EOF
 record, UTF-8 input and immediate printed output. ADR 0015 Option A is accepted
 and implemented for bounded UTF-8 file reads and replacement writes with result
 records and stable error categories.
+ADR 0021 is accepted and implemented: Unix text-file writes request owner-only
+`0600` mode, including replacements. Windows ACL privacy still depends on the
+containing directory.
 ADR 0016 is accepted and implemented: pure text splitting and strict, fallible
 integer parsing enable application-owned file formats. The Task Manager format
 is bounded by the 16 MiB text-file API rather than a fixed task count.

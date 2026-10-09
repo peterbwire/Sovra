@@ -426,12 +426,17 @@ Read failure returns empty text. Invalid UTF-8 is never decoded lossily.
 
 Paths use host-native syntax and resolve relative to the process working
 directory. Parent directories must already exist. Empty or NUL-containing paths
-are invalid. The API follows host symlinks and is not a security boundary.
+are invalid. Reads follow host symlinks; writes may replace a symlink path
+rather than its target. The API is not a security boundary.
 Handled pre-rename failures leave an existing destination intact; atomic
 replacement depends on filesystem support and does not promise power-loss
 durability. Persistent handles, append, binary I/O and transactions remain
 outside this slice. The host-backed runtime provides file operations; the
 in-memory `run` test host returns `io` for them unless a caller supplies a host.
+On Unix, replacement creates its temporary file with owner read/write mode
+`0600`, subject to a more restrictive umask (ADR 0021). This intentionally
+narrows previously shared files on replacement. On Windows, directory security
+controls access; custom file ACL preservation is not guaranteed.
 
 ### Text decoding (ADR 0016)
 

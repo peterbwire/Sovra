@@ -42,8 +42,9 @@ the pending save reports `error: task file changed`, exits 1 and preserves the
 newer file. This detects stale sessions but is not a multi-writer transaction:
 separate processes can still race between the comparison and replacement. Use
 one writer per task file. Use a regular file in a private directory when titles
-are sensitive; replacement may change file permissions, and a symlink path can
-be replaced rather than updating its target. `list` does not create a missing
+are sensitive. On Unix, writes request owner-only `0600` mode; on Windows,
+custom ACLs are not preserved. A symlink path can be replaced rather than
+updating its target. `list` does not create a missing
 file. Successful commands exit 0;
 argument, validation and I/O errors exit 1. An interactive session exits 1 if
 any command failed. Direct titles cannot contain LF or CR because the storage

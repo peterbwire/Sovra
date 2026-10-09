@@ -5,6 +5,9 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
+
 use super::stdlib::MAX_TEXT_FILE_BYTES;
 
 static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
@@ -102,11 +105,11 @@ fn write_text_with(
         let mut name = destination.file_name().unwrap().to_os_string();
         name.push(format!(".svr-tmp-{}-{next}", std::process::id()));
         let candidate: PathBuf = parent.join(name);
-        match OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&candidate)
-        {
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        options.mode(0o600);
+        match options.open(&candidate) {
             Ok(file) => {
                 temporary = Some((candidate, file));
                 break;

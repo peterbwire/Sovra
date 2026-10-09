@@ -32,6 +32,11 @@ then renames it over the destination. A handled failure before rename preserves
 the old file. The API does not create parent directories or promise durability
 after sudden power loss. It does not provide append, binary data, handles or
 transactions.
+On Unix, new and replaced files request owner-only `0600` mode, subject to a
+more restrictive umask. Replacing a group-shared file narrows its mode. On
+Windows, use a private directory for sensitive text because custom ACLs are
+not preserved by this API. A write to a symlink path can replace the link;
+concurrent writers need a separate coordination mechanism.
 
 The runnable [File Processor](../../dogfood/02-file-processor/README.md) has a
 `copy SOURCE DESTINATION` mode. From the repository root, use:
