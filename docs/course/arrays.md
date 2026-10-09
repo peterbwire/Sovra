@@ -28,6 +28,17 @@ requires a direct mutable binding. Replacing `rows[0]` is supported; nested
 assignment such as `rows[0][0] = 5` is not currently supported. Float-to-Int
 narrowing is not implicit. This does not introduce array annotation syntax.
 
-General array copy/mutation isolation and compound equality still have a
-documented backend discrepancy awaiting [ADR 0012](../adr/0012-compound-value-semantics.md).
-The verified conversion behavior above does not settle that separate contract.
+Under approved [ADR 0012](../adr/0012-compound-value-semantics.md), arrays and
+records are values. Reading or passing one creates an independent logical
+snapshot. Array equality compares corresponding elements recursively, while
+record equality also requires the same nominal record type. For example:
+
+```svr
+fn main() {
+    let original = [1]
+    let mut copy = original
+    copy[0] = 2
+    print(original[0])  // 1
+    print(copy == [2])  // true
+}
+```

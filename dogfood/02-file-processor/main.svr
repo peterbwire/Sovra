@@ -1,0 +1,103 @@
+// Line-oriented processing with bounded UTF-8 file operations.
+struct Selection { ok: Bool, text: String, error: String }
+
+fn select_column(text: String, delimiter: String) -> Selection {
+    if (delimiter == "") {
+        return Selection { ok: false, text: "", error: "empty delimiter" };
+    }
+    if (std::len(text) > 1048576) {
+        return Selection { ok: false, text: "", error: "input exceeds 1048576 bytes" };
+    }
+    let mut remaining = text;
+    let mut output = "";
+    let mut line_number = 0;
+    while (remaining != "") {
+        line_number = line_number + 1;
+        if (line_number > 10000) {
+            return Selection { ok: false, text: "", error: "more than 10000 lines" };
+        }
+        let line = std::split_once(remaining, "\n");
+        let mut contents = remaining;
+        if (line.found) { contents = line.before; }
+        let column = std::split_once(contents, delimiter);
+        if (column.found == false) {
+            return Selection { ok: false, text: "",
+                error: "missing delimiter on line " + std::to_string(line_number) };
+        }
+        output = output + column.before;
+        if (line.found) {
+            output = output + "\n";
+            remaining = line.after;
+        } else {
+            remaining = "";
+        }
+    }
+    return Selection { ok: true, text: output, error: "" };
+}
+
+fn main() {
+    if (std::arg_count() > 0 && std::arg(0) == "select") {
+        if (std::arg_count() != 4) {
+            print("usage: file-processor select SOURCE DESTINATION DELIMITER");
+            return;
+        }
+        let loaded = std::read_text(std::arg(1));
+        if (loaded.ok == false) { print("read error: " + loaded.error); return; }
+        let selected = select_column(loaded.text, std::arg(3));
+        if (selected.ok == false) { print("select error: " + selected.error); return; }
+        let saved = std::write_text(std::arg(2), selected.text);
+        if (saved.ok == false) { print("write error: " + saved.error); return; }
+        print("selected lines written");
+        return;
+    }
+    if (std::arg_count() > 0 && std::arg(0) == "copy") {
+        if (std::arg_count() != 3) {
+            print("usage: file-processor copy SOURCE DESTINATION");
+            return;
+        }
+        let loaded: std::TextRead = std::read_text(std::arg(1));
+        if (loaded.ok == false) {
+            print("read error: " + loaded.error);
+            return;
+        }
+        let saved: std::TextWrite = std::write_text(std::arg(2), loaded.text);
+        if (saved.ok == false) {
+            print("write error: " + saved.error);
+            return;
+        }
+        print("copied bytes: " + std::to_string(std::len(loaded.text)));
+        return;
+    }
+    if (std::arg_count() > 1) {
+        print("usage: file-processor [nonempty] | copy SOURCE DESTINATION");
+        return;
+    }
+    if (std::arg_count() == 1 && std::arg(0) != "nonempty") {
+        print("usage: file-processor [nonempty] | copy SOURCE DESTINATION");
+        return;
+    }
+
+    let mut seen = 0;
+    let mut emitted = 0;
+    let mut bytes = 0;
+    let drop_empty = std::arg_count() > 0;
+    let mut reading = true;
+
+    while (reading) {
+        let line = std::read_line();
+        if (line.eof) {
+            reading = false;
+        } else {
+            seen = seen + 1;
+            if (drop_empty == false || std::len(line.text) > 0) {
+                emitted = emitted + 1;
+                bytes = bytes + std::len(line.text);
+                print(std::to_string(seen) + ": " + line.text);
+            }
+        }
+    }
+
+    print("lines read: " + std::to_string(seen));
+    print("lines emitted: " + std::to_string(emitted));
+    print("bytes emitted: " + std::to_string(bytes));
+}

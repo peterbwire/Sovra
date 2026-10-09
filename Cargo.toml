@@ -10,7 +10,7 @@ repository = "https://github.com/peterbwire/Sovra.git"
 keywords = ["compiler", "programming-language", "sovra"]
 categories = ["compilers", "command-line-utilities"]
 include = [
-    "/src/**", "/tests/**", "/examples/**", "/docs/**",
+    "/src/**", "/tests/**", "/examples/**", "/dogfood/**", "/docs/**",
     "/Cargo.toml", "/Cargo.lock", "/rustfmt.toml",
     "/README.md", "/CHANGELOG.md", "/LICENSE", "/LICENSE-MIT", "/LICENSE-APACHE",
     "/ARCHITECTURE.md", "/CONTRIBUTING.md",

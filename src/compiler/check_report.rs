@@ -292,6 +292,34 @@ mod tests {
     }
 
     #[test]
+    fn array_json_preserves_element_evidence_without_changing_scalar_fields() {
+        use crate::compiler::project::application::{
+            inspect_functions, FileInspection, ServiceCheck,
+        };
+        let report = ServiceCheck {
+            files: vec![FileInspection {
+                source_file: "main.svr".into(),
+                functions: inspect_functions(
+                    "fn main() { let values = [1, 2]; let first = values[0]; let same = values == [1, 2]; }",
+                    &[],
+                ),
+            }],
+            diagnostics: Diagnostics::new(),
+        };
+        assert_report(
+            &render_service_check("project", &report),
+            r#"
+            const [values,first,same] = report.local_bindings;
+            assert.equal(values.resolved_type, null);
+            assert.deepEqual(values.resolved_type_info,
+              {kind:'array',element:{kind:'scalar',name:'Int'}});
+            assert.deepEqual(first.resolved_type_info,{kind:'scalar',name:'Int'});
+            assert.deepEqual(same.resolved_type_info,{kind:'scalar',name:'Bool'});
+        "#,
+        );
+    }
+
+    #[test]
     fn local_binding_json_preserves_widening_unknowns_and_locations() {
         use crate::compiler::project::application::{
             inspect_functions, FileInspection, ServiceCheck,

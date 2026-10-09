@@ -1,0 +1,5 @@
+task missing() -> Int {}
+task wrong() -> Int { return "wrong"; }
+task implicit() { return 1; }
+task unknown() -> Int { return missing_value; }
+fn main() {}

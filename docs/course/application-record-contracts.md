@@ -26,6 +26,10 @@ Records retain nominal identity. A second record with the same fields has a
 different type, as does a same-named record in another source file. Aliases to
 one record preserve its identity. Function/service calls, return types and local
 annotations compare these identities rather than comparing field layouts.
+Record `==` and `!=` in inspected application bodies produce Bool only when
+both operands have the same resolved nominal identity. A same-shaped record
+from another file produces E4121. This checker rule follows approved ADR 0012;
+it does not make application bodies executable.
 
 Application record names remain file-local. Service results can carry their
 resolved identity through inferred locals in a caller. `export struct` now makes

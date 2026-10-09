@@ -1,0 +1,36 @@
+fn select_maximum() {
+    std::set_exit_code(125);
+}
+
+fn main() {
+    let mode = std::arg(0);
+    if mode == "last" {
+        std::set_exit_code(7);
+        print("before");
+        std::set_exit_code(3);
+        print("after");
+        return;
+    }
+    if mode == "clear" {
+        std::set_exit_code(7);
+        std::set_exit_code(0);
+        return;
+    }
+    if mode == "maximum" {
+        select_maximum();
+        return;
+    }
+    if mode == "negative" {
+        std::set_exit_code(0 - 1);
+        return;
+    }
+    if mode == "invalid" {
+        std::set_exit_code(126);
+        return;
+    }
+    if mode == "runtime" {
+        std::set_exit_code(5);
+        std::arg(9);
+        return;
+    }
+}

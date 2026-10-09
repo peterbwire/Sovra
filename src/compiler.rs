@@ -14,6 +14,7 @@ pub mod parser;
 pub mod project;
 pub mod semantic;
 pub mod stdlib;
+pub mod text_files;
 
 const COMMANDS: &[&str] = &[
     "build", "check", "doc", "fmt", "init", "install", "new", "repl", "run", "test", "update",

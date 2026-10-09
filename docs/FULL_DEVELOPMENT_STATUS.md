@@ -3,9 +3,9 @@
 ADR 0014 Stage 1 is accepted and implemented: source/package `run` passes program
 arguments after `--`, the standard library provides argument access and explicit
 EOF UTF-8 line input, and output is flushed when printed in both execution hosts.
-The in-memory task manager dogfoods an interactive loop. File persistence,
-growable storage, HTTP application execution and full M14 acceptance remain open.
-ADR 0015 proposes text-file I/O and atomic replacement; it is not yet approved.
+The bounded task manager dogfoods an interactive loop and optional file-backed
+state using approved ADR 0015 and ADR 0016 operations. Growable storage, HTTP
+application execution and full M14 acceptance remain open.
 
 Imported record alias targets and field declarations now resolve through shared
 module interfaces. Service contracts and bodies consume the same snapshot and
@@ -204,7 +204,7 @@ No restart or crate/layout migration is needed.
 | Name/type analysis | Partial | All bodies and annotations checked; definite returns include nested conditionals; aliases and nominal records implemented; no general typed HIR. |
 | Typed representation/IR | Partial | Validated AST wrapper, stack IR, explicit Float widening, branches, arrays and record operations; no general typed HIR, optimizer or native ABI. |
 | Interpreter/runtime | Partial | Primitive and record values, arrays, functions, builtins, depth bound, numeric widening and checked Int arithmetic. |
-| Backend | Experimental | Text IR and JavaScript emission with tested numeric parity; full Float formatting and general runtime parity remain incomplete. No native/WASM target. |
+| Backend | Partial | Text IR and JavaScript emission with ADR 0018 Float display parity on a differential corpus; full runtime parity remains incomplete. No native/WASM target. |
 | CLI | Partial | Help/version, source run/build/check, JSON check reports and shallow project check work. Other recognized commands are stubs. |
 | Standard library | Partial | print/println, len, to_string only; filesystem, collections, networking and other modules are planned. |
 | Project system | Partial | Manifest, source discovery and application wiring scanner; not application type-checking or execution. |

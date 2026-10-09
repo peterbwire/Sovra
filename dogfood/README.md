@@ -37,3 +37,12 @@ to the suite schema when applications gain a process-error contract.
 When a failure reveals a compiler bug, minimize it into a compiler regression
 test before fixing it, rerun that test, then rerun dogfood and the relevant suite.
 Fundamental language choices still require approval under AGENTS.md.
+
+`05-package-consumer` demonstrates the currently supported local-package path:
+the application and library have separate manifests, and the suite runs the
+application directory as the source. This does not test a remote registry or
+published package installation.
+
+`02-file-processor` processes stdin/stdout and copies UTF-8 files through the
+approved ADR 0015 text-file API. `scripts/test-text-files.mjs` tests the path-based
+mode in both execution engines using isolated temporary files.

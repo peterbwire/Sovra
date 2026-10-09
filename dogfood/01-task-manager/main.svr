@@ -1,184 +1,342 @@
-// Bounded, in-memory batch application. No shared compound mutation is required.
+// Application-owned task records use general Sovra text and file operations.
 struct Task { id: Int, title: String, done: Bool }
-struct Tasks { first: Task, second: Task, third: Task, next_id: Int }
+struct Tasks { rows: String, next_id: Int }
+struct Loaded { ok: Bool, tasks: Tasks }
+struct ParsedTask { ok: Bool, task: Task }
 
-fn empty_task() -> Task {
-    return Task { id: 0, title: "", done: false };
+fn fail(message: String) {
+    std::set_exit_code(1);
+    print(message);
 }
-
-fn empty_tasks() -> Tasks {
-    return Tasks { first: empty_task(), second: empty_task(), third: empty_task(), next_id: 1 };
+fn title_has_line_break(title: String) -> Bool {
+    let line_feed = std::split_once(title, "\n");
+    let carriage_return = std::split_once(title, "\r");
+    return line_feed.found || carriage_return.found;
 }
-
-fn replace_task(tasks: Tasks, slot: Int, task: Task, next_id: Int) -> Tasks {
-    if slot == 1 {
-        return Tasks { first: task, second: tasks.second, third: tasks.third, next_id: next_id };
-    }
-    if slot == 2 {
-        return Tasks { first: tasks.first, second: task, third: tasks.third, next_id: next_id };
-    }
-    return Tasks { first: tasks.first, second: tasks.second, third: task, next_id: next_id };
+fn empty_task() -> Task { return Task { id: 0, title: "", done: false }; }
+fn empty_tasks() -> Tasks { return Tasks { rows: "", next_id: 1 }; }
+fn row(task: Task) -> String {
+    let mut done = "0";
+    if task.done { done = "1"; }
+    return std::to_string(task.id) + "|" + done + "|" + task.title + "\n";
 }
-
-fn add(tasks: Tasks, title: String) -> Tasks {
-    if std::len(title) == 0 {
-        print("error: empty title");
-        return tasks;
+fn parse_row(line: String, allow_empty: Bool) -> ParsedTask {
+    let id_part = std::split_once(line, "|");
+    if id_part.found == false { return ParsedTask { ok: false, task: empty_task() }; }
+    let done_part = std::split_once(id_part.after, "|");
+    if done_part.found == false { return ParsedTask { ok: false, task: empty_task() }; }
+    let parsed = std::parse_int(id_part.before);
+    if parsed.ok == false || parsed.value < 0 { return ParsedTask { ok: false, task: empty_task() }; }
+    if done_part.before != "0" && done_part.before != "1" {
+        return ParsedTask { ok: false, task: empty_task() };
     }
-    if find_title_slot(tasks, title) > 0 {
-        print("error: duplicate title");
-        return tasks;
+    if parsed.value == 0 {
+        if allow_empty == false || done_part.before != "0" || done_part.after != "" {
+            return ParsedTask { ok: false, task: empty_task() };
+        }
+    } else if done_part.after == "" || title_has_line_break(done_part.after) {
+        return ParsedTask { ok: false, task: empty_task() };
     }
-    let mut slot = 0;
-    if tasks.first.id == 0 { slot = 1; }
-    else if tasks.second.id == 0 { slot = 2; }
-    else if tasks.third.id == 0 { slot = 3; }
-    if slot == 0 {
-        print("error: capacity 3");
-        return tasks;
+    return ParsedTask { ok: true, task: Task {
+        id: parsed.value, title: done_part.after, done: done_part.before == "1"
+    } };
+}
+fn find_id(tasks: Tasks, id: Int) -> Task {
+    let mut rest = tasks.rows;
+    while rest != "" {
+        let line = std::split_once(rest, "\n");
+        let parsed = parse_row(line.before, false);
+        if (parsed.task.id == id) { return parsed.task; }
+        rest = line.after;
+    }
+    return empty_task();
+}
+fn find_title(tasks: Tasks, title: String) -> Task {
+    let mut rest = tasks.rows;
+    while rest != "" {
+        let line = std::split_once(rest, "\n");
+        let parsed = parse_row(line.before, false);
+        if (parsed.task.title == title) { return parsed.task; }
+        rest = line.after;
+    }
+    return empty_task();
+}
+fn add(tasks: Tasks, title: String, announce: Bool) -> Tasks {
+    if title == "" { fail("error: empty title"); return tasks; }
+    if title_has_line_break(title) { fail("error: title contains a line break"); return tasks; }
+    if find_title(tasks, title).id > 0 { fail("error: duplicate title"); return tasks; }
+    if tasks.next_id == 9223372036854775807 {
+        fail("error: task ID exhausted"); return tasks;
     }
     let task = Task { id: tasks.next_id, title: title, done: false };
-    print("added " + std::to_string(task.id));
-    return replace_task(tasks, slot, task, tasks.next_id + 1);
+    if (announce) { print("added " + std::to_string(task.id)); }
+    return Tasks { rows: tasks.rows + row(task), next_id: tasks.next_id + 1 };
 }
-
-fn find_slot(tasks: Tasks, id: Int) -> Int {
-    if id <= 0 { return 0; }
-    if (tasks.first.id == id) { return 1; }
-    if (tasks.second.id == id) { return 2; }
-    if (tasks.third.id == id) { return 3; }
-    return 0;
-}
-
-fn find_title_slot(tasks: Tasks, title: String) -> Int {
-    if (tasks.first.id > 0 && tasks.first.title == title) { return 1; }
-    if (tasks.second.id > 0 && tasks.second.title == title) { return 2; }
-    if (tasks.third.id > 0 && tasks.third.title == title) { return 3; }
-    return 0;
-}
-
-fn task_at(tasks: Tasks, slot: Int) -> Task {
-    if slot == 1 { return tasks.first; }
-    if slot == 2 { return tasks.second; }
-    return tasks.third;
-}
-
-fn complete(tasks: Tasks, id: Int) -> Tasks {
-    let slot = find_slot(tasks, id);
-    if slot == 0 {
-        print("error: missing " + std::to_string(id));
-        return tasks;
+fn replace(tasks: Tasks, id: Int, completed: Bool, deleting: Bool) -> Tasks {
+    let mut rest = tasks.rows;
+    let mut result = "";
+    while rest != "" {
+        let line = std::split_once(rest, "\n");
+        let parsed = parse_row(line.before, false);
+        if (parsed.task.id == id) {
+            if (deleting == false) {
+                result = result + row(Task { id: id, title: parsed.task.title, done: completed });
+            }
+        } else { result = result + row(parsed.task); }
+        rest = line.after;
     }
-    let task = task_at(tasks, slot);
-    print("completed " + std::to_string(id));
-    return replace_task(tasks, slot, Task { id: task.id, title: task.title, done: true }, tasks.next_id);
+    return Tasks { rows: result, next_id: tasks.next_id };
 }
-
-fn remove(tasks: Tasks, id: Int) -> Tasks {
-    let slot = find_slot(tasks, id);
-    if slot == 0 {
-        print("error: missing " + std::to_string(id));
-        return tasks;
+fn complete(tasks: Tasks, id: Int, announce: Bool) -> Tasks {
+    if find_id(tasks, id).id == 0 {
+        fail("error: missing " + std::to_string(id)); return tasks;
     }
-    print("deleted " + std::to_string(id));
-    return replace_task(tasks, slot, empty_task(), tasks.next_id);
+    if (announce) { print("completed " + std::to_string(id)); }
+    return replace(tasks, id, true, false);
 }
-
+fn remove(tasks: Tasks, id: Int, announce: Bool) -> Tasks {
+    if find_id(tasks, id).id == 0 {
+        fail("error: missing " + std::to_string(id)); return tasks;
+    }
+    if (announce) { print("deleted " + std::to_string(id)); }
+    return replace(tasks, id, false, true);
+}
 fn list(tasks: Tasks) {
     print("tasks:");
-    let mut slot = 1;
+    let mut rest = tasks.rows;
     let mut count = 0;
-    while slot <= 3 {
-        let task = task_at(tasks, slot);
-        if task.id > 0 {
-            let mut status = "open";
-            if (task.done) { status = "done"; }
-            print(std::to_string(task.id) + " | " + status + " | " + task.title);
-            count = count + 1;
-        }
-        slot = slot + 1;
+    while rest != "" {
+        let line = std::split_once(rest, "\n");
+        let parsed = parse_row(line.before, false);
+        let mut status = "open";
+        if parsed.task.done { status = "done"; }
+        print(std::to_string(parsed.task.id) + " | " + status + " | " + parsed.task.title);
+        count = count + 1;
+        rest = line.after;
     }
     print("count " + std::to_string(count));
 }
-
-fn complete_title(tasks: Tasks, title: String) -> Tasks {
-    let slot = find_title_slot(tasks, title);
-    if slot == 0 {
-        print("error: missing title " + title);
-        return tasks;
-    }
-    return complete(tasks, task_at(tasks, slot).id);
+fn encode(tasks: Tasks) -> String {
+    return "SVR-TASKS-2\n" + std::to_string(tasks.next_id) + "\n" + tasks.rows;
 }
-
-fn remove_title(tasks: Tasks, title: String) -> Tasks {
-    let slot = find_title_slot(tasks, title);
-    if slot == 0 {
-        print("error: missing title " + title);
-        return tasks;
+fn decode(text: String) -> Loaded {
+    let header = std::split_once(text, "\n");
+    if header.found == false || (header.before != "SVR-TASKS-1" && header.before != "SVR-TASKS-2") {
+        return Loaded { ok: false, tasks: empty_tasks() };
     }
-    return remove(tasks, task_at(tasks, slot).id);
+    let next_line = std::split_once(header.after, "\n");
+    let next = std::parse_int(next_line.before);
+    if next_line.found == false || next.ok == false || next.value <= 0 {
+        return Loaded { ok: false, tasks: empty_tasks() };
+    }
+    let mut tasks = Tasks { rows: "", next_id: next.value };
+    let mut rest = next_line.after;
+    let mut lines = 0;
+    let mut ids = "";
+    let mut titles = "";
+    while rest != "" {
+        let line = std::split_once(rest, "\n");
+        if line.found == false { return Loaded { ok: false, tasks: empty_tasks() }; }
+        let parsed = parse_row(line.before, header.before == "SVR-TASKS-1");
+        if parsed.ok == false { return Loaded { ok: false, tasks: empty_tasks() }; }
+        if parsed.task.id > 0 {
+            if parsed.task.id >= next.value {
+                return Loaded { ok: false, tasks: empty_tasks() };
+            }
+            ids = ids + std::to_string(parsed.task.id) + "\n";
+            titles = titles + parsed.task.title + "\n";
+            tasks = Tasks { rows: tasks.rows + row(parsed.task), next_id: next.value };
+        }
+        lines = lines + 1;
+        if header.before == "SVR-TASKS-1" && lines > 3 {
+            return Loaded { ok: false, tasks: empty_tasks() };
+        }
+        rest = line.after;
+    }
+    if header.before == "SVR-TASKS-1" && lines != 3 {
+        return Loaded { ok: false, tasks: empty_tasks() };
+    }
+    if std::lines_unique(ids) == false || std::lines_unique(titles) == false {
+        return Loaded { ok: false, tasks: empty_tasks() };
+    }
+    return Loaded { ok: true, tasks: tasks };
 }
-
-fn interactive() {
+fn interactive(path: String, persistent: Bool) {
     let mut tasks = empty_tasks();
+    let mut saved_text = "";
+    let mut file_existed = false;
+    if (persistent) {
+        let file = std::read_text(path);
+        if file.ok {
+            let loaded = decode(file.text);
+            if loaded.ok == false { fail("error: invalid task file"); return; }
+            tasks = loaded.tasks;
+            saved_text = file.text;
+            file_existed = true;
+        } else if file.error != "not_found" {
+            fail("error: load " + file.error); return;
+        }
+    }
     print("Task Manager");
     print("commands: add, list, complete, delete, quit");
     let mut running = true;
     while (running) {
         print("command:");
         let command = std::read_line();
-        if (command.eof) {
-            print("bye");
-            return;
+        if command.eof { print("bye"); return; }
+        if (persistent && command.text != "quit") {
+            let latest = std::read_text(path);
+            if latest.ok {
+                let loaded = decode(latest.text);
+                if loaded.ok == false { fail("error: invalid task file"); return; }
+                tasks = loaded.tasks;
+                saved_text = latest.text;
+                file_existed = true;
+            } else if (latest.error == "not_found") {
+                tasks = empty_tasks();
+                saved_text = "";
+                file_existed = false;
+            } else { fail("error: load " + latest.error); return; }
         }
-        if command.text == "quit" {
-            print("bye");
-            running = false;
-        } else if command.text == "list" {
-            list(tasks);
-        } else if command.text == "add" || command.text == "complete" || command.text == "delete" {
+        if command.text == "quit" { print("bye"); running = false; }
+        else if command.text == "list" { list(tasks); }
+        else if command.text == "add" || command.text == "complete" || command.text == "delete" {
             print("title:");
             let input = std::read_line();
-            if (input.eof) {
-                print("error: unexpected EOF");
-                return;
+            if input.eof { fail("error: unexpected EOF"); return; }
+            let mut updated = tasks;
+            let mut success = "";
+            if command.text == "add" {
+                updated = add(tasks, input.text, false);
+                if (updated != tasks) { success = "added " + std::to_string(tasks.next_id); }
             }
-            if command.text == "add" { tasks = add(tasks, input.text); }
-            else if command.text == "complete" { tasks = complete_title(tasks, input.text); }
-            else { tasks = remove_title(tasks, input.text); }
-        } else {
-            print("error: unknown command " + command.text);
-        }
+            else if command.text == "complete" {
+                let task = find_title(tasks, input.text);
+                if task.id == 0 { fail("error: missing title " + input.text); }
+                else {
+                    updated = complete(tasks, task.id, false);
+                    success = "completed " + std::to_string(task.id);
+                }
+            } else {
+                let task = find_title(tasks, input.text);
+                if task.id == 0 { fail("error: missing title " + input.text); }
+                else {
+                    updated = remove(tasks, task.id, false);
+                    success = "deleted " + std::to_string(task.id);
+                }
+            }
+            if (persistent && updated != tasks) {
+                let current = std::read_text(path);
+                if current.ok {
+                    if (file_existed == false || current.text != saved_text) {
+                        fail("error: task file changed"); return;
+                    }
+                } else if (current.error == "not_found") {
+                    if (file_existed) { fail("error: task file changed"); return; }
+                } else { fail("error: load " + current.error); return; }
+                let next_text = encode(updated);
+                let saved = std::write_text(path, next_text);
+                if saved.ok == false { fail("error: save " + saved.error); return; }
+                saved_text = next_text;
+                file_existed = true;
+            }
+            tasks = updated;
+            if success != "" { print(success); }
+        } else { fail("error: unknown command " + command.text); }
     }
 }
-
+fn one_shot(command: String, path: String, title: String) {
+    let mut tasks = empty_tasks();
+    let file = std::read_text(path);
+    if file.ok {
+        let loaded = decode(file.text);
+        if loaded.ok == false { fail("error: invalid task file"); return; }
+        tasks = loaded.tasks;
+    } else if file.error != "not_found" {
+        fail("error: load " + file.error); return;
+    }
+    if command == "list" { list(tasks); return; }
+    if title_has_line_break(title) { fail("error: title contains a line break"); return; }
+    let mut updated = tasks;
+    let mut success = "";
+    if command == "add" {
+        updated = add(tasks, title, false);
+        if (updated != tasks) { success = "added " + std::to_string(tasks.next_id); }
+    } else {
+        let task = find_title(tasks, title);
+        if task.id == 0 { fail("error: missing title " + title); return; }
+        if command == "complete" {
+            updated = complete(tasks, task.id, false);
+            success = "completed " + std::to_string(task.id);
+        } else {
+            updated = remove(tasks, task.id, false);
+            success = "deleted " + std::to_string(task.id);
+        }
+    }
+    if (updated != tasks) {
+        let saved = std::write_text(path, encode(updated));
+        if saved.ok == false { fail("error: save " + saved.error); return; }
+    }
+    if success != "" { print(success); }
+}
+fn usage() {
+    print("Task Manager");
+    print("usage: interactive [path] | list <path> | add <path> <title>");
+    print("       complete <path> <title> | delete <path> <title> | demo");
+}
 fn main() {
+    if std::arg_count() == 0 { usage(); return; }
     if std::arg_count() > 0 {
+        if std::arg(0) == "help" || std::arg(0) == "--help" {
+            if std::arg_count() != 1 { fail("error: expected help"); return; }
+            usage(); return;
+        }
+        if std::arg(0) == "demo" {
+            if std::arg_count() != 1 { fail("error: expected demo"); return; }
+            demo(); return;
+        }
         if std::arg(0) == "interactive" {
-            interactive();
+            if std::arg_count() > 2 { fail("error: expected interactive [path]"); return; }
+            if std::arg_count() == 2 { interactive(std::arg(1), true); }
+            else { interactive("", false); }
             return;
         }
-        print("error: expected interactive");
-        return;
+        let command = std::arg(0);
+        if command == "list" {
+            if std::arg_count() != 2 { fail("error: expected list <path>"); return; }
+            one_shot(command, std::arg(1), ""); return;
+        }
+        if command == "add" || command == "complete" || command == "delete" {
+            if std::arg_count() != 3 {
+                fail("error: expected " + command + " <path> <title>"); return;
+            }
+            one_shot(command, std::arg(1), std::arg(2)); return;
+        }
+        fail("error: expected help, demo, interactive, list, add, complete or delete"); return;
     }
+}
+fn demo() {
     let mut tasks = empty_tasks();
     list(tasks);
-    tasks = add(tasks, "Write tests");
-    tasks = add(tasks, "Review café release");
-    tasks = add(tasks, "Ship documentation");
-    tasks = add(tasks, "Overflow");
-    tasks = add(tasks, "");
-    tasks = complete(tasks, 2);
-    tasks = complete(tasks, 2);
-    tasks = complete(tasks, 99);
+    tasks = add(tasks, "Write tests", true);
+    tasks = add(tasks, "Review café release", true);
+    tasks = add(tasks, "Ship documentation", true);
+    tasks = add(tasks, "Overflow", true);
+    tasks = add(tasks, "", true);
+    tasks = complete(tasks, 2, true);
+    tasks = complete(tasks, 2, true);
+    tasks = complete(tasks, 99, true);
     list(tasks);
-    tasks = remove(tasks, 1);
-    tasks = remove(tasks, 1);
-    tasks = remove(tasks, 0);
-    tasks = add(tasks, "Replacement");
+    tasks = remove(tasks, 1, true);
+    tasks = remove(tasks, 1, true);
+    tasks = remove(tasks, 0, true);
+    tasks = add(tasks, "Replacement", true);
     list(tasks);
-    tasks = remove(tasks, 2);
-    tasks = remove(tasks, 3);
-    tasks = remove(tasks, 4);
+    tasks = remove(tasks, 2, true);
+    tasks = remove(tasks, 3, true);
+    tasks = remove(tasks, 4, true);
+    tasks = remove(tasks, 5, true);
     list(tasks);
+    // The demo deliberately demonstrates rejected operations.
+    std::set_exit_code(0);
 }

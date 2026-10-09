@@ -1,16 +1,17 @@
 # Dogfood application status
 
-Updated: 2026-10-08. Passing a bounded slice does not establish full application
-or version-one readiness. These applications live in the compiler repository so
+Updated: 2026-10-09. Version one is gated on a production-quality Task Manager
+CLI; later applications validate later versions. Passing the current bounded
+slice does not establish version-one readiness. These applications live in the compiler repository so
 failures can become compiler regressions without separate repository coordination.
 
 | Application | Status | Verified scope / blockers | Next action |
 | --- | --- | --- | --- |
-| 01 Task Manager CLI | Partial; batch and interactive execution | Add/list/complete/delete by title, validation, EOF, stable IDs, three slots; both execution engines. No persistence or scalable storage. | Decide Stage 2 file I/O and growable collections, then durable application state. |
-| 02 File Processor | Planned | No source-level file I/O or recoverable I/O contract. | Specify file access, encoding, errors and resource limits. |
+| 01 Task Manager CLI | Partial; batch, interactive, direct commands and file-backed execution | Add/list/complete/delete by title, restart-safe state, validation, EOF, stable IDs and variable-length task rows; both engines. Direct and interactive commands share files and report status 1 on application errors. Interactive commands refresh external changes and reject edits that become stale before save; simultaneous writers remain unsupported. File replacement does not preserve custom permissions or symlink identity. Version-one files migrate on write. ADR 0020 preserves duplicate rejection and local Windows benchmark completes 5,000-task list/add/restart-list in under 4 seconds per operation in both engines. | Resolve file-permission policy and qualify exact hosted release artifacts and installation path; continue compiler/runtime hardening. |
+| 02 File Processor | Partial; streams, bounded copy and column extraction | Numbers/filters stdin lines, copies UTF-8 files, and extracts delimited first columns with validation before replacement in both engines. No binary I/O. | Expand text transforms and design binary/streaming APIs separately. |
 | 03 HTTP API | Planned | HTTP hosting and application lifecycle absent. | Follow the real HTTP application plan and approved runtime decisions. |
 | 04 Database Notes | Planned | Persistence, database drivers and transaction contracts absent. | Build on approved I/O, failure and resource contracts. |
-| 05 Package Consumer | Planned as dogfood app | Local dependency consumption already has compiler integration coverage; registry distribution is unfinished. | Add an independently maintained local-library application, then publication/install cases. |
+| 05 Package Consumer | Implemented local-package slice | A separate library exports nominal records and functions; the app constructs records, reads fields and runs two scenarios in both engines. Registry distribution is unfinished. | Add publication/install cases when registry contracts and tooling exist. |
 | 06 WebSocket Chat Server | Planned | Networking, concurrency, cancellation and connection lifecycle absent. | Design on the HTTP/runtime foundation. |
 | 07 SovraBoard | Planned | Requires the preceding application and ecosystem capabilities. | Define end-to-end acceptance after foundational applications run. |
 
@@ -20,28 +21,31 @@ The Rust compiler implements lexer, parser, semantic analysis, IR, interpreter a
 JavaScript emission. Executable sources support typed functions, nominal records,
 aliases, mutable locals, arrays, conditional/loop control flow and scalar/string
 operations. The stdlib registry exposes print/println, string length, conversion,
-program arguments and UTF-8 line input (ADR 0014 Stage 1).
+program arguments, UTF-8 line input (ADR 0014 Stage 1), bounded text files
+(ADR 0015), and pure text decoding and line uniqueness (ADRs 0016, 0020).
 The CLI runs source files and emits IR/JavaScript; source checking is used here,
 not the separate partial application wiring scanner. Rust unit and subprocess CLI
 tests remain separate from dogfood. `svr test` remains reserved.
 
-There is no filesystem API, dynamic collection API,
+There is no binary/handle-based filesystem API or dynamic collection API,
 HTTP/database/WebSocket runtime, or completed registry distribution. The initial
-task manager therefore uses bounded record storage. It accepts interactive
-commands but does not preserve them across processes. The compiler changes are
-general process I/O builtins, not application-specific shortcuts.
+task manager therefore uses application-owned variable-length text records. It accepts interactive
+commands and optionally preserves them across processes in a validated versioned
+file. The compiler changes are general standard-library operations, not
+application-specific shortcuts.
 
 ## Approval boundaries
 
 ADR 0014 Stage 1 is accepted and implemented: argument delimiter, explicit EOF
-record, UTF-8 input and immediate printed output. Stage 2 remains proposed.
-File permissions, atomic replacement, persistence errors and limits have a
-concrete proposal in [ADR 0015](adr/0015-text-file-io-and-atomic-replacement.md).
-File I/O alone will not decode task state: text splitting and fallible numeric
-parsing also need an approved general-purpose design before persistence is claimed.
-ADR 0012 remains Proposed: compound copy/equality semantics must be approved before
-relying on mutable collection copies. The current immutable record reconstruction
-does not select that policy. Dynamic collections need a separate API proposal.
+record, UTF-8 input and immediate printed output. ADR 0015 Option A is accepted
+and implemented for bounded UTF-8 file reads and replacement writes with result
+records and stable error categories.
+ADR 0016 is accepted and implemented: pure text splitting and strict, fallible
+integer parsing enable application-owned file formats. The Task Manager format
+is bounded by the 16 MiB text-file API rather than a fixed task count.
+ADR 0012 Option A is accepted and implemented: arrays and records transfer
+logical value snapshots, and compound equality is recursive with nominal record
+identity. Dynamic collections still need a separate API proposal.
 
 ## Findings and regressions
 
@@ -62,8 +66,21 @@ binary, checks the source, emits IR/JS and compares actual interpreter and Node
 output with a reviewed transcript. Failures are nonzero, including blocked/missing
 executables and timeouts. There are no skipped executions. JSON reports and emitted
 artifacts are retained under `target/dogfood/run-*`; CI uploads them per platform.
-The batch workflow covers 29 output lines. Additional interactive cases cover
-commands, EOF and Unicode. `node scripts/test-host-input.mjs` checks process
+The task-manager batch workflow covers additions, completion and deletion with
+reviewed output. Interactive cases cover commands, EOF, Unicode and failure
+status. Direct-command acceptance covers independent processes and file-sharing.
+`node scripts/test-host-input.mjs` checks process
 arguments, invalid UTF-8, long lines and prompt visibility in both backends.
+The package-consumer cases verify a direct local dependency, exported record
+construction, field access, public operations, a private helper called inside
+its package, and immutable record reconstruction across the package boundary.
+The stream-processor cases cover Unicode, empty lines, filtering, line numbering
+and immediate EOF. Its output counts UTF-8 bytes through the existing `std::len`
+contract. A separate differential runner tests its file-copy path in both
+engines, including replacement, invalid UTF-8, missing paths and 16 MiB limits.
+The same runner tests column extraction with Unicode/multicharacter delimiters,
+malformed rows, destination preservation, empty files and application bounds.
+Local Windows execution passes; hosted Linux/macOS/Windows CI outcomes must be
+observed after push rather than inferred from workflow configuration.
 Local Windows execution passes both backends; hosted CI results must
 be observed after these changes are pushed, not assumed from workflow configuration.

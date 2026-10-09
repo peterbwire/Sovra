@@ -5,10 +5,30 @@
       "id": "01-task-manager",
       "source": "01-task-manager/main.svr",
       "cases": [
-        { "id": "batch", "stdout": "01-task-manager/expected.stdout" },
-        { "id": "interactive", "args": ["interactive"], "stdin": "01-task-manager/interactive.stdin", "stdout": "01-task-manager/interactive.stdout" },
+        { "id": "usage", "stdout": "01-task-manager/usage.stdout" },
+        { "id": "help", "args": ["help"], "stdout": "01-task-manager/usage.stdout" },
+        { "id": "demo", "args": ["demo"], "stdout": "01-task-manager/expected.stdout" },
+        { "id": "interactive", "args": ["interactive"], "stdin": "01-task-manager/interactive.stdin", "stdout": "01-task-manager/interactive.stdout", "exit_code": 1 },
         { "id": "empty-input", "args": ["interactive"], "stdout": "01-task-manager/empty-input.stdout" },
-        { "id": "mid-command-eof", "args": ["interactive"], "stdin": "01-task-manager/mid-command-eof.stdin", "stdout": "01-task-manager/mid-command-eof.stdout" }
+        { "id": "mid-command-eof", "args": ["interactive"], "stdin": "01-task-manager/mid-command-eof.stdin", "stdout": "01-task-manager/mid-command-eof.stdout", "exit_code": 1 }
+      ]
+    },
+    {
+      "id": "02-file-processor",
+      "source": "02-file-processor/main.svr",
+      "cases": [
+        { "id": "all", "stdin": "02-file-processor/sample.stdin", "stdout": "02-file-processor/all.stdout" },
+        { "id": "nonempty", "args": ["nonempty"], "stdin": "02-file-processor/sample.stdin", "stdout": "02-file-processor/nonempty.stdout" },
+        { "id": "empty", "stdout": "02-file-processor/empty.stdout" },
+        { "id": "invalid-mode", "args": ["unknown"], "stdout": "02-file-processor/invalid-mode.stdout" }
+      ]
+    },
+    {
+      "id": "05-package-consumer",
+      "source": "05-package-consumer/app",
+      "cases": [
+        { "id": "default", "stdout": "05-package-consumer/default.stdout" },
+        { "id": "revised", "args": ["revised"], "stdout": "05-package-consumer/revised.stdout" }
       ]
     }
   ]

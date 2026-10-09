@@ -1,0 +1,10 @@
+fn main() {
+    let loaded = std::read_text(std::arg(0));
+    if (loaded.ok == false) {
+        print("read error: " + loaded.error);
+        return;
+    }
+    let parsed = std::parse_int(loaded.text);
+    print(parsed.ok);
+    print(parsed.value);
+}

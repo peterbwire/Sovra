@@ -1,0 +1,20 @@
+use ledger::budget;
+
+fn main() {
+    let entries = ledger::budget::Ledger {
+        first: ledger::budget::Entry { label: "Hosting", cost: 20 },
+        second: ledger::budget::Entry { label: "Storage", cost: 35 },
+        third: ledger::budget::Entry { label: "Monitoring", cost: 10 }
+    };
+    print(ledger::budget::line(entries.first));
+    print(ledger::budget::line(entries.second));
+    print(ledger::budget::line(entries.third));
+    print("total: " + std::to_string(ledger::budget::total(entries)));
+    print(ledger::budget::status(entries));
+
+    if (std::arg_count() > 0) {
+        let revised = ledger::budget::revise_second(entries, 25);
+        print("revised total: " + std::to_string(ledger::budget::total(revised)));
+        print(ledger::budget::status(revised));
+    }
+}

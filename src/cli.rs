@@ -210,8 +210,8 @@ fn execute_ir(
         return ExitCode::SUCCESS;
     }
     let mut host = compiler::interpreter::ProcessHost::new(args.to_vec());
-    match compiler::interpreter::run_with_host(ir, &mut host) {
-        Ok(_) => ExitCode::SUCCESS,
+    match compiler::interpreter::run_with_host_status(ir, &mut host) {
+        Ok(outcome) => ExitCode::from(outcome.exit_code),
         Err(error) => {
             eprintln!("svr: runtime error: {error}");
             ExitCode::from(1)

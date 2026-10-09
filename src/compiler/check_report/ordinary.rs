@@ -175,6 +175,11 @@ pub(super) fn push_type_info(output: &mut String, kind: Option<&Type>) {
             super::push_string(output, identity);
             output.push('}');
         }
+        Some(Type::Array(element)) => {
+            output.push_str("{\"kind\":\"array\",\"element\":");
+            push_type_info(output, Some(element));
+            output.push('}');
+        }
         Some(Type::Unit | Type::Bool | Type::Int | Type::Float | Type::String) => {
             output.push_str("{\"kind\":\"scalar\",\"name\":");
             push_type(output, kind);

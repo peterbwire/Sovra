@@ -1,0 +1,11 @@
+fn main() {
+    print(std::lines_unique(""));
+    print(std::lines_unique("a"));
+    print(std::lines_unique("a\n"));
+    print(std::lines_unique("a\na"));
+    print(std::lines_unique("\n"));
+    print(std::lines_unique("\n\n"));
+    print(std::lines_unique("a\r\na\n"));
+    print(std::lines_unique("猫\n猫\n"));
+    print(std::lines_unique("猫\n犬\n"));
+}

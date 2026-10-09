@@ -201,6 +201,42 @@ pub fn check_service_calls(project: &super::ProjectCheck) -> ServiceCheck {
                     span: *span,
                 });
             }
+            for (span, message) in &function.assignment_errors {
+                diagnostics.push(Diagnostic {
+                    source_file: Some(file.source_file.to_string_lossy().into_owned()),
+                    severity: Severity::Error,
+                    code: "E4140",
+                    message: message.clone(),
+                    span: *span,
+                });
+            }
+            for (span, message) in &function.indexed_assignment_errors {
+                diagnostics.push(Diagnostic {
+                    source_file: Some(file.source_file.to_string_lossy().into_owned()),
+                    severity: Severity::Error,
+                    code: "E4141",
+                    message: message.clone(),
+                    span: *span,
+                });
+            }
+            for (span, message) in &function.index_errors {
+                diagnostics.push(Diagnostic {
+                    source_file: Some(file.source_file.to_string_lossy().into_owned()),
+                    severity: Severity::Error,
+                    code: "E4142",
+                    message: message.clone(),
+                    span: *span,
+                });
+            }
+            for span in &function.array_literal_errors {
+                diagnostics.push(Diagnostic {
+                    source_file: Some(file.source_file.to_string_lossy().into_owned()),
+                    severity: Severity::Error,
+                    code: "E4143",
+                    message: "array literal elements have incompatible types".into(),
+                    span: *span,
+                });
+            }
             for mismatch in &function.initializer_mismatches {
                 diagnostics.push(Diagnostic {
                     source_file: Some(file.source_file.to_string_lossy().into_owned()),
@@ -411,6 +447,8 @@ impl ArgumentType {
 #[derive(Debug)]
 enum Expression {
     Record(Type, Vec<(String, Expression)>, Span),
+    Array(Vec<Expression>, Span),
+    Index(Box<Expression>, Box<Expression>, Span),
     Name(String, Span),
     // Namespace resolution is outside service inspection; retain the full range.
     QualifiedName(String, Span),
@@ -437,8 +475,61 @@ fn binary_type(operator: &str, left: &Type, right: &Type) -> Option<Type> {
         "==" | "!=" if numeric || strings || (*left == Type::Bool && *right == Type::Bool) => {
             Some(Type::Bool)
         }
+        "==" | "!=" if matches!((left, right), (Type::Named(a), Type::Named(b)) if a == b) => {
+            Some(Type::Bool)
+        }
+        "==" | "!=" if matches!((left, right), (Type::Array(a), Type::Array(b)) if array_item_join(a, b).is_some()) => {
+            Some(Type::Bool)
+        }
         "<" | "<=" | ">" | ">=" if numeric || strings => Some(Type::Bool),
         _ => None,
+    }
+}
+
+fn array_item_join(left: &Type, right: &Type) -> Option<Type> {
+    match (left, right) {
+        (Type::Unknown, other) | (other, Type::Unknown) => Some(other.clone()),
+        (Type::Int, Type::Float) | (Type::Float, Type::Int) => Some(Type::Float),
+        (Type::Array(a), Type::Array(b)) => {
+            array_item_join(a, b).map(|element| Type::Array(Box::new(element)))
+        }
+        (a, b) if a == b => Some(a.clone()),
+        _ => None,
+    }
+}
+
+fn assignment_compatible(expected: &Type, actual: &Type) -> bool {
+    match (expected, actual) {
+        (Type::Array(expected), Type::Array(actual)) => {
+            *actual.as_ref() == Type::Unknown || assignment_compatible(expected, actual)
+        }
+        _ => expected == actual || (*expected == Type::Float && *actual == Type::Int),
+    }
+}
+
+fn array_literal_incompatible(items: &[Expression], scope: &Scope<'_>) -> bool {
+    let mut element = Type::Unknown;
+    for item in items {
+        let Some(kind) = item.known_type(scope) else {
+            return false;
+        };
+        let Some(joined) = array_item_join(&element, &kind) else {
+            return true;
+        };
+        element = joined;
+    }
+    false
+}
+
+fn index_issue(target: &Expression, index: &Expression, scope: &Scope<'_>) -> Option<String> {
+    if let Some(kind) = index.known_type(scope) {
+        if kind != Type::Int {
+            return Some(format!("array index requires Int, found {kind:?}"));
+        }
+    }
+    match target.known_type(scope) {
+        Some(Type::Array(_)) | None => None,
+        Some(kind) => Some(format!("indexed read requires an array, found {kind:?}")),
     }
 }
 
@@ -460,7 +551,7 @@ impl Expression {
     }
     fn argument_type(&self, scope: &Scope<'_>) -> ArgumentType {
         let span = match self {
-            Self::Record(_, _, span) => *span,
+            Self::Record(_, _, span) | Self::Array(_, span) | Self::Index(_, _, span) => *span,
             Self::Name(_, span)
             | Self::QualifiedName(_, span)
             | Self::Literal(_, span)
@@ -482,6 +573,22 @@ impl Expression {
         match self {
             Self::Record(kind, fields, _) => {
                 Self::record_valid(kind, fields, scope).then(|| kind.clone())
+            }
+            Self::Array(items, _) => {
+                let mut element = Type::Unknown;
+                for item in items {
+                    element = array_item_join(&element, &item.known_type(scope)?)?;
+                }
+                Some(Type::Array(Box::new(element)))
+            }
+            Self::Index(target, index, _) => {
+                if index.known_type(scope)? != Type::Int {
+                    return None;
+                }
+                let Type::Array(element) = target.known_type(scope)? else {
+                    return None;
+                };
+                Some(*element)
             }
             Self::Member(receiver, name, _) => scope.field_type(&receiver.known_type(scope)?, name),
             Self::Literal(kind, _) => Some(kind.clone()),
@@ -542,6 +649,13 @@ impl Expression {
                 Self::Record(_, fields, _) => {
                     pending.extend(fields.iter().map(|(_, value)| (value, depth + 1)))
                 }
+                Self::Array(items, _) => {
+                    pending.extend(items.iter().map(|value| (value, depth + 1)));
+                }
+                Self::Index(target, index, _) => {
+                    pending.push((target, depth + 1));
+                    pending.push((index, depth + 1));
+                }
                 Self::Binary(left, _, right, _) => {
                     pending.push((left, depth + 1));
                     pending.push((right, depth + 1));
@@ -558,7 +672,7 @@ impl Expression {
     }
     fn span(&mut self) -> &mut Span {
         match self {
-            Self::Record(_, _, span) => span,
+            Self::Record(_, _, span) | Self::Array(_, span) | Self::Index(_, _, span) => span,
             Self::Name(_, span)
             | Self::QualifiedName(_, span)
             | Self::Literal(_, span)
@@ -606,6 +720,14 @@ pub struct FunctionCalls {
     pub initializer_mismatches: Vec<InitializerMismatch>,
     /// Known incompatible binary operands, with expression ranges and messages.
     pub operator_errors: Vec<(Span, String)>,
+    /// Invalid local reassignments in the supported body subset.
+    pub assignment_errors: Vec<(Span, String)>,
+    /// Invalid indexed writes to directly named mutable array bindings.
+    pub indexed_assignment_errors: Vec<(Span, String)>,
+    /// Invalid array index expressions on known receiver/index types.
+    pub index_errors: Vec<(Span, String)>,
+    /// Array literals with known incompatible element types.
+    pub array_literal_errors: Vec<Span>,
     /// Explicit returns with conservative primitive type evidence.
     pub returns: Vec<ReturnType>,
     /// Whether the supported control flow guarantees an explicit return.
@@ -653,7 +775,7 @@ pub struct FunctionSignature {
 impl FunctionSignature {
     pub(super) fn exposes_private_records(&self) -> bool {
         self.parameters.iter().chain(std::iter::once(&self.return_type)).any(|kind| {
-            matches!(kind, Type::Named(identity) if identity != crate::compiler::stdlib::INPUT_LINE_TYPE && !self.record_fields.contains_key(identity))
+            matches!(kind, Type::Named(identity) if !crate::compiler::stdlib::is_standard_record_type(identity) && !self.record_fields.contains_key(identity))
         })
     }
     fn accepts(&self, index: usize, actual: &Type) -> bool {
@@ -840,6 +962,10 @@ fn parse_functions(
         unresolved_discarded_expressions: Vec::new(),
         local_bindings: Vec::new(),
         operator_errors: Vec::new(),
+        assignment_errors: Vec::new(),
+        indexed_assignment_errors: Vec::new(),
+        index_errors: Vec::new(),
+        array_literal_errors: Vec::new(),
         returns: Vec::new(),
         conditions: Vec::new(),
         signatures,
@@ -941,6 +1067,10 @@ pub fn inspect_body(
         unresolved_discarded_expressions: Vec::new(),
         local_bindings: Vec::new(),
         operator_errors: Vec::new(),
+        assignment_errors: Vec::new(),
+        indexed_assignment_errors: Vec::new(),
+        index_errors: Vec::new(),
+        array_literal_errors: Vec::new(),
         returns: Vec::new(),
         conditions: Vec::new(),
         signatures: &[],
@@ -984,6 +1114,10 @@ struct BodyParser<'a> {
     calls: Vec<MemberCall>,
     initializer_mismatches: Vec<InitializerMismatch>,
     operator_errors: Vec<(Span, String)>,
+    assignment_errors: Vec<(Span, String)>,
+    indexed_assignment_errors: Vec<(Span, String)>,
+    index_errors: Vec<(Span, String)>,
+    array_literal_errors: Vec<Span>,
 }
 
 fn check_nesting(tokens: &[Token]) -> Result<(), String> {
@@ -1130,6 +1264,10 @@ impl BodyParser<'_> {
             calls: std::mem::take(&mut self.calls),
             initializer_mismatches: std::mem::take(&mut self.initializer_mismatches),
             operator_errors: std::mem::take(&mut self.operator_errors),
+            assignment_errors: std::mem::take(&mut self.assignment_errors),
+            indexed_assignment_errors: std::mem::take(&mut self.indexed_assignment_errors),
+            index_errors: std::mem::take(&mut self.index_errors),
+            array_literal_errors: std::mem::take(&mut self.array_literal_errors),
             returns: std::mem::take(&mut self.returns),
             always_returns,
             conditions: std::mem::take(&mut self.conditions),
@@ -1206,6 +1344,7 @@ impl BodyParser<'_> {
             }
             if self.consume(TokenKind::Keyword("let")) {
                 let declaration_start = self.tokens[self.position - 1].span;
+                let is_mutable = self.consume(TokenKind::Keyword("mut"));
                 let TokenKind::Identifier(name) = self.peek().clone() else {
                     return Err("expected local binding name".into());
                 };
@@ -1286,26 +1425,66 @@ impl BodyParser<'_> {
                     annotation_span,
                     initializer_span: *expression.span(),
                 });
-                scope.bind_typed(name, self.tokens[self.position - 1].span.end, kind);
+                if is_mutable {
+                    scope.bind_mutable_typed(name, self.tokens[self.position - 1].span.end, kind);
+                } else {
+                    scope.bind_typed(name, self.tokens[self.position - 1].span.end, kind);
+                }
+            } else if matches!(self.peek(), TokenKind::Identifier(_))
+                && self
+                    .tokens
+                    .get(self.position + 1)
+                    .is_some_and(|token| token.kind == TokenKind::Operator("="))
+            {
+                let TokenKind::Identifier(name) = self.peek().clone() else {
+                    unreachable!()
+                };
+                let target_span = self.tokens[self.position].span;
+                self.position += 2;
+                let expression = self.expression()?;
+                self.inspect(&expression, &scope);
+                let actual = expression.known_type(&scope);
+                let issue = match scope.binding_info(&name, target_span.start) {
+                    None => Some(format!("assignment target `{name}` is not a local binding")),
+                    Some((_, false)) => Some(format!("assignment target `{name}` is immutable")),
+                    Some((None, _)) => {
+                        Some(format!("assignment target `{name}` has unresolved type"))
+                    }
+                    Some((Some(expected), true)) => match actual {
+                        None => Some(format!("assignment value for `{name}` has unresolved type")),
+                        Some(actual) if assignment_compatible(&expected, &actual) => None,
+                        Some(actual) => Some(format!(
+                            "assignment to `{name}` expects {expected:?}, found {actual:?}"
+                        )),
+                    },
+                };
+                if let Some(message) = issue {
+                    self.assignment_errors.push((target_span, message));
+                }
             } else {
                 let return_span = self.tokens[self.position].span;
                 let returning = self.consume(TokenKind::Keyword("return"));
                 always_returns |= returning;
                 if !returning || !matches!(self.peek(), TokenKind::Punctuation(';' | '}')) {
                     let mut expression = self.expression()?;
-                    self.inspect(&expression, &scope);
-                    if returning {
-                        self.returns.push(ReturnType {
-                            known_type: expression.known_type(&scope),
-                            span: *expression.span(),
-                        });
-                    } else if !matches!(expression, Expression::Call(_, _, _))
-                        && expression.known_type(&scope).is_none()
-                    {
-                        // Calls already validate their callable contracts and arguments.
-                        // Other discarded values must not bypass type validation.
-                        self.unresolved_discarded_expressions
-                            .push(*expression.span());
+                    if !returning && self.consume(TokenKind::Operator("=")) {
+                        let value = self.expression()?;
+                        self.inspect_indexed_assignment(&mut expression, &value, &scope);
+                    } else {
+                        self.inspect(&expression, &scope);
+                        if returning {
+                            self.returns.push(ReturnType {
+                                known_type: expression.known_type(&scope),
+                                span: *expression.span(),
+                            });
+                        } else if !matches!(expression, Expression::Call(_, _, _))
+                            && expression.known_type(&scope).is_none()
+                        {
+                            // Calls already validate their callable contracts and arguments.
+                            // Other discarded values must not bypass type validation.
+                            self.unresolved_discarded_expressions
+                                .push(*expression.span());
+                        }
                     }
                 } else {
                     self.returns.push(ReturnType {
@@ -1317,6 +1496,53 @@ impl BodyParser<'_> {
             self.consume(TokenKind::Punctuation(';'));
         }
         Ok(always_returns)
+    }
+
+    fn inspect_indexed_assignment(
+        &mut self,
+        target: &mut Expression,
+        value: &Expression,
+        scope: &Scope<'_>,
+    ) {
+        self.inspect(target, scope);
+        self.inspect(value, scope);
+        let issue = match target {
+            Expression::Index(receiver, index, span) => match receiver.as_ref() {
+                Expression::Name(name, _) => match scope.binding_info(name, span.start) {
+                    None => Some(format!(
+                        "indexed assignment target `{name}` is not a local binding"
+                    )),
+                    Some((_, false)) => {
+                        Some(format!("indexed assignment target `{name}` is immutable"))
+                    }
+                    Some((None, _)) => Some(format!(
+                        "indexed assignment target `{name}` has unresolved type"
+                    )),
+                    Some((Some(Type::Array(element)), true)) => {
+                        if index.known_type(scope) != Some(Type::Int) {
+                            Some("indexed assignment requires an Int index".into())
+                        } else {
+                            match value.known_type(scope) {
+                                None => Some("indexed assignment value has unresolved type".into()),
+                                Some(actual) if assignment_compatible(&element, &actual) => None,
+                                Some(actual) => Some(format!(
+                                    "indexed assignment expects {element:?}, found {actual:?}"
+                                )),
+                            }
+                        }
+                    }
+                    Some((Some(kind), true)) => Some(format!(
+                        "indexed assignment requires an array, found {kind:?}"
+                    )),
+                },
+                _ => Some("indexed assignment requires a directly named array binding".into()),
+            },
+            _ => Some("unsupported indexed assignment target".into()),
+        };
+        if let Some(message) = issue {
+            self.indexed_assignment_errors
+                .push((*target.span(), message));
+        }
     }
     // Consume structural annotation tokens without resolving their type names.
     // Stop only at a top-level initializer marker, never at arbitrary body text.
@@ -1420,6 +1646,31 @@ impl BodyParser<'_> {
                     ..token.span
                 };
                 value
+            }
+            TokenKind::Punctuation('[') => {
+                self.position += 1;
+                let mut items = Vec::new();
+                if !self.consume(TokenKind::Punctuation(']')) {
+                    loop {
+                        items.push(self.expression()?);
+                        if self.consume(TokenKind::Punctuation(']')) {
+                            break;
+                        }
+                        self.require(TokenKind::Punctuation(','))?;
+                        if self.consume(TokenKind::Punctuation(']')) {
+                            break;
+                        }
+                    }
+                }
+                let span = Span {
+                    end: self.tokens[self.position - 1].span.end,
+                    ..token.span
+                };
+                check_depth(
+                    1 + items.iter().map(Expression::depth).max().unwrap_or(0),
+                    span,
+                )?;
+                Expression::Array(items, span)
             }
             _ => {
                 return Err(format!(
@@ -1534,6 +1785,15 @@ impl BodyParser<'_> {
                     .unwrap_or(0);
                 check_depth(depth, span)?;
                 expression = Expression::Call(Box::new(expression), arguments, span);
+            } else if self.consume(TokenKind::Punctuation('[')) {
+                let index = self.expression()?;
+                self.require(TokenKind::Punctuation(']'))?;
+                let span = Span {
+                    end: self.tokens[self.position - 1].span.end,
+                    ..*expression.span()
+                };
+                check_depth(1 + expression.depth().max(index.depth()), span)?;
+                expression = Expression::Index(Box::new(expression), Box::new(index), span);
             } else {
                 break;
             }
@@ -1548,6 +1808,21 @@ impl BodyParser<'_> {
                 }
                 if !Expression::record_valid(kind, fields, scope) {
                     self.constructor_errors.push(*span);
+                }
+            }
+            Expression::Array(items, span) => {
+                for item in items {
+                    self.inspect(item, scope);
+                }
+                if array_literal_incompatible(items, scope) {
+                    self.array_literal_errors.push(*span);
+                }
+            }
+            Expression::Index(target, index, span) => {
+                self.inspect(target, scope);
+                self.inspect(index, scope);
+                if let Some(message) = index_issue(target, index, scope) {
+                    self.index_errors.push((*span, message));
                 }
             }
             Expression::Call(callee, arguments, call_span) => {
@@ -1644,6 +1919,8 @@ impl BodyParser<'_> {
                                 let (literal_type, span) = match argument {
                                     Expression::Literal(kind, span) => (Some(kind.clone()), *span),
                                     Expression::Record(_, _, span)
+                                    | Expression::Array(_, span)
+                                    | Expression::Index(_, _, span)
                                     | Expression::Name(_, span)
                                     | Expression::QualifiedName(_, span)
                                     | Expression::Member(_, _, span)

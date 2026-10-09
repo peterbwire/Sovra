@@ -365,9 +365,14 @@ mod tests {
             crate::compiler::interpreter::run(&linked).unwrap(),
             ["1.5", "1.5", "3", "0", "1.5", "1.5"]
         );
+        let generated = fixture.0.join("compiled.cjs");
+        std::fs::write(
+            &generated,
+            crate::compiler::backend::render_javascript(&linked),
+        )
+        .unwrap();
         let output = std::process::Command::new("node")
-            .arg("-e")
-            .arg(crate::compiler::backend::render_javascript(&linked))
+            .arg(&generated)
             .output()
             .unwrap();
         assert!(
@@ -400,6 +405,10 @@ mod tests {
         std::fs::write(root.join("main.svr"), "use left::geometry; use right::geometry; fn main() { let point = left::geometry::Point { x: 1 }; right::geometry::read(point); }").unwrap();
         let errors = compile(root).unwrap_err();
         assert!(errors.items.iter().any(|error| error.code == "E3007"));
+        let root = fixture.0.join("app");
+        std::fs::write(root.join("main.svr"), "use left::geometry; use right::geometry; fn main() { print(left::geometry::Point { x: 1 } == right::geometry::Point { x: 1 }); }").unwrap();
+        let errors = compile(root).unwrap_err();
+        assert!(errors.items.iter().any(|error| error.code == "E3005"));
     }
 
     #[test]

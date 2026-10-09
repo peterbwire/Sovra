@@ -2,6 +2,14 @@
 
 ## Executable local packages
 
+Opt-in application diagnostics include E4140 for an invalid direct local
+reassignment. Its source range identifies the target name. Reassignments do
+not add a new `local_bindings` entry; that array describes declarations.
+E4141 reports an invalid indexed assignment with the indexed target's range.
+E4142 reports an invalid indexed read at its expression range, and E4143
+reports a known incompatible array literal at the literal range. Invalid
+expressions can also leave a local initializer unresolved (E4136).
+
 For directories declaring dependency sections, `check --format=json` now resolves,
 checks and links package entry sources. The schema remains version 1 with
 `kind: "project"`; errors carry their owning manifest/source file and original
@@ -93,7 +101,9 @@ E4134 identifies unresolved ordinary function or task parameter annotations at t
 owning declaration range, including unused declarations. It emits one diagnostic
 per parameter.
 E4131 also reports unresolved explicit task return annotations at the owning
-declaration range. Task return-path validation remains unsupported.
+declaration range. Under ADR 0017, it also reports task return mismatch or
+unresolved value at the return expression/keyword, and non-Unit fallthrough at
+the task declaration. Omitted task results default to Unit in M12 checking.
 
 Each `ordinary_calls` record contains `function`, `is_task`, nullable `callee`,
 `kind` (`ordinary`, `builtin`, or `unresolved`), nullable `reason`, nullable
@@ -140,8 +150,11 @@ unresolved evidence without changing the existing scalar fields:
 - Member calls add positional `argument_type_info`, preserving the numeric
   `arguments` field.
 
-A descriptor is `{"kind":"scalar","name":"Float"}`, for example, or
-`{"kind":"record","identity":"..."}`. Unresolved/unsupported evidence is null.
+A descriptor is `{"kind":"scalar","name":"Float"}`, for example,
+`{"kind":"record","identity":"..."}`, or
+`{"kind":"array","element":{"kind":"scalar","name":"Int"}}`.
+An empty array has a null `element` until compatible element evidence is
+available. Unresolved/unsupported evidence is null.
 Record identity is an opaque equality token derived from the declaring source
 module and record; do not parse it or treat it as a portable package identifier.
 Aliases to the same record share identity, while identical layouts from different

@@ -44,7 +44,24 @@ read failures and invalid argument indices are runtime errors. The interpreter
 and generated JavaScript have matching supported behavior; generated JS uses
 Node.js process streams and receives arguments after its script path.
 
-The [task manager](../../dogfood/01-task-manager) runs a batch by default and an
-interactive, in-memory command loop with `-- interactive`. It still has three
-active task slots and no persistence. General file I/O is Stage 2 of ADR 0014
-and has not been approved or implemented.
+Under accepted [ADR 0019](../adr/0019-process-exit-status.md), programs can
+set a portable process status without stopping immediately:
+
+```svr
+fn main() {
+    if std::arg_count() == 0 {
+        print("error: expected an argument");
+        std::set_exit_code(1);
+        return;
+    }
+    print(std::arg(0));
+}
+```
+
+Valid codes are 0 through 125; the last call wins. Runtime errors remain
+failures even if the program previously selected a status. The interpreter and
+generated JavaScript both preserve output before a nonzero completion.
+
+The [task manager](../../dogfood/01-task-manager) now supports batch,
+interactive and one-command file-backed use. Its direct commands set status 1
+for application failures, making shell scripts able to detect them.

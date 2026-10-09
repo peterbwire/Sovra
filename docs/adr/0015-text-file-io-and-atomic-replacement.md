@@ -1,6 +1,6 @@
 # ADR 0015: Text-file I/O and atomic replacement
 
-Status: Proposed; requires approval before implementation. Builds on approved
+Status: Accepted and implemented (2026-10-09). Builds on approved
 [ADR 0014 Stage 1](0014-cli-input-and-io-foundation.md), whose input and output
 APIs are implemented. This decision applies to general Sovra programs, including
 the task manager and future file processor; no application-specific host calls.
@@ -13,7 +13,7 @@ Directly truncating an existing file before a write finishes can also destroy
 the last good state. Both Rust interpreter and generated Node.js need the same
 source API, result types and failure categories.
 
-## Recommended Option A: bounded UTF-8 operations with replacement
+## Decision: Option A, bounded UTF-8 operations with replacement
 
 Add two Rust-owned standard-library functions:
 
@@ -77,7 +77,8 @@ the existing batch and stdin transcripts throughout.
 
 ## Approval boundary
 
-The user approved **Stage 1 only** of ADR 0014. AGENTS.md requires documenting
+The user approved ADR 0015 Option A on 2026-10-09, after Stage 1 of ADR 0014.
+AGENTS.md requires documenting
 and pausing before fundamental type-semantics and compatibility decisions. These
 new nominal result records, stable error categories and replacement guarantees
 are public contracts. Approving this ADR authorizes general text-file operations;

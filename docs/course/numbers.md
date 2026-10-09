@@ -1,7 +1,7 @@
 # Numbers
 
-Status: Implemented numeric subset; full non-finite Float/output policy remains
-experimental. Run `cargo run -- run examples/numbers/main.svr`.
+Status: Implemented numeric subset with approved Float text output (ADR 0018).
+Run `cargo run -- run examples/numbers/main.svr`.
 
 `Int` holds signed 64-bit integers. `Float` holds binary64 floating-point values.
 An Int becomes a Float when assigned to a Float local, passed to a Float
@@ -31,5 +31,7 @@ subtraction such as `0 - 5` is supported.
 
 Both the interpreter and JavaScript backend have execution tests for these
 rules. Generated JavaScript requires BigInt and TextEncoder support. Float
-formatting at extreme magnitudes and non-finite results are not yet a stable
-cross-backend contract.
+display follows Rust-style shortest decimal text without exponent notation in
+both engines. Negative zero prints `-0`; arithmetic non-finite results print
+`NaN`, `inf` or `-inf`. The runtime matrix covers representative boundaries,
+but does not prove every binary64 value has been exercised.

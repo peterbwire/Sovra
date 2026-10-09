@@ -51,6 +51,32 @@ function svrCheckedInt(value) {
   return value;
 }
 
+function svrValueEqual(left, right) {
+  const pending = [[left, right]];
+  while (pending.length) {
+    const [a, b] = pending.pop();
+    if ((typeof a === "bigint" && typeof b === "number") ||
+        (typeof a === "number" && typeof b === "bigint")) {
+      if (Number(a) !== Number(b)) return false;
+    } else if (Array.isArray(a) && Array.isArray(b)) {
+      if (a.length !== b.length) return false;
+      for (let index = 0; index < a.length; index++) pending.push([a[index], b[index]]);
+    } else if (a !== null && b !== null && typeof a === "object" && typeof b === "object" &&
+        Object.prototype.hasOwnProperty.call(a, "__svrStruct") &&
+        Object.prototype.hasOwnProperty.call(b, "__svrStruct")) {
+      const first = a.__svrStruct;
+      const second = b.__svrStruct;
+      if (first.typeName !== second.typeName || first.fieldOrder.length !== second.fieldOrder.length)
+        return false;
+      for (const name of first.fieldOrder) {
+        if (!Object.prototype.hasOwnProperty.call(second.fields, name)) return false;
+        pending.push([first.fields[name], second.fields[name]]);
+      }
+    } else if (a !== b) return false;
+  }
+  return true;
+}
+
 function svrBinary(operator, left, right) {
   // Rust UTF-8 ordering follows scalar values, not JavaScript UTF-16 code units.
   if (typeof left === "string" && typeof right === "string" &&
@@ -80,8 +106,8 @@ function svrBinary(operator, left, right) {
     case "-": result = left - right; break;
     case "*": result = left * right; break;
     case "/": result = left / right; break;
-    case "==": return left === right;
-    case "!=": return left !== right;
+    case "==": return svrValueEqual(left, right);
+    case "!=": return !svrValueEqual(left, right);
     case "<": return left < right;
     case "<=": return left <= right;
     case ">": return left > right;

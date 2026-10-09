@@ -1928,6 +1928,212 @@ mod tests {
     }
 
     #[test]
+    fn application_inspection_understands_text_file_results() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"file-inspection\"\nentry = \"main.svr\"",
+        );
+        project.write_file(
+            "main.svr",
+            "fn main() { let loaded: std::TextRead = std::read_text(\"x\"); if (loaded.ok) { let saved: std::TextWrite = std::write_text(\"y\", loaded.text); print(saved.error); } }",
+        );
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(
+            report.diagnostics.is_empty(),
+            "{:?}",
+            report.diagnostics.items
+        );
+    }
+
+    #[test]
+    fn application_inspection_checks_mutable_reassignment() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"mutable-app\"\nentry = \"main.svr\"",
+        );
+        project.write_file(
+            "main.svr",
+            "fn main() { let mut count: Int = 1; count = 2; print(count); }",
+        );
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(
+            report.diagnostics.is_empty(),
+            "{:?}",
+            report.diagnostics.items
+        );
+
+        project.write_file("main.svr", "fn main() { let count: Int = 1; count = 2; }");
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(report
+            .diagnostics
+            .items
+            .iter()
+            .any(|item| item.code == "E4140"));
+        project.write_file("main.svr", "fn main() { let mut values = [1.0]; values = [2]; let mut rows = [[1.0]]; rows = [[2]]; }");
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(
+            report.diagnostics.is_empty(),
+            "{:?}",
+            report.diagnostics.items
+        );
+
+        project.write_file(
+            "main.svr",
+            "fn main() { let mut values = [1]; values = [\"wrong\"]; }",
+        );
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(report
+            .diagnostics
+            .items
+            .iter()
+            .any(|item| item.code == "E4140"));
+
+        project.write_file(
+            "main.svr",
+            "fn main() { let count = 1; { let mut count = 2; count = 3; } count = 4; }",
+        );
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert_eq!(
+            report
+                .diagnostics
+                .items
+                .iter()
+                .filter(|item| item.code == "E4140")
+                .count(),
+            1
+        );
+
+        project.write_file(
+            "main.svr",
+            "fn main() { let mut count: Int = 1; count = \"wrong\"; }",
+        );
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(report
+            .diagnostics
+            .items
+            .iter()
+            .any(|item| item.code == "E4140"));
+    }
+
+    #[test]
+    fn application_inspection_checks_indexed_assignment() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"indexed-app\"\nentry = \"main.svr\"",
+        );
+        project.write_file(
+            "main.svr",
+            "fn main() { let mut values = [1.0]; values[0] = 2; print(values[0]); }",
+        );
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(
+            report.diagnostics.is_empty(),
+            "{:?}",
+            report.diagnostics.items
+        );
+        project.write_file(
+            "main.svr",
+            "fn main() { let mut rows = [[1.0]]; rows[0] = [2]; rows[0] = []; }",
+        );
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(
+            report.diagnostics.is_empty(),
+            "{:?}",
+            report.diagnostics.items
+        );
+        for source in [
+            "fn main() { let values = [1]; values[0] = 2; }",
+            "fn main() { let mut values = [1]; values[false] = 2; }",
+            "fn main() { let mut values = [1]; values[0] = \"wrong\"; }",
+            "fn main() { let mut value = 1; value[0] = 2; }",
+            "fn main() { missing[0] = 2; }",
+            "fn main() { let mut rows = [[1]]; rows[0][0] = 2; }",
+        ] {
+            project.write_file("main.svr", source);
+            let report = application::check_service_calls(&check_project(project.path()).unwrap());
+            assert!(
+                report
+                    .diagnostics
+                    .items
+                    .iter()
+                    .any(|item| item.code == "E4141"),
+                "{source}: {:?}",
+                report.diagnostics.items
+            );
+        }
+    }
+
+    #[test]
+    fn application_inspection_identifies_invalid_array_expressions() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"array-errors\"\nentry = \"main.svr\"",
+        );
+        for (source, code) in [
+            ("fn main() { let value = [1][false]; }", "E4142"),
+            ("fn main() { let value = 1[0]; }", "E4142"),
+            ("fn main() { let value = [1, \"wrong\"]; }", "E4143"),
+            ("fn main() { let value = [[1], [\"wrong\"]]; }", "E4143"),
+            ("fn main() { print([1, \"wrong\"]); }", "E4143"),
+            ("fn main() { print([1][false]); }", "E4142"),
+        ] {
+            project.write_file("main.svr", source);
+            let report = application::check_service_calls(&check_project(project.path()).unwrap());
+            assert!(
+                report
+                    .diagnostics
+                    .items
+                    .iter()
+                    .any(|item| item.code == code),
+                "{source}: {:?}",
+                report.diagnostics.items
+            );
+        }
+        project.write_file(
+            "main.svr",
+            "fn main() { let values = [1, 2]; print(values[0]); }",
+        );
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(
+            report.diagnostics.is_empty(),
+            "{:?}",
+            report.diagnostics.items
+        );
+    }
+
+    #[test]
+    fn application_inspection_checks_task_return_contracts() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"task-results\"\nentry = \"main.svr\"",
+        );
+        project.write_file("main.svr", "task idle() {}\ntask stop() -> Unit { return; }\ntask count() -> Int { if true { return 1; } else { return 2; } }\nfn main() {}");
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(
+            report.diagnostics.is_empty(),
+            "{:?}",
+            report.diagnostics.items
+        );
+        for source in [
+            "task count() -> Int {}\nfn main() {}",
+            "task count() -> Int { return \"wrong\"; }\nfn main() {}",
+            "task count() -> Int { while true { return 1; } }\nfn main() {}",
+            "task count() -> Int { return missing; }\nfn main() {}",
+            "task unexpected() { return 1; }\nfn main() {}",
+            "struct A { value: Int }\nstruct B { value: Int }\ntask choose() -> A { return B { value: 1 }; }\nfn main() {}",
+        ] {
+            project.write_file("main.svr", source);
+            let report = application::check_service_calls(&check_project(project.path()).unwrap());
+            assert!(report.diagnostics.items.iter().any(|item| item.code == "E4131"), "{source}: {:?}", report.diagnostics.items);
+        }
+    }
+
+    #[test]
     fn task_collisions_with_exports_never_supply_imported_callables() {
         let project = TestProject::new();
         project.write_file(
@@ -2294,6 +2500,61 @@ mod tests {
             report.diagnostics.items
         );
         assert_eq!(report.diagnostics.items[0].code, "E4129");
+    }
+
+    #[test]
+    fn application_record_equality_respects_nominal_identity() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"record-equality\"\nentry = \"main.svr\"",
+        );
+        for module in ["a", "b"] {
+            project.write_file(
+                &format!("app/{module}.svr"),
+                "export struct Point { x: Int }",
+            );
+        }
+        project.write_file("main.svr", "use app.a;\nuse app.b;\nfn main() { let same = app::a::Point { x: 1 } == app::a::Point { x: 1 }; if same {} }");
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(
+            report.diagnostics.is_empty(),
+            "{:?}",
+            report.diagnostics.items
+        );
+        project.write_file("main.svr", "use app.a;\nuse app.b;\nfn main() { let wrong = app::a::Point { x: 1 } == app::b::Point { x: 1 }; }");
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(report
+            .diagnostics
+            .items
+            .iter()
+            .any(|error| error.code == "E4121"));
+    }
+
+    #[test]
+    fn application_array_literals_and_indexing_propagate_validated_types() {
+        let project = TestProject::new();
+        project.write_file(
+            "sovra.toml",
+            "[project]\nname = \"array-inspection\"\nentry = \"main.svr\"",
+        );
+        project.write_file("main.svr", "fn main() { let values = [1, 2]; let first = values[0]; let same = values == [1, 2]; if same { print(first); } }");
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(
+            report.diagnostics.is_empty(),
+            "{:?}",
+            report.diagnostics.items
+        );
+        project.write_file(
+            "main.svr",
+            "fn main() { let mixed = [1, \"two\"]; let invalid = [1][false]; }",
+        );
+        let report = application::check_service_calls(&check_project(project.path()).unwrap());
+        assert!(report
+            .diagnostics
+            .items
+            .iter()
+            .any(|error| error.code == "E4136"));
     }
 
     #[test]

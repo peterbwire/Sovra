@@ -1,0 +1,1 @@
+usage: file-processor [nonempty] | copy SOURCE DESTINATION

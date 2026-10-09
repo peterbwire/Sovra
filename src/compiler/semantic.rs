@@ -43,7 +43,8 @@ impl Type {
             "Int" => Self::Int,
             "Float" => Self::Float,
             "String" => Self::String,
-            "std::InputLine" => Self::Named("std::InputLine".to_owned()),
+            "std::InputLine" | "std::TextRead" | "std::TextWrite" | "std::SplitOnce"
+            | "std::ParsedInt" => Self::Named(name.to_owned()),
             _ => known_named_types
                 .and_then(|known| known.get(name).cloned())
                 .unwrap_or(Self::Unknown),
@@ -123,6 +124,36 @@ impl SemanticAnalyzer {
             HashMap::from([
                 ("eof".to_owned(), Type::Bool),
                 ("text".to_owned(), Type::String),
+            ]),
+        );
+        struct_fields.insert(
+            stdlib::TEXT_READ_TYPE.to_owned(),
+            HashMap::from([
+                ("ok".to_owned(), Type::Bool),
+                ("text".to_owned(), Type::String),
+                ("error".to_owned(), Type::String),
+            ]),
+        );
+        struct_fields.insert(
+            stdlib::TEXT_WRITE_TYPE.to_owned(),
+            HashMap::from([
+                ("ok".to_owned(), Type::Bool),
+                ("error".to_owned(), Type::String),
+            ]),
+        );
+        struct_fields.insert(
+            stdlib::SPLIT_ONCE_TYPE.to_owned(),
+            HashMap::from([
+                ("found".to_owned(), Type::Bool),
+                ("before".to_owned(), Type::String),
+                ("after".to_owned(), Type::String),
+            ]),
+        );
+        struct_fields.insert(
+            stdlib::PARSED_INT_TYPE.to_owned(),
+            HashMap::from([
+                ("ok".to_owned(), Type::Bool),
+                ("value".to_owned(), Type::Int),
             ]),
         );
         let mut declared_functions = HashMap::new();
@@ -272,7 +303,16 @@ pub(crate) fn collect_named_types_with_imports(
     ) {
         if matches!(
             name,
-            "Unit" | "Bool" | "Int" | "Float" | "String" | "std::InputLine"
+            "Unit"
+                | "Bool"
+                | "Int"
+                | "Float"
+                | "String"
+                | "std::InputLine"
+                | "std::TextRead"
+                | "std::TextWrite"
+                | "std::SplitOnce"
+                | "std::ParsedInt"
         ) || aliases.contains_key(name)
         {
             diagnostics.push(diagnostic(
@@ -293,7 +333,16 @@ pub(crate) fn collect_named_types_with_imports(
     ) {
         if matches!(
             name,
-            "Unit" | "Bool" | "Int" | "Float" | "String" | "std::InputLine"
+            "Unit"
+                | "Bool"
+                | "Int"
+                | "Float"
+                | "String"
+                | "std::InputLine"
+                | "std::TextRead"
+                | "std::TextWrite"
+                | "std::SplitOnce"
+                | "std::ParsedInt"
         ) || structured_names.contains(name)
         {
             diagnostics.push(diagnostic(
@@ -373,6 +422,14 @@ pub(crate) fn collect_named_types_with_imports(
         crate::compiler::stdlib::INPUT_LINE_TYPE.to_owned(),
         Type::Named(crate::compiler::stdlib::INPUT_LINE_TYPE.to_owned()),
     );
+    for name in [
+        stdlib::TEXT_READ_TYPE,
+        stdlib::TEXT_WRITE_TYPE,
+        stdlib::SPLIT_ONCE_TYPE,
+        stdlib::PARSED_INT_TYPE,
+    ] {
+        resolved.insert(name.to_owned(), Type::Named(name.to_owned()));
+    }
     for name in structured_names.iter() {
         resolved.insert(name.clone(), Type::Named(name.clone()));
     }
@@ -1341,27 +1398,35 @@ fn check_expression(
                 }
                 return Type::Bool;
             }
-            let comparable = numeric_or_string_comparison_compatible(&left_type, &right_type)
-                && match operator.as_str() {
-                    "==" | "!=" => {
-                        matches!(
-                            &left_type,
-                            Type::Bool | Type::Int | Type::Float | Type::String
-                        ) || matches!(
-                            &right_type,
-                            Type::Bool | Type::Int | Type::Float | Type::String
-                        )
-                    }
-                    "<" | "<=" | ">" | ">=" => matches!(
-                        (&left_type, &right_type),
-                        (Type::Int, Type::Int)
-                            | (Type::Float, Type::Float)
-                            | (Type::Int, Type::Float)
-                            | (Type::Float, Type::Int)
-                            | (Type::String, Type::String)
-                    ),
-                    _ => false,
-                };
+            let compound_equality = matches!(operator.as_str(), "==" | "!=")
+                && matches!(
+                    left_type.canonicalize(named_types),
+                    Type::Array(_) | Type::Named(_)
+                )
+                && (types_compatible(&left_type, &right_type, named_types)
+                    || types_compatible(&right_type, &left_type, named_types));
+            let comparable = compound_equality
+                || numeric_or_string_comparison_compatible(&left_type, &right_type)
+                    && match operator.as_str() {
+                        "==" | "!=" => {
+                            matches!(
+                                &left_type,
+                                Type::Bool | Type::Int | Type::Float | Type::String
+                            ) || matches!(
+                                &right_type,
+                                Type::Bool | Type::Int | Type::Float | Type::String
+                            )
+                        }
+                        "<" | "<=" | ">" | ">=" => matches!(
+                            (&left_type, &right_type),
+                            (Type::Int, Type::Int)
+                                | (Type::Float, Type::Float)
+                                | (Type::Int, Type::Float)
+                                | (Type::Float, Type::Int)
+                                | (Type::String, Type::String)
+                        ),
+                        _ => false,
+                    };
             let arithmetic = numeric_or_string_arithmetic_compatible(&left_type, &right_type)
                 && match operator.as_str() {
                     "+" => matches!(
@@ -1561,6 +1626,26 @@ fn diagnostic(code: &'static str, message: impl Into<String>, span: Span) -> Dia
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn process_exit_status_requires_one_int_argument() {
+        for (source, code) in [
+            ("fn main() { std::set_exit_code(); }", "E3006"),
+            ("fn main() { std::set_exit_code(1, 2); }", "E3006"),
+            ("fn main() { std::set_exit_code(\"bad\"); }", "E3007"),
+        ] {
+            let parsed = Parser::new().parse_source(source).unwrap();
+            let errors = SemanticAnalyzer::new().analyze(&parsed).unwrap_err();
+            assert!(
+                errors.items.iter().any(|error| error.code == code),
+                "{source}"
+            );
+        }
+        let parsed = Parser::new()
+            .parse_source("fn main() { std::set_exit_code(1); }")
+            .unwrap();
+        SemanticAnalyzer::new().analyze(&parsed).unwrap();
+    }
 
     #[test]
     fn long_module_alias_chains_resolve_without_native_recursion() {
@@ -2068,13 +2153,103 @@ mod tests {
     }
 
     #[test]
-    fn standard_input_line_identity_cannot_be_redeclared() {
-        let source = "mod std { export struct InputLine { eof: Bool, text: String } } fn main() {}";
+    fn text_file_builtins_validate_types_and_fields() {
+        let valid = "fn main() { let loaded: std::TextRead = std::read_text(\"x\"); if (loaded.ok) { print(loaded.text); } let saved: std::TextWrite = std::write_text(\"x\", loaded.text); print(saved.error); }";
+        let program = crate::compiler::parser::Parser::new()
+            .parse_source(valid)
+            .unwrap();
+        SemanticAnalyzer::new().analyze(&program).unwrap();
+
+        let invalid = "fn main() { std::read_text(1); std::write_text(\"x\", 1); }";
+        let program = crate::compiler::parser::Parser::new()
+            .parse_source(invalid)
+            .unwrap();
+        let errors = SemanticAnalyzer::new().analyze(&program).unwrap_err();
+        assert_eq!(
+            errors
+                .items
+                .iter()
+                .map(|item| item.code)
+                .collect::<Vec<_>>(),
+            ["E3007", "E3007"]
+        );
+    }
+
+    #[test]
+    fn text_decoding_builtins_validate_types_and_fields() {
+        let valid = "fn main() { let split: std::SplitOnce = std::split_once(\"a,b\", \",\"); if (split.found) { print(split.after); } let parsed: std::ParsedInt = std::parse_int(split.before); if (parsed.ok) { print(parsed.value); } }";
+        let program = crate::compiler::parser::Parser::new()
+            .parse_source(valid)
+            .unwrap();
+        SemanticAnalyzer::new().analyze(&program).unwrap();
+
+        let invalid = "fn main() { std::split_once(1, \"x\"); std::parse_int(true); }";
+        let program = crate::compiler::parser::Parser::new()
+            .parse_source(invalid)
+            .unwrap();
+        let errors = SemanticAnalyzer::new().analyze(&program).unwrap_err();
+        assert_eq!(
+            errors
+                .items
+                .iter()
+                .map(|item| item.code)
+                .collect::<Vec<_>>(),
+            ["E3007", "E3007"]
+        );
+    }
+
+    #[test]
+    fn lines_unique_requires_one_string_argument() {
+        let valid =
+            "fn main() { let unique: Bool = std::lines_unique(\"a\\nb\\n\"); print(unique); }";
+        let program = crate::compiler::parser::Parser::new()
+            .parse_source(valid)
+            .unwrap();
+        SemanticAnalyzer::new().analyze(&program).unwrap();
+
+        let invalid = "fn main() { std::lines_unique(1); std::lines_unique(); }";
+        let program = crate::compiler::parser::Parser::new()
+            .parse_source(invalid)
+            .unwrap();
+        let errors = SemanticAnalyzer::new().analyze(&program).unwrap_err();
+        assert_eq!(
+            errors
+                .items
+                .iter()
+                .map(|item| item.code)
+                .collect::<Vec<_>>(),
+            ["E3007", "E3006"]
+        );
+    }
+
+    #[test]
+    fn compound_equality_requires_matching_array_or_nominal_record_types() {
+        let source = "struct A { value: Int } struct B { value: Int } fn main() { print(A { value: 1 } == B { value: 1 }); print([1] == [\"one\"]); }";
         let program = crate::compiler::parser::Parser::new()
             .parse_source(source)
             .unwrap();
-        let diagnostics = SemanticAnalyzer::new().analyze(&program).unwrap_err();
-        assert!(diagnostics.items.iter().any(|item| item.code == "E3008"));
+        let errors = SemanticAnalyzer::new().analyze(&program).unwrap_err();
+        assert_eq!(
+            errors
+                .items
+                .iter()
+                .filter(|item| item.code == "E3005")
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn standard_input_line_identity_cannot_be_redeclared() {
+        for name in ["InputLine", "TextRead", "TextWrite"] {
+            let source =
+                format!("mod std {{ export struct {name} {{ value: Int }} }} fn main() {{}}");
+            let program = crate::compiler::parser::Parser::new()
+                .parse_source(&source)
+                .unwrap();
+            let diagnostics = SemanticAnalyzer::new().analyze(&program).unwrap_err();
+            assert!(diagnostics.items.iter().any(|item| item.code == "E3008"));
+        }
     }
 
     #[test]

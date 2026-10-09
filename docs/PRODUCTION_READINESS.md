@@ -8,10 +8,12 @@ that every defect has been found. Existing M0–M15 numbers remain unchanged;
 
 ## Evidence and scope
 
-Scope confirmation (2026-10-03): version one must include the full application
-platform and third-party library publishing. Compiler-only release notes are
-superseded. See [V1_DELIVERY_GATES.md](V1_DELIVERY_GATES.md). The audit baseline
-below is historical; current execution counts are in the development log.
+Scope revised (2026-10-09): version one must support a production-quality Task
+Manager CLI; later versions will use further applications to validate additional
+capacity. The 2026-10-03 full-platform and registry prerequisite is superseded.
+See [V1_DELIVERY_GATES.md](V1_DELIVERY_GATES.md). The audit baseline and broad
+implementation plan below remain a roadmap, not the revised v1 gate; current
+execution counts are in the development log.
 
 Reviewed the public parser, semantic analyzer, IR, interpreter, JavaScript
 emitter, project discovery/imports/application inspector, CLI command dispatch,
@@ -28,7 +30,7 @@ authorized by successful archive creation.
 | --- | --- | --- |
 | Source compiler | `parser.rs`, `semantic.rs`: primitive types, straight-line functions and modules | Defined control flow and structured data; valid/invalid syntax and type tests, recovery and resource-limit tests. No accepted source may silently change meaning in lowering. |
 | Types and IR | `TypedProgram` wraps a cloned AST; `ir.rs` is a public linear stack representation | Preserve resolved types/symbols into lowering, specify and validate public IR invariants, add branches only with approved semantics. Unknown types must remain errors, not placeholders that pass checks. |
-| Runtime/backend | `interpreter.rs`, `backend.rs`, `numeric_runtime.js` | Equivalent observable results/errors for all supported operations. Float non-finite/formatting policy needs a decision. Add malformed-IR and boundary cases; scope allocation/output/depth limits explicitly. |
+| Runtime/backend | `interpreter.rs`, `backend.rs`, `numeric_runtime.js` | Equivalent observable results/errors for all supported operations. ADR 0018 settles Float text formatting with sampled parity; add malformed-IR and more boundary cases, and scope allocation/output/depth limits explicitly. |
 | Project checker (M12) | `project.rs` scans lines; `application.rs` parses a limited separate subset | A structured project representation must own declarations, imports, bodies and types. Unsupported syntax cannot imply validation. Migrate incrementally and preserve diagnostics/JSON contracts. |
 | Services | Contract metadata and scoped call name/arity checks exist | Define implementation scopes, resolve signature types, check argument/return types, and validate implementations. Execute service tests before claiming runtime support. |
 | Modules/libraries | Inline executable modules; project-local service imports only | Specify package identity, exports and dependency manifests; implement local dependencies, reproducible lockfiles, resolver/cache, then publishing/installing/version compatibility. Test two independent packages and clean-machine reproduction. |

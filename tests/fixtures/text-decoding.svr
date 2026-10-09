@@ -1,0 +1,21 @@
+fn main() {
+    let unicode: std::SplitOnce = std::split_once("café|猫|end", "|猫|");
+    print(unicode.found);
+    print(unicode.before);
+    print(unicode.after);
+    let missing = std::split_once("abc", "z");
+    print(missing.found);
+    print(missing.before);
+    print(missing.after);
+    let empty = std::split_once("abc", "");
+    print(empty.found);
+    print(empty.before);
+    print(empty.after);
+    print(std::parse_int("9223372036854775807").value);
+    print(std::parse_int("-9223372036854775808").value);
+    print(std::parse_int("-0").ok);
+    print(std::parse_int("+1").ok);
+    print(std::parse_int("01").ok);
+    print(std::parse_int("9223372036854775808").ok);
+    print(std::parse_int("١").ok);
+}

@@ -1,14 +1,14 @@
 # Sovra
 
 **Version 1.0.0 is a development target, not yet ready for publication.**
-The required release scope includes the full application platform and third-party
-library publishing. The implemented compiler, interpreter, IR/JavaScript output,
-local libraries and `svr` CLI are foundations for that release. Application
-execution, Sovra-native testing and registry publication remain incomplete and
-must be delivered before version 1.0. The compiler-only and developer-preview
-release plans are superseded; see the
-[production-readiness plan](docs/PRODUCTION_READINESS.md) for the audited gates
-and current implementation order.
+Version one must support a production-quality Task Manager CLI built in Sovra.
+The current dogfood application runs in both engines, persists tasks, and has no
+fixed task-count ceiling; its text-file size and release qualification still need
+review. Later versions will add broader
+application-platform and third-party publishing capability, each validated by
+its own application. The compiler-only and developer-preview release plans are
+superseded; see the [version-one gates](docs/V1_DELIVERY_GATES.md) and
+[production-readiness plan](docs/PRODUCTION_READINESS.md).
 
 Repository-owned [dogfood applications](dogfood/README.md) exercise the local
 compiler and both execution engines. The task manager runs batch and interactive

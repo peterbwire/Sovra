@@ -1,5 +1,443 @@
 # Development log
 
+## 2026-10-09: Reusable candidate archive verification
+
+- Added `scripts/verify-candidate-archive.mjs` and wired the manual release
+  workflow to it. The verifier checks the SHA-256 sidecar and archive entry
+  paths, extracts outside the repository, checks bundled files and version,
+  runs hello-world in the interpreter and generated JavaScript, validates the
+  JSON check report, and runs Task Manager persistence in both engines from
+  the extracted source directory. It also invokes `svr` through a temporary
+  PATH from an unrelated working directory and confirms relative task state
+  is created there.
+- A locally staged Windows archive with the current optimized binary and
+  current Task Manager source passed the verifier, including the expanded
+  1,000-task and stale-session cases and portable PATH use. This is local
+  rehearsal evidence, not
+  proof that the final committed workflow or other hosts pass.
+- The manual workflow now downloads each uploaded platform artifact, checks
+  its embedded commit/target/version manifest against the running job, and
+  reruns the archive verifier on those downloaded bytes. Hosted execution of
+  that step remains pending.
+- Next: qualify exact-commit hosted artifacts and clean installation/upgrade
+  paths; preserve the single-writer/private-directory guidance until a
+  reviewed file-permission and transaction contract is available.
+
+## 2026-10-09: Detect stale interactive Task Manager saves
+
+- Reproduced data loss: an interactive session loaded an empty path, a second
+  process added a task, and the first session's add overwrote that newer file.
+  The two-process regression failed before the fix (first session exited 0 and
+  replaced the external task) and passes after it in both engines.
+- Interactive mode now refreshes the file before each command and remembers
+  the exact bytes and existence state. Before a state-changing save it rereads
+  the path and rejects any intervening creation, removal or byte change with
+  status 1, leaving the external file intact. Regressions cover changes to an
+  existing file and a fresh `list` after another process adds a task.
+- This is stale-session detection, not atomic multi-writer safety. ADR 0015 has
+  no lock or conditional replacement; two simultaneous processes can still
+  pass the comparison and race at rename. Document a single-writer contract
+  for v1; a stronger general file transaction API needs separate approval.
+- Audit also found that replacement uses new-file permissions and may replace a
+  symlink path rather than its target. Task Manager guidance now asks for a
+  regular path in a private directory. A cross-engine permission-preservation
+  contract needs a separate ADR before claiming stronger privacy behavior.
+- Next: verify updated dogfood and persistence suites, then continue exact
+  release-artifact and supported-host qualification.
+
+## 2026-10-09: Larger persisted-state and ID-boundary qualification
+
+- Expanded the Task Manager persistence runner from 200 to 1,000 active tasks.
+  It now checks restart, add, complete and delete at that size; duplicate titles
+  and IDs appended near the end remain invalid without changing the file.
+- Exercised the maximum signed-64-bit next-ID boundary. Add reports
+  `error: task ID exhausted` with status 1 and preserves the file, while an
+  existing high-ID task can still be completed. No language semantics changed.
+- Both engines passed the expanded suite with the local debug compiler. A local
+  tar archive containing the current optimized Windows binary and Task Manager
+  source was checksummed, extracted outside the repository, and passed the same
+  interpreter and JavaScript suite. This validates local artifact behavior,
+  not the hosted workflow or final committed candidate.
+- Next: finish exact-commit Windows/Linux/macOS and Rust 1.74 checks, then run
+  the manual candidate workflow and inspect its uploaded artifacts.
+
+## 2026-10-09: Isolated candidate application execution
+
+- Candidate archives now extract into the host temporary directory. The
+  persistence runner launches the compiler and generated JavaScript from the
+  tested Task Manager source directory, so extracted-artifact checks do not
+  inherit the repository root as their working directory. The workflow also
+  checks its generated SHA-256 value and manifest before exercising the archive.
+- Isolated copies of the current debug and optimized release compiler, each
+  with the Task Manager source under the Windows temporary directory, passed
+  interpreter and JavaScript persistence, migration, corruption and size-bound
+  cases. This is local evidence only; hosted checks on the exact release commit
+  remain required.
+- Next: exercise the exact candidate archive from the final committed revision,
+  then collect supported-host workflow evidence before publication.
+
+## 2026-10-09: Implemented ADR 0020 and restored Task Manager capacity
+
+- Following user approval, added pure `std::lines_unique(String) -> Bool` to
+  the registered standard library, interpreter and JavaScript backend. Exact
+  LF-line semantics include empty, trailing-LF, CR and Unicode cases. Source
+  execution, semantic rejection and malformed IR have regression coverage.
+- The Task Manager now gathers decoded IDs and titles and checks each set once.
+  It still rejects duplicate-ID/title corruption without changing the stored
+  format; the persistence suite passes in both engines.
+- Local Windows benchmark of the canonical source measured list/add/restart-list
+  at 100 tasks: interpreter 227/132/166 ms, JavaScript 395/444/348 ms; at
+  1,000: interpreter 971/641/906 ms, JavaScript 686/561/639 ms; at 5,000:
+  interpreter 3,791/3,281/3,079 ms, JavaScript 1,085/932/1,087 ms. All
+  completed within the 10-second operation timeout. These are local results,
+  not hosted artifact qualification.
+- Next: complete exact-artifact and supported-host release qualification,
+  remaining compiler/runtime correctness gates and release documentation.
+
+## 2026-10-09: Task Manager capacity benchmark and ADR 0020 proposal
+
+- Made the Task Manager's default no-argument behavior show usage and moved the
+  deterministic rejected-operation transcript behind explicit `-- demo`.
+  Dogfood checks now cover usage, help and demo in both engines.
+- Added a repeatable local benchmark for 100, 1,000 and 5,000 stored tasks.
+  On Windows, both engines complete 100-task lists but time out at 10 seconds
+  for 1,000 tasks. A diagnostic copy under `target/` with duplicate checks
+  removed completed 1,000-task lists in under one second and 5,000-task lists
+  in roughly 1.4–2.9 seconds. That copy is intentionally not shipped because
+  it accepts duplicate IDs and titles.
+- ADR 0020 proposes general `std::lines_unique` for one-pass exact duplicate
+  detection, retaining the Task Manager's malformed-file contract. Approval
+  is pending; no semantics or compiler code changed for this proposal.
+
+## 2026-10-09: Approved process status and Task Manager input hardening
+
+- User approved ADR 0019. `std::set_exit_code(Int)` now selects a portable
+  eventual status in the range 0–125. The interpreter exposes an additive
+  status-returning API, `svr run` returns it, and generated JavaScript uses
+  Node's eventual process status. Output-only interpreter APIs are preserved.
+  A pre-fix CLI regression reproduced unresolved builtin diagnostics; the
+  completed test covers last-call wins, reset to zero, helper-function status,
+  the maximum portable code 125, output preservation, invalid negative and
+  excessive codes, and runtime failure after status selection in both engines.
+- Task Manager direct, interactive and argument errors now set status 1.
+  The default batch transcript intentionally resets status to zero after its
+  demonstration of rejected operations. Direct titles containing LF or CR
+  are rejected before they can corrupt the line-oriented state file.
+- Dogfood schema-one cases now specify expected exit codes when needed.
+  Persistence tests cover direct/interactive interoperability, malformed
+  state, duplicate/missing titles, invalid arguments and save failures in
+  both engines. Validation passed on Windows with execution required: 350
+  library and 44 CLI tests, strict Clippy, formatting, dogfood, persistence,
+  host-input, text-file and text-decoding runners, plus the 20-case runtime
+  matrix and its 131-value Float corpus. The 248-file
+  Cargo source package verified with `--locked --allow-dirty`. Hosted CI and
+  optimized candidate results for this revision remain unobserved.
+
+## 2026-10-09: Scriptable Task Manager commands
+
+- Added one-command `list <path>`, `add <path> <title>`,
+  `complete <path> <title>` and `delete <path> <title>` modes to the Sovra
+  dogfood application. They use the same validated versioned state as
+  interactive sessions, with no compiler syntax or runtime changes.
+- Persistent-command acceptance now covers independent processes, direct and
+  interactive interoperability, Unicode titles, duplicate/missing titles,
+  malformed files, invalid argument counts and save failure without false
+  success output in both execution engines.
+- Program-level errors are currently reported as text because Sovra does not
+  expose an application-selected process exit status. That limits scripting
+  reliability and remains a version-one decision and implementation gate.
+
+## 2026-10-09: Local extracted release-artifact rehearsal
+
+- Built the optimized Windows compiler with `cargo build --locked --release`,
+  staged it with `task-manager.svr`, created and extracted a local tar archive,
+  then checked the extracted source using the extracted binary.
+- The full Task Manager persistence runner passed against that extracted binary
+  and source in both interpreter and generated JavaScript modes, including the
+  201-task and 16 MiB cases. This verifies a local archive-shaped artifact;
+  it does not establish hosted workflow success, exact-commit provenance,
+  checksums, other operating systems or clean-machine installation.
+- Candidate packaging now includes the Task Manager usage guide alongside
+  its source and verifies that the extracted guide exists.
+
+## 2026-10-09: Task Manager size and release-artifact checks
+
+- Expanded interpreter/JavaScript persistence acceptance to a 200-row stored
+  task file and a 201st addition. Exact 16 MiB task files load, growth past the
+  bound reports `too_large` without changing the file or claiming success, and
+  a file one byte over the bound is rejected before decoding.
+- The release-candidate archive now includes `task-manager.svr`. Its extracted
+  binary checks that source and runs the persistence suite against the extracted
+  source, including migration, corruption, size-bound and both-engine workflows.
+  Cargo source packages also include dogfood applications; local
+  `cargo package --locked --allow-dirty` verified the 246-file package.
+  Hosted candidate results remain unobserved until the workflow runs on a
+  committed revision.
+- The 200-row and exact-boundary checks pass locally on Windows. Larger-data
+  performance and exact-artifact testing on all target hosts remain open gates.
+
+## 2026-10-09: Task Manager variable-length storage
+
+- Replaced three fixed task slots with application-owned newline records,
+  using existing Sovra strings, `std::split_once`, strict integer parsing,
+  and bounded atomic text writes. No language semantics or compiler shortcut
+  changed. IDs remain monotonic; listing now follows insertion order.
+- `SVR-TASKS-2` stores any number of rows within the text-file byte bound.
+  Existing `SVR-TASKS-1` files still load and migrate on the next successful
+  edit. Decoder checks row grammar, unique IDs/titles and next-ID ordering.
+- Interactive success messages now follow successful file replacement. A
+  missing-parent save regression verifies an error without a false `added`
+  confirmation in both engines.
+- Dogfood tests now exercise 25 additional tasks across restarts, edit/delete,
+  legacy migration and malformed files in the interpreter and JavaScript
+  backend. String scans and rewrites are quadratic for large task counts;
+  boundary/performance qualification remains v1 work.
+
+## 2026-10-09: Version-one scope revised to Task Manager CLI
+
+- The user replaced the earlier full-platform-and-registry prerequisite with a
+  production-quality Task Manager CLI as the version-one application gate.
+  Later versions will use their own applications as the language grows. M0-M15
+  retain their numbering and remain roadmap work.
+- Updated the version-one gates, roadmap, readiness audit, release notes and
+  dogfood status to separate this release target from later HTTP, database,
+  WebSocket, board and registry milestones. The existing Task Manager passes
+  bounded behavioral tests but its three active-task slots are not practical
+  release capacity. General-purpose collection growth and corresponding
+  persistence/migration acceptance are the next implementation dependency.
+- This scope update changes no language syntax or semantics. It does not mark
+  the current candidate ready for publication.
+
+## 2026-10-09: Executable cross-backend matrix and approved Float rendering
+
+- Added a 20-case subprocess matrix that checks local compiler source
+  validation, JavaScript build, interpreter output and Node output. It covers
+  integer arithmetic and failures, Unicode ordering/byte length, short-circuit
+  calls, recursion, mutable loops, array copies/widening, nominal record values,
+  text decoding, and retained output before errors. CI and release-candidate
+  workflows now run this matrix against their built compiler.
+- A separate probe confirmed a Float text mismatch:
+  `0.0 / (0.0 - 1.0)` prints `-0` in Rust and `0` in generated JavaScript.
+  User approved ADR 0018. Generated JavaScript now uses a shared formatter for
+  print, `std::to_string` and nested array/record output: signed zero,
+  non-finite spellings and expanded shortest decimal notation match Rust.
+- Validation: 20 hand-reviewed cases and a deterministic 131-value finite
+  Float corpus passed on Windows in both engines. The full suite passed with
+  execution required (348 library and 43 CLI tests), as did formatting, strict
+  Clippy, dogfood, persistence, text-file and text-decoding runners. A package
+  test harness now runs generated JavaScript from a file so the larger backend
+  template does not exceed Windows command-line limits. Hosted CI remains
+  unobserved. Next: broaden production differential coverage and complete the
+  remaining application-platform and publishing gates.
+
+
+## 2026-10-09: Approved task return contracts
+
+- User continued after the concrete ADR 0017 approval request; the recommended
+  rule is accepted. Unannotated M12 tasks now return Unit. Explicit non-Unit
+  tasks require compatible returns on all supported paths; ordinary functions
+  and service operations retain their existing contracts.
+- A focused project regression first showed that `task count() -> Int {}`
+  passed with no diagnostics. E4131 now reports fallthrough, mismatched or
+  unresolved returned values with declaration/expression locations. Tests cover
+  Unit, scalar, nominal, branches, loops and unknown values. A CLI fixture
+  checks source ranges in JSON. Task scheduling/execution remains M14 work.
+- Validation: 348 library and 43 CLI tests passed with execution required;
+  formatting, strict Clippy, dogfood, persistence, text-file and large-decimal
+  differential runners passed on Windows. Hosted CI remains unobserved.
+
+
+## 2026-10-09: Bounded integer text parsing
+
+- Audited ADR 0016 integer parsing with a 1 MiB decimal input. Both engines
+  returned the correct failure result before the change, but generated
+  JavaScript constructed an unnecessary large `BigInt` before discovering that
+  the value could not fit in signed 64-bit `Int`.
+- Both engines now reject more than 19 decimal digits before conversion. This
+  preserves the accepted grammar and all boundary results, including `i64::MIN`.
+  Added a large-input differential runner to CI and release-candidate checks,
+  plus a focused Rust unit case. No language semantics changed.
+- Validation: 347 library and 43 CLI tests passed with execution required;
+  formatting, strict Clippy, dogfood, persistence, text-file and large-decimal
+  differential runners passed on Windows. Hosted CI remains unobserved.
+
+
+## 2026-10-09: Array expression diagnostics in application inspection
+
+- A focused M12 regression showed that `[1][false]` and `[1, "wrong"]`
+  surfaced only as unresolved local initializers. The opt-in checker now emits
+  E4142 for known non-array indexed receivers or non-Int indices, and E4143
+  for known incompatible array literal elements. It checks expressions passed
+  directly to calls as well as local initializers and does not turn unresolved
+  evidence into a valid type.
+- Tests cover scalar/non-Int indexed reads, nested incompatible arrays, direct
+  `Any` arguments, valid array reads, and the existing 128-depth boundary.
+  No executable syntax or runtime behavior changed.
+- Validation: 347 library and 43 CLI tests passed with execution required;
+  formatting, strict Clippy, dogfood, persistence and text-file runners passed
+  on Windows. Hosted CI remains unobserved.
+
+
+## 2026-10-09: Application indexed-write inspection
+
+- A focused M12 regression reproduced E4096 for an executable-style mutable
+  array indexed write. The opt-in checker now validates `name[index] = value`
+  with a directly named mutable array, Int index, and compatible element value.
+  Recursive Int-to-Float array widening and empty array replacement follow the
+  existing executable contracts. E4141 reports invalid targets, indices, values
+  and nested writes with the indexed expression range.
+- Tests cover valid scalar/row replacement, immutable and non-array targets,
+  invalid indices and values, missing bindings and unsupported nested writes.
+  No syntax, runtime or memory semantics changed. Next: continue M12 structured
+  checking beyond this supported body subset.
+- During verification, placing indexed-write validation inside the recursive
+  block parser increased its Windows stack frame enough to overflow the
+  existing depth-limit test at the accepted 128-block boundary. Moving that
+  validation into a separate method restored the boundary; the focused depth
+  test and full suite now pass. No depth limit was weakened.
+- Validation: 346 library and 43 CLI tests passed with execution required;
+  formatting, strict Clippy, dogfood, persistence and text-file runners passed
+  on Windows. Hosted CI remains unobserved.
+
+
+## 2026-10-09: Application mutable-local inspection
+
+- A focused M12 regression first reproduced E4096 on an executable-style
+  `let mut` declaration and direct assignment. The opt-in checker now records
+  mutable local bindings and validates direct reassignment through lexical
+  scopes. E4140 reports immutable, missing, unresolved or incompatible targets.
+- Recursive array assignment compatibility retains the executable Int-to-Float
+  widening rule. Tests cover valid mutable scalars, nested arrays, invalid
+  values, immutable targets and nested shadowing. Indexed assignment remains
+  outside the partial checker; no source syntax or runtime behavior changed.
+- Validation: 345 library and 43 CLI tests passed with execution required;
+  formatting, strict Clippy and dogfood behavior passed on Windows. Hosted CI
+  remains unobserved.
+
+
+## 2026-10-09: File Processor text transformation
+
+- Added a `select SOURCE DESTINATION DELIMITER` command to the dogfood File
+  Processor using approved ADR 0015/0016 operations. It extracts each line's
+  first column, validates all lines before replacement, and preserves the final
+  newline. Empty delimiters, malformed rows, input above 1 MiB and more than
+  10,000 lines return explicit errors without changing the destination.
+- Extended the existing cross-backend file runner with Unicode, multicharacter
+  delimiters, malformed input, empty files and bound checks. No compiler syntax
+  or semantics changed. Validation: 344 library and 43 CLI tests passed with
+  execution required; formatting, strict Clippy, dogfood, persistence and
+  text-file runners passed on Windows. Next: continue M12 structured checking and the larger
+  M14 runtime gates; binary/streaming file I/O remains unimplemented.
+
+
+## 2026-10-09: Text decoding and durable Task Manager slice
+
+- User approved ADR 0016. Added general, pure `std::split_once` and fallible
+  `std::parse_int` with nominal result records, strict decimal grammar, signed
+  bounds and interpreter/JavaScript parity. Semantic analysis and the M12
+  application checker now recognize their types and fields.
+- Task Manager now supports `interactive PATH`: it loads a versioned, validated
+  UTF-8 file and atomically saves changes. Rejected malformed files are not
+  overwritten. Existing pathless interactive behavior remains available.
+- Focused tests cover Unicode/empty/missing delimiters, numeric boundaries and
+  invalid text; a cross-backend restart/corruption runner covers persistence.
+  CI and release-candidate workflows run it. Documentation and course updated.
+- Validation: 344 library and 43 CLI tests passed with execution required;
+  formatting, strict Clippy, dogfood, text-file parity and Task Manager
+  persistence runners passed on Windows. Hosted CI remains unobserved.
+- Next: design growable collections and tackle remaining M12/M14 application
+  runtime gates. Three-slot storage and the broader 1.0 platform remain partial.
+
+## 2026-10-09: Application array expression inspection
+
+- The opt-in M12 checker now parses array literals and indexed reads using the
+  existing executable syntax. Compatible elements, local bindings, indexed
+  results and array equality propagate type evidence. Incompatible elements and
+  invalid index types fail closed rather than presenting a checked local.
+- Additive JSON type descriptors now represent arrays and nested element facts;
+  legacy scalar fields remain null. Focused project and JSON regressions cover
+  valid and invalid cases. Array annotations and indexed assignment remain
+  outside this partial checker; no runtime syntax or behavior changed.
+- Validation: 342 library and 42 CLI tests passed with CLI execution required;
+  formatting and strict Clippy passed on Windows.
+
+## 2026-10-09: Application nominal equality inspection
+
+- The opt-in M12 application checker now recognizes equality of records with
+  the same resolved nominal identity and propagates Bool into locals and guards.
+  Cross-file same-shaped record comparisons report E4121. A focused project
+  regression reproduced the false rejection before the checker change.
+- This is an inspection increment only; application bodies and HTTP routes
+  remain non-executable under the partial project checker.
+- Validation: 340 library and 42 CLI tests passed with CLI execution required;
+  strict Clippy and formatting checks passed on Windows.
+
+## 2026-10-09: Approved compound value semantics
+
+- User approved ADR 0012 Option A. Arrays and records now transfer logical value
+  snapshots. Generated JavaScript copies nested arrays/records at binding,
+  parameter and element/field reads, matching Rust interpreter values.
+- Both engines compare arrays recursively and records by nominal type and fields
+  regardless of constructor field order. Executable source checking accepts
+  compatible compound equality and rejects unrelated nominal records. Focused
+  regressions cover nested copy isolation, function boundaries, field ordering,
+  invalid comparisons and cross-package nominal mismatch.
+- This closes the confirmed array-copy discrepancy; full compiler correctness,
+  resource limits and application checking remain separate release gates.
+- Windows validation: 339 library and 42 CLI tests passed with CLI execution
+  required; all ten dogfood cases and both text-file subprocess backends passed.
+  Strict Clippy and formatting checks passed. Hosted CI remains to be observed.
+
+## 2026-10-09: Approved bounded text-file I/O
+
+- User approved ADR 0015 Option A. Added `std::read_text` and
+  `std::write_text`, public nominal `std::TextRead`/`std::TextWrite` results,
+  recoverable error categories and a 16 MiB UTF-8 limit. The process host and
+  generated Node.js use the same source API; file writes use a unique same-
+  directory temporary file, sync and rename. A Rust fault-injection test verifies
+  that a pre-rename failure keeps existing content.
+- Semantic and application checkers recognize the result fields and reserve
+  their identities. The File Processor now has a real copy mode. A differential
+  subprocess script tests both engines on Unicode, empty/missing/invalid files,
+  existing-file replacement and boundary sizes; CI runs it on all three OSes.
+  The release-candidate workflow also runs dogfood and text-file parity against
+  the optimized candidate compiler.
+- Task Manager persistence still needs general text splitting and fallible
+  numeric parsing. This file API alone does not complete durable task state.
+- Validation on Windows: 334 library and 42 CLI tests passed with CLI execution
+  required; all ten registered dogfood cases and both text-file subprocess
+  backends passed. Formatting, strict Clippy and whitespace checks passed.
+  The cross-platform CI job is configured but its hosted results remain to be
+  observed after push.
+
+## 2026-10-09: Stream-processing dogfood
+
+- Added the first `02-file-processor` executable slice using existing process
+  input, output, arguments and UTF-8 byte length. It numbers lines, optionally
+  filters empty lines and reports read/emitted counts. Three reviewed fixtures
+  cover Unicode input, blank lines and immediate EOF in both backends.
+- All nine dogfood cases passed on Windows. The initial transcript incorrectly
+  counted Unicode characters; the established `std::len` contract counts UTF-8
+  bytes, so the application and transcript explicitly report bytes. No compiler
+  behavior changed.
+- The later ADR 0015 implementation adds path-based copying; this entry records
+  the preceding stream-only slice.
+
+## 2026-10-09: Local-package consumer dogfood
+
+- Added `dogfood/05-package-consumer`: separate library and application manifests,
+  exported nominal records and functions, a private helper, qualified construction,
+  field reads, totals and immutable revision. Two reviewed transcripts exercise
+  the default and argument-driven paths.
+- Registered both cases in the shared dogfood suite. The local runner checks and
+  builds the package, then executes each case with the Rust interpreter and
+  generated JavaScript; all six dogfood cases passed on Windows. Formatting,
+  strict Clippy and `cargo test --locked --all-targets` with required CLI
+  execution passed (330 library and 42 CLI tests).
+- This covers direct local path dependencies only. Registry publication,
+  installation and version resolution remain open; no compiler shortcuts or
+  new language semantics were added.
+
 ## 2026-10-08: General CLI input and interactive dogfood
 
 - User approved ADR 0014 Stage 1. Added `svr run <source|package> -- args`,

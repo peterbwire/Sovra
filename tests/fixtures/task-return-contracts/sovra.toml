@@ -1,0 +1,3 @@
+[project]
+name = "task-return-contracts"
+entry = "main.svr"

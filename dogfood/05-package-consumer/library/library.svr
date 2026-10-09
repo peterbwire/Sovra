@@ -1,0 +1,31 @@
+mod budget {
+    export struct Entry { label: String, cost: Int }
+    export struct Ledger { first: Entry, second: Entry, third: Entry }
+
+    fn describe(entry: Entry) -> String {
+        return entry.label + ": " + std::to_string(entry.cost);
+    }
+
+    export fn line(entry: Entry) -> String {
+        return budget::describe(entry);
+    }
+
+    export fn total(ledger: Ledger) -> Int {
+        return ledger.first.cost + ledger.second.cost + ledger.third.cost;
+    }
+
+    export fn status(ledger: Ledger) -> String {
+        if (budget::total(ledger) > 60) {
+            return "over budget";
+        }
+        return "within budget";
+    }
+
+    export fn revise_second(ledger: Ledger, cost: Int) -> Ledger {
+        return Ledger {
+            first: ledger.first,
+            second: Entry { label: ledger.second.label, cost: cost },
+            third: ledger.third
+        };
+    }
+}

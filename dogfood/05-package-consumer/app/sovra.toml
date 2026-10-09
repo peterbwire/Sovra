@@ -1,0 +1,7 @@
+[project]
+name = "ledger-consumer"
+version = "1.0.0"
+entry = "main.svr"
+
+[dependencies.ledger]
+path = "../library"

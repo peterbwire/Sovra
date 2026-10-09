@@ -2,6 +2,20 @@
 
 ## Status
 
+Opt-in M12 body inspection accepts `let mut` and direct local reassignment
+using existing executable syntax. It keeps the binding's validated type,
+supports recursive array Int-to-Float widening, and reports E4140 for an
+immutable, missing, unresolved or incompatible assignment target. Directly
+named mutable array indexed writes also validate Int indices and element types;
+E4141 reports invalid indexed assignments. Nested indexed writes remain
+unsupported. This inspection does not run
+application bodies.
+
+Array literals with known incompatible element types report E4143 at the
+literal range. Indexed reads with a known non-array receiver or non-Int index
+report E4142 at the indexed expression range. These diagnostics supplement
+unresolved local evidence; an invalid expression never becomes a validated type.
+
 Opt-in JSON inspection now includes additive type descriptors for locals,
 ordinary call results/arguments and member-call arguments. Scalars expose their
 canonical name; records expose opaque nominal identity; unresolved evidence is
@@ -114,8 +128,8 @@ element, and copied array bindings retain their element type for indexed writes.
 Replacing a Float array with a compatible Int array widens its numeric elements,
 including nested array values and replacement rows. The conversion preserves
 shape, accepts empty arrays, and does not change the source Int binding.
-This numeric fix does not settle compound-copy/equality semantics; ADR 0012
-records the separate interpreter/JavaScript discrepancy and proposed contract.
+Compound-copy and equality semantics are now settled by approved ADR 0012;
+numeric array widening still preserves the source binding's value.
 
 CLI `check` on a directory with dependency sections invokes this executable
 pipeline. `run` and `build` also accept package directories. Directory checks
@@ -140,8 +154,8 @@ rejects non-String values rather than coercing them. The interpreter checks call
 stack availability before allocating argument storage, including for malformed IR.
 Numeric literals supplied through public IR use Rust i64/f64 parsing in both
 engines. JavaScript emission normalizes accepted values and preserves invalid
-literal failures at execution time. This does not expand source literal syntax
-or settle non-finite Float formatting policy.
+literal failures at execution time. This does not expand source literal syntax.
+ADR 0018 now defines shared Float text rendering for both engines.
 For public IR binary operations, JavaScript rejects incompatible runtime kinds
 instead of coercing strings, booleans or Unit into arithmetic/ordered comparisons.
 Mixed numeric widening, string concatenation/ordering, value equality and
@@ -319,6 +333,17 @@ indexed assignment such as `values[0][1] = 42` is not supported and reports
 E3003. The interpreter and JavaScript backend both validate index type and
 bounds.
 
+Arrays and records have value semantics: reading a binding, assigning a value,
+passing an argument and returning a value transfer a logical snapshot. Changing
+an indexed element of a mutable array does not change a prior binding or the
+caller's argument. Array `==`/`!=` compare length and elements recursively;
+record equality requires the same nominal declaration and equal fields by name,
+regardless of constructor order. Same-shaped records from different packages
+are distinct. Primitive numeric, Boolean, String and Unit equality retain their
+existing rules. See [ADR 0012](adr/0012-compound-value-semantics.md) and the
+[array lesson](course/arrays.md). Resource handles and shared references are not
+introduced by this rule.
+
 Parameter and body checks apply to every function, including exported and
 non-exported module functions that are never called. Each function has its own
 local scope. Only top-level `main` has entry-signature restrictions; a module
@@ -374,8 +399,60 @@ reserved; a source declaration cannot redefine `std::InputLine`.
 `print`, `std::print` and `std::println` write and flush their output line when
 called. Output produced before a later runtime error remains visible. The
 interpreter's Rust `run` API can still capture output for tests; process execution
-uses a streaming host. See [process input](course/process-input.md). Filesystem
-read/write APIs and persistent handles are outside this implemented stage.
+uses a streaming host. See [process input](course/process-input.md).
+
+### Process status (ADR 0019)
+
+`std::set_exit_code(code: Int) -> Unit` sets the eventual process status without
+ending execution. The initial code is 0; the last successful call wins. Valid
+codes are 0 through 125 inclusive; an out-of-range value is a runtime error.
+`svr run` returns the selected status after normal completion and output
+flushing. Generated JavaScript sets Node's eventual exit code after `main`
+returns. A later uncaught runtime error still exits unsuccessfully regardless
+of the selected code. The public output-only interpreter APIs are unchanged;
+an additive status-returning API supports process execution.
+
+### Bounded text files (ADR 0015)
+
+`std::read_text(path: String) -> std::TextRead` reads at most 16 MiB of UTF-8.
+The public nominal result has `ok: Bool`, `text: String`, and `error: String`.
+`std::write_text(path: String, text: String) -> std::TextWrite` replaces a text
+file through a unique temporary file in the same directory, flushes and syncs
+it, then renames it over the destination. Its result has `ok: Bool` and
+`error: String`. Both records reserve their `std::` nominal identities. On
+success `error` is empty; on failure it is one of `not_found`,
+`permission_denied`, `invalid_path`, `invalid_utf8`, `too_large`, or `io`.
+Read failure returns empty text. Invalid UTF-8 is never decoded lossily.
+
+Paths use host-native syntax and resolve relative to the process working
+directory. Parent directories must already exist. Empty or NUL-containing paths
+are invalid. The API follows host symlinks and is not a security boundary.
+Handled pre-rename failures leave an existing destination intact; atomic
+replacement depends on filesystem support and does not promise power-loss
+durability. Persistent handles, append, binary I/O and transactions remain
+outside this slice. The host-backed runtime provides file operations; the
+in-memory `run` test host returns `io` for them unless a caller supplies a host.
+
+### Text decoding (ADR 0016)
+
+`std::split_once(text: String, delimiter: String) -> std::SplitOnce` splits at
+the first exact delimiter and returns the nominal record `found: Bool`,
+`before: String`, `after: String`. An absent delimiter returns the original
+text in `before` and empty `after`; an empty delimiter matches at the start.
+Matching is Unicode-exact without normalization.
+
+`std::lines_unique(text: String) -> Bool` returns true when all LF-separated
+lines are distinct. A final LF terminates the last line without adding an
+empty line; an empty string has zero lines. An unterminated final line counts
+as a line. CR and empty lines are ordinary content, and comparison is exact
+without normalization, case folding or trimming (ADR 0020).
+
+`std::parse_int(text: String) -> std::ParsedInt` accepts only ASCII signed
+decimal text matching `-?(0|[1-9][0-9]*)` within the signed 64-bit `Int` range.
+The nominal result has `ok: Bool` and `value: Int`. Failure yields `ok: false`
+and zero; `-0` succeeds as zero. Neither function performs I/O. Their result
+types reserve their `std::` identities.
+See [text files](course/text-files.md) for a runnable example.
 
 ### Numeric execution
 
@@ -402,7 +479,12 @@ reject stack underflow, non-array intermediate values and nonnumeric leaves;
 conversion uses an iterative traversal. The JavaScript backend
 uses BigInt for Int and Number for Float and requires a runtime supporting
 BigInt and TextEncoder. `std::len` counts UTF-8 bytes in both engines.
-Complete non-finite Float and Float-to-string parity remains experimental.
+Under ADR 0018, Float display uses Rust-style shortest decimal text without
+exponent notation, preserves negative zero as `-0`, and spells arithmetic
+non-finite results `NaN`, `inf` or `-inf` in both engines. `print`,
+`std::to_string` and nested array/record display share this rule. The runtime
+matrix covers 131 finite literals plus signed-zero and non-finite cases; this
+does not establish complete parity for every binary64 value.
 See [ADR 0001](adr/0001-numeric-execution.md), the
 [numeric lesson](course/numbers.md), and [example](../examples/numbers/main.svr).
 
@@ -639,12 +721,23 @@ This check does not evaluate arithmetic or prove absence of runtime overflow.
 Both apply even to unused locals. No placeholder type is propagated as validated.
 Supported binary expressions now retain their operator and infer primitive result
 types: numeric arithmetic, String concatenation with `+`, numeric/String ordering,
-and numeric/String/Bool equality. Mixed numeric arithmetic yields Float; comparison
-yields Bool. E4121 reports known incompatible operands at the expression range.
+and numeric/String/Bool equality. Same-nominal-record `==` and `!=` also yield
+Bool; differently identified records report E4121. Array literals and indexing
+carry inferred element types through locals; compatible array equality yields
+Bool. Mixed numeric arithmetic yields Float; comparison yields Bool. E4121
+reports known incompatible operands at the expression range.
 Application inspection also supports && and || with Bool operands. Precedence
 from lowest to highest is ||, &&, comparisons, +/-, */. Both sides are inspected
 statically, including calls on a potentially skipped short-circuit branch. Unknown
 operand types remain unresolved; general unary expressions remain unsupported.
+Incompatible array literals and invalid indexing do not provide validated
+result types; existing E4136/E4137 diagnostics prevent local or discarded uses
+from passing silently. Malformed syntax remains an incomplete-inspection error.
+Array annotations and indexed assignment
+remain outside this application-inspection slice. JSON `*_type_info` fields
+describe validated arrays with an `array` kind and nested element descriptor;
+legacy scalar fields remain null for arrays. See
+[application arrays](course/application-arrays.md).
 Invalid or unresolved expressions do not supply downstream type evidence.
 Project inspection resolves service call result types through canonical contracts,
 including direct imports. Results propagate only for unambiguous, unshadowed
@@ -676,8 +769,12 @@ at its owning declaration range, even when the declaration is unused. This imple
 annotation requirement rather than treating absence of calls as validation.
 Explicit task return annotations also resolve in the declaring module, including
 aliases and direct imported records; unresolved names produce E4131 at the task
-declaration. This does not define omitted task results or validate task return
-paths, scheduling, or execution; those task contracts remain partial.
+declaration. Under ADR 0017, omitted task results default to Unit. Explicit
+non-Unit results require a compatible return on every supported path, while
+Unit tasks may fall through or use bare `return`. E4131 reports mismatched or
+unresolved returned expressions at their ranges and possible fallthrough at the
+task declaration. This validates M12 task bodies only; scheduling and execution
+remain unimplemented.
 
 E4127 identifies duplicate ordinary/task declarations in the same source scope,
 including function/task name collisions. Colliding names provide no selectable

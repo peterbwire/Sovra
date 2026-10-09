@@ -27,14 +27,14 @@ function insideBase(path) {
     return absolute;
 }
 
-function run(executable, arguments_, input = '') {
+function run(executable, arguments_, input = '', expectedStatus = 0) {
     const result = spawnSync(executable, arguments_, {
         cwd: root, encoding: 'utf8', timeout: 30000,
         maxBuffer: 4 * 1024 * 1024, windowsHide: true, input,
     });
     assert.ifError(result.error);
     assert.equal(result.signal, null, `terminated by ${result.signal}`);
-    assert.equal(result.status, 0, `${executable} ${arguments_.join(' ')}\n${result.stderr}\n${result.stdout}`);
+    assert.equal(result.status, expectedStatus, `${executable} ${arguments_.join(' ')}\n${result.stderr}\n${result.stdout}`);
     assert.equal(result.stderr, '', `unexpected stderr: ${result.stderr}`);
     return normalize(result.stdout);
 }
@@ -77,10 +77,12 @@ try {
                     : readFileSync(insideBase(testCase.stdin), 'utf8');
                 const args = testCase.args ?? [];
                 assert.ok(Array.isArray(args) && args.every(arg => typeof arg === 'string'));
+                const expectedStatus = testCase.exit_code ?? 0;
+                assert.ok(Number.isInteger(expectedStatus) && expectedStatus >= 0 && expectedStatus <= 125);
                 const programArgs = args.length ? ['--', ...args] : [];
-                assert.equal(run(compiler, ['run', source, ...programArgs], input), expected,
+                assert.equal(run(compiler, ['run', source, ...programArgs], input, expectedStatus), expected,
                     `interpreter behavior differs in ${testCase.id}`);
-                assert.equal(run(process.execPath, [file, ...args], input), expected,
+                assert.equal(run(process.execPath, [file, ...args], input, expectedStatus), expected,
                     `JavaScript behavior differs in ${testCase.id}`);
                 result.cases.push({ id: testCase.id, passed: true });
                 console.log(`PASS ${application.id}/${testCase.id}`);

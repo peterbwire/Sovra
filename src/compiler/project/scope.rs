@@ -36,7 +36,7 @@ pub enum Receiver {
 #[derive(Debug, Default)]
 pub struct Scope<'a> {
     parent: Option<&'a Scope<'a>>,
-    bindings: Vec<(String, usize, Option<Type>)>,
+    bindings: Vec<(String, usize, Option<Type>, bool)>,
     fields: std::collections::HashMap<String, std::collections::HashMap<String, Type>>,
     services: BTreeSet<ServiceIdentity>,
     operations: Vec<super::service_types::TypedServiceOperation>,
@@ -52,6 +52,36 @@ impl<'a> Scope<'a> {
             std::collections::HashMap::from([
                 ("eof".to_owned(), Type::Bool),
                 ("text".to_owned(), Type::String),
+            ]),
+        );
+        root.fields.insert(
+            crate::compiler::stdlib::TEXT_READ_TYPE.to_owned(),
+            std::collections::HashMap::from([
+                ("ok".to_owned(), Type::Bool),
+                ("text".to_owned(), Type::String),
+                ("error".to_owned(), Type::String),
+            ]),
+        );
+        root.fields.insert(
+            crate::compiler::stdlib::TEXT_WRITE_TYPE.to_owned(),
+            std::collections::HashMap::from([
+                ("ok".to_owned(), Type::Bool),
+                ("error".to_owned(), Type::String),
+            ]),
+        );
+        root.fields.insert(
+            crate::compiler::stdlib::SPLIT_ONCE_TYPE.to_owned(),
+            std::collections::HashMap::from([
+                ("found".to_owned(), Type::Bool),
+                ("before".to_owned(), Type::String),
+                ("after".to_owned(), Type::String),
+            ]),
+        );
+        root.fields.insert(
+            crate::compiler::stdlib::PARSED_INT_TYPE.to_owned(),
+            std::collections::HashMap::from([
+                ("ok".to_owned(), Type::Bool),
+                ("value".to_owned(), Type::Int),
             ]),
         );
         root
@@ -109,15 +139,37 @@ impl<'a> Scope<'a> {
         visible_from: usize,
         kind: Option<Type>,
     ) {
-        self.bindings.push((name.into(), visible_from, kind));
+        self.bindings.push((name.into(), visible_from, kind, false));
     }
 
-    pub(super) fn binding_type(&self, name: &str, offset: usize) -> Option<Type> {
-        if let Some((_, _, kind)) = self
+    pub(super) fn bind_mutable_typed(
+        &mut self,
+        name: impl Into<String>,
+        visible_from: usize,
+        kind: Option<Type>,
+    ) {
+        self.bindings.push((name.into(), visible_from, kind, true));
+    }
+
+    pub(super) fn binding_info(&self, name: &str, offset: usize) -> Option<(Option<Type>, bool)> {
+        if let Some((_, _, kind, mutable)) = self
             .bindings
             .iter()
             .rev()
-            .find(|(binding, start, _)| binding == name && *start <= offset)
+            .find(|(binding, start, _, _)| binding == name && *start <= offset)
+        {
+            return Some((kind.clone(), *mutable));
+        }
+        self.parent
+            .and_then(|parent| parent.binding_info(name, offset))
+    }
+
+    pub(super) fn binding_type(&self, name: &str, offset: usize) -> Option<Type> {
+        if let Some((_, _, kind, _)) = self
+            .bindings
+            .iter()
+            .rev()
+            .find(|(binding, start, _, _)| binding == name && *start <= offset)
         {
             return kind.clone();
         }
@@ -212,7 +264,7 @@ impl<'a> Scope<'a> {
     fn has_binding(&self, name: &str, offset: usize) -> bool {
         self.bindings
             .iter()
-            .any(|(binding, start, _)| binding == name && *start <= offset)
+            .any(|(binding, start, _, _)| binding == name && *start <= offset)
             || self
                 .parent
                 .is_some_and(|parent| parent.has_binding(name, offset))

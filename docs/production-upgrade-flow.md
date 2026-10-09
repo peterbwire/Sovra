@@ -3,7 +3,17 @@
 This is the handoff flow for continuing the production-grade Sovra upgrade.
 Use it when picking up M12 and later project/runtime work.
 
-The current release target is production readiness, not a developer preview.
+The current release target is production readiness for the Task Manager CLI,
+not a developer preview. The broader application-platform sequence below remains
+the roadmap for later versions; see [version-one gates](V1_DELIVERY_GATES.md).
+The executable runtime parity matrix now covers 20 reviewed cases and a
+131-value finite Float corpus in both engines. ADR 0018 resolves the confirmed
+negative-zero and exponent-text discrepancy in generated JavaScript.
+Opt-in M12 body inspection now validates direct `let mut` local reassignment
+with E4140 and directly named mutable array indexed writes with E4141. Nested
+indexed writes remain unsupported.
+Known invalid array literals and indexed reads now report E4143 and E4142
+respectively while unresolved type evidence stays conservative.
 Follow [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md) for audited gaps,
 dependency order and acceptance gates. Keep verification-artifact infrastructure;
 do not treat successful packaging as release approval.
@@ -23,15 +33,20 @@ do not treat successful packaging as release approval.
 ## Current Checkpoint
 
 ADR 0014 Stage 1 is accepted and implemented for general executable process
-arguments, explicit EOF line input and immediate output. The task manager now
-executes interactive cases in both backends; durable file I/O is Stage 2 and
-still needs review.
+arguments, explicit EOF line input and immediate output. ADR 0015 now adds
+bounded UTF-8 reads and replacement writes in both backends. The task manager
+executes interactive cases with optional durable file state using ADR 0016 text
+decoding. Its variable-length text records remove the old three-slot limit,
+while bounded file size and larger-data performance remain to qualify.
+ADR 0012 Option A now defines compound value copies and equality in both engines.
 
 Unresolved member receivers now fail opt-in checking with E4133 rather than
 silently passing. Known and ambiguous services retain their specific diagnostics.
 
 Task parameter and explicit return annotations now reject unresolved names even
-when unused (E4134/E4131). Task return-path and runtime contracts remain partial.
+when unused (E4134/E4131). ADR 0017 now gives unannotated tasks a Unit result
+and validates explicit task returns and path completeness under E4131. Task
+scheduling and execution remain separate M14 contracts.
 
 Nominal JSON type descriptors now distinguish record identity from unresolved
 evidence in locals and call interfaces while retaining existing scalar fields.

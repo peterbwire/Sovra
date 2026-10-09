@@ -5,10 +5,12 @@ plan is superseded. Follow [the production audit and gates](PRODUCTION_READINESS
 without renumbering these milestones. Completed foundation slices do not imply
 that the full language or application platform is production-ready.
 
-On 2026-10-03 the user explicitly required the **full application platform and
-third-party library publishing before version 1.0**. The compiler-only release
-scope is superseded. [Version-one delivery gates](V1_DELIVERY_GATES.md) track
-the required evidence; setting Cargo's version to 1.0.0 does not satisfy them.
+On 2026-10-09 the user revised version-one scope: Sovra must be able to build a
+production-quality Task Manager CLI. Later versions will add platform capacity
+and validate it with their own applications. This supersedes the 2026-10-03
+requirement to deliver the full application platform and third-party registry
+publishing before 1.0. [Version-one delivery gates](V1_DELIVERY_GATES.md)
+track the required evidence; setting Cargo's version to 1.0.0 does not satisfy them.
 
 The [library ecosystem assessment](LIBRARY_ECOSYSTEM_ASSESSMENT.md) records the
 actual executable module/stdlib boundary and package prerequisites. Local package
@@ -192,8 +194,9 @@ policy, and page tests.
 Implemented foundation (ADR 0014 Stage 1): executable program arguments,
 UTF-8 line input with explicit EOF, and immediately flushed output in the Rust
 interpreter and generated Node.js. The repository task manager dogfoods an
-interactive command loop. File persistence, resource lifecycle, HTTP hosting
-and scalable task storage remain open; see `docs/DOGFOOD_STATUS.md`.
+interactive command loop with optional versioned file-backed state. Resource
+lifecycle, HTTP hosting and scalable task storage remain open; see
+`docs/DOGFOOD_STATUS.md`.
 
 Make `svr run <project>` start an integrated application with APIs, pages,
 auth, background tasks, concurrency, and external services.

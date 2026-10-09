@@ -40,6 +40,45 @@ pub(super) fn check(functions: &[FunctionCalls], file: &Path, diagnostics: &mut 
                 function.span,
             );
         }
+        if function.is_task {
+            let expected = function
+                .task_return_annotation
+                .as_ref()
+                .unwrap_or(&Type::Unit);
+            if *expected != Type::Unknown {
+                if *expected != Type::Unit && !function.always_returns {
+                    emit(
+                        "E4131",
+                        format!(
+                            "task `{}` can finish without returning {expected:?}",
+                            function.name
+                        ),
+                        function.span,
+                    );
+                }
+                for returned in &function.returns {
+                    match &returned.known_type {
+                        Some(actual) if compatible(expected, actual) => {}
+                        Some(actual) => emit(
+                            "E4131",
+                            format!(
+                                "task `{}` expects return {expected:?}, found {actual:?}",
+                                function.name
+                            ),
+                            returned.span,
+                        ),
+                        None => emit(
+                            "E4131",
+                            format!(
+                                "cannot resolve return expression type for task `{}`",
+                                function.name
+                            ),
+                            returned.span,
+                        ),
+                    }
+                }
+            }
+        }
         for parameter in &function.unresolved_task_parameters {
             emit(
                 "E4134",

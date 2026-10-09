@@ -39,7 +39,31 @@ jobs:
       - run: cargo test --locked --all-targets
       - run: cargo test --locked --doc
       - run: cargo package --locked
+      - name: Checksum Cargo source package
+        shell: pwsh
+        run: |
+          $metadata = cargo metadata --no-deps --format-version 1 | ConvertFrom-Json
+          $package = $metadata.packages[0]
+          $file = "target/package/$($package.name)-$($package.version).crate"
+          if (-not (Test-Path -LiteralPath $file)) { throw 'Cargo source package missing' }
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $file).Hash.ToLowerInvariant()
+          "$hash  $($package.name)-$($package.version).crate" | Set-Content -Encoding ascii "$file.sha256"
       - run: cargo build --locked --release
+      - name: Release compiler dogfood applications
+        shell: pwsh
+        run: |
+          $binary = if ($IsWindows) { 'svr.exe' } else { 'svr' }
+          $compiler = Join-Path 'target/release' $binary
+          node scripts/test-dogfood.mjs --compiler $compiler
+          if ($LASTEXITCODE -ne 0) { throw 'Release compiler dogfood failed' }
+          node scripts/test-text-files.mjs --compiler $compiler
+          if ($LASTEXITCODE -ne 0) { throw 'Release compiler text-file parity failed' }
+          node scripts/test-task-persistence.mjs --compiler $compiler
+          if ($LASTEXITCODE -ne 0) { throw 'Release compiler task persistence failed' }
+          node scripts/test-text-decoding.mjs --compiler $compiler
+          if ($LASTEXITCODE -ne 0) { throw 'Release compiler text decoding failed' }
+          node scripts/test-runtime-matrix.mjs --compiler $compiler
+          if ($LASTEXITCODE -ne 0) { throw 'Release compiler runtime matrix failed' }
       - name: Smoke test and package the candidate
         shell: pwsh
         run: |
@@ -63,36 +87,16 @@ jobs:
           Copy-Item -Path LICENSE,LICENSE-MIT,LICENSE-APACHE -Destination $stage
           Copy-Item -LiteralPath docs/RELEASE_NOTES.md -Destination (Join-Path $stage 'README.md')
           Copy-Item -LiteralPath examples/hello-world/main.svr -Destination (Join-Path $stage 'hello.svr')
+          Copy-Item -LiteralPath dogfood/01-task-manager/main.svr -Destination (Join-Path $stage 'task-manager.svr')
+          Copy-Item -LiteralPath dogfood/01-task-manager/README.md -Destination (Join-Path $stage 'task-manager-README.md')
           $archive = "target/candidate/$name.tar.gz"
           tar -czf $archive -C target/candidate $name
           if ($LASTEXITCODE -ne 0) { throw 'Archive creation failed' }
           $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant()
           "$hash  $name.tar.gz" | Set-Content -Encoding ascii "$archive.sha256"
           "commit=$env:GITHUB_SHA`ntarget=$targetTriple`nversion=$version" | Set-Content "target/candidate/$name.build.txt"
-          # Test the archive contents, not just the original build directory.
-          $unpack = Join-Path 'target' "smoke-$name-$([guid]::NewGuid().ToString('N'))"
-          New-Item -ItemType Directory -Path $unpack | Out-Null
-          tar -xzf $archive -C $unpack
-          if ($LASTEXITCODE -ne 0) { throw 'Archive extraction failed' }
-          $installed = Join-Path $unpack $name
-          $installedBinary = Join-Path $installed $binary
-          $example = Join-Path $installed 'hello.svr'
-          $actualVersion = & $installedBinary --version
-          if ($LASTEXITCODE -ne 0 -or $actualVersion -ne "svr $version") { throw 'Packaged version mismatch' }
-          $greeting = & $installedBinary run $example
-          if ($LASTEXITCODE -ne 0 -or $greeting -ne 'Hello, Sovra!') { throw 'Packaged interpreter failed' }
-          $jsonText = & $installedBinary check --format json $example
-          if ($LASTEXITCODE -ne 0) { throw 'Packaged JSON check failed' }
-          $report = $jsonText | ConvertFrom-Json
-          if ($report.schema_version -ne 1 -or $report.success -ne $true -or $report.kind -ne 'source' -or $report.diagnostics.Count -ne 0) {
-            throw 'Unexpected packaged JSON report'
-          }
-          $javascript = & $installedBinary build --emit js $example
-          if ($LASTEXITCODE -ne 0) { throw 'Packaged JavaScript build failed' }
-          $jsFile = Join-Path $installed 'hello.js'
-          [System.IO.File]::WriteAllLines($jsFile, [string[]]$javascript, [System.Text.UTF8Encoding]::new($false))
-          $jsGreeting = node $jsFile
-          if ($LASTEXITCODE -ne 0 -or $jsGreeting -ne 'Hello, Sovra!') { throw 'Packaged JavaScript execution failed' }
+          node scripts/verify-candidate-archive.mjs --archive $archive --name $name --version $version
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate archive verification failed' }
       - uses: actions/upload-artifact@v4
         with:
           name: candidate-${{ matrix.os }}
@@ -101,4 +105,37 @@ jobs:
             target/candidate/*.sha256
             target/candidate/*.build.txt
             target/package/*.crate
+            target/package/*.crate.sha256
           if-no-files-found: error
+      - uses: actions/download-artifact@v4
+        with:
+          name: candidate-${{ matrix.os }}
+          path: target/downloaded-candidate
+      - name: Verify downloaded candidate bytes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $download = 'target/downloaded-candidate'
+          $metadataFiles = @(Get-ChildItem -LiteralPath $download -Filter '*.build.txt' -File)
+          if ($metadataFiles.Count -ne 1) { throw 'Expected one downloaded build manifest' }
+          $manifest = $metadataFiles[0]
+          $name = $manifest.Name.Substring(0, $manifest.Name.Length - '.build.txt'.Length)
+          $buildInfo = @{}
+          foreach ($line in Get-Content -LiteralPath $manifest.FullName) {
+            $parts = $line.Split('=', 2)
+            if ($parts.Count -ne 2 -or $buildInfo.ContainsKey($parts[0])) { throw 'Invalid build manifest' }
+            $buildInfo[$parts[0]] = $parts[1]
+          }
+          if ($buildInfo['commit'] -ne $env:GITHUB_SHA) { throw 'Downloaded commit mismatch' }
+          $hostLine = rustc -vV | Select-String '^host: '
+          $targetTriple = $hostLine.ToString().Substring(6)
+          if ($buildInfo['target'] -ne $targetTriple) { throw 'Downloaded target mismatch' }
+          $metadata = cargo metadata --no-deps --format-version 1 | ConvertFrom-Json
+          $version = $metadata.packages[0].version
+          if ($buildInfo['version'] -ne $version) { throw 'Downloaded version mismatch' }
+          $archive = Join-Path $download "$name.tar.gz"
+          node scripts/verify-candidate-archive.mjs --archive $archive --name $name --version $version
+          if ($LASTEXITCODE -ne 0) { throw 'Downloaded candidate archive verification failed' }
+          $sourcePackage = Join-Path $download "sovra-$version.crate"
+          node scripts/verify-source-package.mjs --crate $sourcePackage --version $version
+          if ($LASTEXITCODE -ne 0) { throw 'Downloaded Cargo source package verification failed' }

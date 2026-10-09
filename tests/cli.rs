@@ -7,6 +7,106 @@ fn svr() -> Command {
     Command::new(env!("CARGO_BIN_EXE_svr"))
 }
 
+#[test]
+fn line_uniqueness_matches_both_execution_engines() {
+    let source = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/lines-unique.svr"
+    );
+    let expected = "true\ntrue\ntrue\nfalse\ntrue\nfalse\ntrue\nfalse\ntrue\n";
+    let Some(run) = output_or_skip(svr().args(["run", source])) else {
+        return;
+    };
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout).replace("\r\n", "\n"),
+        expected
+    );
+    let Some(build) = output_or_skip(svr().args(["build", "--emit", "js", source])) else {
+        return;
+    };
+    assert!(
+        build.status.success(),
+        "{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+    let js_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("target")
+        .join(format!("lines-unique-{}.cjs", std::process::id()));
+    std::fs::write(&js_path, build.stdout).unwrap();
+    let js = Command::new("node").arg(&js_path).output().unwrap();
+    std::fs::remove_file(js_path).unwrap();
+    assert!(
+        js.status.success(),
+        "{}",
+        String::from_utf8_lossy(&js.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&js.stdout).replace("\r\n", "\n"),
+        expected
+    );
+}
+
+#[test]
+fn explicit_program_exit_status_matches_generated_javascript() {
+    let source = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/process-exit-status.svr"
+    );
+    let Some(build) = output_or_skip(svr().args(["build", "--emit", "js", source])) else {
+        return;
+    };
+    assert!(
+        build.status.success(),
+        "{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+    let js_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("target")
+        .join(format!("process-exit-status-{}.cjs", std::process::id()));
+    std::fs::write(&js_path, build.stdout).unwrap();
+    for (mode, status, stdout) in [
+        ("last", 3, "before\nafter\n"),
+        ("clear", 0, ""),
+        ("maximum", 125, ""),
+        ("negative", 1, ""),
+        ("invalid", 1, ""),
+        ("runtime", 1, ""),
+    ] {
+        let Some(interpreter) = output_or_skip(svr().args(["run", source, "--", mode])) else {
+            std::fs::remove_file(&js_path).unwrap();
+            return;
+        };
+        let js = Command::new("node")
+            .arg(&js_path)
+            .arg(mode)
+            .output()
+            .unwrap();
+        assert_eq!(interpreter.status.code(), Some(status), "{mode}");
+        assert_eq!(js.status.code(), Some(status), "{mode}");
+        assert_eq!(
+            String::from_utf8_lossy(&interpreter.stdout).replace("\r\n", "\n"),
+            stdout
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&js.stdout).replace("\r\n", "\n"),
+            stdout
+        );
+        if mode == "invalid" || mode == "negative" {
+            assert!(String::from_utf8_lossy(&interpreter.stderr)
+                .contains("exit code must be between 0 and 125"));
+            assert!(
+                String::from_utf8_lossy(&js.stderr).contains("exit code must be between 0 and 125")
+            );
+        }
+    }
+    std::fs::remove_file(js_path).unwrap();
+}
+
 fn output_or_skip(command: &mut Command) -> Option<Output> {
     match command.output() {
         Ok(output) => Some(output),
@@ -25,6 +125,50 @@ fn output_or_skip(command: &mut Command) -> Option<Output> {
 
 fn is_application_control_block(error: &io::Error) -> bool {
     error.raw_os_error() == Some(4551)
+}
+
+#[test]
+fn text_decoding_matches_in_interpreter_and_javascript() {
+    let source = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/text-decoding.svr"
+    );
+    let expected = "true\ncafé\nend\nfalse\nabc\n\ntrue\n\nabc\n9223372036854775807\n-9223372036854775808\ntrue\nfalse\nfalse\nfalse\nfalse\n";
+    let Some(run) = output_or_skip(svr().args(["run", source])) else {
+        return;
+    };
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout).replace("\r\n", "\n"),
+        expected
+    );
+    let Some(build) = output_or_skip(svr().args(["build", "--emit", "js", source])) else {
+        return;
+    };
+    assert!(
+        build.status.success(),
+        "{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+    let js_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("target")
+        .join(format!("text-decoding-{}.cjs", std::process::id()));
+    std::fs::write(&js_path, build.stdout).unwrap();
+    let js = Command::new("node").arg(&js_path).output().unwrap();
+    std::fs::remove_file(js_path).unwrap();
+    assert!(
+        js.status.success(),
+        "{}",
+        String::from_utf8_lossy(&js.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&js.stdout).replace("\r\n", "\n"),
+        expected
+    );
 }
 
 #[test]
@@ -754,6 +898,7 @@ fn service_call_cli_reports_errors_and_incomplete_coverage() {
         ("tests/fixtures/application-import-errors", 1, "['E4133', 'E4129']", true),
         ("tests/fixtures/ordinary-unknown-annotations", 1, "['E4134', 'E4134']", true),
         ("tests/fixtures/task-unknown-annotations", 1, "['E4134', 'E4131']", true),
+        ("tests/fixtures/task-return-contracts", 1, "['E4131', 'E4131', 'E4131', 'E4131']", true),
         ("tests/fixtures/unresolved-ordinary-calls", 1, "['E4133', 'E4133', 'E4133']", true),
         ("tests/fixtures/application-stdlib", 1, "['E4129', 'E4128', 'E4130']", true),
         ("examples/application-functions", 0, "[]", true),
@@ -840,6 +985,13 @@ fn service_call_cli_reports_errors_and_incomplete_coverage() {
                     assert.ok(error.location.end > error.location.start);
                 }}
             }}
+            if ('{relative}' === 'tests/fixtures/task-return-contracts') {{
+                const source = require('fs').readFileSync(report.diagnostics[0].location.file);
+                const ranges = report.diagnostics.map(d => source.subarray(d.location.start, d.location.end).toString());
+                assert.ok(ranges[0].startsWith('task missing() -> Int'));
+                assert.deepEqual(ranges.slice(1), ['"wrong"', '1', 'missing_value']);
+                assert.ok(report.diagnostics.every(d => d.location.file.endsWith('main.svr')));
+            }}
             for (const call of report.ordinary_calls) {{
                 assert.ok(report.service_coverage.files.some(f => f.file === call.location.file && f.inspected));
                 assert.ok(['builtin', 'ordinary', 'unresolved'].includes(call.kind));
@@ -860,7 +1012,8 @@ fn service_call_cli_reports_errors_and_incomplete_coverage() {
                 assert.ok(report.service_coverage.files.some(f => f.file === call.location.file && f.inspected));
                 assert.equal(typeof call.operation, 'string');
             }}
-            if ({complete}) assert.ok(report.member_calls.some(c => c.receiver.kind === 'service'));
+            if ({complete} && '{relative}' !== 'tests/fixtures/task-return-contracts')
+                assert.ok(report.member_calls.some(c => c.receiver.kind === 'service'));
               if ('{relative}' === 'tests/fixtures/service-body-coverage') {{
                 const call = report.member_calls.find(c => c.function === 'mail.send');
                 assert.ok(call);

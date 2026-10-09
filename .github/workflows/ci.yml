@@ -37,6 +37,14 @@ jobs:
         run: node scripts/test-dogfood.mjs
       - name: Process input and streaming output parity
         run: node scripts/test-host-input.mjs
+      - name: Text-file I/O parity
+        run: node scripts/test-text-files.mjs
+      - name: Task Manager persistence and corruption handling
+        run: node scripts/test-task-persistence.mjs
+      - name: Large integer text decoding parity
+        run: node scripts/test-text-decoding.mjs
+      - name: Executable runtime parity matrix
+        run: node scripts/test-runtime-matrix.mjs
       - name: Upload dogfood evidence
         if: always()
         uses: actions/upload-artifact@v4

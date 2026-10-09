@@ -48,9 +48,11 @@ pub fn render_javascript(program: &IrProgram) -> String {
     let _ = writeln!(output, "\"use strict\";");
     let _ = writeln!(output);
     let _ = writeln!(output, "const svrFs = require(\"node:fs\");");
+    let _ = writeln!(output, "const svrPath = require(\"node:path\");");
     let _ = writeln!(output, "const svrArgv = process.argv.slice(2);");
     let _ = writeln!(output, "const svrFunctions = Object.create(null);");
     let _ = writeln!(output, "let svrCallDepth = 0;");
+    let _ = writeln!(output, "let svrExitCode = 0;");
     output.push_str(include_str!("numeric_runtime.js"));
     output.push_str(
         r#"
@@ -84,6 +86,77 @@ function svrReadLine() {
     else svrInputBuffer = Buffer.concat([svrInputBuffer, chunk.subarray(0, count)]);
   }
 }
+const svrMaxTextBytes = 16 * 1024 * 1024;
+let svrTempSequence = 0;
+function svrFileError(error) {
+  if (error && error.code === "ENOENT") return "not_found";
+  if (error && (error.code === "EACCES" || error.code === "EPERM")) return "permission_denied";
+  if (error && (error.code === "EINVAL" || error.code === "ENAMETOOLONG" ||
+      error.code === "ERR_INVALID_ARG_VALUE")) return "invalid_path";
+  return "io";
+}
+function svrResult(typeName, fields) {
+  return { __svrStruct: { typeName, fields, fieldOrder: Object.keys(fields) } };
+}
+function svrReadText(path) {
+  const fail = error => svrResult("std::TextRead", { ok: false, text: "", error });
+  if (typeof path !== "string") throw new Error("std::read_text expects a String path");
+  if (!path || path.includes("\0")) return fail("invalid_path");
+  let fd;
+  try {
+    fd = svrFs.openSync(path, "r");
+    const chunks = [];
+    let length = 0;
+    while (true) {
+      const chunk = Buffer.allocUnsafe(8192);
+      const count = svrFs.readSync(fd, chunk, 0, chunk.length, null);
+      if (count === 0) break;
+      length += count;
+      if (length > svrMaxTextBytes) return fail("too_large");
+      chunks.push(chunk.subarray(0, count));
+    }
+    let text;
+    try { text = new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks)); }
+    catch { return fail("invalid_utf8"); }
+    return svrResult("std::TextRead", { ok: true, text, error: "" });
+  } catch (error) { return fail(svrFileError(error)); }
+  finally { if (fd !== undefined) svrFs.closeSync(fd); }
+}
+function svrWriteText(path, text) {
+  const fail = error => svrResult("std::TextWrite", { ok: false, error });
+  if (typeof path !== "string" || typeof text !== "string")
+    throw new Error("std::write_text expects String path and text");
+  if (!path || path.includes("\0") || !svrPath.basename(path)) return fail("invalid_path");
+  const bytes = Buffer.from(text, "utf-8");
+  if (bytes.length > svrMaxTextBytes) return fail("too_large");
+  let fd;
+  let temporary;
+  let created = false;
+  try {
+    for (let attempt = 0; attempt < 16; attempt++) {
+      temporary = svrPath.join(svrPath.dirname(path),
+        svrPath.basename(path) + ".svr-tmp-" + process.pid + "-" + (svrTempSequence++));
+      try { fd = svrFs.openSync(temporary, "wx"); created = true; break; }
+      catch (error) { if (error.code !== "EEXIST") throw error; }
+    }
+    if (!created) return fail("io");
+    let written = 0;
+    while (written < bytes.length) {
+      const count = svrFs.writeSync(fd, bytes, written, bytes.length - written);
+      if (count <= 0) throw new Error("short write");
+      written += count;
+    }
+    svrFs.fsyncSync(fd);
+    svrFs.closeSync(fd);
+    fd = undefined;
+    svrFs.renameSync(temporary, path);
+    return svrResult("std::TextWrite", { ok: true, error: "" });
+  } catch (error) {
+    if (fd !== undefined) { try { svrFs.closeSync(fd); } catch {} }
+    if (created) { try { svrFs.unlinkSync(temporary); } catch {} }
+    return fail(svrFileError(error));
+  }
+}
 function svrWriteLine(value) {
   const bytes = Buffer.from(svrDisplay(value) + "\n", "utf-8");
   let written = 0;
@@ -97,6 +170,7 @@ function svrWriteLine(value) {
 }
 function svrDisplay(value) {
   if (value === undefined) return "";
+  if (typeof value === "number") return svrFormatFloat(value);
   if (Array.isArray(value)) return "[" + value.map(svrDisplay).join(", ") + "]";
   if (value !== null && typeof value === "object" &&
       Object.prototype.hasOwnProperty.call(value, "__svrStruct")) {
@@ -106,6 +180,60 @@ function svrDisplay(value) {
       " }";
   }
   return String(value);
+}
+function svrFormatFloat(value) {
+  if (Number.isNaN(value)) return "NaN";
+  if (value === Infinity) return "inf";
+  if (value === -Infinity) return "-inf";
+  if (Object.is(value, -0)) return "-0";
+  const text = String(value);
+  const marker = text.indexOf("e");
+  if (marker === -1) return text;
+  const negative = text.startsWith("-");
+  const sign = negative ? "-" : "";
+  const mantissa = text.slice(negative ? 1 : 0, marker);
+  const exponent = Number(text.slice(marker + 1));
+  const dot = mantissa.indexOf(".");
+  const point = (dot === -1 ? mantissa.length : dot) + exponent;
+  const digits = mantissa.replace(".", "");
+  if (point <= 0) return sign + "0." + "0".repeat(-point) + digits;
+  if (point >= digits.length) return sign + digits + "0".repeat(point - digits.length);
+  return sign + digits.slice(0, point) + "." + digits.slice(point);
+}
+function svrCopy(value) {
+  function shell(source) {
+    if (Array.isArray(source)) return [];
+    if (source !== null && typeof source === "object" &&
+        Object.prototype.hasOwnProperty.call(source, "__svrStruct")) {
+      const record = source.__svrStruct;
+      return { __svrStruct: { typeName: record.typeName,
+        fields: Object.create(null), fieldOrder: [...record.fieldOrder] } };
+    }
+    return source;
+  }
+  const result = shell(value);
+  if (result === value) return value;
+  const pending = [[value, result]];
+  while (pending.length) {
+    const [source, target] = pending.pop();
+    if (Array.isArray(source)) {
+      for (const item of source) {
+        const copy = shell(item);
+        target.push(copy);
+        if (copy !== item) pending.push([item, copy]);
+      }
+    } else {
+      const sourceFields = source.__svrStruct.fields;
+      const targetFields = target.__svrStruct.fields;
+      for (const name of source.__svrStruct.fieldOrder) {
+        const item = sourceFields[name];
+        const copy = shell(item);
+        targetFields[name] = copy;
+        if (copy !== item) pending.push([item, copy]);
+      }
+    }
+  }
+  return result;
 }
 "#,
     );
@@ -127,6 +255,7 @@ function svrDisplay(value) {
         "if (!svrFunctions.main) throw new Error(\"entry function `main` was not found\");"
     );
     let _ = writeln!(output, "svrFunctions.main();");
+    let _ = writeln!(output, "process.exitCode = svrExitCode;");
     output
 }
 
@@ -164,7 +293,7 @@ fn render_js_function(output: &mut String, index: usize, function: &IrFunction) 
     for (parameter_index, parameter) in function.parameters.iter().enumerate() {
         let _ = writeln!(
             output,
-            "  names[{}] = svr_arg_{parameter_index};",
+            "  names[{}] = svrCopy(svr_arg_{parameter_index});",
             js_string(parameter),
         );
     }
@@ -204,7 +333,11 @@ fn render_js_instruction(
                 js_string(name),
                 js_string(&format!("runtime name `{name}` was not found"))
             );
-            let _ = writeln!(output, "        stack.push(names[{}]);", js_string(name));
+            let _ = writeln!(
+                output,
+                "        stack.push(svrCopy(names[{}]));",
+                js_string(name)
+            );
         }
         Instruction::StoreName(name) => {
             render_stack_guard(output, 1, "store");
@@ -303,7 +436,7 @@ fn render_js_instruction(
             let _ = writeln!(output, "          if (!Object.prototype.hasOwnProperty.call(recordFields, {})) throw new Error({});", js_string(field), js_string(&format!("struct value has no field `{field}`")));
             let _ = writeln!(
                 output,
-                "          stack.push(recordFields[{}]);",
+                "          stack.push(svrCopy(recordFields[{}]));",
                 js_string(field)
             );
             let _ = writeln!(output, "        }}");
@@ -317,7 +450,7 @@ fn render_js_instruction(
             let _ = writeln!(output, "          if (arrayIndex < 0n || arrayIndex >= BigInt(arrayTarget.length)) throw new Error(\"array index out of bounds\");");
             let _ = writeln!(
                 output,
-                "          stack.push(arrayTarget[Number(arrayIndex)]);"
+                "          stack.push(svrCopy(arrayTarget[Number(arrayIndex)]));"
             );
             let _ = writeln!(output, "        }}");
         }
@@ -399,8 +532,54 @@ fn render_js_call(output: &mut String, name: &str, arguments: usize) {
             let _ = writeln!(output, "    if (args[0] < 0n || args[0] >= BigInt(svrArgv.length)) throw new Error(\"program argument index out of bounds\");");
             let _ = writeln!(output, "    stack.push(svrArgv[Number(args[0])]);");
         }
+        "std::set_exit_code" => {
+            let _ = writeln!(output, "    if (typeof args[0] !== \"bigint\") throw new Error(\"std::set_exit_code expects an Int code\");");
+            let _ = writeln!(output, "    if (args[0] < 0n || args[0] > 125n) throw new Error(\"exit code must be between 0 and 125\");");
+            let _ = writeln!(output, "    svrExitCode = Number(args[0]);");
+            let _ = writeln!(output, "    stack.push(undefined);");
+        }
         "std::read_line" => {
             let _ = writeln!(output, "    stack.push(svrReadLine());");
+        }
+        "std::read_text" => {
+            let _ = writeln!(output, "    stack.push(svrReadText(args[0]));");
+        }
+        "std::write_text" => {
+            let _ = writeln!(output, "    stack.push(svrWriteText(args[0], args[1]));");
+        }
+        "std::split_once" => {
+            let _ = writeln!(output, "    if (typeof args[0] !== \"string\" || typeof args[1] !== \"string\") throw new Error(\"std::split_once expects String arguments\");");
+            let _ = writeln!(output, "    const index = args[0].indexOf(args[1]);");
+            let _ = writeln!(output, "    stack.push(svrResult(\"std::SplitOnce\", {{ found: index !== -1, before: index === -1 ? args[0] : args[0].slice(0, index), after: index === -1 ? \"\" : args[0].slice(index + args[1].length) }}));");
+        }
+        "std::lines_unique" => {
+            let _ = writeln!(output, "    if (typeof args[0] !== \"string\") throw new Error(\"std::lines_unique expects a String argument\");");
+            let _ = writeln!(
+                output,
+                "    const lines = args[0] === \"\" ? [] : args[0].split(\"\\n\");"
+            );
+            let _ = writeln!(output, "    if (args[0].endsWith(\"\\n\")) lines.pop();");
+            let _ = writeln!(
+                output,
+                "    stack.push(new Set(lines).size === lines.length);"
+            );
+        }
+        "std::parse_int" => {
+            let _ = writeln!(output, "    if (typeof args[0] !== \"string\") throw new Error(\"std::parse_int expects a String argument\");");
+            let _ = writeln!(
+                output,
+                "    const digits = args[0].startsWith(\"-\") ? args[0].length - 1 : args[0].length;"
+            );
+            let _ = writeln!(
+                output,
+                "    const valid = digits <= 19 && /^-?(?:0|[1-9][0-9]*)$/.test(args[0]);"
+            );
+            let _ = writeln!(output, "    const parsed = valid ? BigInt(args[0]) : 0n;");
+            let _ = writeln!(output, "    const ok = valid && parsed >= -9223372036854775808n && parsed <= 9223372036854775807n;");
+            let _ = writeln!(
+                output,
+                "    stack.push(svrResult(\"std::ParsedInt\", {{ ok, value: ok ? parsed : 0n }}));"
+            );
         }
         "std::len" => {
             let _ = writeln!(output, "    if (typeof args[0] !== \"string\") throw new Error(\"std::len expects a String argument\");");
@@ -495,6 +674,26 @@ fn js_string(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn malformed_exit_status_ir_reports_the_same_runtime_error() {
+        assert_ir_failure_matches(vec![
+            Instruction::LoadLiteral(Literal::String("bad".into())),
+            Instruction::Call {
+                name: "std::set_exit_code".into(),
+                arguments: 1,
+            },
+        ]);
+        for code in ["-1", "126"] {
+            assert_ir_failure_matches(vec![
+                Instruction::LoadLiteral(Literal::Integer(code.into())),
+                Instruction::Call {
+                    name: "std::set_exit_code".into(),
+                    arguments: 1,
+                },
+            ]);
+        }
+    }
 
     #[test]
     fn module_local_records_and_aliases_retain_distinct_types_in_both_engines() {
@@ -845,6 +1044,50 @@ mod tests {
     }
 
     #[test]
+    fn text_file_builtin_ir_errors_match_interpreter_without_touching_files() {
+        for (name, arguments) in [
+            ("std::read_text", 0),
+            ("std::read_text", 2),
+            ("std::write_text", 0),
+            ("std::write_text", 1),
+        ] {
+            let mut instructions =
+                vec![Instruction::LoadLiteral(Literal::String("unused".into())); arguments];
+            instructions.push(Instruction::Call {
+                name: name.into(),
+                arguments,
+            });
+            assert_ir_failure_matches(instructions);
+        }
+        assert_ir_failure_matches(vec![
+            Instruction::LoadLiteral(Literal::Integer("1".into())),
+            Instruction::Call {
+                name: "std::read_text".into(),
+                arguments: 1,
+            },
+        ]);
+        for arguments in [
+            [
+                Literal::Integer("1".into()),
+                Literal::String("content".into()),
+            ],
+            [
+                Literal::String("unused".into()),
+                Literal::Integer("1".into()),
+            ],
+        ] {
+            assert_ir_failure_matches(vec![
+                Instruction::LoadLiteral(arguments[0].clone()),
+                Instruction::LoadLiteral(arguments[1].clone()),
+                Instruction::Call {
+                    name: "std::write_text".into(),
+                    arguments: 2,
+                },
+            ]);
+        }
+    }
+
+    #[test]
     fn javascript_array_reads_and_mutation_match_interpreter() {
         let source = "fn mutate() { let mut values = [1, 2]; values[0] = 9; values[1] = 8; print(values[0]); print(values[1]); }
             fn main() { print(mutate()); }";
@@ -878,6 +1121,148 @@ mod tests {
             Instruction::LoadLiteral(Literal::Integer("1".into())),
             Instruction::StoreIndex,
         ]);
+    }
+
+    #[test]
+    fn compound_bindings_and_nested_array_reads_are_value_snapshots() {
+        let source = r#"
+            fn main() {
+                let original = [[1], [2]];
+                let mut copy = original;
+                copy[0] = [9];
+                print(original[0][0]);
+                print(copy[0][0]);
+                let mut element = original[1];
+                element[0] = 7;
+                print(original[1][0]);
+                print(element[0]);
+            }
+        "#;
+        let parsed = crate::compiler::parser::Parser::new()
+            .parse_source(source)
+            .unwrap();
+        let program = crate::compiler::ir::lower_program(&parsed).unwrap();
+        assert_eq!(
+            crate::compiler::interpreter::run(&program).unwrap(),
+            ["1", "9", "2", "7"]
+        );
+        let output = execute_javascript(&render_javascript(&program));
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .lines()
+                .collect::<Vec<_>>(),
+            ["1", "9", "2", "7"]
+        );
+    }
+
+    #[test]
+    fn compound_equality_is_recursive_and_nominal_in_both_engines() {
+        let source = r#"
+            struct Point { x: Int, y: Int }
+            struct Other { x: Int, y: Int }
+            fn main() {
+                print([1, 2] == [1, 2]);
+                print([[1], [2]] != [[1], [3]]);
+                let point = Point { x: 1, y: 2 };
+                print(point == Point { y: 2, x: 1 });
+                print(point != Point { x: 1, y: 3 });
+            }
+        "#;
+        let parsed = crate::compiler::parser::Parser::new()
+            .parse_source(source)
+            .unwrap();
+        let program = crate::compiler::ir::lower_program(&parsed).unwrap();
+        let expected = ["true", "true", "true", "true"];
+        assert_eq!(
+            crate::compiler::interpreter::run(&program).unwrap(),
+            expected
+        );
+        let output = execute_javascript(&render_javascript(&program));
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .lines()
+                .collect::<Vec<_>>(),
+            expected
+        );
+    }
+
+    #[test]
+    fn array_argument_and_result_boundaries_do_not_alias_the_caller() {
+        let program = IrProgram {
+            functions: vec![
+                IrFunction {
+                    name: "main".into(),
+                    parameters: vec![],
+                    instructions: vec![
+                        Instruction::LoadLiteral(Literal::Integer("1".into())),
+                        Instruction::MakeArray { length: 1 },
+                        Instruction::StoreName("original".into()),
+                        Instruction::LoadName("original".into()),
+                        Instruction::Call {
+                            name: "change".into(),
+                            arguments: 1,
+                        },
+                        Instruction::Call {
+                            name: "print".into(),
+                            arguments: 1,
+                        },
+                        Instruction::Pop,
+                        Instruction::LoadName("original".into()),
+                        Instruction::LoadLiteral(Literal::Integer("0".into())),
+                        Instruction::Index,
+                        Instruction::Call {
+                            name: "print".into(),
+                            arguments: 1,
+                        },
+                    ],
+                },
+                IrFunction {
+                    name: "change".into(),
+                    parameters: vec!["items".into()],
+                    instructions: vec![
+                        Instruction::LoadName("items".into()),
+                        Instruction::LoadLiteral(Literal::Integer("0".into())),
+                        Instruction::LoadLiteral(Literal::Integer("9".into())),
+                        Instruction::StoreIndex,
+                        Instruction::StoreName("items".into()),
+                        Instruction::LoadName("items".into()),
+                        Instruction::LoadLiteral(Literal::Integer("0".into())),
+                        Instruction::Index,
+                        Instruction::Return,
+                    ],
+                },
+            ],
+        };
+        let expected = ["9", "1"];
+        assert_eq!(
+            crate::compiler::interpreter::run(&program).unwrap(),
+            expected
+        );
+        let output = execute_javascript(&render_javascript(&program));
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .lines()
+                .collect::<Vec<_>>(),
+            expected
+        );
     }
 
     #[test]
@@ -1287,6 +1672,21 @@ mod tests {
             "expected: {expected}; stderr: {}",
             String::from_utf8_lossy(&output.stderr)
         );
+    }
+
+    #[test]
+    fn lines_unique_rejects_malformed_ir_in_both_engines() {
+        assert_ir_failure_matches(vec![
+            Instruction::LoadLiteral(Literal::Integer("1".into())),
+            Instruction::Call {
+                name: "std::lines_unique".into(),
+                arguments: 1,
+            },
+        ]);
+        assert_ir_failure_matches(vec![Instruction::Call {
+            name: "std::lines_unique".into(),
+            arguments: 0,
+        }]);
     }
 
     #[test]

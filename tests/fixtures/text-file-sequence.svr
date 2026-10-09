@@ -1,0 +1,7 @@
+fn main() {
+    print("before");
+    let loaded: std::TextRead = std::read_text(std::arg(0));
+    print(loaded.error);
+    let saved: std::TextWrite = std::write_text(std::arg(1), "data");
+    print(saved.error);
+}

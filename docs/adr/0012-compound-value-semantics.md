@@ -1,12 +1,12 @@
 # ADR 0012: Array and record value semantics
 
-Status: Proposed; requires explicit approval before implementation.
+Status: Accepted and implemented (2026-10-09). The user approved Option A.
 
 ## Release blocker
 
-The interpreter clones compound values when loading a binding; generated
-JavaScript currently loads an object reference. Consequently this accepted
-program prints `1` in the interpreter and `2` in JavaScript:
+Before this decision, the interpreter cloned compound values when loading a
+binding while generated JavaScript loaded an object reference. Consequently
+this accepted program printed `1` in the interpreter and `2` in JavaScript:
 
 ```svr
 fn main() {
@@ -17,10 +17,11 @@ fn main() {
 }
 ```
 
-Backend parity cannot be claimed until the language owns one rule. This also
-affects passing arrays through functions and nesting arrays inside records.
+This mismatch motivated the decision. Both execution engines now copy compound
+values at binding and nested value reads; regressions cover function boundaries
+and compound equality.
 
-## Recommended option A: compound values
+## Decision: Option A, compound values
 
 Arrays and records have value semantics. Binding, assignment, argument passing
 and return transfer a logical value snapshot. Mutating a mutable array binding
@@ -49,8 +50,7 @@ for aliasing, equality, immutable bindings and future concurrency before coding.
 ## Approval and limits
 
 AGENTS.md requires: "Document and pause before fundamental syntax, memory-model,
-type-semantics or compatibility decisions." Choosing one engine's behavior as
-the language rule is such a decision; production intent alone does not select it.
-Recommend option A. This does not select a general ownership model for sockets,
+type-semantics or compatibility decisions." The user approved Option A before
+implementation. This does not select a general ownership model for sockets,
 files, asynchronous tasks or other future resources. Allocation/output limits
 remain a separate design and release gate.

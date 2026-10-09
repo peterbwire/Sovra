@@ -63,6 +63,15 @@ pub fn run(program: &IrProgram) -> Result<Vec<String>, String> {
     run_with_host(program, &mut MemoryHost)
 }
 
+/// Output and eventual process status from a successful program execution.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunOutcome {
+    /// Lines emitted by Sovra print calls.
+    pub output: Vec<String>,
+    /// Application-selected process status; zero when unset.
+    pub exit_code: u8,
+}
+
 /// Host services consumed by general-purpose process input and output builtins.
 pub trait RuntimeHost {
     /// Program arguments after the CLI delimiter.
@@ -71,6 +80,21 @@ pub trait RuntimeHost {
     fn read_line(&mut self) -> Result<Option<String>, String>;
     /// Publish one output line when a print call executes.
     fn write_line(&mut self, line: &str) -> Result<(), String>;
+    /// Read a bounded UTF-8 file with an explicit result category.
+    fn read_text(&mut self, _path: &str) -> crate::compiler::text_files::TextRead {
+        crate::compiler::text_files::TextRead {
+            ok: false,
+            text: String::new(),
+            error: "io".into(),
+        }
+    }
+    /// Atomically replace a bounded UTF-8 file where supported.
+    fn write_text(&mut self, _path: &str, _text: &str) -> crate::compiler::text_files::TextWrite {
+        crate::compiler::text_files::TextWrite {
+            ok: false,
+            error: "io".into(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -138,6 +162,14 @@ impl RuntimeHost for ProcessHost {
             .and_then(|_| stdout.flush())
             .map_err(|error| format!("standard output write failed: {error}"))
     }
+
+    fn read_text(&mut self, path: &str) -> crate::compiler::text_files::TextRead {
+        crate::compiler::text_files::read_text(path)
+    }
+
+    fn write_text(&mut self, path: &str, text: &str) -> crate::compiler::text_files::TextWrite {
+        crate::compiler::text_files::write_text(path, text)
+    }
 }
 
 /// Execute `main` using a caller-supplied host, retaining output for inspection.
@@ -145,14 +177,23 @@ pub fn run_with_host(
     program: &IrProgram,
     host: &mut dyn RuntimeHost,
 ) -> Result<Vec<String>, String> {
+    run_with_host_status(program, host).map(|outcome| outcome.output)
+}
+
+/// Execute `main` with a caller-supplied host and retain its exit status.
+pub fn run_with_host_status(
+    program: &IrProgram,
+    host: &mut dyn RuntimeHost,
+) -> Result<RunOutcome, String> {
     crate::compiler::ir::validate_declarations(program)?;
     let function = program
         .functions
         .iter()
         .find(|function| function.name == "main")
         .ok_or_else(|| "entry function `main` was not found".to_owned())?;
-    let (output, _) = execute_function(function, &[], program, host)?;
-    Ok(output)
+    let mut exit_code = 0;
+    let (output, _) = execute_function(function, &[], program, host, &mut exit_code)?;
+    Ok(RunOutcome { output, exit_code })
 }
 
 struct CallFrame<'a> {
@@ -190,6 +231,7 @@ fn execute_function(
     arguments: &[Value],
     program: &IrProgram,
     host: &mut dyn RuntimeHost,
+    exit_code: &mut u8,
 ) -> Result<(Vec<String>, Value), String> {
     let mut frames = vec![call_frame(function, arguments)?];
     let mut output = Vec::new();
@@ -425,6 +467,7 @@ fn execute_function(
                             &mut output,
                             &mut frame.stack,
                             host,
+                            exit_code,
                         )?;
                     } else {
                         let callee = program
@@ -472,6 +515,7 @@ fn execute_std_call(
     output: &mut Vec<String>,
     stack: &mut Vec<Value>,
     host: &mut dyn RuntimeHost,
+    exit_code: &mut u8,
 ) -> Result<(), String> {
     let function = stdlib::lookup(name).expect("standard-library call was already checked");
     if arguments.len() != function.parameters.len() {
@@ -502,6 +546,16 @@ fn execute_std_call(
                 .ok_or_else(|| "program argument index out of bounds".to_owned())?;
             stack.push(Value::String(value.clone()));
         }
+        "std::set_exit_code" => {
+            let Value::Int(code) = &arguments[0] else {
+                return Err("std::set_exit_code expects an Int code".into());
+            };
+            *exit_code = u8::try_from(*code)
+                .ok()
+                .filter(|code| *code <= 125)
+                .ok_or_else(|| "exit code must be between 0 and 125".to_owned())?;
+            stack.push(Value::Unit);
+        }
         "std::read_line" => {
             let line = host.read_line()?;
             stack.push(Value::Struct(Box::new(StructValue {
@@ -509,6 +563,70 @@ fn execute_std_call(
                 fields: vec![
                     ("eof".into(), Value::Bool(line.is_none())),
                     ("text".into(), Value::String(line.unwrap_or_default())),
+                ],
+            })));
+        }
+        "std::read_text" => {
+            let Value::String(path) = &arguments[0] else {
+                return Err("std::read_text expects a String path".into());
+            };
+            let result = host.read_text(path);
+            stack.push(Value::Struct(Box::new(StructValue {
+                type_name: stdlib::TEXT_READ_TYPE.into(),
+                fields: vec![
+                    ("ok".into(), Value::Bool(result.ok)),
+                    ("text".into(), Value::String(result.text)),
+                    ("error".into(), Value::String(result.error)),
+                ],
+            })));
+        }
+        "std::write_text" => {
+            let (Value::String(path), Value::String(text)) = (&arguments[0], &arguments[1]) else {
+                return Err("std::write_text expects String path and text".into());
+            };
+            let result = host.write_text(path, text);
+            stack.push(Value::Struct(Box::new(StructValue {
+                type_name: stdlib::TEXT_WRITE_TYPE.into(),
+                fields: vec![
+                    ("ok".into(), Value::Bool(result.ok)),
+                    ("error".into(), Value::String(result.error)),
+                ],
+            })));
+        }
+        "std::split_once" => {
+            let (Value::String(text), Value::String(delimiter)) = (&arguments[0], &arguments[1])
+            else {
+                return Err("std::split_once expects String arguments".into());
+            };
+            let (found, before, after) = match text.split_once(delimiter.as_str()) {
+                Some((before, after)) => (true, before.to_owned(), after.to_owned()),
+                None => (false, text.clone(), String::new()),
+            };
+            stack.push(Value::Struct(Box::new(StructValue {
+                type_name: stdlib::SPLIT_ONCE_TYPE.into(),
+                fields: vec![
+                    ("found".into(), Value::Bool(found)),
+                    ("before".into(), Value::String(before)),
+                    ("after".into(), Value::String(after)),
+                ],
+            })));
+        }
+        "std::lines_unique" => {
+            let Value::String(text) = &arguments[0] else {
+                return Err("std::lines_unique expects a String argument".into());
+            };
+            stack.push(Value::Bool(stdlib::lines_unique(text)));
+        }
+        "std::parse_int" => {
+            let Value::String(text) = &arguments[0] else {
+                return Err("std::parse_int expects a String argument".into());
+            };
+            let value = stdlib::parse_int(text);
+            stack.push(Value::Struct(Box::new(StructValue {
+                type_name: stdlib::PARSED_INT_TYPE.into(),
+                fields: vec![
+                    ("ok".into(), Value::Bool(value.is_some())),
+                    ("value".into(), Value::Int(value.unwrap_or_default())),
                 ],
             })));
         }
@@ -588,8 +706,8 @@ fn binary(operator: &str, left: Value, right: Value) -> Result<Value, String> {
         ("*", Value::Float(left), Value::Float(right)) => Ok(Value::Float(left * right)),
         ("/", Value::Float(left), Value::Float(right)) => Ok(Value::Float(left / right)),
         ("+", Value::String(left), Value::String(right)) => Ok(Value::String(left + &right)),
-        ("==", left, right) => Ok(Value::Bool(left == right)),
-        ("!=", left, right) => Ok(Value::Bool(left != right)),
+        ("==", left, right) => Ok(Value::Bool(values_equal(&left, &right))),
+        ("!=", left, right) => Ok(Value::Bool(!values_equal(&left, &right))),
         ("<", Value::Int(left), Value::Int(right)) => Ok(Value::Bool(left < right)),
         ("<=", Value::Int(left), Value::Int(right)) => Ok(Value::Bool(left <= right)),
         (">", Value::Int(left), Value::Int(right)) => Ok(Value::Bool(left > right)),
@@ -604,6 +722,37 @@ fn binary(operator: &str, left: Value, right: Value) -> Result<Value, String> {
         (">=", Value::String(left), Value::String(right)) => Ok(Value::Bool(left >= right)),
         _ => Err(format!("unsupported runtime operation `{operator}`")),
     }
+}
+
+fn values_equal(left: &Value, right: &Value) -> bool {
+    let mut pending = vec![(left, right)];
+    while let Some((left, right)) = pending.pop() {
+        match (left, right) {
+            (Value::Int(a), Value::Int(b)) if a == b => {}
+            (Value::Int(a), Value::Float(b)) if (*a as f64) == *b => {}
+            (Value::Float(a), Value::Int(b)) if *a == (*b as f64) => {}
+            (Value::Float(a), Value::Float(b)) if a == b => {}
+            (Value::Bool(a), Value::Bool(b)) if a == b => {}
+            (Value::String(a), Value::String(b)) if a == b => {}
+            (Value::Unit, Value::Unit) => {}
+            (Value::Array(a), Value::Array(b)) if a.len() == b.len() => {
+                pending.extend(a.iter().zip(b));
+            }
+            (Value::Struct(a), Value::Struct(b))
+                if a.type_name == b.type_name && a.fields.len() == b.fields.len() =>
+            {
+                for (name, value) in &a.fields {
+                    let Some((_, other)) = b.fields.iter().find(|(candidate, _)| candidate == name)
+                    else {
+                        return false;
+                    };
+                    pending.push((value, other));
+                }
+            }
+            _ => return false,
+        }
+    }
+    true
 }
 
 fn checked_integer(value: Option<i64>) -> Result<Value, String> {
