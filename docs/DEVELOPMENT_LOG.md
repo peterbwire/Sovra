@@ -1,5 +1,40 @@
 # Development log
 
+## 2026-10-09: Local committed-code qualification checkpoint
+
+- Code and release workflow changes are in local commit `23171d5` on `master`;
+  only documentation updates remained in the working tree at this checkpoint.
+- On Windows GNU Rust 1.98.1, `cargo fmt --all -- --check`, strict Clippy,
+  353 unit tests, 45 CLI tests, dogfood and Task Manager persistence passed.
+  `cargo check --locked --all-targets` also passed with the installed Windows
+  MSVC toolchain. These are local results, not hosted workflow results.
+- A local MSVC `cargo build --locked` could not link because `link.exe` is not
+  installed in this Windows environment. The preceding MSVC `cargo check`
+  succeeded, but executable MSVC behavior still needs the hosted Windows job.
+- Rust 1.74 is not installed locally. A remote read failed for lack of Git
+  credentials, and the public web view did not expose this exact commit's
+  workflow status. Therefore Rust 1.74, Linux/macOS jobs and uploaded candidate
+  artifacts remain unverified. No release or tag was created.
+- Next: obtain exact-commit hosted CI and manual candidate workflow results,
+  inspect downloaded artifacts, then decide any remaining release blockers.
+
+## 2026-10-09: Verify downloaded Cargo source installation
+
+- Added `scripts/verify-source-package.mjs` for the distributed `.crate`. It
+  checks a SHA-256 sidecar and archive paths, extracts to a fresh temporary
+  directory, installs offline with `cargo install --locked --path` into an
+  isolated prefix and build directory, then runs the packaged Task Manager.
+- The installed `svr` creates and lists fresh state from an unrelated working
+  directory. A legacy `SVR-TASKS-1` file remains untouched on list and migrates
+  to `SVR-TASKS-2` on add, preserving task IDs and statuses.
+- The manual candidate workflow now uploads the source checksum and runs this
+  verifier on the downloaded `.crate` on every candidate host. Local Windows
+  `cargo package --locked --allow-dirty` verification and isolated offline
+  installation passed. Final-commit hosted evidence is still pending.
+- Next: run the exact candidate workflow on the committed revision and review
+  Linux, Windows and macOS artifacts. Source install verification is a local
+  rehearsal, not proof of fresh-host upgrades or publication readiness.
+
 ## 2026-10-09: Reusable candidate archive verification
 
 - Added `scripts/verify-candidate-archive.mjs` and wired the manual release

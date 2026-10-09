@@ -18,6 +18,8 @@ third-party library registry publishing move to later versions. See
   and licenses.
 - [x] Configure Linux, Windows and macOS checks, plus Rust 1.74 compile checks.
 - [x] Configure manual candidate archives, SHA-256 checksums and commit metadata.
+- [x] Configure SHA-256 checksums and isolated offline installation checks for
+  downloaded Cargo source archives.
 - [x] Remove the Task Manager's three-task ceiling with existing general-purpose
   text operations; validate 25-task workflows and existing state-file migration
   in both engines.
@@ -90,6 +92,18 @@ The manual workflow also downloads each uploaded candidate, checks its
 commit/target/version sidecar against the job, and reruns the verifier on the
 downloaded archive. This closes the workflow's pre-upload-only evidence gap
 once the hosted jobs actually pass; no hosted run is claimed here.
+It also checksums the Cargo `.crate`, installs the downloaded source package
+offline in a fresh temporary prefix, and verifies a new Task Manager file plus
+legacy-file migration. A local Windows `--allow-dirty` source-package rehearsal
+passed; the hosted final-commit and other-platform runs remain open.
+At local commit `23171d5`, Windows GNU Rust 1.98.1 passed formatting, strict
+Clippy, 353 unit tests, 45 CLI tests, dogfood and Task Manager persistence;
+the installed Windows MSVC toolchain passed `cargo check --locked --all-targets`.
+Local MSVC linking was unavailable because `link.exe` is missing; hosted Windows
+build and execution evidence remains required.
+Rust 1.74 was not installed locally. Remote status could not be verified from
+this environment because Git lacked credentials and the web view did not expose
+that commit's workflow. These local checks do not close hosted gates.
 
 Node 22 is used by CI. Local verification requires Rust and Node; the released
 interpreter binary does not require Node. JavaScript output requires Node or a
