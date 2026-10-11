@@ -1,6 +1,6 @@
 # ADR 0022: Terminal-safe display of untrusted CLI text
 
-Status: Proposed; compatibility decision awaiting approval.
+Status: Accepted and implemented (2026-10-11).
 
 ## Problem
 
@@ -15,7 +15,7 @@ such a title even if new input is later restricted, so input checks alone cannot
 make all output safe. This ADR does not change the text-file format or Unicode
 identity of stored titles.
 
-## Recommended decision
+## Decision
 
 Add a general `std::escape_terminal(text: String) -> String` function. It replaces
 Unicode scalars U+0000 through U+001F and U+007F through U+009F with printable
@@ -62,4 +62,6 @@ programs and must have identical interpreter and generated-JavaScript behavior.
 AGENTS.md requires documenting and pausing before fundamental compatibility
 decisions. Rejecting previously accepted title input and changing output for
 stored titles are observable application contracts. This proposal needs user
-approval before implementation.
+approval before implementation. The user approved the recommended policy on
+2026-10-11; the standard function and Task Manager policy are now implemented
+in both execution engines.

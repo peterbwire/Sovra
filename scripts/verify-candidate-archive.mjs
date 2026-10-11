@@ -60,7 +60,10 @@ try {
     const compiler = join(installed, process.platform === 'win32' ? 'svr.exe' : 'svr');
     const hello = join(installed, 'hello.svr');
     const taskManager = join(installed, 'task-manager.svr');
-    for (const file of [compiler, hello, taskManager, 'README.md', 'task-manager-README.md',
+    const taskGui = join(installed, 'task-manager-gui.mjs');
+    const bridge = join(installed, 'bridge.mjs');
+    for (const file of [compiler, hello, taskManager, taskGui, bridge,
+        'README.md', 'task-manager-README.md',
         'LICENSE', 'LICENSE-MIT', 'LICENSE-APACHE']) {
         const path = file.startsWith(installed) ? file : join(installed, file);
         assert.ok(existsSync(path) && statSync(path).isFile(), `missing packaged file: ${file}`);
@@ -81,6 +84,12 @@ try {
         '--compiler', compiler, '--source', taskManager], installed);
     assert.match(persistence, /PASS Task Manager persistence\/interpreter\n/);
     assert.match(persistence, /PASS Task Manager persistence\/javascript\n/);
+    const gui = invoke(process.execPath, [join(root, 'scripts/test-task-gui.mjs'),
+        '--compiler', compiler, '--source', taskManager, '--server', taskGui], installed);
+    assert.match(gui, /PASS Task Manager browser GUI:/);
+    const reused = invoke(process.execPath, [join(root, 'scripts/test-gui-bridge.mjs'),
+        '--compiler', compiler, '--source', hello, '--bridge', bridge], installed);
+    assert.match(reused, /PASS reusable GUI bridge:/);
     const work = join(unpack, 'fresh-working-directory');
     mkdirSync(work);
     const pathKey = Object.keys(process.env).find(key => key.toLowerCase() === 'path') ?? 'PATH';
@@ -91,7 +100,7 @@ try {
     assert.equal(invoke(command, ['run', taskManager, '--', 'list', 'tasks.txt'], work, 0, env),
         'tasks:\n1 | open | Installed task\ncount 1\n');
     assert.ok(existsSync(join(work, 'tasks.txt')), 'relative state path was not created in the working directory');
-    console.log(`PASS candidate archive ${name}: checksum, compiler, JavaScript, Task Manager persistence, portable PATH use`);
+    console.log(`PASS candidate archive ${name}: checksum, compiler, JavaScript, Task Manager persistence, browser GUI, reusable bridge, portable PATH use`);
 } finally {
     rmSync(unpack, { recursive: true, force: true });
 }

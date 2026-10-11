@@ -526,35 +526,3 @@ fn parse_emit_value(value: &str) -> Result<Emit, String> {
         _ => Err(format!("svr: unsupported emit target `{value}`")),
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn check_treats_help_after_terminator_as_a_path() {
-        // Exercise dispatch as well as option parsing without a subprocess.
-        // Neither target exists in the repository working directory.
-        for path in ["--help", "-h"] {
-            assert_eq!(
-                run(["check", "--format=json", "--", path]),
-                ExitCode::from(1)
-            );
-        }
-    }
-
-    #[test]
-    fn version_is_reported() {
-        assert_eq!(run(["--version"]), ExitCode::SUCCESS);
-    }
-
-    #[test]
-    fn known_future_command_is_not_implemented() {
-        assert_eq!(run(["build"]), ExitCode::from(2));
-    }
-
-    #[test]
-    fn unknown_command_is_rejected() {
-        assert_eq!(run(["wat"]), ExitCode::from(2));
-    }
-}

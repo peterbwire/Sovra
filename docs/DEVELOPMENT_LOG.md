@@ -1,5 +1,84 @@
 # Development log
 
+## 2026-10-11: Extract a reusable Sovra GUI execution bridge
+
+- Moved compiler invocation, generated-JavaScript temporary-file management,
+  subprocess execution and cleanup from the Task Manager server into
+  `dogfood/01-task-manager/gui/bridge.mjs`. The browser server still owns HTTP,
+  forms and task presentation; no Sovra language or runtime contract changed.
+- Tested the module with an unrelated hello-world Sovra program in both
+  engines, alongside the Task Manager GUI parity suite. Generated-code tests
+  remove a temporary source copy after build and still execute successfully,
+  proving the request path uses compiled output. Added the bridge to
+  candidate archives and required it in both extracted candidate and Cargo
+  source-package verification.
+- Next: define a reviewed data protocol for Sovra-owned view models so the
+  browser host no longer parses the Task Manager's private state format.
+
+## 2026-10-11: Add a local browser GUI for the Task Manager
+
+- Added a Node 22 local browser front end that builds the Sovra Task Manager
+  to JavaScript and executes that generated code for list, add, complete and
+  delete; `svr run` remains a selectable comparison engine. It binds
+  only to loopback, escapes stored titles in HTML, limits request size and
+  validates a per-process form token and request origin.
+- Added an end-to-end GUI test for identical persisted task state in the
+  generated-JavaScript and interpreter paths, duplicate and control-title
+  rejection, HTML escaping, and cross-origin/form-token rejection. Wired it
+  into CI and both extracted candidate and source-package verification; the
+  candidate bundle includes the GUI script. A local optimized Windows GNU
+  candidate passed its extracted verifier, and an isolated offline Cargo
+  source-package installation passed its verifier with the GUI check.
+- This is a Node-hosted adapter, not a new Sovra HTTP or desktop runtime. The
+  existing CLI remains the application authority; external simultaneous edits
+  still need the documented single-writer discipline.
+- Next: qualify the GUI on hosted platforms and exact downloaded artifacts.
+
+## 2026-10-11: Repair hosted CI MSRV and Windows formatting failures
+
+- Inspected the public CI run for commit `85b3264`: Linux and macOS checks
+  passed; the Rust 1.74 job failed because four CLI unit tests compared
+  `std::process::ExitCode` values, which do not implement equality there.
+  Windows stopped at rustfmt because Git checkout converted Rust source to
+  CRLF while the repository requires LF.
+- Moved the affected status assertions into executable CLI integration tests,
+  which compare subprocess exit status and retain the help-terminator coverage.
+  Added `.gitattributes` to keep Rust source LF on Windows checkout.
+- Local validation passed: 354 unit and 46 CLI tests with required execution,
+  formatting, strict Clippy, and `git diff --check`. The fixes still require a
+  new hosted CI run; this local toolchain is newer than Rust 1.74.
+- Next: run CI on the committed fix and review all supported-host and minimum
+  Rust jobs before advancing candidate publication gates.
+
+## 2026-10-11: Rehearse optimized version-one artifacts locally
+
+- Built the current Windows GNU compiler with `cargo build --locked --release`,
+  staged a local candidate tarball with the Task Manager source, checksummed
+  it, and passed the extracted-archive verifier. The verifier exercised the
+  packaged compiler, generated JavaScript, full Task Manager persistence and
+  use from a fresh working directory through `PATH`.
+- Created a Cargo source package with `--allow-dirty` for local documentation
+  edits. Its checksum and isolated offline installation verifier passed,
+  including Task Manager persistence in both engines. These are local rehearsal
+  artifacts; neither is a downloaded hosted artifact from the final commit.
+- Next: obtain exact-commit Linux, macOS, Windows and Rust 1.74 CI evidence,
+  then review the downloaded candidate and source artifacts before publication.
+
+## 2026-10-11: Implement approved terminal-safe Task Manager output
+
+- Implemented approved ADR 0022's general `std::escape_terminal` function in
+  semantic checking, interpreter execution, and generated JavaScript. It renders
+  C0, DEL and C1 controls as printable `\u{XXXX}` text and preserves other text.
+- Reproduced raw ESC output with a persistence regression before the fix. The
+  Task Manager now rejects new control-bearing titles and escapes untrusted
+  titles and error text when printing. Legacy file bytes and exact title lookup
+  remain unchanged.
+- The Task Manager persistence suite passed in both engines; all executable
+  dogfood applications and the runtime matrix passed. The full local Rust suite
+  passed (358 unit and 45 CLI tests), as did formatting and strict Clippy.
+- Next: qualify exact release artifacts on supported hosts and confirm Rust
+  1.74 compatibility before publication.
+
 ## 2026-10-11: Proposed Task Manager terminal-control policy
 
 - Audited untrusted application output: a persisted title containing ESC is

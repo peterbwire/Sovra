@@ -22,6 +22,14 @@ alias.
 - Value semantics and nominal equality for arrays and records
 - Bounded UTF-8 text-file reads and replacement writes with explicit result records
 - Portable application-selected process status for scripted CLI failures
+- A local browser Task Manager interface hosted by Node.js 22 or newer; it
+  runs Sovra-generated JavaScript (or the interpreter on request) and shares
+  the CLI's persisted task file
+- A repository-internal Node execution bridge that can build and run other
+  Sovra programs in either engine; no public UI package contract yet
+- `std::escape_terminal` for printable display of terminal control characters;
+  the Task Manager rejects new control-bearing titles and safely displays
+  legacy titles while preserving their stored bytes and exact lookup
 - Explicit record exports with qualified types and nominal package identity
 - CLI version/help/check/run/build behavior and JSON diagnostic output
 - Project manifest and wiring checks for the current partial application scope
@@ -46,8 +54,9 @@ alias.
   Windows custom ACLs are not preserved. A write can
   replace a symlink rather than its target. Use a regular file in a private
   directory for sensitive titles
-- Candidate archives bundle the Task Manager source for extracted-artifact
-  verification; hosted qualification is still pending
+- Candidate archives bundle the Task Manager source, local browser GUI and
+  its execution bridge for extracted-artifact verification; hosted
+  qualification is still pending
 
 The repository can be used for compiler development; it is not a qualified 1.0
 release. Follow

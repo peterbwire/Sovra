@@ -27,10 +27,13 @@ third-party library registry publishing move to later versions. See
   in both engines.
 - [x] Support one-command Task Manager operations and approved ADR 0019
   application exit status; verify nonzero failures in both engines.
+- [x] Add the requested local browser GUI using compiler-generated Task Manager
+  JavaScript and the CLI's state file; compare interpreter execution and test
+  forms, persistence, HTML escaping and request protection.
 - [ ] Verify Task Manager behavior, persistence, size bounds and failures in both engines
   from the exact release artifact.
-- [ ] Resolve ADR 0022's Task Manager terminal-control output and input policy;
-  current `list` can emit ESC from an untrusted title.
+- [x] Implement approved ADR 0022 Task Manager terminal-control output and input
+  policy, including safe display of legacy stored titles.
 - [x] Require MSRV success before candidate jobs and smoke-test extracted archives
   for exact version/greeting, source JSON diagnostics, generated JavaScript and
   the packaged Task Manager's persistent workflow.
@@ -53,6 +56,15 @@ third-party library registry publishing move to later versions. See
 - [ ] Approve the concrete version, notes and artifacts before publication.
 
 ## Candidate verification
+
+The public [CI run for `85b3264`](https://github.com/peterbwire/Sovra/actions/runs/38135384209)
+passed Linux and macOS, but failed its Rust 1.74 and Windows jobs. Rust 1.74
+cannot compare `ExitCode` in the four CLI unit tests; Windows checked out Rust
+source as CRLF and failed the required LF rustfmt check. The working tree now
+moves those exit-status checks to subprocess integration tests and adds a Rust
+LF checkout rule. Local tests, formatting and strict Clippy pass, but hosted
+results for this fix are not yet available. Do not count `85b3264` as a green
+candidate revision.
 
 Local preparation evidence (2026-09-27): 192 tests executed with strict CLI
 execution enabled, formatting/Clippy/doc-test stages passed, and Cargo verified
@@ -99,8 +111,11 @@ once the hosted jobs actually pass; no hosted run is claimed here.
 Both archive verifiers now reject link and special members before extraction.
 Crafted symlink and hardlink regressions pass locally; a normal Windows source
 archive and a locally staged candidate archive still pass their full verifiers.
-The staged candidate used a debug binary to exercise the verifier, not to
-qualify an optimized release build.
+On 2026-10-11, a new local Windows GNU archive staged with the optimized
+`cargo build --locked --release` binary passed the full candidate verifier,
+including the terminal-control regressions in Task Manager persistence.
+This was a local rehearsal from a working tree with documentation edits, not
+the downloaded artifact of a hosted candidate job.
 It also checksums the Cargo `.crate`, installs the downloaded source package
 offline with a fresh Cargo home and build directory, and runs the full Task
 Manager persistence suite against the installed binary and packaged source.
@@ -116,6 +131,10 @@ build and execution evidence remains required.
 Rust 1.74 was not installed locally. Remote status could not be verified from
 this environment because Git lacked credentials and the web view did not expose
 that commit's workflow. These local checks do not close hosted gates.
+The current source package also passed `cargo package --locked --allow-dirty`
+and the isolated offline source-package verifier on local Windows GNU after
+ADR 0022. The local Rust suite passed 358 unit and 45 CLI tests with required
+CLI execution, formatting, and strict Clippy; hosted evidence remains open.
 
 Node 22 is used by CI. Local verification requires Rust and Node; the released
 interpreter binary does not require Node. JavaScript output requires Node or a

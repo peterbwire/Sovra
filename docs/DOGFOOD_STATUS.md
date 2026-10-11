@@ -1,13 +1,23 @@
 # Dogfood application status
 
-Updated: 2026-10-09. Version one is gated on a production-quality Task Manager
-CLI; later applications validate later versions. Passing the current bounded
+Updated: 2026-10-11. Version one is gated on a production-quality Task Manager
+CLI and its requested local browser GUI; later applications validate later versions. Passing the current bounded
 slice does not establish version-one readiness. These applications live in the compiler repository so
 failures can become compiler regressions without separate repository coordination.
 
+The Task Manager now has a Node 22 loopback browser adapter in
+`dogfood/01-task-manager/gui/server.mjs`. It builds the Task Manager to
+Sovra-generated JavaScript and executes that code for operations by default;
+`svr run` remains an optional parity path. It shares the same file and passes
+a local add/list/complete/delete and
+request-safety test. This is a host-side GUI, not a Sovra-native HTTP runtime;
+hosted and downloaded-artifact qualification remain open.
+The adjacent `bridge.mjs` module runs a second, unrelated Sovra program in
+both engines, establishing an application-independent execution boundary.
+
 | Application | Status | Verified scope / blockers | Next action |
 | --- | --- | --- | --- |
-| 01 Task Manager CLI | Partial; batch, interactive, direct commands and file-backed execution | Add/list/complete/delete by title, restart-safe state, validation, EOF, stable IDs and variable-length task rows; both engines. Direct and interactive commands share files and report status 1 on application errors. Interactive commands refresh external changes and reject edits that become stale before save; simultaneous writers remain unsupported. ADR 0021 implements Unix owner-only file mode; Windows custom ACLs and symlink identity are not preserved. Version-one files migrate on write. ADR 0020 preserves duplicate rejection and local Windows benchmark completes 5,000-task list/add/restart-list in under 4 seconds per operation in both engines. A title containing ESC currently reaches terminal output; ADR 0022 proposes safe display. | Approve and implement terminal-safe output, then qualify Unix mode behavior and exact hosted artifacts. |
+| 01 Task Manager CLI | Partial; batch, interactive, direct commands and file-backed execution | Add/list/complete/delete by title, restart-safe state, validation, EOF, stable IDs and variable-length task rows; both engines. Direct and interactive commands share files and report status 1 on application errors. Interactive commands refresh external changes and reject edits that become stale before save; simultaneous writers remain unsupported. ADR 0021 implements Unix owner-only file mode; Windows custom ACLs and symlink identity are not preserved. Version-one files migrate on write. ADR 0020 preserves duplicate rejection and local Windows benchmark completes 5,000-task list/add/restart-list in under 4 seconds per operation in both engines. A title containing ESC is escaped before display under approved ADR 0022; new control-bearing titles are rejected while legacy bytes and exact lookup are preserved. | Qualify Unix mode behavior and exact hosted artifacts. |
 | 02 File Processor | Partial; streams, bounded copy and column extraction | Numbers/filters stdin lines, copies UTF-8 files, and extracts delimited first columns with validation before replacement in both engines. No binary I/O. | Expand text transforms and design binary/streaming APIs separately. |
 | 03 HTTP API | Planned | HTTP hosting and application lifecycle absent. | Follow the real HTTP application plan and approved runtime decisions. |
 | 04 Database Notes | Planned | Persistence, database drivers and transaction contracts absent. | Build on approved I/O, failure and resource contracts. |

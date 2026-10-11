@@ -62,6 +62,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Release compiler text-file parity failed' }
           node scripts/test-task-persistence.mjs --compiler $compiler
           if ($LASTEXITCODE -ne 0) { throw 'Release compiler task persistence failed' }
+          node scripts/test-task-gui.mjs --compiler $compiler
+          if ($LASTEXITCODE -ne 0) { throw 'Release compiler Task Manager GUI failed' }
+          node scripts/test-gui-bridge.mjs --compiler $compiler
+          if ($LASTEXITCODE -ne 0) { throw 'Release compiler GUI bridge failed' }
           node scripts/test-text-decoding.mjs --compiler $compiler
           if ($LASTEXITCODE -ne 0) { throw 'Release compiler text decoding failed' }
           node scripts/test-runtime-matrix.mjs --compiler $compiler
@@ -90,6 +94,8 @@ jobs:
           Copy-Item -LiteralPath docs/RELEASE_NOTES.md -Destination (Join-Path $stage 'README.md')
           Copy-Item -LiteralPath examples/hello-world/main.svr -Destination (Join-Path $stage 'hello.svr')
           Copy-Item -LiteralPath dogfood/01-task-manager/main.svr -Destination (Join-Path $stage 'task-manager.svr')
+          Copy-Item -LiteralPath dogfood/01-task-manager/gui/server.mjs -Destination (Join-Path $stage 'task-manager-gui.mjs')
+          Copy-Item -LiteralPath dogfood/01-task-manager/gui/bridge.mjs -Destination (Join-Path $stage 'bridge.mjs')
           Copy-Item -LiteralPath dogfood/01-task-manager/README.md -Destination (Join-Path $stage 'task-manager-README.md')
           $archive = "target/candidate/$name.tar.gz"
           tar -czf $archive -C target/candidate $name

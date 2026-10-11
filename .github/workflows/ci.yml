@@ -43,6 +43,10 @@ jobs:
         run: node scripts/test-text-files.mjs
       - name: Task Manager persistence and corruption handling
         run: node scripts/test-task-persistence.mjs
+      - name: Task Manager local browser GUI
+        run: node scripts/test-task-gui.mjs
+      - name: Reusable GUI execution bridge
+        run: node scripts/test-gui-bridge.mjs
       - name: Large integer text decoding parity
         run: node scripts/test-text-decoding.mjs
       - name: Executable runtime parity matrix

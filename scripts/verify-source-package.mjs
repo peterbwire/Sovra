@@ -53,7 +53,11 @@ try {
     invoke('tar', ['-xzf', crate, '-C', scratch], scratch);
     const source = join(scratch, `sovra-${version}`);
     const taskManager = join(source, 'dogfood', '01-task-manager', 'main.svr');
+    const taskGui = join(source, 'dogfood', '01-task-manager', 'gui', 'server.mjs');
+    const bridge = join(source, 'dogfood', '01-task-manager', 'gui', 'bridge.mjs');
     assert.ok(existsSync(taskManager), 'Task Manager source missing from Cargo package');
+    assert.ok(existsSync(taskGui), 'Task Manager GUI missing from Cargo package');
+    assert.ok(existsSync(bridge), 'GUI bridge missing from Cargo package');
     const install = join(scratch, 'install');
     const env = {
         ...process.env,
@@ -84,7 +88,14 @@ try {
         '--compiler', compiler, '--source', taskManager], scratch, process.env, 180000);
     assert.match(persistence, /PASS Task Manager persistence\/interpreter\n/);
     assert.match(persistence, /PASS Task Manager persistence\/javascript\n/);
-    console.log(`PASS Cargo source package sovra-${version}: isolated offline install, Task Manager persistence`);
+    const gui = invoke(process.execPath, [join(import.meta.dirname, 'test-task-gui.mjs'),
+        '--compiler', compiler, '--source', taskManager, '--server', taskGui], scratch);
+    assert.match(gui, /PASS Task Manager browser GUI:/);
+    const hello = join(source, 'examples', 'hello-world', 'main.svr');
+    const reused = invoke(process.execPath, [join(import.meta.dirname, 'test-gui-bridge.mjs'),
+        '--compiler', compiler, '--source', hello, '--bridge', bridge], scratch);
+    assert.match(reused, /PASS reusable GUI bridge:/);
+    console.log(`PASS Cargo source package sovra-${version}: isolated offline install, Task Manager persistence, browser GUI and reusable bridge`);
 } finally {
     rmSync(scratch, { recursive: true, force: true });
 }

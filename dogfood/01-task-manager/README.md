@@ -17,7 +17,44 @@ cargo run -- run dogfood/01-task-manager/main.svr -- complete tasks.txt "Write t
 cargo run -- run dogfood/01-task-manager/main.svr -- delete tasks.txt "Write tests"
 node scripts/test-dogfood.mjs
 node scripts/test-task-persistence.mjs
+node scripts/test-task-gui.mjs
+node scripts/test-gui-bridge.mjs
 ```
+
+## Local browser GUI
+
+With Node.js 22 or newer and a built Sovra compiler, run from the repository:
+
+```text
+node dogfood/01-task-manager/gui/server.mjs --state tasks.txt
+```
+
+Open the loopback URL printed by the server (default
+`http://127.0.0.1:8787/`). The page adds, completes and deletes tasks using the
+same Sovra program and task file as the CLI. By default, the server runs
+`svr build --emit js` once at startup, then executes the **Sovra-generated**
+JavaScript for list/add/complete/delete. Node hosts HTTP and HTML and reads
+validated task rows for display; the operations remain in Sovra code. Pass
+`--engine interpreter` to execute those operations through
+`svr run` instead; the automated GUI test checks both engines produce the same
+persisted file. The adjacent `bridge.mjs` module also runs unrelated Sovra
+programs and is tested separately. Stop the server with Ctrl+C.
+
+Pass `--port 0` to choose a free port, or `--compiler PATH` and `--source PATH`
+when running outside the repository. From an extracted release candidate:
+
+```text
+node task-manager-gui.mjs --compiler ./svr --source ./task-manager.svr --state tasks.txt
+```
+
+On Windows use `./svr.exe` for the compiler. The GUI is a Node-hosted local
+browser adapter; it does not imply a Sovra-native HTTP or desktop runtime.
+Keep `bridge.mjs` beside `task-manager-gui.mjs` when copying files out of the
+candidate archive.
+It listens only on `127.0.0.1`, uses a per-process form token, and does not
+expose a network service. The CLI's single-writer guidance still applies if
+another process edits the same task file. The GUI requires Node; the CLI does
+not.
 
 For a candidate archive extracted into the current directory, run
 `./svr run task-manager.svr -- interactive tasks.txt` on Unix or

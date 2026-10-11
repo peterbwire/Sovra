@@ -1279,6 +1279,21 @@ fn version_command_prints_canonical_version() {
 }
 
 #[test]
+fn command_exit_codes_and_help_terminator_work_on_minimum_rust() {
+    for (args, expected) in [
+        (&["build"][..], 2),
+        (&["wat"][..], 2),
+        (&["check", "--format=json", "--", "--help"][..], 1),
+        (&["check", "--format=json", "--", "-h"][..], 1),
+    ] {
+        let Some(output) = output_or_skip(svr().args(args)) else {
+            return;
+        };
+        assert_eq!(output.status.code(), Some(expected), "{args:?}");
+    }
+}
+
+#[test]
 fn help_command_describes_m11() {
     let Some(output) = output_or_skip(svr().arg("--help")) else {
         return;

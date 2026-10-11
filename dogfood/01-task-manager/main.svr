@@ -120,6 +120,19 @@ fn list(tasks: Tasks) {
     }
     print("count " + std::to_string(count));
 }
+// Private, versioned view stream for the local browser adapter.
+fn gui_list(tasks: Tasks) {
+    print("SVR-GUI-1");
+    let mut rest = tasks.rows;
+    while rest != "" {
+        let line = std::split_once(rest, "\n");
+        let parsed = parse_row(line.before, false);
+        let mut done = "0";
+        if parsed.task.done { done = "1"; }
+        print(std::to_string(parsed.task.id) + "|" + done + "|" + parsed.task.title);
+        rest = line.after;
+    }
+}
 fn encode(tasks: Tasks) -> String {
     return "SVR-TASKS-2\n" + std::to_string(tasks.next_id) + "\n" + tasks.rows;
 }
@@ -260,6 +273,7 @@ fn one_shot(command: String, path: String, title: String) {
         fail("error: load " + file.error); return;
     }
     if command == "list" { list(tasks); return; }
+    if command == "gui-list" { gui_list(tasks); return; }
     if title_has_line_break(title) { fail("error: title contains a line break"); return; }
     let mut updated = tasks;
     let mut success = "";
@@ -308,6 +322,10 @@ fn main() {
         let command = std::arg(0);
         if command == "list" {
             if std::arg_count() != 2 { fail("error: expected list <path>"); return; }
+            one_shot(command, std::arg(1), ""); return;
+        }
+        if command == "gui-list" {
+            if std::arg_count() != 2 { fail("error: expected gui-list <path>"); return; }
             one_shot(command, std::arg(1), ""); return;
         }
         if command == "add" || command == "complete" || command == "delete" {

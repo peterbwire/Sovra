@@ -12,10 +12,10 @@ scope are not v1 release gates.
 | Gate | Current state | Required evidence |
 | --- | --- | --- |
 | Compiler correctness | Partial | Module-local types, iterative alias resolution and approved ADR 0012 compound value parity are implemented. Full retained expression typing, numeric boundaries and malformed-input/IR coverage remain. |
-| Task Manager CLI | Partial: batch, interactive, direct commands and restart-safe file state run in both engines; fixed task-count ceiling removed; 1,000-task persistence and corruption checks pass; stale interactive edits are detected; local 5,000-task benchmark completes under 4 seconds per operation | A documented CLI supports add/list/complete/delete across restarts, rejects malformed state without destroying it, handles EOF and I/O failure, and supports a practical number of tasks. Scripted errors use ADR 0019 nonzero status; qualify exact hosted artifacts. Single-writer and private-directory guidance must remain explicit until stronger file APIs exist. |
+| Task Manager CLI and local GUI | Partial: batch, interactive, direct commands and restart-safe file state run in both engines; a Node-hosted loopback browser GUI uses the same CLI and state file. Fixed task-count ceiling removed; 1,000-task persistence and corruption checks pass; stale interactive edits are detected; local 5,000-task benchmark completes under 4 seconds per operation | A documented CLI and browser GUI support add/list/complete/delete across restarts, reject malformed state without destroying it, handle EOF and I/O failure, and support a practical number of tasks. Scripted errors use ADR 0019 nonzero status; qualify exact hosted artifacts. Single-writer and private-directory guidance must remain explicit until stronger file APIs exist. |
 | Compiler/runtime for advertised scope | Partial | Every language and stdlib feature used by the Task Manager is specified, checked and exercised through interpreter and generated JavaScript. Confirmed mismatches have regressions. Malformed input, overflow, resource limits and failure propagation have reviewed behavior. |
 | Local toolchain | Partial; local Windows `.crate` installed offline with a fresh Cargo home and passed full Task Manager persistence in both engines | A fresh installation can build, check and run the Task Manager without unpublished dependencies or repository-only shortcuts. Commands and supported hosts are documented; exact downloaded packages must pass on supported hosts. |
-| Release qualification | Local Windows GNU tests and MSVC compile check pass on committed code; hosted evidence pending | Exact-commit CI on supported platforms and declared minimum Rust version, extracted-artifact Task Manager smoke tests, clean-machine installation/upgrade, compatibility/security review, accurate release notes. |
+| Release qualification | Local Windows GNU tests, optimized candidate archive and isolated Cargo source-package installation pass; MSVC compile check passed earlier. Hosted evidence pending. | Exact-commit CI on supported platforms and declared minimum Rust version, downloaded-artifact Task Manager smoke tests, clean-machine installation/upgrade, compatibility/security review, accurate release notes. |
 
 ## Execution order
 
@@ -32,9 +32,9 @@ scope are not v1 release gates.
    any remaining limits honestly in the v1 documentation.
 4. Qualify the exact release artifacts and installation path on supported hosts.
 
-The Task Manager currently prints control-bearing titles verbatim. ADR 0022
-proposes a terminal-safe display and input policy; this observable compatibility
-decision needs approval and implementation before version-one publication.
+ADR 0022 is approved and implemented: the Task Manager rejects newly added
+control-bearing titles and escapes legacy stored titles and user-supplied error
+text before display. Exact-artifact and supported-host qualification remain.
 
 HTTP, database, WebSocket, SovraBoard, native `svr test`, full M12-M15
 application-platform behavior, and third-party registry publishing remain roadmap
