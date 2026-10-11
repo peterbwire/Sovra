@@ -67,6 +67,11 @@ const cases = [
         output: 'a\nb|c\ntrue\n-42\n',
     },
     {
+        name: 'terminal-escaping',
+        source: `fn main() { print(std::escape_terminal("A${String.fromCodePoint(0, 9, 27, 127, 133)}猫\\\\path")); }`,
+        output: 'A\\u{0000}\\u{0009}\\u{001B}\\u{007F}\\u{0085}猫\\path\n',
+    },
+    {
         name: 'utf8-byte-length',
         source: 'fn main() { print(std::len("é🐈")); print("a" + "é"); }',
         output: '6\naé\n',

@@ -1,12 +1,13 @@
 // Restart and corruption checks for the actual Task Manager program in both engines.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync, rmSync, statSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+if (process.platform !== 'win32') process.umask(0o022);
 const options = new Map();
 const args = process.argv.slice(2);
 if (args.length % 2 !== 0) {
@@ -75,6 +76,35 @@ try {
         assert.match(directError('delete', directPath, 'missing'), /error: missing title missing\n/);
         assert.match(run(executable, [...prefix, 'interactive', directPath], 'add\nFrom interactive\nquit\n'), /added 3\n/);
         assert.match(direct('list', directPath), /3 \| open \| From interactive\ncount 2\n/);
+        const controlPath = join(directory, `${engine}-controls.txt`);
+        const oldControlTitle = 'Legacy\u001b[2JTitle';
+        const oldControlFile = `SVR-TASKS-2\n2\n1|0|${oldControlTitle}\n`;
+        writeFileSync(controlPath, oldControlFile);
+        assert.equal(direct('list', controlPath),
+            'tasks:\n1 | open | Legacy\\u{001B}[2JTitle\ncount 1\n');
+        assert.equal(readFileSync(controlPath, 'utf8'), oldControlFile);
+        assert.equal(directError('add', controlPath, 'New\u001b[2J'),
+            'error: title contains terminal control\n');
+        const interactiveControl = run(executable, [...prefix, 'interactive', controlPath],
+            'add\nNew\u001b[2J\nquit\n', 1);
+        assert.match(interactiveControl, /error: title contains terminal control\n/);
+        assert.equal(readFileSync(controlPath, 'utf8'), oldControlFile);
+        assert.equal(directError('delete', controlPath, 'Missing\u001b[2J'),
+            'error: missing title Missing\\u{001B}[2J\n');
+        const unknownControl = run(executable, [...prefix, 'interactive'],
+            'bad\u001b[2J\nquit\n', 1);
+        assert.match(unknownControl, /error: unknown command bad\\u\{001B\}\[2J\n/);
+        assert.ok(!unknownControl.includes('\u001b'), `${engine} printed an unescaped control`);
+        if (process.platform !== 'win32') {
+            const permissionPath = join(directory, `${engine}-permissions.txt`);
+            assert.equal(direct('add', permissionPath, 'Private'), 'added 1\n');
+            assert.equal(statSync(permissionPath).mode & 0o777, 0o600,
+                `${engine} created task state with broader permissions than owner-only`);
+            chmodSync(permissionPath, 0o644);
+            assert.equal(direct('add', permissionPath, 'Narrowed'), 'added 2\n');
+            assert.equal(statSync(permissionPath).mode & 0o777, 0o600,
+                `${engine} did not narrow shared task state during replacement`);
+        }
         const sharedPath = join(directory, `${engine}-shared.txt`);
         const session = spawn(executable, [...prefix, 'interactive', sharedPath], {
             cwd: dirname(source), stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true,

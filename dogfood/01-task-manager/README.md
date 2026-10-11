@@ -47,8 +47,13 @@ custom ACLs are not preserved. A symlink path can be replaced rather than
 updating its target. `list` does not create a missing
 file. Successful commands exit 0;
 argument, validation and I/O errors exit 1. An interactive session exits 1 if
-any command failed. Direct titles cannot contain LF or CR because the storage
-format is line-oriented.
+any command failed. New titles cannot contain LF, CR or other C0/DEL/C1 terminal
+controls. LF and CR conflict with the line-oriented storage format; other
+controls are rejected to keep newly added titles safe for terminal display.
+Older files containing control-bearing titles remain readable, and `list`
+prints those controls as visible `\u{XXXX}` text without rewriting the file.
+Error messages escape untrusted title and command text too. Exact title lookup
+still uses the original text stored in the file.
 Without a path, data is discarded when the process exits.
 
 Application rules for this bounded slice:

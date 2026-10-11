@@ -30,6 +30,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Reject unsafe release archive members
+        run: node scripts/test-archive-member-safety.mjs
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy

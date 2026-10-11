@@ -2223,6 +2223,30 @@ mod tests {
     }
 
     #[test]
+    fn escape_terminal_requires_exactly_one_string_argument() {
+        let valid =
+            "fn main() { let shown: String = std::escape_terminal(\"title\"); print(shown); }";
+        let program = crate::compiler::parser::Parser::new()
+            .parse_source(valid)
+            .unwrap();
+        SemanticAnalyzer::new().analyze(&program).unwrap();
+
+        let invalid = "fn main() { std::escape_terminal(1); std::escape_terminal(); std::escape_terminal(\"a\", \"b\"); }";
+        let program = crate::compiler::parser::Parser::new()
+            .parse_source(invalid)
+            .unwrap();
+        let errors = SemanticAnalyzer::new().analyze(&program).unwrap_err();
+        assert_eq!(
+            errors
+                .items
+                .iter()
+                .map(|item| item.code)
+                .collect::<Vec<_>>(),
+            ["E3007", "E3006", "E3006"]
+        );
+    }
+
+    #[test]
     fn compound_equality_requires_matching_array_or_nominal_record_types() {
         let source = "struct A { value: Int } struct B { value: Int } fn main() { print(A { value: 1 } == B { value: 1 }); print([1] == [\"one\"]); }";
         let program = crate::compiler::parser::Parser::new()

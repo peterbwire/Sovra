@@ -181,6 +181,10 @@ function svrDisplay(value) {
   }
   return String(value);
 }
+function svrEscapeTerminal(text) {
+  return text.replace(/[\u0000-\u001F\u007F-\u009F]/g,
+    character => "\\u{" + character.codePointAt(0).toString(16).toUpperCase().padStart(4, "0") + "}");
+}
 function svrFormatFloat(value) {
   if (Number.isNaN(value)) return "NaN";
   if (value === Infinity) return "inf";
@@ -546,6 +550,10 @@ fn render_js_call(output: &mut String, name: &str, arguments: usize) {
         }
         "std::write_text" => {
             let _ = writeln!(output, "    stack.push(svrWriteText(args[0], args[1]));");
+        }
+        "std::escape_terminal" => {
+            let _ = writeln!(output, "    if (typeof args[0] !== \"string\") throw new Error(\"std::escape_terminal expects a String argument\");");
+            let _ = writeln!(output, "    stack.push(svrEscapeTerminal(args[0]));");
         }
         "std::split_once" => {
             let _ = writeln!(output, "    if (typeof args[0] !== \"string\" || typeof args[1] !== \"string\") throw new Error(\"std::split_once expects String arguments\");");
@@ -2015,6 +2023,81 @@ mod tests {
             String::from_utf8_lossy(&output.stderr)
         );
         assert_eq!(String::from_utf8(output.stdout).unwrap(), expected);
+    }
+
+    #[test]
+    fn javascript_terminal_escape_matches_interpreter() {
+        let controls = (0u8..=31)
+            .chain(127u8..=159)
+            .map(char::from)
+            .collect::<String>();
+        let values = [
+            "\0\u{001b}\u{001f}\u{007f}\u{0080}\u{009f}".to_owned(),
+            "plain \\u{001B} \u{00e9} \u{1f642}".to_owned(),
+            controls,
+        ];
+        let mut instructions = Vec::new();
+        for value in values {
+            instructions.push(Instruction::LoadLiteral(Literal::String(value)));
+            instructions.push(Instruction::Call {
+                name: "std::escape_terminal".into(),
+                arguments: 1,
+            });
+            instructions.push(Instruction::Call {
+                name: "std::print".into(),
+                arguments: 1,
+            });
+            instructions.push(Instruction::Pop);
+        }
+        let program = IrProgram {
+            functions: vec![IrFunction {
+                name: "main".into(),
+                parameters: vec![],
+                instructions,
+            }],
+        };
+        let expected = crate::compiler::interpreter::run(&program).unwrap();
+        assert_eq!(
+            expected[0],
+            "\\u{0000}\\u{001B}\\u{001F}\\u{007F}\\u{0080}\\u{009F}"
+        );
+        assert_eq!(expected[1], "plain \\u{001B} \u{00e9} \u{1f642}");
+        let output = execute_javascript(&render_javascript(&program));
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8(output.stdout).unwrap(),
+            expected.join("\n") + "\n"
+        );
+    }
+
+    #[test]
+    fn malformed_terminal_escape_calls_match_interpreter() {
+        for count in [0, 2] {
+            let mut instructions =
+                vec![Instruction::LoadLiteral(Literal::String("x".into())); count];
+            instructions.push(Instruction::Call {
+                name: "std::escape_terminal".into(),
+                arguments: count,
+            });
+            assert_ir_failure_matches(instructions);
+        }
+        for value in [
+            Literal::Integer("1".into()),
+            Literal::Float("1.0".into()),
+            Literal::Boolean(true),
+        ] {
+            assert_ir_failure_matches(vec![
+                Instruction::LoadLiteral(value),
+                Instruction::Call {
+                    name: "std::escape_terminal".into(),
+                    arguments: 1,
+                },
+            ]);
+        }
     }
 
     #[test]

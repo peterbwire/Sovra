@@ -412,6 +412,16 @@ returns. A later uncaught runtime error still exits unsuccessfully regardless
 of the selected code. The public output-only interpreter APIs are unchanged;
 an additive status-returning API supports process execution.
 
+### Terminal-safe text (ADR 0022)
+
+`std::escape_terminal(text: String) -> String` replaces C0 controls (U+0000 to
+U+001F), DEL and C1 controls (U+007F to U+009F) with printable ASCII
+`\u{XXXX}` notation. Hexadecimal digits are uppercase with at least four
+digits; for example, ESC becomes `\u{001B}`. Other Unicode scalars and literal
+backslashes are unchanged. The result is intended for display and is not a
+reversible encoding. It does not change `print`, string equality or stored text.
+See [terminal output](course/terminal-output.md) for application use.
+
 ### Bounded text files (ADR 0015)
 
 `std::read_text(path: String) -> std::TextRead` reads at most 16 MiB of UTF-8.

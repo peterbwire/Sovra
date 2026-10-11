@@ -6,7 +6,7 @@ struct ParsedTask { ok: Bool, task: Task }
 
 fn fail(message: String) {
     std::set_exit_code(1);
-    print(message);
+    print(std::escape_terminal(message));
 }
 fn title_has_line_break(title: String) -> Bool {
     let line_feed = std::split_once(title, "\n");
@@ -64,6 +64,9 @@ fn find_title(tasks: Tasks, title: String) -> Task {
 fn add(tasks: Tasks, title: String, announce: Bool) -> Tasks {
     if title == "" { fail("error: empty title"); return tasks; }
     if title_has_line_break(title) { fail("error: title contains a line break"); return tasks; }
+    if (std::escape_terminal(title) != title) {
+        fail("error: title contains terminal control"); return tasks;
+    }
     if find_title(tasks, title).id > 0 { fail("error: duplicate title"); return tasks; }
     if tasks.next_id == 9223372036854775807 {
         fail("error: task ID exhausted"); return tasks;
@@ -110,7 +113,8 @@ fn list(tasks: Tasks) {
         let parsed = parse_row(line.before, false);
         let mut status = "open";
         if parsed.task.done { status = "done"; }
-        print(std::to_string(parsed.task.id) + " | " + status + " | " + parsed.task.title);
+        print(std::to_string(parsed.task.id) + " | " + status + " | " +
+              std::escape_terminal(parsed.task.title));
         count = count + 1;
         rest = line.after;
     }

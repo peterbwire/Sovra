@@ -630,6 +630,12 @@ fn execute_std_call(
                 ],
             })));
         }
+        "std::escape_terminal" => {
+            let Value::String(text) = &arguments[0] else {
+                return Err("std::escape_terminal expects a String argument".into());
+            };
+            stack.push(Value::String(stdlib::escape_terminal(text)));
+        }
         "std::len" => {
             let value = match &arguments[0] {
                 Value::String(value) => Value::Int(value.len() as i64),
@@ -836,6 +842,18 @@ mod tests {
             .expect("source should type-check");
         let output = run(&ir::lower(&typed)).expect("program should execute");
         assert_eq!(output, vec!["2", "42"]);
+    }
+
+    #[test]
+    fn executes_terminal_escaping_without_changing_unicode_or_backslashes() {
+        let source =
+            "fn main() { print(std::escape_terminal(\"A\u{001b}\u{007f}\u{0085}é\\\\Z\")); }";
+        let program = Parser::new().parse_source(source).expect("valid source");
+        let typed = SemanticAnalyzer::new()
+            .analyze(&program)
+            .expect("valid standard call");
+        let output = run(&ir::lower(&typed)).expect("standard call must execute");
+        assert_eq!(output, vec!["A\\u{001B}\\u{007F}\\u{0085}é\\Z"]);
     }
 
     #[test]

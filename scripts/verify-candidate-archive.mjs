@@ -48,6 +48,13 @@ try {
         assert.ok(entry === `${name}/` || entry.startsWith(`${name}/`), `unexpected archive entry: ${entry}`);
         assert.ok(!entry.split('/').includes('..') && !entry.includes('\\'), `unsafe archive entry: ${entry}`);
     }
+    const details = invoke('tar', ['-tvzf', archive], unpack).trimEnd().split('\n');
+    assert.equal(details.length, entries.length, 'archive member listings disagree');
+    for (const [index, detail] of details.entries()) {
+        const type = detail[0];
+        assert.ok(type === '-' || type === 'd',
+            `unsupported candidate archive member type ${type}: ${entries[index]}`);
+    }
     invoke('tar', ['-xzf', archive, '-C', unpack], unpack);
     const installed = join(unpack, name);
     const compiler = join(installed, process.platform === 'win32' ? 'svr.exe' : 'svr');

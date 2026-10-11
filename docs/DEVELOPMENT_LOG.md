@@ -1,5 +1,57 @@
 # Development log
 
+## 2026-10-11: Proposed Task Manager terminal-control policy
+
+- Audited untrusted application output: a persisted title containing ESC is
+  emitted verbatim by `list`, and user-supplied missing titles and unknown
+  commands also reach output. The current interpreter reproduced the ESC case.
+- Drafted ADR 0022 for a general `std::escape_terminal` display function and a
+  Task Manager policy that rejects new control-bearing titles while rendering
+  older stored titles safely. This changes observable input/output behavior, so
+  implementation is paused pending the AGENTS.md compatibility decision.
+- Archive-verifier hardening and release checks proceeded independently.
+
+## 2026-10-11: Reject archive links before release verification extraction
+
+- Reproduced a candidate-verifier gap with a checksum-correct tar archive
+  containing a symlink: member names passed validation and Windows `tar` attempted
+  extraction before rejecting the link. Both candidate and Cargo source verifiers
+  now inspect member types before unpacking and accept only regular files and
+  directories. This also rejects hardlinks and special members.
+- Added crafted symlink and hardlink fixtures for both verifiers and wired the
+  regression into platform CI and the manual candidate workflow. The four
+  malicious cases now fail at the explicit pre-extraction check.
+- A normal local Cargo source archive still passed isolated offline installation
+  and full Task Manager persistence. A locally staged Windows candidate archive
+  passed checksum, extraction, compiler/JavaScript and Task Manager verification.
+  The staging used the debug binary to test the verifier; it is not a qualified
+  optimized release artifact or hosted workflow result.
+- Next: observe the new archive checks on Linux/macOS and the exact candidate
+  revision. Keep extracted-artifact qualification separate from publication.
+
+## 2026-10-11: Isolate source-package installation and qualify packaged Task Manager
+
+- The downloaded Cargo source-package verifier inherited the user's `CARGO_HOME`,
+  so its offline install could silently depend on local Cargo configuration or
+  cached crates. A poisoned ambient Cargo config reproduced this failure before
+  the fix. The verifier now gives `cargo install --offline --locked --path` a
+  fresh Cargo home and build directory under its temporary workspace.
+- The same verifier now runs the full Task Manager persistence suite against the
+  compiler installed from the packaged source and the application source
+  extracted from that package. This covers both execution engines, corruption,
+  failure status, 1,000-task workflows, and the 16 MiB boundary in addition to
+  its fresh-state and legacy-migration checks.
+- The shared persistence runner now checks Unix `0600` creation and narrowing
+  after replacement under a `022` umask. Candidate archives and downloaded
+  source packages both use this runner, so hosted Linux/macOS jobs can verify
+  ADR 0021 against the actual distribution artifacts.
+- Local Windows validation passed with the poisoned ambient Cargo home: the
+  existing `.crate` installed offline into the fresh home, and the installed
+  binary passed the full interpreter/JavaScript persistence suite. The Unix
+  permission assertions are conditional and remain unexecuted on this host.
+- Next: run exact-commit hosted CI and the manual candidate workflow on Linux,
+  Windows and macOS, then inspect the downloaded artifacts before publication.
+
 ## 2026-10-09: Implement Unix owner-only text-file replacement
 
 - Accepted ADR 0021 after the user directed the next implementation step. The

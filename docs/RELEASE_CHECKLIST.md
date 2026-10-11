@@ -20,6 +20,8 @@ third-party library registry publishing move to later versions. See
 - [x] Configure manual candidate archives, SHA-256 checksums and commit metadata.
 - [x] Configure SHA-256 checksums and isolated offline installation checks for
   downloaded Cargo source archives.
+- [x] Reject symlink, hardlink and special members before extracting downloaded
+  candidate or Cargo source archives; run crafted-member regressions in CI.
 - [x] Remove the Task Manager's three-task ceiling with existing general-purpose
   text operations; validate 25-task workflows and existing state-file migration
   in both engines.
@@ -27,6 +29,8 @@ third-party library registry publishing move to later versions. See
   application exit status; verify nonzero failures in both engines.
 - [ ] Verify Task Manager behavior, persistence, size bounds and failures in both engines
   from the exact release artifact.
+- [ ] Resolve ADR 0022's Task Manager terminal-control output and input policy;
+  current `list` can emit ESC from an untrusted title.
 - [x] Require MSRV success before candidate jobs and smoke-test extracted archives
   for exact version/greeting, source JSON diagnostics, generated JavaScript and
   the packaged Task Manager's persistent workflow.
@@ -92,10 +96,18 @@ The manual workflow also downloads each uploaded candidate, checks its
 commit/target/version sidecar against the job, and reruns the verifier on the
 downloaded archive. This closes the workflow's pre-upload-only evidence gap
 once the hosted jobs actually pass; no hosted run is claimed here.
+Both archive verifiers now reject link and special members before extraction.
+Crafted symlink and hardlink regressions pass locally; a normal Windows source
+archive and a locally staged candidate archive still pass their full verifiers.
+The staged candidate used a debug binary to exercise the verifier, not to
+qualify an optimized release build.
 It also checksums the Cargo `.crate`, installs the downloaded source package
-offline in a fresh temporary prefix, and verifies a new Task Manager file plus
-legacy-file migration. A local Windows `--allow-dirty` source-package rehearsal
-passed; the hosted final-commit and other-platform runs remain open.
+offline with a fresh Cargo home and build directory, and runs the full Task
+Manager persistence suite against the installed binary and packaged source.
+A poisoned ambient Cargo configuration failed before this isolation change;
+the local Windows `--allow-dirty` source-package rehearsal passed afterward.
+The shared suite now checks Unix owner-only task-file creation and replacement
+mode under a `022` umask. Hosted final-commit and Unix results remain open.
 At local commit `23171d5`, Windows GNU Rust 1.98.1 passed formatting, strict
 Clippy, 353 unit tests, 45 CLI tests, dogfood and Task Manager persistence;
 the installed Windows MSVC toolchain passed `cargo check --locked --all-targets`.

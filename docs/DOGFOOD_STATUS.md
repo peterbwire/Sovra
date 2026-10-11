@@ -7,7 +7,7 @@ failures can become compiler regressions without separate repository coordinatio
 
 | Application | Status | Verified scope / blockers | Next action |
 | --- | --- | --- | --- |
-| 01 Task Manager CLI | Partial; batch, interactive, direct commands and file-backed execution | Add/list/complete/delete by title, restart-safe state, validation, EOF, stable IDs and variable-length task rows; both engines. Direct and interactive commands share files and report status 1 on application errors. Interactive commands refresh external changes and reject edits that become stale before save; simultaneous writers remain unsupported. ADR 0021 implements Unix owner-only file mode; Windows custom ACLs and symlink identity are not preserved. Version-one files migrate on write. ADR 0020 preserves duplicate rejection and local Windows benchmark completes 5,000-task list/add/restart-list in under 4 seconds per operation in both engines. | Qualify Unix mode behavior and exact hosted release artifacts; continue compiler/runtime hardening. |
+| 01 Task Manager CLI | Partial; batch, interactive, direct commands and file-backed execution | Add/list/complete/delete by title, restart-safe state, validation, EOF, stable IDs and variable-length task rows; both engines. Direct and interactive commands share files and report status 1 on application errors. Interactive commands refresh external changes and reject edits that become stale before save; simultaneous writers remain unsupported. ADR 0021 implements Unix owner-only file mode; Windows custom ACLs and symlink identity are not preserved. Version-one files migrate on write. ADR 0020 preserves duplicate rejection and local Windows benchmark completes 5,000-task list/add/restart-list in under 4 seconds per operation in both engines. A title containing ESC currently reaches terminal output; ADR 0022 proposes safe display. | Approve and implement terminal-safe output, then qualify Unix mode behavior and exact hosted artifacts. |
 | 02 File Processor | Partial; streams, bounded copy and column extraction | Numbers/filters stdin lines, copies UTF-8 files, and extracts delimited first columns with validation before replacement in both engines. No binary I/O. | Expand text transforms and design binary/streaming APIs separately. |
 | 03 HTTP API | Planned | HTTP hosting and application lifecycle absent. | Follow the real HTTP application plan and approved runtime decisions. |
 | 04 Database Notes | Planned | Persistence, database drivers and transaction contracts absent. | Build on approved I/O, failure and resource contracts. |
@@ -83,7 +83,8 @@ contract. A separate differential runner tests its file-copy path in both
 engines, including replacement, invalid UTF-8, missing paths and 16 MiB limits.
 The same runner tests column extraction with Unicode/multicharacter delimiters,
 malformed rows, destination preservation, empty files and application bounds.
-Local Windows execution passes; hosted Linux/macOS/Windows CI outcomes must be
-observed after push rather than inferred from workflow configuration.
-Local Windows execution passes both backends; hosted CI results must
-be observed after these changes are pushed, not assumed from workflow configuration.
+The Task Manager persistence runner exercises both engines, including creation
+and replacement mode checks under a `022` umask on Unix. Candidate archives and
+downloaded Cargo source packages use that runner against their packaged compiler
+and application source. Local Windows execution passes; hosted Linux/macOS/Windows
+results must be observed after push rather than inferred from CI configuration.

@@ -43,12 +43,23 @@ try {
         assert.ok(entry.startsWith(prefix), `unexpected source package entry: ${entry}`);
         assert.ok(!entry.split('/').includes('..') && !entry.includes('\\'), `unsafe source package entry: ${entry}`);
     }
+    const details = invoke('tar', ['-tvzf', crate], scratch).trimEnd().split('\n');
+    assert.equal(details.length, entries.length, 'source package member listings disagree');
+    for (const [index, detail] of details.entries()) {
+        const type = detail[0];
+        assert.ok(type === '-' || type === 'd',
+            `unsupported source archive member type ${type}: ${entries[index]}`);
+    }
     invoke('tar', ['-xzf', crate, '-C', scratch], scratch);
     const source = join(scratch, `sovra-${version}`);
     const taskManager = join(source, 'dogfood', '01-task-manager', 'main.svr');
     assert.ok(existsSync(taskManager), 'Task Manager source missing from Cargo package');
     const install = join(scratch, 'install');
-    const env = { ...process.env, CARGO_TARGET_DIR: join(scratch, 'build') };
+    const env = {
+        ...process.env,
+        CARGO_HOME: join(scratch, 'cargo-home'),
+        CARGO_TARGET_DIR: join(scratch, 'build'),
+    };
     invoke('cargo', ['install', '--offline', '--locked', '--path', source, '--root', install],
         scratch, env, 600000);
     const compiler = join(install, 'bin', process.platform === 'win32' ? 'svr.exe' : 'svr');
@@ -69,7 +80,11 @@ try {
         'added 8\n');
     assert.equal(readFileSync(state, 'utf8'),
         'SVR-TASKS-2\n9\n5|0|Legacy\n7|1|Done\n8|0|Upgraded\n');
-    console.log(`PASS Cargo source package sovra-${version}: offline install, fresh state, legacy migration`);
+    const persistence = invoke(process.execPath, [join(import.meta.dirname, 'test-task-persistence.mjs'),
+        '--compiler', compiler, '--source', taskManager], scratch, process.env, 180000);
+    assert.match(persistence, /PASS Task Manager persistence\/interpreter\n/);
+    assert.match(persistence, /PASS Task Manager persistence\/javascript\n/);
+    console.log(`PASS Cargo source package sovra-${version}: isolated offline install, Task Manager persistence`);
 } finally {
     rmSync(scratch, { recursive: true, force: true });
 }

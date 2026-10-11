@@ -110,6 +110,11 @@ const FUNCTIONS: &[StdFunction] = &[
         parameters: LEN_PARAMETERS,
         return_type: PARSED_INT_TYPE,
     },
+    StdFunction {
+        name: "std::escape_terminal",
+        parameters: LEN_PARAMETERS,
+        return_type: "String",
+    },
 ];
 
 /// Return all stable M9 standard-library functions.
@@ -150,6 +155,24 @@ pub fn parse_int(text: &str) -> Option<i64> {
     text.parse::<i64>().ok()
 }
 
+/// Replace terminal control scalars with printable uppercase Unicode escapes.
+///
+/// C0, DEL, and C1 controls become `\u{XXXX}` with at least four hex digits.
+/// All other scalars, including backslashes, remain unchanged. This is a display
+/// transformation; it does not encode strings for round-trip decoding.
+pub fn escape_terminal(text: &str) -> String {
+    let mut escaped = String::with_capacity(text.len());
+    for character in text.chars() {
+        let value = character as u32;
+        if value <= 0x1f || (0x7f..=0x9f).contains(&value) {
+            escaped.push_str(&format!("\\u{{{value:04X}}}"));
+        } else {
+            escaped.push(character);
+        }
+    }
+    escaped
+}
+
 /// Whether a parameter type accepts any Sovra value.
 pub const fn is_any_type(type_name: &str) -> bool {
     matches!(type_name.as_bytes(), b"Any")
@@ -177,7 +200,8 @@ mod tests {
                 "std::write_text",
                 "std::split_once",
                 "std::lines_unique",
-                "std::parse_int"
+                "std::parse_int",
+                "std::escape_terminal"
             ]
         );
     }
@@ -225,5 +249,22 @@ mod tests {
             assert_eq!(parse_int(text), expected, "{text:?}");
         }
         assert_eq!(parse_int(&"9".repeat(1024 * 1024)), None);
+    }
+
+    #[test]
+    fn terminal_escaping_covers_controls_and_preserves_other_scalars() {
+        let controls: String = (0..=0x1f)
+            .chain(0x7f..=0x9f)
+            .filter_map(char::from_u32)
+            .collect();
+        let expected = (0..=0x1f)
+            .chain(0x7f..=0x9f)
+            .map(|value| format!("\\u{{{value:04X}}}"))
+            .collect::<String>();
+        assert_eq!(escape_terminal(&controls), expected);
+        assert_eq!(
+            escape_terminal("A\u{00A0}\u{2028}\u{009F}\\tail"),
+            "A\u{00A0}\u{2028}\\u{009F}\\tail"
+        );
     }
 }
