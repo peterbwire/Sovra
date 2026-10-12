@@ -95,3 +95,8 @@ Do not weaken tests or bypass OS policy to obtain a green result.
   pause before fundamental syntax, memory-model, type-semantics or compatibility
   decisions. Label features Implemented, Partial, Experimental, Stub or Planned;
   do not count scaffolding or skipped tests as completed functionality.
+- Every new dogfood application must expose at least one reusable capability
+  (a local Sovra package or host adapter) that another application can consume.
+  Declare its path and contract in `dogfood/suite.json`, document its limits in
+  the application README, and test both the application and capability through
+  real Sovra execution. Do not count an app-specific command as reuse.

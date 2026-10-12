@@ -55,9 +55,13 @@ try {
     const taskManager = join(source, 'dogfood', '01-task-manager', 'main.svr');
     const taskGui = join(source, 'dogfood', '01-task-manager', 'gui', 'server.mjs');
     const bridge = join(source, 'dogfood', '01-task-manager', 'gui', 'bridge.mjs');
+    const uiView = join(source, 'dogfood', '01-task-manager', 'gui', 'ui-view.mjs');
+    const uiFixture = join(source, 'dogfood', '01-task-manager', 'gui', 'ui-fixture.svr');
     assert.ok(existsSync(taskManager), 'Task Manager source missing from Cargo package');
     assert.ok(existsSync(taskGui), 'Task Manager GUI missing from Cargo package');
     assert.ok(existsSync(bridge), 'GUI bridge missing from Cargo package');
+    assert.ok(existsSync(uiView), 'GUI renderer missing from Cargo package');
+    assert.ok(existsSync(uiFixture), 'UI fixture missing from Cargo package');
     const install = join(scratch, 'install');
     const env = {
         ...process.env,

@@ -1,0 +1,7 @@
+[project]
+name = "sovra-http-server"
+version = "1.0.0"
+entry = "main.svr"
+
+[dependencies.httplib]
+path = "../library"

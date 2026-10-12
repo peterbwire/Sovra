@@ -1,5 +1,14 @@
 # Roadmap
 
+The [Windows developer toolchain plan](architecture/WINDOWS_TOOLCHAIN.md)
+tracks installable `svr.exe`, project creation and developer command gates
+separately from standalone application output.
+
+The proposed [Node-free application execution plan](architecture/NODE_FREE_APPLICATIONS.md)
+adds N1–N5 work packages for standalone executables, native UI and WebAssembly.
+These are proposals and do not renumber M0–M15 or change the current version-one
+gates until the executable strategy in ADR 0025 is approved.
+
 Production readiness is the release target; the developer-preview publication
 plan is superseded. Follow [the production audit and gates](PRODUCTION_READINESS.md)
 without renumbering these milestones. Completed foundation slices do not imply

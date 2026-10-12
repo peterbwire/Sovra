@@ -1,0 +1,7 @@
+[project]
+name = "sovra-notes"
+version = "1.0.0"
+entry = "main.svr"
+
+[dependencies.notelib]
+path = "../library"

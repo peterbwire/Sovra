@@ -1,0 +1,1 @@
+usage: invoice LABEL=AMOUNT ... (1-50 items, amounts 0-1000000)

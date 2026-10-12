@@ -1,0 +1,44 @@
+// A structured stdin report with bounded line counts and explicit failures.
+fn main() {
+    if (std::arg_count() != 0) {
+        std::set_exit_code(1);
+        print("usage: log-report < LEVEL|message lines");
+        return;
+    }
+    let mut info = 0;
+    let mut warn = 0;
+    let mut error = 0;
+    let mut lines = 0;
+    let mut reading = true;
+    while (reading) {
+        let next = std::read_line();
+        if (next.eof) {
+            reading = false;
+        } else {
+            lines = lines + 1;
+            if (lines > 10000) {
+                std::set_exit_code(1);
+                print("too many lines");
+                return;
+            }
+            let parts = std::split_once(next.text, "|");
+            if (parts.found == false || parts.after == "") {
+                std::set_exit_code(1);
+                print("invalid log line " + std::to_string(lines));
+                return;
+            }
+            if (parts.before == "INFO") { info = info + 1; }
+            else if (parts.before == "WARN") { warn = warn + 1; }
+            else if (parts.before == "ERROR") { error = error + 1; }
+            else {
+                std::set_exit_code(1);
+                print("invalid log line " + std::to_string(lines));
+                return;
+            }
+        }
+    }
+    print("lines: " + std::to_string(lines));
+    print("info: " + std::to_string(info));
+    print("warn: " + std::to_string(warn));
+    print("error: " + std::to_string(error));
+}

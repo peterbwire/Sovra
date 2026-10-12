@@ -1,0 +1,77 @@
+use notelib::notes;
+
+fn fail(message: String) {
+    std::set_exit_code(1);
+    print(message);
+}
+
+fn main() {
+    let count = std::arg_count();
+    if ((count != 2 && count != 3 && count != 4) ||
+        (std::arg(0) != "list" && std::arg(0) != "get" &&
+         std::arg(0) != "put" && std::arg(0) != "delete")) {
+        fail("usage: notes list FILE | get FILE KEY | put FILE KEY VALUE | delete FILE KEY");
+        return;
+    }
+    let command = std::arg(0);
+    if ((command == "list" && count != 2) ||
+        ((command == "get" || command == "delete") && count != 3) ||
+        (command == "put" && count != 4)) {
+        fail("usage: notes list FILE | get FILE KEY | put FILE KEY VALUE | delete FILE KEY");
+        return;
+    }
+    if (command != "list" && notelib::notes::valid_key(std::arg(2)) == false) {
+        fail("invalid key"); return;
+    }
+    if (command == "put" && notelib::notes::valid_value(std::arg(3)) == false) {
+        fail("invalid value"); return;
+    }
+    let loaded = std::read_text(std::arg(1));
+    let mut original = notelib::notes::empty_store();
+    if (loaded.ok) { original = loaded.text; }
+    else if (loaded.error != "not_found") { fail("read error: " + loaded.error); return; }
+    if (notelib::notes::valid_store(original) == false) {
+        fail("invalid notes file"); return;
+    }
+    let header = std::split_once(original, "\n");
+    let mut rest = header.after;
+    let mut output = notelib::notes::empty_store();
+    let mut found = false;
+    let mut listed = 0;
+    while (rest != "") {
+        let line = std::split_once(rest, "\n");
+        let parsed = notelib::notes::parse(line.before);
+        if (command == "list") {
+            print(std::escape_terminal(parsed.note.key));
+            listed = listed + 1;
+        }
+        if (command == "get" && parsed.note.key == std::arg(2)) {
+            print(std::escape_terminal(parsed.note.value));
+            found = true;
+        }
+        if (command == "put" && parsed.note.key == std::arg(2)) {
+            output = output + notelib::notes::encode(notelib::notes::Note {
+                key: std::arg(2), value: std::arg(3) });
+            found = true;
+        } else if (command == "delete" && parsed.note.key == std::arg(2)) {
+            found = true;
+        } else {
+            output = output + line.before + "\n";
+        }
+        rest = line.after;
+    }
+    if (command == "list") { print("count " + std::to_string(listed)); return; }
+    if (command == "get") {
+        if (found == false) { fail("note not found"); }
+        return;
+    }
+    if (command == "delete" && found == false) { fail("note not found"); return; }
+    if (command == "put" && found == false) {
+        output = output + notelib::notes::encode(notelib::notes::Note {
+            key: std::arg(2), value: std::arg(3) });
+    }
+    let saved = std::write_text(std::arg(1), output);
+    if (saved.ok == false) { fail("write error: " + saved.error); return; }
+    if (command == "put") { print("saved " + std::escape_terminal(std::arg(2))); }
+    else { print("deleted " + std::escape_terminal(std::arg(2))); }
+}

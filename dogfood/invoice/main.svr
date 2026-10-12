@@ -1,0 +1,42 @@
+// A bounded invoice calculator using typed records and checked command input.
+struct Item { valid: Bool, label: String, amount: Int }
+
+fn parse_item(text: String) -> Item {
+    let parts = std::split_once(text, "=");
+    if (parts.found == false || parts.before == "" || std::len(parts.before) > 80) {
+        return Item { valid: false, label: "", amount: 0 };
+    }
+    let number = std::parse_int(parts.after);
+    if (number.ok == false || number.value < 0 || number.value > 1000000) {
+        return Item { valid: false, label: "", amount: 0 };
+    }
+    let newline = std::split_once(parts.before, "\n");
+    let carriage = std::split_once(parts.before, "\r");
+    if (newline.found || carriage.found) {
+        return Item { valid: false, label: "", amount: 0 };
+    }
+    return Item { valid: true, label: parts.before, amount: number.value };
+}
+
+fn main() {
+    if (std::arg_count() == 0 || std::arg_count() > 50) {
+        std::set_exit_code(1);
+        print("usage: invoice LABEL=AMOUNT ... (1-50 items, amounts 0-1000000)");
+        return;
+    }
+    let mut total = 0;
+    let mut index = 0;
+    while (index < std::arg_count()) {
+        let item = parse_item(std::arg(index));
+        if (item.valid == false) {
+            std::set_exit_code(1);
+            print("invalid item " + std::to_string(index + 1));
+            return;
+        }
+        total = total + item.amount;
+        print(std::escape_terminal(item.label) + ": " + std::to_string(item.amount));
+        index = index + 1;
+    }
+    print("items: " + std::to_string(index));
+    print("total: " + std::to_string(total));
+}

@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, delimiter, dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const usage = 'Usage: node scripts/verify-candidate-archive.mjs --archive PATH --name NAME --version VERSION';
@@ -62,7 +62,9 @@ try {
     const taskManager = join(installed, 'task-manager.svr');
     const taskGui = join(installed, 'task-manager-gui.mjs');
     const bridge = join(installed, 'bridge.mjs');
-    for (const file of [compiler, hello, taskManager, taskGui, bridge,
+    const uiView = join(installed, 'ui-view.mjs');
+    const uiFixture = join(installed, 'ui-fixture.svr');
+    for (const file of [compiler, hello, taskManager, taskGui, bridge, uiView, uiFixture,
         'README.md', 'task-manager-README.md',
         'LICENSE', 'LICENSE-MIT', 'LICENSE-APACHE']) {
         const path = file.startsWith(installed) ? file : join(installed, file);
@@ -70,6 +72,13 @@ try {
     }
     assert.equal(invoke(compiler, ['--version'], installed), `svr ${version}\n`);
     assert.equal(invoke(compiler, ['run', hello], installed), 'Hello, Sovra!\n');
+    const { decodeUiView, renderUiView } = await import(pathToFileURL(uiView).href);
+    const fixtureView = invoke(compiler, ['run', uiFixture], installed);
+    assert.match(renderUiView(decodeUiView(fixtureView), 'a'.repeat(64)),
+        /Ready &lt;from&gt; Sovra/);
+    const clickedView = invoke(compiler, ['run', uiFixture, '--', 'complete'], installed);
+    assert.match(renderUiView(decodeUiView(clickedView), 'a'.repeat(64)),
+        /Completed in Sovra/);
     const report = JSON.parse(invoke(compiler, ['check', '--format', 'json', hello], installed));
     assert.equal(report.schema_version, 1);
     assert.equal(report.success, true);

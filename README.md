@@ -1,135 +1,87 @@
 # Sovra
 
-**Version 1.0.0 is a development target, not yet ready for publication.**
-Version one must support a production-quality Task Manager CLI built in Sovra.
-The current dogfood application runs in both engines, persists tasks, and has no
-fixed task-count ceiling; its text-file size and release qualification still need
-review. Later versions will add broader
-application-platform and third-party publishing capability, each validated by
-its own application. The compiler-only and developer-preview release plans are
-superseded; see the [version-one gates](docs/V1_DELIVERY_GATES.md) and
-[production-readiness plan](docs/PRODUCTION_READINESS.md).
+Sovra is a programming language and toolchain for `.svr` applications. Its
+current Rust implementation provides a compiler, interpreter, built-in standard
+library, local package linking, and a Node-targeted JavaScript backend. The
+canonical command is `svr` (`svr.exe` on Windows).
 
-Repository-owned [dogfood applications](dogfood/README.md) exercise the local
-compiler and both execution engines. The task manager runs batch and interactive
-workflows; [dogfood status](docs/DOGFOOD_STATUS.md) records its persistence and
-capacity blockers and the remaining application roadmap.
+**Version 1.0.0 is not yet approved for publication.** The version-one goal is
+a production-quality Task Manager CLI and a qualified installable toolchain.
+The Task Manager already supports interactive and scripted add/list/complete/
+delete operations with persistent UTF-8 state. A local browser GUI works through
+a Node host and Sovra-generated application code. Release qualification and a
+clean-machine installation test remain. See the
+[version-one gates](docs/V1_DELIVERY_GATES.md) and
+[Windows toolchain audit](docs/architecture/WINDOWS_TOOLCHAIN.md).
 
-For the current module/stdlib/package boundaries, see the
-[library ecosystem assessment](docs/LIBRARY_ECOSYSTEM_ASSESSMENT.md) and
-[real HTTP dependency plan](docs/REAL_HTTP_APPLICATION_PLAN.md). The executable
-[library foundations example](examples/library-foundations/main.svr) uses inline
-modules. The [local package example](examples/local-packages) now checks, runs,
-and builds a consumer using a separate sibling library with private helpers.
-Local source resolution is implemented; locks, registries and publishing remain planned.
+## Try Sovra from source
 
-Sovra is a modern application language for turning ideas into running
-software without stitching together a pile of unrelated frameworks.
-
-It is designed to feel simple and readable like Python, safe and performant
-like Rust, practical and fast like Go, flexible like JavaScript and TypeScript,
-comfortable with declarative and functional programming, and especially clear
-to AI agents that need to understand, generate, inspect, test, and modify code.
-
-The north-star developer experience is:
+Development requires Rust. The JavaScript backend's execution tests and the
+browser GUI require Node.js 22. Checking and interpreting Sovra source do not
+require Node.
 
 ```text
-natural-language idea
-  -> Sovra code
-  -> project structure
-  -> svr check
-  -> svr test
-  -> svr run
-  -> application
+cargo build
+cargo run -- check examples/hello-world/main.svr
+cargo run -- run examples/hello-world/main.svr
+cargo test --all-targets
 ```
 
-The flagship example is [Fielddesk](examples/fielddesk), a full application
-shape that shows models and data, APIs, business logic, UI pages,
-authentication, concurrency, and external services in one coherent Sovra
-project.
+`svr check` validates a source file or project; project checks have different
+coverage depending on the project type. `svr run` executes a `.svr` file or a
+local dependency package. `svr build` prints human-readable IR by default;
+`svr build --emit js` prints Node CommonJS JavaScript. For automation,
+`svr check --format json <path>` emits a versioned diagnostic report. See
+[automated checks](docs/guides/automated-checks.md) for its scope and exit codes.
 
-```sovra
-model Job {
-    id: Id<Job>
-    customer: Customer
-    status: JobStatus = .open
-    urgency: Int
-}
+`svr new`, `svr test`, `svr fmt`, `svr install` and `svr update` are reserved,
+not implemented commands. Local packages work without a registry; lockfiles,
+third-party publishing and a language server remain planned.
 
-route POST "/api/jobs" -> create_job
+## Windows developer toolchain
 
-fn create_job(request: JobRequest) -> Result<Job, Problem> {
-    let job = Job.insert({
-        customer: Customer.find_or_create(request.email),
-        status: .open,
-        urgency: score_urgency(request),
-    })
+The first toolchain slice packages `svr.exe`, a project template, documentation
+and a PowerShell installer into a ZIP with a SHA-256 checksum. To build and
+smoke-test that package on Windows:
 
-    task dispatch(job)
-    return Ok(job)
-}
+```powershell
+cargo build --release
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows-toolchain.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-windows-toolchain.ps1 -Package target/toolchain/sovra-windows.zip
 ```
 
-This repository also contains the complete M0-M11 compiler foundation: a
-stable command-line entry point, compiler pipeline boundaries, a lexer, parser,
-semantic validation, an explicit intermediate representation, an interpreter
-with user-function calls, typed locals, module-aware name resolution, a
-standard-library `std` namespace, and a portable JavaScript backend.
+After extracting the ZIP, follow the included
+[toolchain installation guide](toolchain/README.md). It installs to the current
+user's profile by default, adds `svr.exe` to PATH, and provides
+`svr-new.ps1` for creating a console project while the public `svr new`
+contract is still pending. The automated smoke test uses the installed compiler
+from a fresh PowerShell process with Node, Cargo and Rust absent from PATH. It
+also checks and runs a copy of the Task Manager outside this repository. A
+clean compatible Windows VM test is still required before release.
 
-The compiler, runtime, and core tooling are implemented in Rust. As Sovra
-matures, parts of the standard library and ecosystem can move into Sovra
-itself, while the trusted language implementation remains small, inspectable,
-and production-oriented.
+An [internal standalone executable proof](docs/architecture/NODE_FREE_APPLICATIONS.md)
+embeds checked Sovra IR and the Rust runtime into a Windows executable. It is
+not a public native build command and has not passed the clean-machine
+application-distribution gate. The existing interpreter and JavaScript backend
+remain supported development paths.
 
-## Quick start
+## Applications and documentation
 
-Development requires Rust; backend execution tests also require Node.js
-(CI uses Node 22). The implementation remains pre-stable. See
-[full development status](docs/FULL_DEVELOPMENT_STATUS.md) for verified features,
-known limits and the current sequence of work.
+The [dogfood suite](dogfood/README.md) currently exercises nine runnable
+application slices in both execution engines. They cover arguments and records,
+streamed logs, text files, persistent tasks and notes, a browser File Manager,
+local package consumption, bounded numerical work, and a Node-hosted HTTP
+server. Their exact status and limitations are in
+[dogfood status](docs/DOGFOOD_STATUS.md); a passing slice does not imply a
+complete platform feature.
 
-```text
-cargo run -- --version
-cargo run -- --help
-cargo test
-```
-
-The canonical executable is `svr`. `svr run` executes a `.svr` source path.
-`svr build` emits human-readable IR by default, and
-`svr build --emit js` emits portable JavaScript. `svr --help` lists available
-and planned commands; planned commands report a non-zero “not implemented”
-message when selected.
-
-`svr check` validates source files or project wiring. For automation,
-`svr check --format json <path>` emits a versioned report; see
-[automated checks](docs/guides/automated-checks.md) for scope and exit codes.
-
-The first source example is [`examples/hello-world/main.svr`](examples/hello-world/main.svr).
-Run it with `cargo run -- run examples/hello-world/main.svr`.
-Additional executable examples cover [functions and local inference](examples/functions/main.svr),
-[inline modules](examples/modules/main.svr) and [numeric widening](examples/numbers/main.svr).
-Every function parameter requires an explicit type; local `let` bindings can infer theirs.
-Their lessons are in
-[the growing course](docs/course/README.md).
-
-Read [docs/developer-experience.md](docs/developer-experience.md) for the full
-idea-to-application walkthrough.
-
-## Repository layout
-
-* `src/` — CLI and compiler-stage modules
-* `examples/hello-world/` — first Sovra source example
-* `examples/fielddesk/` — full-stack product-direction example
-* `docs/` — specification, architecture, roadmap, and contributor guidance
-* `.github/workflows/` — CI for formatting, linting, and tests
-
-Read [docs/spec.md](docs/spec.md) for the current language contract,
-[ARCHITECTURE.md](ARCHITECTURE.md) for the system boundaries, and
-[CONTRIBUTING.md](CONTRIBUTING.md) for development conventions. Agents
-continuing the production hardening work should start with
-[docs/production-upgrade-flow.md](docs/production-upgrade-flow.md).
+Start with the [language specification](docs/spec.md),
+[architecture](ARCHITECTURE.md), [roadmap](docs/roadmap.md), and
+[course](docs/course/README.md). Contributors should read
+[CONTRIBUTING.md](CONTRIBUTING.md) and
+[production upgrade flow](docs/production-upgrade-flow.md).
 
 ## License
 
-Sovra is dual-licensed under either the MIT license or the Apache License,
-Version 2.0. See [LICENSE-MIT](LICENSE-MIT) and [LICENSE-APACHE](LICENSE-APACHE).
+Sovra is dual-licensed under the [MIT license](LICENSE-MIT) or the
+[Apache 2.0 license](LICENSE-APACHE).

@@ -1,7 +1,11 @@
 # Path to a real HTTP application
 
-Status: PLANNED. No Sovra HTTP server is implemented. Routes and service metadata
-in Fielddesk do not listen, receive bytes or send network responses.
+Status: PLANNED for a native Sovra HTTP runtime. The unnumbered
+`dogfood/sovra-http-server` now demonstrates a private Node loopback adapter:
+Node owns the socket and calls a Sovra package to choose route responses in
+both execution engines. This is a partial hosted application, not a socket API
+or public HTTP contract. Routes and service metadata in Fielddesk still do not
+listen, receive bytes or send network responses.
 
 ## Dependency chain
 
@@ -47,7 +51,9 @@ partial reads/writes, port conflicts and resource cleanup tests. Verify JSON
 round trips, route misses and handler errors. Cross-backend support must be
 tested per host; unsupported targets must not masquerade as success.
 
-Do not claim HTTP support from emitted route metadata, an external server that
-never invokes Sovra code, a browser fetch wrapper or a hard-coded sample response
-printed to stdout. Production readiness also requires operational limits and
+Do not claim native HTTP support from emitted route metadata, an external
+server that never invokes Sovra code, a browser fetch wrapper or a hard-coded
+sample response printed to stdout. The private dogfood adapter invokes Sovra
+for each request but does not satisfy socket ownership, partial I/O, JSON,
+concurrency or deployment requirements above. Production readiness also requires operational limits and
 independent platform/security validation beyond this first functional server.

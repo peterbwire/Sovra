@@ -1,0 +1,62 @@
+// Named UTF-8 file operations for the local File Manager browser host.
+fn fail(message: String) {
+    std::set_exit_code(1);
+    print(message);
+}
+
+fn main() {
+    if std::arg_count() > 0 && std::arg(0) == "ui-view" {
+        if std::arg_count() < 3 { fail("invalid UI view request"); return; }
+        let current = std::parse_int(std::arg(1));
+        let total = std::parse_int(std::arg(2));
+        if current.ok == false || total.ok == false || current.value < 1 ||
+            total.value < 1 || current.value > total.value {
+            fail("invalid UI page"); return;
+        }
+        print("SVR-UI-1");
+        print("heading|Sovra File Manager");
+        print("text|Page " + std::to_string(current.value) + " of " + std::to_string(total.value));
+        print("input|create|New text file name|Create empty file");
+        if std::arg_count() == 3 {
+            print("text|No regular files.");
+        } else {
+            print("text|Regular files in this workspace");
+        }
+        if (current.value > 1) { print("button|page-previous|Previous"); }
+        if (current.value < total.value) { print("button|page-next|Next"); }
+        let mut index = 3;
+        while (index < std::arg_count()) {
+            let file = std::arg(index);
+            let key = std::to_string(index - 3);
+            print("text|" + std::escape_terminal(file));
+            print("button|preview-" + key + "|Preview");
+            print("input|copy-" + key + "|Copy to file name|Copy");
+            index = index + 1;
+        }
+        return;
+    }
+    if std::arg_count() == 2 && std::arg(0) == "preview" {
+        let loaded = std::read_text(std::arg(1));
+        if loaded.ok == false { fail("read error: " + loaded.error); return; }
+        if std::len(loaded.text) > 65536 {
+            fail("preview exceeds 65536 bytes"); return;
+        }
+        print(loaded.text);
+        return;
+    }
+    if std::arg_count() == 3 && std::arg(0) == "copy" {
+        let loaded = std::read_text(std::arg(1));
+        if loaded.ok == false { fail("read error: " + loaded.error); return; }
+        let saved = std::write_text(std::arg(2), loaded.text);
+        if saved.ok == false { fail("write error: " + saved.error); return; }
+        print("copied bytes: " + std::to_string(std::len(loaded.text)));
+        return;
+    }
+    if std::arg_count() == 2 && std::arg(0) == "create" {
+        let saved = std::write_text(std::arg(1), "");
+        if saved.ok == false { fail("write error: " + saved.error); return; }
+        print("created empty text file");
+        return;
+    }
+    fail("usage: file-manager preview SOURCE | copy SOURCE DESTINATION | create DESTINATION");
+}

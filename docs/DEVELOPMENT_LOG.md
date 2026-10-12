@@ -1,5 +1,310 @@
 # Development log
 
+## 2026-10-12: Refresh repository front page
+
+- Replaced the root README's speculative Fielddesk showcase with the current
+  implemented compiler/toolchain, Task Manager, Windows installation and nine
+  dogfood slices. Labeled reserved commands and native executable proof
+  accurately; linked release gates and limitations. Verified every README
+  local link resolves and no Fielddesk reference remains on the front page.
+
+## 2026-10-12: Installed toolchain exercises independent Task Manager source
+
+- Strengthened the Windows package test to verify ZIP SHA-256, extract and
+  install it, then launch a fresh PowerShell process with Node, Cargo and Rust
+  absent from PATH. The child resolves installed `svr.exe`, creates/checks/runs
+  a template project, and checks/adds/lists/completes/deletes the copied Task
+  Manager source from outside this repository. Existing-project overwrite is
+  rejected. The local test passed.
+- This is stronger than the previous same-process smoke test, but it is still
+  the developer machine; a clean Windows VM and binary import audit remain.
+
+## 2026-10-12: First installable Windows developer toolchain slice
+
+- Audited the compiler, `svr` command status, runtime, Node backend, built-in
+  stdlib, local package linker, existing candidate archive and UI boundary.
+  Recorded capability states and D1-D6 milestones in
+  `docs/architecture/WINDOWS_TOOLCHAIN.md`.
+- Added a staged Windows ZIP with `svr.exe`, PowerShell installer/PATH setup,
+  project creator, template, docs, licenses and checksum. No reserved `svr`
+  command or language semantics changed. CI now tests installation and
+  create/check/run on Windows.
+- Local validation: release binary built; package staged and zipped; isolated
+  install test resolved installed `svr.exe` from PATH, created an external
+  project, checked and ran it successfully. Clean-machine installation and
+  standalone application deployment remain unproven.
+
+## 2026-10-12: First standalone Task Manager executable proof
+
+- User approved ADR 0025's N1 direction. Added a private, versioned and
+  bounded IR image codec, plus an internal Cargo example that compiles checked
+  source or local packages and links an executable with the existing Rust
+  `ProcessHost`. No public CLI or language semantics changed.
+- Built `dogfood/01-task-manager/main.svr` into a Windows `.exe`. Compared
+  independent add/list/complete/delete launches with `svr run`; output, exit
+  status and persistent state bytes matched. Malformed state and missing-parent
+  write errors also matched. Added codec round-trip and corrupt
+  image tests. `cargo test --all-targets`, strict Clippy and formatting passed.
+- Remaining: clean Windows VM without Node/Rust/`svr`, binary import audit,
+  broader failure parity, artifact packaging, and a separately
+  approved public build interface. The GUI remains Node-hosted.
+
+## 2026-10-12: Node-free application execution proposal
+
+- Inspected the compiler pipeline, IR, Rust interpreter/ProcessHost, Node JS
+  backend, Task Manager CLI/browser GUI, UI architecture and release pipeline.
+  The current `svr` executable is native, but an installed Task Manager still
+  needs `svr`; its browser GUI also needs Node. No standalone application
+  emitter or native UI host exists.
+- Added `docs/architecture/NODE_FREE_APPLICATIONS.md` and proposed ADR 0025.
+  The recommended first proof compiles checked IR into a standalone Windows
+  executable linked with the existing Rust runtime. This is a native artifact
+  containing an interpreter, not direct native code generation. Cranelift,
+  LLVM, desktop renderers and Wasm remain evaluated later stages.
+- Validation: documentation-only change; no compiler/API/test behavior changed.
+  Next: obtain approval of the N1 direction, then specify the private IR image,
+  resource bounds, build command and Windows target/CRT contract before coding.
+
+## 2026-10-12: Sovra Notes, Budget and HTTP Server dogfood
+
+- Added Sovra Notes first: an importable local library exposes validated
+  nominal note records, encoding/parsing and complete store validation; the CLI persists list/get/put/
+  delete operations in a bounded versioned UTF-8 file. A separate two-engine
+  test covers persistence, update, Unicode, deletion and corrupt-file
+  preservation. Concurrent writers remain unsupported.
+- Added Sovra Budget next: an importable local library evaluates bounded
+  whole-unit plans and returns explicit invalid results. The CLI reports
+  spending, balance and truncated utilization, with success/error cases in
+  the shared dogfood suite. No new numeric semantics were introduced.
+- Added Sovra HTTP Server last: a private reusable Node loopback adapter
+  receives bounded requests, invokes the actual Sovra package for routing,
+  and sends its validated response. A two-engine test sends independent HTTP
+  requests for successful routes, Unicode echo, misses and bad request bodies,
+  then runs a second unrelated Sovra handler through the same adapter.
+  This is a Node-hosted slice, not a native Sovra socket runtime or a public
+  HTTP protocol decision.
+- The dogfood runner now requires every post-original-six application to
+  declare an existing reusable local package or host adapter and a contract.
+  Each new app's README documents how future apps can use it. CI runs the
+  Notes and HTTP behavioral tests alongside the shared suite.
+- Validation: shared dogfood source/IR/JavaScript/interpreter tests passed for
+  all nine registered apps and 33 scenarios with local debug and optimized
+  compilers. Notes and HTTP standalone tests passed in both engines against
+  debug and optimized compilers after the Notes store-validation extraction;
+  the HTTP adapter reuse fixture passed in both engines with debug and
+  optimized compilers.
+  Whitespace checks passed. Hosted results remain pending.
+
+## 2026-10-12: Expand dogfood to six executable applications
+
+- Added unnumbered Invoice and Log Report CLIs using existing typed records,
+  argument parsing, UTF-8 input, text splitting, bounded arithmetic and exit
+  status. Each has reviewed success and failure transcripts. They do not reuse
+  Task Manager or File Processor application logic and require no compiler
+  special case or public language decision.
+- Registered both in the shared source/IR/interpreter/JavaScript dogfood suite.
+  Registered the existing File Manager program as a sixth suite app with an
+  empty-view and file-preview case; its separate browser test continues to
+  cover interactive file actions. The established numbered 01–07 roadmap is
+  unchanged.
+- Validation: all six apps and 22 reviewed scenarios passed in both engines
+  with the locally built debug and optimized compilers. The File Manager browser
+  regression and whitespace checks also passed. No compiler or public API changed.
+
+## 2026-10-12: Exercise File Manager empty and stale listings
+
+- Extended the browser dogfood runner to start with an empty workspace, verify
+  the Sovra-emitted empty state and Create action, then populate files while
+  the same host is running. An old snapshot now also exercises Preview/Copy
+  after its source file disappears; both requests are rejected and the failed
+  Copy does not create a destination.
+- Validation: debug and optimized local compiler runs passed in interpreter
+  and generated JavaScript modes. The shared UI prototype, Node syntax and
+  whitespace checks passed. CI is configured to run this runner on Linux,
+  Windows and macOS; hosted results for this revision remain unobserved.
+- Remaining scope: trusted-workspace races and host-owned directory listing
+  remain documented. ADR 0024 still gates general directory/move/delete APIs.
+
+## 2026-10-12: Clarify file dogfood applications and Package Consumer status
+
+- Documented that `02-file-processor` is the numbered CLI text transformation
+  application, while the unnumbered `file-manager` is the local browser UI
+  prototype. Both exercise different behavior and should remain separate.
+- Confirmed `05-package-consumer` already has a runnable direct-local-dependency
+  slice with two registered dogfood scenarios. Registry publication and install
+  remain outside that verified slice; no code or milestone number changed.
+
+## 2026-10-12: Create empty File Manager text files through Sovra
+
+- Added a private Create control to the Sovra-emitted File Manager view and a
+  `create` branch using the already approved `std::write_text` operation. The
+  Node adapter validates a single file name and rejects existing names before
+  passing the selected workspace path to Sovra.
+- Browser regressions cover successful empty-file creation, duplicate-name
+  rejection, traversal rejection and unchanged existing content in both
+  execution engines. The host check is not exclusive against concurrent
+  writers, so the trusted-workspace limitation remains explicit.
+- Validation: source checking and debug/optimized browser tests passed in both
+  engines; private UI prototype, Node syntax and whitespace checks passed. No public
+  filesystem API, syntax or semantics changed; ADR 0024 remains proposed.
+
+## 2026-10-12: Show empty File Manager previews
+
+- Fixed the browser adapter's empty-file preview: an empty string is valid file
+  content, while `null` now means there is no active preview. Successful empty
+  previews display an empty Preview panel instead of disappearing.
+- Extended the browser regression with an empty UTF-8 file and non-ASCII file
+  name; the existing content fixture already exercised non-ASCII text. Debug and optimized
+  local compilers passed the File Manager browser test in interpreter and
+  generated JavaScript modes. Node syntax checking also passed. No public
+  language or filesystem semantics changed.
+
+## 2026-10-12: Paginate the File Manager view
+
+- Replaced the 80-file workspace error with 80-file pages. Sovra emits page
+  number and navigation controls; Node slices the host directory listing and
+  retains each page's file names with the corresponding form token.
+- Preview and Copy return to their originating page. Browser regression covers
+  page navigation and operations on a second-page file in interpreter and
+  generated JavaScript modes, including the old snapshot mapping behavior.
+- Validation: File Manager browser test passed in both engines, and the source
+  passed `svr check`. The host still materializes and sorts the full directory;
+  directory enumeration and move/delete remain outside Sovra pending ADR 0024.
+
+## 2026-10-12: Move File Manager controls into Sovra
+
+- Reused the Task Manager's private `SVR-UI-1` decoder/renderer for the File
+  Manager. `main.svr` now emits heading, file labels and Preview/Copy controls
+  from host-supplied directory names. Node retains directory enumeration,
+  path validation, CSRF and HTML rendering as adapter responsibilities.
+- Bound the view to 80 files and 32 live per-page listing snapshots. Each form
+  token resolves against the listing it was rendered from, so a newly inserted
+  file cannot redirect an old index-based action. The browser regression covers
+  this alongside cross-engine Preview/Copy behavior and malformed requests.
+- Local browser tests, Sovra source checking and Node syntax checks pass.
+  The private protocol still lacks navigation and a public lifecycle contract;
+  ADRs 0023 and 0024 remain proposed.
+
+## 2026-10-12: Local File Manager browser foundation
+
+- Rebuilt the current optimized compiler and passed Task Manager GUI, private
+  Sovra UI component and persistence checks against it in both engines. A fresh
+  local Windows GNU candidate archive passed extraction, checksum, compiler,
+  Task Manager persistence, browser GUI, bridge and PATH verification. Hosted
+  exact-artifact qualification remains open, so version-one release is not
+  marked ready. A current `cargo package --locked --allow-dirty` build passed
+  and the source package passed isolated offline installation with Task Manager
+  persistence, browser GUI and reusable bridge checks.
+- Added an unnumbered File Manager browser prototype without changing the
+  established 01–07 dogfood order. Node enumerates regular entries in a
+  required trusted workspace; `dogfood/file-manager/main.svr` performs bounded
+  UTF-8 Preview and Copy through the approved general text APIs. Browser tests
+  pass in interpreter and generated JavaScript modes, covering Unicode, HTML
+  escaping, invalid UTF-8, oversized previews, path checks and CSRF token.
+  CI runs the test. No compiler syntax or semantics changed.
+- Directory enumeration and file lifecycle operations remain host-side or
+  unavailable. ADR 0024 proposes the general Sovra API decisions needed for
+  full browsing, move and delete. Next: review those contracts, then extend
+  the File Manager through the same cross-engine dogfood process.
+
+## 2026-10-12: Move private UI add/delete and notices into Sovra
+
+- Extended the private view renderer with a validated single-line input node
+  and a generic accessible status notice. The Task Manager now emits its Add
+  form and Delete buttons from `ui-view`; `ui-event` applies Add, Complete and
+  Delete through existing Sovra business functions and stable task IDs.
+- Browser regressions first failed on the missing Add form. After the change,
+  both engines pass Add, duplicate-title rejection, Delete, stale Complete and
+  forged-value rejection, including HTML escaping of a title entered through
+  `/ui`. Dogfood and Task Manager persistence suites pass in both engines;
+  Node syntax and `git diff --check` pass. The normal `/` interface remains
+  unchanged.
+- No compiler semantics or public UI contract changed. The `/ui` prototype is
+  still bounded to 64 KiB and 256 nodes; exact candidate qualification and
+  ADR 0023 public API review remain next.
+
+## 2026-10-12: First Sovra-owned UI component and Task Manager route
+
+- Added a private, versioned heading/text/button view stream and reusable Node
+  decoder/HTML renderer with size, node and action validation. A standalone
+  Sovra fixture renders and responds to a loopback browser event in both the
+  interpreter and generated JavaScript; malformed view cases are rejected.
+- Added Task Manager `ui-view` and `ui-event` commands using existing Sovra
+  business functions. The `/ui` route renders Sovra-selected task rows and
+  Complete buttons. Its browser test completes a task, confirms persisted state
+  in the existing GUI, and rejects a stale repeated action in both engines.
+- CI now exercises the prototype. Candidate packaging includes the renderer
+  required by the server and the unrelated fixture; extracted-candidate checks
+  exercise their view/event output. Source-package checks require the fixture
+  and renderer. The existing `/` interface and CLI remain available. The private
+  UI route is bounded to 64 KiB and 256 nodes and has no add/delete controls.
+  Public component/protocol decisions remain proposed in ADR 0023.
+- Next: qualify the candidate archive on hosted platforms, then expand generic
+  nodes and move Task Manager add/delete and notices into Sovra views/events.
+
+## 2026-10-11: Plan a unified Sovra UI boundary
+
+- Inspected the compiler's typed subset, Node-oriented JavaScript backend,
+  executable package imports, interpreter and Task Manager browser bridge.
+- Added `docs/architecture/SOVRA_UI.md` and proposed ADR 0023. The plan keeps
+  Sovra responsible for component views, events and domain rules, with renderer
+  and platform capabilities behind a versioned host boundary. It names a
+  private Task Manager web prototype and conformance tests before a public API.
+- No compiler, runtime or language behavior changed for this design. Public
+  UI protocol, lifecycle, async/callback and native/browser target decisions
+  remain unapproved. Next: implement the private fixture and generic web
+  renderer using the existing process bridge, then review the public contract.
+
+## 2026-10-11: Decode GUI form requests after assembling bytes
+
+- A regression request split the UTF-8 bytes of an emoji across HTTP chunks.
+  The Node GUI host previously decoded each chunk separately, silently saving
+  replacement characters in the task title. The focused test failed before
+  the fix and passes afterward in interpreter and generated-JavaScript modes.
+- Assemble form-body bytes under the existing 64 KiB limit, then decode UTF-8
+  once. Reject malformed UTF-8 with HTTP 400 before invoking Sovra; a test
+  confirms the task file remains unchanged. The reusable GUI bridge test and
+  Node syntax checks pass. The request limit now applies to bytes, as intended.
+- Next: exact-commit hosted Windows MSVC CI and downloaded-artifact release
+  qualification remain pending.
+
+## 2026-10-11: Preserve compiler depth on Windows MSVC
+
+- Hosted CI for commit `8455727` passed Linux, macOS and the Rust 1.74 job,
+  but its Windows MSVC depth probe reproduced a process stack overflow at
+  supported structural depths 127 and 128. The existing
+  `scripts/probe-compiler-depth.mjs --assert-limits` is the regression test;
+  depth 129 and above still correctly report E2007.
+- Run the Windows CLI on a worker thread with a 16 MiB reserved stack. This
+  changes the CLI process stack only; it preserves the 128 nesting limit and
+  compiler APIs. Worker creation failure exits nonzero and worker panics
+  propagate. Library callers on unusually small stacks still need to provide
+  sufficient stack space.
+- Windows MSVC `cargo check --locked --all-targets` passed. Local Windows GNU
+  validation passed: 354 unit and 46 CLI tests, strict Clippy, formatting and
+  the depth probe. The MSVC runtime fix still needs an exact-commit hosted CI
+  rerun; a local MSVC executable could not be linked in this environment.
+- Next: rerun Windows hosted CI and qualify the resulting downloadable artifact
+  before changing the version-one release gate to passed.
+
+## 2026-10-11: Move Task Manager GUI view data into Sovra
+
+- Added a private `gui-list` command that emits a versioned row stream from
+  the Sovra Task Manager after it decodes and validates the state file. The
+  Node browser host now renders that stream and no longer opens or parses the
+  application's private storage format.
+- Preserved exact titles containing pipes, trailing spaces and Unicode line
+  separators. Legacy titles with terminal controls display as printable text
+  and are CLI-only in the GUI, avoiding browser form normalization of raw
+  control characters. A corrupt state file remains untouched and yields an
+  error page.
+- GUI tests pass through generated JavaScript and the interpreter; dogfood
+  application and Task Manager persistence tests pass. A fresh optimized
+  Windows GNU candidate archive passed its full verifier, and a Cargo source
+  package passed isolated offline installation with the GUI and bridge tests.
+  The view stream is internal pending a reviewed general protocol contract
+  and hosted downloaded-artifact qualification.
+
 ## 2026-10-11: Extract a reusable Sovra GUI execution bridge
 
 - Moved compiler invocation, generated-JavaScript temporary-file management,

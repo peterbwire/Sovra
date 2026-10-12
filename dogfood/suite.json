@@ -24,6 +24,66 @@
       ]
     },
     {
+      "id": "invoice",
+      "source": "invoice/main.svr",
+      "cases": [
+        { "id": "two-items", "args": ["Hosting=20", "Storage=35"], "stdout": "invoice/two-items.stdout" },
+        { "id": "unicode", "args": ["Café=7"], "stdout": "invoice/unicode.stdout" },
+        { "id": "usage", "stdout": "invoice/usage.stdout", "exit_code": 1 },
+        { "id": "invalid", "args": ["Hosting=20", "Storage=-1"], "stdout": "invoice/invalid.stdout", "exit_code": 1 }
+      ]
+    },
+    {
+      "id": "log-report",
+      "source": "log-report/main.svr",
+      "cases": [
+        { "id": "sample", "stdin": "log-report/sample.stdin", "stdout": "log-report/sample.stdout" },
+        { "id": "empty", "stdout": "log-report/empty.stdout" },
+        { "id": "malformed", "stdin": "log-report/malformed.stdin", "stdout": "log-report/malformed.stdout", "exit_code": 1 },
+        { "id": "usage", "args": ["unexpected"], "stdout": "log-report/usage.stdout", "exit_code": 1 }
+      ]
+    },
+    {
+      "id": "file-manager",
+      "source": "file-manager/main.svr",
+      "cases": [
+        { "id": "empty-view", "args": ["ui-view", "1", "1"], "stdout": "file-manager/empty-view.stdout" },
+        { "id": "preview", "args": ["preview", "dogfood/file-manager/sample.txt"], "stdout": "file-manager/preview.stdout" }
+      ]
+    },
+    {
+      "id": "sovra-notes",
+      "source": "sovra-notes/app",
+      "reusable": { "kind": "local-package", "path": "sovra-notes/library", "contract": "notelib::notes record validation and encoding" },
+      "cases": [
+        { "id": "usage", "stdout": "sovra-notes/usage.stdout", "exit_code": 1 }
+      ]
+    },
+    {
+      "id": "sovra-budget",
+      "source": "sovra-budget/app",
+      "reusable": { "kind": "local-package", "path": "sovra-budget/library", "contract": "budgetlib::budget bounded numerical evaluation" },
+      "cases": [
+        { "id": "within", "args": ["100", "40", "20", "10"], "stdout": "sovra-budget/within.stdout" },
+        { "id": "over", "args": ["50", "40", "20", "10"], "stdout": "sovra-budget/over.stdout" },
+        { "id": "third", "args": ["3", "1", "0", "0"], "stdout": "sovra-budget/third.stdout" },
+        { "id": "invalid-zero", "args": ["0", "1", "0", "0"], "stdout": "sovra-budget/invalid.stdout", "exit_code": 1 },
+        { "id": "invalid-text", "args": ["oops", "1", "0", "0"], "stdout": "sovra-budget/invalid.stdout", "exit_code": 1 },
+        { "id": "usage", "stdout": "sovra-budget/usage.stdout", "exit_code": 1 }
+      ]
+    },
+    {
+      "id": "sovra-http-server",
+      "source": "sovra-http-server/app",
+      "reusable": { "kind": "host-adapter", "path": "sovra-http-server/host/adapter.mjs", "contract": "SVR-HTTP-1 loopback transport adapter" },
+      "cases": [
+        { "id": "usage", "stdout": "sovra-http-server/usage.stdout", "exit_code": 1 },
+        { "id": "health", "args": ["GET", "/health", ""], "stdout": "sovra-http-server/health.stdout" },
+        { "id": "echo", "args": ["POST", "/echo", "hello"], "stdout": "sovra-http-server/echo.stdout" },
+        { "id": "not-found", "args": ["GET", "/missing", ""], "stdout": "sovra-http-server/not-found.stdout" }
+      ]
+    },
+    {
       "id": "05-package-consumer",
       "source": "05-package-consumer/app",
       "cases": [

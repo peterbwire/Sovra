@@ -1,7 +1,7 @@
 // Execute real Sovra programs through the repository compiler and both backends.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, mkdtempSync, statSync } from 'node:fs';
 import { dirname, join, resolve, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -45,10 +45,29 @@ try {
     assert.equal(suite.schema_version, 1);
     assert.ok(Array.isArray(suite.applications) && suite.applications.length > 0, 'empty dogfood suite');
     const seen = new Set();
+    // These applications predate the reusable-capability registration rule.
+    const legacyApplications = new Set([
+        '01-task-manager', '02-file-processor', 'invoice', 'log-report',
+        'file-manager', '05-package-consumer',
+    ]);
     for (const application of suite.applications) {
         assert.match(application.id, /^[a-z0-9-]+$/);
         assert.ok(!seen.has(application.id), 'duplicate application id');
         seen.add(application.id);
+        if (!legacyApplications.has(application.id)) {
+            assert.ok(application.reusable, `${application.id} must expose a reusable capability`);
+            assert.ok(['local-package', 'host-adapter'].includes(application.reusable.kind));
+            assert.equal(typeof application.reusable.contract, 'string');
+            assert.ok(application.reusable.contract.trim().length > 0);
+            const reusable = insideBase(application.reusable.path);
+            const kind = statSync(reusable);
+            assert.ok(application.reusable.kind === 'local-package' ? kind.isDirectory() : kind.isFile());
+            if (application.reusable.kind === 'local-package') {
+                assert.ok(statSync(join(reusable, 'sovra.toml')).isFile());
+            } else {
+                assert.ok(reusable.endsWith('.mjs'));
+            }
+        }
         const result = { id: application.id, passed: false, stages: [] };
         report.applications.push(result);
         try {

@@ -19,6 +19,7 @@ node scripts/test-dogfood.mjs
 node scripts/test-task-persistence.mjs
 node scripts/test-task-gui.mjs
 node scripts/test-gui-bridge.mjs
+node scripts/test-ui-prototype.mjs
 ```
 
 ## Local browser GUI
@@ -33,12 +34,25 @@ Open the loopback URL printed by the server (default
 `http://127.0.0.1:8787/`). The page adds, completes and deletes tasks using the
 same Sovra program and task file as the CLI. By default, the server runs
 `svr build --emit js` once at startup, then executes the **Sovra-generated**
-JavaScript for list/add/complete/delete. Node hosts HTTP and HTML and reads
-validated task rows for display; the operations remain in Sovra code. Pass
+JavaScript for list/add/complete/delete. Node hosts HTTP and HTML, while a
+private `gui-list` stream from Sovra supplies the view rows; Node does not
+parse the task file. Titles containing legacy terminal controls display in
+printable notation and are read-only in the GUI; use the CLI for exact edits.
+Pass
 `--engine interpreter` to execute those operations through
 `svr run` instead; the automated GUI test checks both engines produce the same
 persisted file. The adjacent `bridge.mjs` module also runs unrelated Sovra
 programs and is tested separately. Stop the server with Ctrl+C.
+
+The private `/ui` route is the first Sovra-owned component prototype. Its task
+heading, count, rows, Add form, Complete/Delete actions and notices come from
+`main.svr`; the Node `ui-view.mjs` module validates and renders generic
+heading/text/button/input nodes. Events call Sovra's `ui-event` path and update
+the same task file. The normal `/` GUI remains the production-facing interface.
+The prototype has a 64 KiB/256-node view bound and no published UI protocol;
+large task files should use `/` or the CLI. `/ui` identifies row actions by
+stable task ID, so it can delete legacy control-bearing titles without passing
+raw titles through browser forms.
 
 Pass `--port 0` to choose a free port, or `--compiler PATH` and `--source PATH`
 when running outside the repository. From an extracted release candidate:
@@ -49,7 +63,7 @@ node task-manager-gui.mjs --compiler ./svr --source ./task-manager.svr --state t
 
 On Windows use `./svr.exe` for the compiler. The GUI is a Node-hosted local
 browser adapter; it does not imply a Sovra-native HTTP or desktop runtime.
-Keep `bridge.mjs` beside `task-manager-gui.mjs` when copying files out of the
+Keep `bridge.mjs` and `ui-view.mjs` beside `task-manager-gui.mjs` when copying files out of the
 candidate archive.
 It listens only on `127.0.0.1`, uses a per-process form token, and does not
 expose a network service. The CLI's single-writer guidance still applies if

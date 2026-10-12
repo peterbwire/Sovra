@@ -1,0 +1,4 @@
+[project]
+name = "console-app"
+version = "0.1.0"
+entry = "main.svr"

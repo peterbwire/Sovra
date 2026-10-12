@@ -1,0 +1,7 @@
+[project]
+name = "sovra-budget"
+version = "1.0.0"
+entry = "main.svr"
+
+[dependencies.budgetlib]
+path = "../library"

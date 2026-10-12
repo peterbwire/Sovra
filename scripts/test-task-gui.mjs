@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { request as httpRequest } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -61,10 +62,52 @@ try {
         html = await (await fetch(address)).text();
         assert.match(html, /Done · #1/);
         assert.equal((await action('add', 'Second task')).status, 200);
+        const sovraView = await (await fetch(new URL('ui', address))).text();
+        assert.match(sovraView, /Open #2 - Second task/);
+        assert.match(sovraView, /name="action" value="complete-2"/);
+        const uiAction = () => fetch(new URL('ui-action', address), {
+            method: 'POST', body: new URLSearchParams({ token, action: 'complete-2' }),
+        });
+        assert.match(await (await uiAction()).text(), /Done #2 - Second task/);
+        assert.equal((await uiAction()).status, 400, 'stale UI event was accepted');
+        assert.match(await (await fetch(address)).text(), /Done · #2/);
         assert.equal((await action('add', 'Pipe | tail  ')).status, 200);
         assert.match(await (await fetch(address)).text(), /Pipe \| tail  /);
         assert.equal((await action('add', 'Unicode\u2028separator')).status, 200);
         assert.match(await (await fetch(address)).text(), /Unicode\u2028separator/);
+        // Raw UTF-8 in form bodies is valid. Split a multibyte character across
+        // HTTP chunks to catch decoding each chunk before assembling the body.
+        const streamedTitle = 'Split 📝 character';
+        const streamedBody = Buffer.from(`token=${token}&command=add&title=${streamedTitle}`);
+        const split = streamedBody.indexOf(Buffer.from('📝')) + 1;
+        const streamedStatus = await new Promise((resolveStatus, reject) => {
+            const request = httpRequest(new URL('action', address), {
+                method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+            }, response => {
+                response.resume();
+                response.on('end', () => resolveStatus(response.statusCode));
+            });
+            request.on('error', reject);
+            request.write(streamedBody.subarray(0, split));
+            setTimeout(() => request.end(streamedBody.subarray(split)), 20);
+        });
+        assert.equal(streamedStatus, 200);
+        assert.match(await (await fetch(address)).text(), /Split 📝 character/);
+        const beforeInvalid = readFileSync(state, 'utf8');
+        const invalidStatus = await new Promise((resolveStatus, reject) => {
+            const request = httpRequest(new URL('action', address), {
+                method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+            }, response => {
+                response.resume();
+                response.on('end', () => resolveStatus(response.statusCode));
+            });
+            request.on('error', reject);
+            request.end(Buffer.concat([
+                Buffer.from(`token=${token}&command=add&title=`), Buffer.from([0xff]),
+            ]));
+        });
+        assert.equal(invalidStatus, 400);
+        assert.equal(readFileSync(state, 'utf8'), beforeInvalid, 'invalid UTF-8 changed task state');
         assert.equal((await action('delete', 'Write <tests>')).status, 200);
         assert.match(await (await fetch(address)).text(), /Second task/);
         assert.ok(!readFileSync(state, 'utf8').includes('Write <tests>'));
@@ -75,6 +118,26 @@ try {
             }, body: new URLSearchParams({ command: 'add', title: 'Blocked', token }),
         })).status, 403);
         assert.equal((await action('add', 'Bad\u001b[2J')).status, 400);
+        const uiForm = await (await fetch(new URL('ui', address))).text();
+        assert.match(uiForm, /name="action" value="add"/);
+        assert.match(uiForm, /aria-label="Task title"/);
+        const uiPost = (actionName, value) => fetch(new URL('ui-action', address), {
+            method: 'POST', body: new URLSearchParams({ token, action: actionName, ...(value === undefined ? {} : { value }) }),
+        });
+        const uiAdded = await uiPost('add', 'From <UI>');
+        assert.equal(uiAdded.status, 200);
+        assert.match(await uiAdded.text(), /added 6/);
+        const uiAfterAdd = await (await fetch(new URL('ui', address))).text();
+        assert.match(uiAfterAdd, /Open #6 - From &lt;UI&gt;/);
+        assert.ok(!uiAfterAdd.includes('<UI>'), 'Sovra view text injected HTML');
+        const uiDuplicate = await uiPost('add', 'Second task');
+        assert.equal(uiDuplicate.status, 400);
+        assert.match(await uiDuplicate.text(), /duplicate title/);
+        assert.equal((await uiPost('delete-6', 'forged value')).status, 400);
+        const uiDeleted = await uiPost('delete-6');
+        assert.equal(uiDeleted.status, 200);
+        assert.match(await uiDeleted.text(), /deleted 6/);
+        assert.ok(!readFileSync(state, 'utf8').includes('From <UI>'));
         assert.ok(!readFileSync(state, 'utf8').includes('Blocked'));
         assert.ok(!readFileSync(state, 'utf8').includes('Bad'));
         finalStates.push(readFileSync(state, 'utf8'));

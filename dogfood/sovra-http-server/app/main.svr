@@ -1,0 +1,14 @@
+use httplib::http;
+
+fn main() {
+    if (std::arg_count() != 3) {
+        std::set_exit_code(1);
+        print("usage: http-server METHOD PATH BODY");
+        return;
+    }
+    let response = httplib::http::route(std::arg(0), std::arg(1), std::arg(2));
+    print("SVR-HTTP-1");
+    print(std::to_string(response.status));
+    print(response.content_type);
+    print(response.body);
+}

@@ -1,0 +1,28 @@
+mod budget {
+    export struct Plan {
+        limit: Int, housing: Int, food: Int, other: Int,
+        spent: Int, remaining: Int, utilization: Int
+    }
+    export struct Evaluated { ok: Bool, plan: Plan }
+
+    fn empty_plan() -> Plan {
+        return Plan { limit: 0, housing: 0, food: 0, other: 0,
+            spent: 0, remaining: 0, utilization: 0 };
+    }
+
+    export fn evaluate(limit: Int, housing: Int, food: Int, other: Int) -> Evaluated {
+        if (limit < 1 || limit > 1000000000 || housing < 0 || housing > 1000000000 ||
+            food < 0 || food > 1000000000 || other < 0 || other > 1000000000) {
+            return Evaluated { ok: false, plan: budget::empty_plan() };
+        }
+        let spent = housing + food + other;
+        let plan = Plan { limit: limit, housing: housing, food: food, other: other,
+            spent: spent, remaining: limit - spent, utilization: spent * 100 / limit };
+        return Evaluated { ok: true, plan: plan };
+    }
+
+    export fn status(plan: Plan) -> String {
+        if (plan.remaining < 0) { return "over budget"; }
+        return "within budget";
+    }
+}

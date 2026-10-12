@@ -1,0 +1,52 @@
+mod notes {
+    export struct Note { key: String, value: String }
+    export struct Parsed { ok: Bool, note: Note }
+
+    fn clean(text: String) -> Bool {
+        return std::split_once(text, "|").found == false &&
+            std::split_once(text, "\n").found == false &&
+            std::split_once(text, "\r").found == false;
+    }
+
+    export fn valid_key(key: String) -> Bool {
+        return key != "" && std::len(key) <= 80 && notes::clean(key);
+    }
+
+    export fn valid_value(value: String) -> Bool {
+        return std::len(value) <= 4096 && notes::clean(value);
+    }
+
+    export fn encode(note: Note) -> String {
+        return note.key + "|" + note.value + "\n";
+    }
+
+    export fn parse(line: String) -> Parsed {
+        let parts = std::split_once(line, "|");
+        if (parts.found == false || notes::valid_key(parts.before) == false ||
+            notes::valid_value(parts.after) == false) {
+            return Parsed { ok: false, note: Note { key: "", value: "" } };
+        }
+        return Parsed { ok: true, note: Note { key: parts.before, value: parts.after } };
+    }
+
+    export fn empty_store() -> String { return "SVR-NOTES-1\n"; }
+
+    export fn valid_store(text: String) -> Bool {
+        let header = std::split_once(text, "\n");
+        if (header.found == false || header.before != "SVR-NOTES-1") { return false; }
+        let mut rest = header.after;
+        let mut keys = "";
+        let mut count = 0;
+        while (rest != "") {
+            let line = std::split_once(rest, "\n");
+            if (line.found == false) { return false; }
+            let parsed = notes::parse(line.before);
+            if (parsed.ok == false) { return false; }
+            keys = keys + parsed.note.key + "\n";
+            count = count + 1;
+            if (count > 10000) { return false; }
+            rest = line.after;
+        }
+        return std::lines_unique(keys);
+    }
+}

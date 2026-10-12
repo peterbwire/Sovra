@@ -1,0 +1,4 @@
+[project]
+name = "sovra-notes-library"
+version = "1.0.0"
+entry = "library.svr"

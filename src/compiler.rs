@@ -10,6 +10,7 @@ pub mod interpreter;
 pub mod ir;
 pub mod lexer;
 mod limits;
+pub mod native_image;
 pub mod parser;
 pub mod project;
 pub mod semantic;

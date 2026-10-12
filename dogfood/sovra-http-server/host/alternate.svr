@@ -1,0 +1,7 @@
+// Independent fixture proving the Node transport accepts another Sovra handler.
+fn main() {
+    print("SVR-HTTP-1");
+    print("200");
+    print("text/plain");
+    print("alternate handler");
+}

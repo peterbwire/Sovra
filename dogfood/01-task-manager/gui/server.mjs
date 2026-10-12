@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createSovraProgram } from './bridge.mjs';
+import { decodeUiView, renderUiView } from './ui-view.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const defaults = {
@@ -30,9 +31,10 @@ const escapeHtml = value => String(value).replace(/[&<>"']/g, character => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 })[character]);
 
-function sovra(command, title) {
+function sovra(command, title, value) {
     const args = [command, options.state];
     if (title !== undefined) args.push(title);
+    if (value !== undefined) args.push(value);
     const result = program.run(args);
     return {
         ok: result.status === 0,
@@ -53,6 +55,13 @@ function loadTasks() {
         if (!match || !match[3]) throw new Error('Invalid GUI view response');
         return { id: match[1], done: match[2] === '1', title: match[3] };
     });
+}
+
+function uiPage(notice = '') {
+    const result = sovra('ui-view');
+    if (!result.ok) throw new Error(result.message);
+    const nodes = decodeUiView(result.stdout.replaceAll('\r\n', '\n'));
+    return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sovra UI</title></head><body><main>${renderUiView(nodes, token, '/ui-action', notice)}</main></body></html>`;
 }
 
 const hasControls = text => /[\u0000-\u001f\u007f-\u009f]/u.test(text);
@@ -102,19 +111,50 @@ const server = createServer(async (request, response) => {
         if (request.method === 'GET' && request.url === '/') {
             return respond(response, 200, page(loadTasks()));
         }
-        if (request.method !== 'POST' || request.url !== '/action') return respond(response, 404, 'Not found');
+        if (request.method === 'GET' && request.url === '/ui') {
+            return respond(response, 200, uiPage());
+        }
+        if (request.method !== 'POST' || !['/action', '/ui-action'].includes(request.url)) {
+            return respond(response, 404, 'Not found');
+        }
         if (!request.headers['content-type']?.startsWith('application/x-www-form-urlencoded')) {
             return respond(response, 415, 'Unsupported media type');
         }
         const origin = request.headers.origin;
         if (origin && origin !== `http://${request.headers.host}`) return respond(response, 403, 'Forbidden');
-        let body = '';
+        const chunks = [];
+        let bodyBytes = 0;
         for await (const chunk of request) {
-            body += chunk;
-            if (body.length > 65536) return respond(response, 413, 'Request too large');
+            bodyBytes += chunk.length;
+            if (bodyBytes > 65536) return respond(response, 413, 'Request too large');
+            chunks.push(chunk);
+        }
+        let body;
+        try {
+            body = new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks, bodyBytes));
+        } catch {
+            return respond(response, 400, 'Invalid UTF-8');
         }
         const form = new URLSearchParams(body);
         if (form.getAll('token').length !== 1 || form.get('token') !== token) return respond(response, 403, 'Forbidden');
+        if (request.url === '/ui-action') {
+            if (form.getAll('action').length !== 1 || form.getAll('command').length !== 0 ||
+                form.getAll('title').length !== 0) return respond(response, 400, 'Bad request');
+            const view = sovra('ui-view');
+            if (!view.ok) throw new Error(view.message);
+            const nodes = decodeUiView(view.stdout.replaceAll('\r\n', '\n'));
+            const action = form.get('action');
+            const node = nodes.find(item => ['button', 'input'].includes(item.kind) && item.action === action);
+            if (!node) {
+                return respond(response, 400, 'Unknown UI action');
+            }
+            if ((node.kind === 'input' && form.getAll('value').length !== 1) ||
+                (node.kind === 'button' && form.getAll('value').length !== 0)) {
+                return respond(response, 400, 'Bad request');
+            }
+            const result = sovra('ui-event', action, node.kind === 'input' ? form.get('value') : undefined);
+            return respond(response, result.ok ? 200 : 400, uiPage(result.message));
+        }
         if (form.getAll('command').length !== 1 || form.getAll('title').length !== 1) return respond(response, 400, 'Bad request');
         const command = form.get('command');
         if (!['add', 'complete', 'delete'].includes(command)) return respond(response, 400, 'Bad request');

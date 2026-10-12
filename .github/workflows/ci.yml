@@ -35,6 +35,22 @@ jobs:
       - run: cargo test --locked --all-targets
       - run: cargo test --locked --doc
       - run: cargo build --locked
+      - name: Build and install Windows toolchain
+        if: matrix.os == 'windows-latest'
+        shell: powershell
+        run: |
+          cargo build --locked --release
+          if ($LASTEXITCODE -ne 0) { throw 'Release compiler build failed' }
+          .\scripts\build-windows-toolchain.ps1
+          .\scripts\test-windows-toolchain.ps1 -Package target\toolchain\sovra-windows.zip
+      - name: Upload Windows toolchain
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sovra-windows-toolchain
+          path: |
+            target/toolchain/sovra-windows.zip
+            target/toolchain/sovra-windows.zip.sha256
       - name: Dogfood application behavior (interpreter and JavaScript)
         run: node scripts/test-dogfood.mjs
       - name: Process input and streaming output parity
@@ -47,6 +63,14 @@ jobs:
         run: node scripts/test-task-gui.mjs
       - name: Reusable GUI execution bridge
         run: node scripts/test-gui-bridge.mjs
+      - name: Sovra-owned UI component prototype
+        run: node scripts/test-ui-prototype.mjs
+      - name: File Manager local browser dogfood
+        run: node scripts/test-file-manager.mjs
+      - name: Sovra Notes persistent storage dogfood
+        run: node scripts/test-notes.mjs
+      - name: Sovra HTTP Server loopback dogfood
+        run: node scripts/test-sovra-http.mjs
       - name: Large integer text decoding parity
         run: node scripts/test-text-decoding.mjs
       - name: Executable runtime parity matrix

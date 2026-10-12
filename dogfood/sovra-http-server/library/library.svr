@@ -1,0 +1,17 @@
+mod http {
+    export struct Response { status: Int, content_type: String, body: String }
+
+    export fn route(method: String, path: String, body: String) -> Response {
+        if (method == "GET" && path == "/health") {
+            return Response { status: 200, content_type: "text/plain", body: "ok" };
+        }
+        if (method == "GET" && path == "/about") {
+            return Response { status: 200, content_type: "text/plain",
+                body: "Sovra HTTP Server" };
+        }
+        if (method == "POST" && path == "/echo") {
+            return Response { status: 200, content_type: "text/plain", body: body };
+        }
+        return Response { status: 404, content_type: "text/plain", body: "not found" };
+    }
+}

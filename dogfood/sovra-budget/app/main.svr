@@ -1,0 +1,30 @@
+use budgetlib::budget;
+
+fn main() {
+    if (std::arg_count() != 4) {
+        std::set_exit_code(1);
+        print("usage: budget LIMIT HOUSING FOOD OTHER");
+        return;
+    }
+    let limit = std::parse_int(std::arg(0));
+    let housing = std::parse_int(std::arg(1));
+    let food = std::parse_int(std::arg(2));
+    let other = std::parse_int(std::arg(3));
+    if (limit.ok == false || housing.ok == false || food.ok == false || other.ok == false) {
+        std::set_exit_code(1);
+        print("invalid amount");
+        return;
+    }
+    let outcome = budgetlib::budget::evaluate(limit.value, housing.value,
+        food.value, other.value);
+    if (outcome.ok == false) {
+        std::set_exit_code(1);
+        print("invalid amount");
+        return;
+    }
+    print("limit: " + std::to_string(outcome.plan.limit));
+    print("spent: " + std::to_string(outcome.plan.spent));
+    print("remaining: " + std::to_string(outcome.plan.remaining));
+    print("utilization: " + std::to_string(outcome.plan.utilization) + "%");
+    print(budgetlib::budget::status(outcome.plan));
+}

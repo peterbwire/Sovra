@@ -1,0 +1,1 @@
+usage: notes list FILE | get FILE KEY | put FILE KEY VALUE | delete FILE KEY

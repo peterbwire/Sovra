@@ -133,6 +133,37 @@ fn gui_list(tasks: Tasks) {
         rest = line.after;
     }
 }
+// Private UI component stream. The host renders nodes, not task rules.
+fn ui_view(tasks: Tasks) {
+    print("SVR-UI-1");
+    print("heading|Sovra Task Manager");
+    let mut rest = tasks.rows;
+    let mut count = 0;
+    while rest != "" {
+        let line = std::split_once(rest, "\n");
+        count = count + 1;
+        rest = line.after;
+    }
+    let mut noun = "tasks";
+    if (count == 1) { noun = "task"; }
+    print("text|" + std::to_string(count) + " " + noun + " saved locally");
+    print("input|add|Task title|Add");
+    if count == 0 { print("text|No tasks yet."); }
+    rest = tasks.rows;
+    while rest != "" {
+        let line = std::split_once(rest, "\n");
+        let parsed = parse_row(line.before, false);
+        let mut status = "Open";
+        if parsed.task.done { status = "Done"; }
+        print("text|" + status + " #" + std::to_string(parsed.task.id) + " - " +
+              std::escape_terminal(parsed.task.title));
+        if parsed.task.done == false {
+            print("button|complete-" + std::to_string(parsed.task.id) + "|Complete");
+        }
+        print("button|delete-" + std::to_string(parsed.task.id) + "|Delete");
+        rest = line.after;
+    }
+}
 fn encode(tasks: Tasks) -> String {
     return "SVR-TASKS-2\n" + std::to_string(tasks.next_id) + "\n" + tasks.rows;
 }
@@ -262,7 +293,7 @@ fn interactive(path: String, persistent: Bool) {
         } else { fail("error: unknown command " + command.text); }
     }
 }
-fn one_shot(command: String, path: String, title: String) {
+fn one_shot(command: String, path: String, title: String, value: String) {
     let mut tasks = empty_tasks();
     let file = std::read_text(path);
     if file.ok {
@@ -274,6 +305,43 @@ fn one_shot(command: String, path: String, title: String) {
     }
     if command == "list" { list(tasks); return; }
     if command == "gui-list" { gui_list(tasks); return; }
+    if command == "ui-view" { ui_view(tasks); return; }
+    if command == "ui-event" {
+        if title == "add" {
+            let updated = add(tasks, value, false);
+            if (updated == tasks) { return; }
+            let saved = std::write_text(path, encode(updated));
+            if saved.ok == false { fail("error: save " + saved.error); return; }
+            print("added " + std::to_string(tasks.next_id));
+            return;
+        }
+        if value != "" { fail("error: unexpected UI value"); return; }
+        let completed = std::split_once(title, "complete-");
+        let deleted = std::split_once(title, "delete-");
+        let mut id_text = "";
+        let mut removing = false;
+        if completed.found && completed.before == "" { id_text = completed.after; }
+        else if deleted.found && deleted.before == "" {
+            id_text = deleted.after;
+            removing = true;
+        }
+        let id = std::parse_int(id_text);
+        if id.ok == false || id.value <= 0 {
+            fail("error: invalid UI action"); return;
+        }
+        let task = find_id(tasks, id.value);
+        if task.id == 0 || (task.done && removing == false) {
+            fail("error: task unavailable"); return;
+        }
+        let mut updated = tasks;
+        if (removing) { updated = remove(tasks, id.value, false); }
+        else { updated = complete(tasks, id.value, false); }
+        let saved = std::write_text(path, encode(updated));
+        if saved.ok == false { fail("error: save " + saved.error); return; }
+        if (removing) { print("deleted " + std::to_string(id.value)); }
+        else { print("completed " + std::to_string(id.value)); }
+        return;
+    }
     if title_has_line_break(title) { fail("error: title contains a line break"); return; }
     let mut updated = tasks;
     let mut success = "";
@@ -322,17 +390,25 @@ fn main() {
         let command = std::arg(0);
         if command == "list" {
             if std::arg_count() != 2 { fail("error: expected list <path>"); return; }
-            one_shot(command, std::arg(1), ""); return;
+            one_shot(command, std::arg(1), "", ""); return;
         }
-        if command == "gui-list" {
-            if std::arg_count() != 2 { fail("error: expected gui-list <path>"); return; }
-            one_shot(command, std::arg(1), ""); return;
+        if command == "gui-list" || command == "ui-view" {
+            if std::arg_count() != 2 { fail("error: expected " + command + " <path>"); return; }
+            one_shot(command, std::arg(1), "", ""); return;
+        }
+        if command == "ui-event" {
+            if std::arg_count() != 3 && std::arg_count() != 4 {
+                fail("error: expected ui-event <path> <action> [value]"); return;
+            }
+            let mut value = "";
+            if std::arg_count() == 4 { value = std::arg(3); }
+            one_shot(command, std::arg(1), std::arg(2), value); return;
         }
         if command == "add" || command == "complete" || command == "delete" {
             if std::arg_count() != 3 {
                 fail("error: expected " + command + " <path> <title>"); return;
             }
-            one_shot(command, std::arg(1), std::arg(2)); return;
+            one_shot(command, std::arg(1), std::arg(2), ""); return;
         }
         fail("error: expected help, demo, interactive, list, add, complete or delete"); return;
     }

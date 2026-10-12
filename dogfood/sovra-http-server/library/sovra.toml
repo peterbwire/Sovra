@@ -1,0 +1,4 @@
+[project]
+name = "sovra-http-router"
+version = "1.0.0"
+entry = "library.svr"

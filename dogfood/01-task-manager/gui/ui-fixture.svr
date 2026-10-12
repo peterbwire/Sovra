@@ -1,0 +1,11 @@
+// Private fixture: one reusable Sovra-owned view and event transition.
+fn main() {
+    print("SVR-UI-1");
+    print("heading|Sovra component");
+    if std::arg_count() == 1 && std::arg(0) == "complete" {
+        print("text|Completed in Sovra");
+    } else {
+        print("text|Ready <from> Sovra");
+    }
+    print("button|complete|Complete");
+}

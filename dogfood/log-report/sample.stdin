@@ -1,0 +1,4 @@
+INFO|started
+WARN|slow|disk
+ERROR|failed
+INFO|stopped
