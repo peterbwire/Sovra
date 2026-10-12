@@ -11,14 +11,34 @@ if (Test-Path -LiteralPath $stage) { throw "Output already exists: $stage" }
 $archive = "$stage.zip"
 if (Test-Path -LiteralPath $archive) { throw "Archive already exists: $archive" }
 New-Item -ItemType Directory -Path (Join-Path $stage 'bin') -Force | Out-Null
-New-Item -ItemType Directory -Path (Join-Path $stage 'docs') -Force | Out-Null
 Copy-Item -LiteralPath $compiler -Destination (Join-Path $stage 'bin\svr.exe')
 Copy-Item -LiteralPath 'toolchain\bin\svr-new.ps1' -Destination (Join-Path $stage 'bin')
 Copy-Item -LiteralPath 'toolchain\install.ps1' -Destination $stage
+Copy-Item -LiteralPath 'toolchain\verify-install.ps1' -Destination $stage
 Copy-Item -LiteralPath 'toolchain\templates' -Destination $stage -Recurse
-Copy-Item -LiteralPath 'docs\spec.md','docs\reference\check-json.md','docs\course\local-packages.md' -Destination (Join-Path $stage 'docs')
+New-Item -ItemType Directory -Path (Join-Path $stage 'samples\task-manager') -Force | Out-Null
+Copy-Item -LiteralPath 'dogfood\01-task-manager\main.svr' -Destination (Join-Path $stage 'samples\task-manager\main.svr')
+Copy-Item -LiteralPath 'toolchain\samples\task-manager\README.md' -Destination (Join-Path $stage 'samples\task-manager\README.md')
+Copy-Item -LiteralPath 'docs' -Destination $stage -Recurse
+Copy-Item -LiteralPath 'examples' -Destination $stage -Recurse
 Copy-Item -LiteralPath 'toolchain\README.md' -Destination (Join-Path $stage 'README.md')
 Copy-Item -LiteralPath 'LICENSE','LICENSE-MIT','LICENSE-APACHE' -Destination $stage
+$auditJson = & .\scripts\audit-windows-imports.ps1 $compiler
+$audit = $auditJson | ConvertFrom-Json
+if ($audit.architecture -ne 'x86_64' -or @($audit.imports).Count -eq 0) {
+    throw 'Compiler PE import audit did not identify a supported x86_64 binary.'
+}
+[IO.File]::WriteAllText((Join-Path $stage 'imports.json'), ($auditJson -join "`n"), [Text.UTF8Encoding]::new($false))
+$stagePrefix = $stage.TrimEnd('\') + '\'
+$packageFiles = @(Get-ChildItem -LiteralPath $stage -File -Recurse | ForEach-Object {
+    [pscustomobject]@{
+        path = $_.FullName.Substring($stagePrefix.Length).Replace('\', '/')
+        sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    }
+} | Sort-Object path)
+$integrity = [pscustomobject]@{ schema = 1; files = $packageFiles }
+[IO.File]::WriteAllText((Join-Path $stage 'integrity.json'),
+    ($integrity | ConvertTo-Json -Depth 4), [Text.UTF8Encoding]::new($false))
 Compress-Archive -LiteralPath $stage -DestinationPath $archive
 $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
 "$hash  $([IO.Path]::GetFileName($archive))" | Set-Content -Encoding ascii "$archive.sha256"

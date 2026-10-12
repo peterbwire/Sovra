@@ -1,16 +1,17 @@
 # First installable Sovra Windows toolchain
 
-Status: **Partial implementation**, 2026-10-12. This is a compiler development
+Status: **Partial implementation**, updated 2026-10-13. This is a compiler development
 environment, separate from the Node-free application executable proof in
 [ADR 0025](../adr/0025-standalone-executable-strategy.md). A local installation
-smoke test passes; a clean Windows VM installation is still required.
+smoke test passes; a clean Windows VM installation is still required. Use the
+[clean-machine procedure](../TOOLCHAIN_CLEAN_WINDOWS_TEST.md) to collect that evidence.
 
 ## Architecture audit
 
 | Component | Current state | Boundary |
 | --- | --- | --- |
 | Rust compiler | Implemented subset | Lexer, parser, semantic checker and IR lowering in `src/compiler`; single Cargo package. |
-| `svr.exe` CLI | Implemented subset | `check`, `run`, `build --emit ir|js`, version/help. `check` on dependency packages uses full package compilation; shallow application project scanning is partial. |
+| `svr.exe` CLI | Implemented subset | `new`, `check`, `run`, `build --emit ir|js`, version/help. `check` on dependency packages uses full package compilation; shallow application project scanning is partial. |
 | Interpreter and process runtime | Implemented subset | Rust `ProcessHost` supports arguments, line input, flushed output, UTF-8 text files and exit codes. |
 | JavaScript backend | Implemented, Node-hosted | Emits Node CommonJS and retains parity tests; it is not a browser or standalone native backend. |
 | Standard library | Implemented subset | Rust-owned builtins are compiled into `svr.exe`; no separately distributed stdlib source/archive yet. |
@@ -33,35 +34,68 @@ file. The package contains:
 
 ```text
 bin/svr.exe                 compiler, interpreter, built-in stdlib
-bin/svr-new.ps1             console project creator
+bin/svr-new.ps1             compatibility wrapper for svr new
 templates/console/          source and manifest template
-docs/                      language spec, JSON diagnostics, local package lesson
+docs/                      repository specification, course and reference docs
+examples/                  source examples, including tested local packages
+samples/task-manager/      tested Task Manager CLI source
 install.ps1                 user-scope copy and PATH setup
+verify-install.ps1          package-contained create/check/run self-test
+imports.json                direct PE imports of the packaged svr.exe
+integrity.json              SHA-256 list checked before installation
 README.md, LICENSE*         use and licensing
 ```
 
-The installer copies the package to `%LOCALAPPDATA%\Programs\Sovra` by default,
-adds its `bin` to the user PATH once, and updates the current process PATH.
-It refuses to overwrite an existing prefix. Project creation also refuses an
+The installer validates required files, stages a copy beside
+`%LOCALAPPDATA%\Programs\Sovra` by default, then moves it into place. It adds
+`bin` to the user PATH once and updates the current process PATH. It rejects
+package/install path overlap and refuses to overwrite an existing prefix.
+It also verifies the complete extracted package file list and file hashes
+before creating the install prefix. This detects damaged or locally modified
+files; because the manifest travels inside the ZIP, the external ZIP checksum
+must still be verified to authenticate the downloaded artifact.
+Project creation also refuses an
 existing path. The template can live outside the Sovra source tree; its `main.svr`
 checks and runs through installed `svr.exe`. Installation does not invoke Node
 or Rust. The package currently has one Windows target built on the host; it
 does not yet state a minimum Windows release or CRT deployment contract.
+The automated negative tests confirm that an incomplete package creates no
+prefix and that a prefix nested inside the package is rejected.
+The build records `svr.exe` architecture and direct PE DLL imports in
+`imports.json`; the artifact test recalculates these from the extracted binary.
+The local GNU build currently reports x86_64 and direct imports from
+`api-ms-win-core-synch-l1-2-0.dll`, `bcryptprimitives.dll`, `KERNEL32.dll`,
+`msvcrt.dll` and `ntdll.dll`. These names describe that local artifact, not a
+supported-Windows or CRT contract. Transitive imports, dynamic loads and
+minimum OS support still require clean-machine testing.
+CI uploads the ZIP and checksum, then a separate Windows job downloads and
+tests those exact artifact bytes without a Rust or Node setup step. Its test
+process also narrows PATH to Windows system directories and the installed
+Sovra `bin` directory. This is stronger artifact evidence than staging alone,
+but the hosted runner is not a clean Windows image.
+The package now includes its own `verify-install.ps1`, so a clean-machine
+tester can check PATH and create/check/run a temporary template project and
+the bundled local-package example and Task Manager CLI without checking out
+this repository. The
+CI artifact test calls that script
+and separately exercises a copied Task Manager source.
 
 ## Milestones and acceptance
 
 1. **D1 — Installable compiler slice (implemented locally).** Package and
    install `svr.exe`, template, docs and PATH. Automated Windows test stages a
-   package, verifies its ZIP checksum, installs into a fresh temporary prefix,
+   package, verifies its ZIP checksum (and rejects a damaged copy), installs
+   into a fresh temporary prefix, rejects reinstall without changing it,
    then starts a new PowerShell process with only the installed compiler and
    Windows system directories on PATH. It creates an out-of-repository project,
    checks and runs it, then copies the real Task Manager source to a separate
    directory and checks/adds/lists/completes/deletes there. Repeat on a
    clean compatible Windows VM before accepting the first user-facing gate.
-2. **D2 — Project creation in `svr`.** Design and approve the public `svr new`
-   and `svr init` syntax, manifest naming, overwrite rules and template version
-   policy. Move creation into the Rust CLI only after contract approval; retain
-   the script or an alias for existing installed packages.
+2. **D2 — Project creation in `svr` (first slice implemented).**
+   [ADR 0026](../adr/0026-project-creation-cli.md) approves `svr new <path>`;
+   the Rust CLI embeds the console template and rejects existing destinations.
+   The PowerShell script delegates to it for compatibility. `svr init` and
+   template version policy remain future decisions.
 3. **D3 — Developer commands.** Specify `svr build` artifact paths and package
    mode; implement language-level `svr test`; implement syntax-aware `svr fmt`;
    improve file/span diagnostics and JSON reports; add language-server/editor

@@ -34,13 +34,14 @@ local dependency package. `svr build` prints human-readable IR by default;
 `svr check --format json <path>` emits a versioned diagnostic report. See
 [automated checks](docs/guides/automated-checks.md) for its scope and exit codes.
 
-`svr new`, `svr test`, `svr fmt`, `svr install` and `svr update` are reserved,
-not implemented commands. Local packages work without a registry; lockfiles,
+`svr new <path>` creates a console project. `svr test`, `svr fmt`, `svr install`
+and `svr update` remain reserved. Local packages work without a registry; lockfiles,
 third-party publishing and a language server remain planned.
 
 ## Windows developer toolchain
 
-The first toolchain slice packages `svr.exe`, a project template, documentation
+The first toolchain slice packages `svr.exe`, a project template, Task Manager
+CLI source, documentation
 and a PowerShell installer into a ZIP with a SHA-256 checksum. To build and
 smoke-test that package on Windows:
 
@@ -53,8 +54,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-windows-toolcha
 After extracting the ZIP, follow the included
 [toolchain installation guide](toolchain/README.md). It installs to the current
 user's profile by default, adds `svr.exe` to PATH, and provides
-`svr-new.ps1` for creating a console project while the public `svr new`
-contract is still pending. The automated smoke test uses the installed compiler
+`svr new <path>` for creating a console project. The bundled `svr-new.ps1`
+remains as a compatibility wrapper. The package includes `verify-install.ps1` for a
+repository-free create/check/run self-test. The automated smoke test uses the
+installed compiler
 from a fresh PowerShell process with Node, Cargo and Rust absent from PATH. It
 also checks and runs a copy of the Task Manager outside this repository. A
 clean compatible Windows VM test is still required before release.

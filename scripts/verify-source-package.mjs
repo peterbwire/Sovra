@@ -74,6 +74,21 @@ try {
     const work = join(scratch, 'working-directory');
     mkdirSync(work);
     assert.equal(invoke(compiler, ['--version'], work), `svr ${version}\n`);
+    const project = join(work, 'source-package-app');
+    assert.match(invoke(compiler, ['new', project], work), /created project/);
+    assert.equal(readFileSync(join(project, 'main.svr'), 'utf8'),
+        readFileSync(join(source, 'toolchain', 'templates', 'console', 'main.svr'), 'utf8'),
+        'installed compiler embedded a different console template');
+    assert.match(readFileSync(join(project, 'sovra.toml'), 'utf8'),
+        /name = "source-package-app"/);
+    assert.match(invoke(compiler, ['check', project], work), /checked/);
+    assert.equal(invoke(compiler, ['run', project], work), 'Hello, Sovra!\n');
+    const overwrite = spawnSync(compiler, ['new', project], {
+        cwd: work, encoding: 'utf8', windowsHide: true,
+    });
+    assert.ifError(overwrite.error);
+    assert.equal(overwrite.status, 1, 'svr new overwrote an installed-source project');
+    assert.match(overwrite.stderr, /already exists/);
     assert.equal(invoke(compiler, ['run', taskManager, '--', 'add', 'tasks.txt', 'Installed task'], work),
         'added 1\n');
     assert.equal(invoke(compiler, ['run', taskManager, '--', 'list', 'tasks.txt'], work),
@@ -99,7 +114,7 @@ try {
     const reused = invoke(process.execPath, [join(import.meta.dirname, 'test-gui-bridge.mjs'),
         '--compiler', compiler, '--source', hello, '--bridge', bridge], scratch);
     assert.match(reused, /PASS reusable GUI bridge:/);
-    console.log(`PASS Cargo source package sovra-${version}: isolated offline install, Task Manager persistence, browser GUI and reusable bridge`);
+    console.log(`PASS Cargo source package sovra-${version}: isolated offline install, project creation, Task Manager persistence, browser GUI and reusable bridge`);
 } finally {
     rmSync(scratch, { recursive: true, force: true });
 }

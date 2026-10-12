@@ -1467,12 +1467,81 @@ fn all_reserved_commands_are_recognized() {
         let Some(output) = output_or_skip(svr().arg(command)) else {
             return;
         };
-        if matches!(command, "run" | "build" | "check") {
+        if matches!(command, "new" | "run" | "build" | "check") {
             assert_eq!(output.status.code(), Some(2));
         } else {
             assert_ne!(output.status.code(), Some(2));
         }
     }
+}
+
+#[test]
+fn new_creates_a_checked_and_runnable_project_without_overwriting() {
+    let Some(missing) = output_or_skip(svr().arg("new")) else {
+        return;
+    };
+    assert_eq!(missing.status.code(), Some(2));
+    let help = svr().args(["new", "--help"]).output().unwrap();
+    assert!(help.status.success());
+    assert!(String::from_utf8_lossy(&help.stdout).contains("svr new <path>"));
+
+    let root = std::env::temp_dir().join(format!(
+        "sovra-new-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let project = root.join("hello");
+    let invalid = root.join("2bad");
+    let output = svr().arg("new").arg(&invalid).output().unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(!invalid.exists());
+    let output = svr().arg("new").arg(&project).output().unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let main = std::fs::read_to_string(project.join("main.svr")).unwrap();
+    let manifest = std::fs::read_to_string(project.join("sovra.toml")).unwrap();
+    assert_eq!(
+        main,
+        include_str!("../toolchain/templates/console/main.svr")
+    );
+    assert!(manifest.contains("name = \"hello\""));
+    let existing = svr().arg("new").arg(&project).output().unwrap();
+    assert_eq!(existing.status.code(), Some(1));
+    assert_eq!(
+        std::fs::read_to_string(project.join("main.svr")).unwrap(),
+        main
+    );
+    let extra = svr()
+        .arg("new")
+        .arg(&project)
+        .arg("extra")
+        .output()
+        .unwrap();
+    assert_eq!(extra.status.code(), Some(2));
+    let check = svr()
+        .arg("check")
+        .arg(project.join("main.svr"))
+        .output()
+        .unwrap();
+    assert!(
+        check.status.success(),
+        "{}",
+        String::from_utf8_lossy(&check.stderr)
+    );
+    let run = svr().arg("run").arg(&project).output().unwrap();
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout).trim(), "Hello, Sovra!");
+    std::fs::remove_dir_all(root).unwrap();
 }
 
 #[test]

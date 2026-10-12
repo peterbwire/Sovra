@@ -2,11 +2,13 @@
 
 use std::fmt::Write as _;
 use std::fs;
+use std::path::Path;
 use std::process::ExitCode;
 
 use crate::compiler;
 use crate::compiler::check_report::{self, CheckKind};
 use crate::compiler::diagnostics::{Diagnostic, Diagnostics, Severity, Span};
+use crate::project_new;
 
 /// The version of the Sovra toolchain exposed by the CLI.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -23,7 +25,7 @@ Options:
   -V, --version    Print version information
 
 Commands:
-  new              Create a Sovra project (planned)
+  new              Create a console Sovra project
   init             Initialize a Sovra project (planned)
   run              Compile and run a Sovra program
   build            Compile a Sovra source file
@@ -93,8 +95,11 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
     } else {
         args.iter().any(|arg| arg == "--help" || arg == "-h")
     };
-    if help_requested && matches!(command, "run" | "build" | "check") {
-        if command == "build" {
+    if help_requested && matches!(command, "new" | "run" | "build" | "check") {
+        if command == "new" {
+            println!("Usage: svr new <path>");
+            println!("  Create a console project; the destination must not exist.");
+        } else if command == "build" {
             println!("Usage: svr build [--emit ir|js] <source.svr|package-directory>");
         } else if command == "check" {
             println!("Usage: svr check [--format human|json] [--service-calls] <source.svr|project-directory>");
@@ -108,6 +113,10 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
     if help_requested {
         println!("{command} is planned for a future Sovra milestone.");
         return ExitCode::SUCCESS;
+    }
+
+    if command == "new" {
+        return new_command(args);
     }
 
     if command == "run" || command == "build" {
@@ -194,6 +203,35 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
     eprintln!("{message}.");
     eprintln!("See docs/roadmap.md for planned functionality.");
     ExitCode::from(1)
+}
+
+fn new_command(args: &[String]) -> ExitCode {
+    let [argument] = args else {
+        eprintln!("svr: new expects exactly one project path");
+        return ExitCode::from(2);
+    };
+    if argument.starts_with('-') {
+        eprintln!("svr: new does not accept options; use `svr new <path>`");
+        return ExitCode::from(2);
+    }
+    let path = Path::new(argument);
+    let name = match project_new::project_name(path) {
+        Ok(name) => name,
+        Err(message) => {
+            eprintln!("svr: invalid project path `{argument}`: {message}");
+            return ExitCode::from(2);
+        }
+    };
+    match project_new::create(path, name) {
+        Ok(()) => {
+            println!("created project `{}`", path.display());
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("svr: cannot create project `{}`: {error}", path.display());
+            ExitCode::from(1)
+        }
+    }
 }
 
 fn execute_ir(

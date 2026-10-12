@@ -1,5 +1,120 @@
 # Development log
 
+## 2026-10-13: Check extracted Windows toolchain files before installation
+
+- The package builder now emits `integrity.json` with SHA-256 hashes for every
+  staged file. The installer checks the complete file list and hashes before
+  copying; the artifact test modifies the console template and verifies that
+  installation fails without creating a prefix.
+- A freshly built ZIP passed its checksum, package integrity, restricted-PATH
+  install, project and Task Manager tests locally. The in-ZIP manifest detects
+  changes after extraction; it is not a signature or a substitute for checking
+  the downloaded ZIP checksum. Clean-machine qualification remains open.
+
+## 2026-10-13: Verify project creation from the Cargo source archive
+
+- Extended the isolated offline source-package verifier to require the
+  installed `svr` to create, check and run a console project, compare its
+  embedded source with the packaged template, and reject overwriting it.
+- `cargo package --locked --allow-dirty` compiled the packaged source, and the
+  isolated offline install verifier passed project creation, Task Manager
+  persistence, browser GUI and reusable bridge. This is local artifact evidence;
+  hosted CI and clean-machine Windows qualification remain open.
+
+## 2026-10-13: Implement project creation in the compiler toolchain
+
+- Implemented the approved ADR 0026 contract in Rust: `svr new <path>` embeds
+  the console template, validates the project name, and refuses existing paths.
+  The packaged PowerShell creator now delegates to this command.
+- Added CLI and unit coverage and updated the package-contained self-test to
+  create and execute a project through installed `svr.exe`. Compiler source
+  remains in `src/`; `toolchain/` contains the packaging assets assembled with
+  the compiled executable. Clean Windows installation remains an open gate.
+
+## 2026-10-13: Prepare clean Windows and project-creation decisions
+
+- Local host has no Windows Sandbox/VM command available; optional-feature
+  inspection requires elevation. Added a clean-image artifact procedure with
+  checksum, install, fresh-shell self-test and evidence requirements, without
+  claiming the test has run.
+- Drafted ADR 0026 with a concrete public `svr new <path>` contract based on
+  the working PowerShell creator. Implementation is intentionally paused under
+  AGENTS.md's public compatibility-decision rule; `svr init` remains planned.
+
+## 2026-10-13: Bundle and exercise Task Manager in Windows toolchain
+
+- The Windows ZIP now includes the Task Manager CLI source as a sample copied
+  unchanged from `dogfood/01-task-manager/main.svr`. The package-contained
+  self-test checks and executes add/list/complete/delete across processes from
+  a temporary copy, so clean-machine testers need no repository checkout.
+- Artifact tests compare the bundled source hash with the dogfood source and
+  retain the external copied-source check. The local ZIP passed checksum,
+  import, installation and restricted-PATH behavior checks. The GUI remains
+  Node-hosted and outside this compiler toolchain package.
+
+## 2026-10-13: Record Windows compiler DLL imports
+
+- Added a dependency-free PowerShell PE import inspector with bounds and
+  malformed-file checks. Windows toolchain builds record `svr.exe` architecture
+  and direct DLL imports in `imports.json`; extracted-artifact tests recompute
+  and compare the list. The local x86_64 GNU compiler imports Windows API
+  and `msvcrt.dll` directly. The standalone Task Manager proof was inspected
+  separately; its direct list also includes `USERENV.dll` and `WS2_32.dll`.
+- This audit does not resolve transitive/dynamic dependencies or prove a
+  minimum Windows version. Clean-machine testing and target/CRT policy remain.
+
+## 2026-10-13: Harden Windows installer and project-directory execution
+
+- Confirmed a generated console project runs through `svr run <directory>`.
+  The installed self-test now checks this path in addition to the full source
+  file check/run. The user guide shows the directory invocation.
+- Installer now preflights required package files, rejects package/install
+  path overlap, stages files beside the destination and moves the complete
+  tree into place. Negative package tests reject missing files before a prefix
+  exists and reject nested destinations. Existing-prefix refusal remains.
+- Rebuilt a local ZIP and passed its checksum, restricted-PATH installation,
+  template/local-package self-test and independent Task Manager checks.
+  Clean Windows VM evidence and upgrade/uninstall design remain open.
+
+## 2026-10-13: Complete toolchain package layout audit
+
+- Fixed the Windows ZIP's flattened documentation layout by bundling the docs
+  and examples trees with their original paths. The installed self-test now
+  checks/runs the bundled local dependency example and owns the template's
+  manifest/overwrite checks; the CI-only child keeps the independent Task
+  Manager check without duplicating template behavior.
+- Updated roadmap and version-one gates to reflect approved ADR 0025 and the
+  current installer proof. Four development-doc links still point to source or
+  dogfood files outside the binary toolchain; the package README says so.
+  No tracked application or historical ADR was safely obsolete, so none was
+  deleted. Rebuilt ZIP and reran installer acceptance locally.
+
+## 2026-10-13: Package-contained Windows installation self-test
+
+- Added `verify-install.ps1` to the Windows toolchain ZIP and installed tree.
+  It resolves `svr.exe` from PATH and creates/checks/runs a temporary template
+  project without repository scripts, Rust or Node. The existing artifact test
+  invokes it in a fresh restricted-PATH PowerShell process, then continues to
+  exercise the separately copied Task Manager source.
+- Built a new local ZIP and passed its checksum, installation, self-test and
+  Task Manager checks. Clean compatible Windows VM acceptance is still open.
+
+## 2026-10-12: Test downloaded Windows toolchain artifact in CI
+
+- Added a separate Windows CI job that downloads the uploaded toolchain ZIP
+  and checksum, then runs checksum, install, project and independent Task
+  Manager checks from those exact bytes. The job does not set up Rust or Node;
+  the child test process restricts PATH. Hosted runner execution is pending,
+  and this does not replace the clean-machine acceptance test.
+
+## 2026-10-12: Reject damaged toolchain packages and accidental reinstalls
+
+- Extended the Windows toolchain test with negative acceptance cases. A
+  one-byte-corrupted ZIP must fail checksum verification before extraction;
+  reinstalling to an existing prefix must fail and preserve the compiler bytes.
+  The extracted package still passes the restricted-PATH template and Task
+  Manager tests. No compiler or language contract changed.
+
 ## 2026-10-12: Refresh repository front page
 
 - Replaced the root README's speculative Fielddesk showcase with the current
