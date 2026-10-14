@@ -32,6 +32,15 @@ scope are not v1 release gates.
    any remaining limits honestly in the v1 documentation.
 4. Qualify the exact release artifacts and installation path on supported hosts.
 
+Accepted ADR 0027 now provides host-native `svr build --emit exe --output PATH`.
+The installed debug and optimized toolchains locally build the console template, Task Manager
+and package consumer outside the checkout. After installation/source removal,
+these programs run with restricted PATH; 18 Task Manager cases match interpreter
+behavior. Native builds still require developer Rust/Cargo and a host linker.
+Retained optimized toolchain and public-command Task Manager ZIPs passed local
+exact-artifact checks. This adds local implementation evidence, not clean-machine
+or hosted release qualification; hosted artifacts and the user's VM remain pending.
+
 ADR 0022 is approved and implemented: the Task Manager rejects newly added
 control-bearing titles and escapes legacy stored titles and user-supplied error
 text before display. Exact-artifact and supported-host qualification remain.

@@ -98,6 +98,9 @@ pub fn encode(program: &IrProgram) -> Result<Vec<u8>, String> {
             }
         }
     }
+    if out.len() > MAX_IMAGE {
+        return Err("native IR image exceeds 32 MiB".into());
+    }
     Ok(out)
 }
 
@@ -180,14 +183,48 @@ pub fn decode(bytes: &[u8]) -> Result<IrProgram, String> {
     }
     let program = IrProgram { functions };
     super::ir::validate_declarations(&program)?;
+    let function_arities: std::collections::HashMap<_, _> = program
+        .functions
+        .iter()
+        .map(|function| (function.name.as_str(), function.parameters.len()))
+        .collect();
     for function in &program.functions {
         for instruction in &function.instructions {
-            let target = match instruction {
-                Instruction::Jump { target } | Instruction::JumpIfFalse { target } => *target,
-                _ => continue,
-            };
-            if target > function.instructions.len() {
-                return Err("native IR jump target out of bounds".into());
+            match instruction {
+                Instruction::Call { name, arguments } => {
+                    let expected = super::stdlib::lookup(name)
+                        .map(|builtin| builtin.parameters.len())
+                        .or_else(|| function_arities.get(name.as_str()).copied())
+                        .ok_or_else(|| format!("unknown native IR call target `{name}`"))?;
+                    if *arguments != expected {
+                        return Err(format!(
+                            "native IR call `{name}` expects {expected} arguments, found {arguments}"
+                        ));
+                    }
+                }
+                Instruction::Jump { target } | Instruction::JumpIfFalse { target }
+                    if *target > function.instructions.len() =>
+                {
+                    return Err("native IR jump target out of bounds".into());
+                }
+                Instruction::WidenFloatArray { depth: 0 } => {
+                    return Err("native IR array widening depth must be positive".into());
+                }
+                Instruction::Binary(operator)
+                    if !matches!(
+                        operator.as_str(),
+                        "+" | "-" | "*" | "/" | "==" | "!=" | "<" | "<=" | ">" | ">="
+                    ) =>
+                {
+                    return Err("unknown native IR binary operator".into());
+                }
+                Instruction::MakeStruct { fields, .. } => {
+                    let mut seen = std::collections::HashSet::new();
+                    if fields.iter().any(|field| !seen.insert(field)) {
+                        return Err("duplicate native IR record field".into());
+                    }
+                }
+                _ => {}
             }
         }
     }
@@ -195,6 +232,9 @@ pub fn decode(bytes: &[u8]) -> Result<IrProgram, String> {
 }
 
 fn count(out: &mut Vec<u8>, value: usize) -> Result<(), String> {
+    if value > MAX_ITEMS {
+        return Err("native IR count exceeds limit".into());
+    }
     let value = u32::try_from(value).map_err(|_| "native IR count overflow")?;
     out.extend_from_slice(&value.to_le_bytes());
     Ok(())
@@ -202,6 +242,13 @@ fn count(out: &mut Vec<u8>, value: usize) -> Result<(), String> {
 
 fn string(out: &mut Vec<u8>, value: &str) -> Result<(), String> {
     count(out, value.len())?;
+    if out
+        .len()
+        .checked_add(value.len())
+        .map_or(true, |length| length > MAX_IMAGE)
+    {
+        return Err("native IR image exceeds 32 MiB".into());
+    }
     out.extend_from_slice(value.as_bytes());
     Ok(())
 }
@@ -248,37 +295,44 @@ mod tests {
     #[test]
     fn round_trips_all_instruction_forms() {
         let program = IrProgram {
-            functions: vec![IrFunction {
-                name: "main".into(),
-                parameters: vec!["x".into()],
-                instructions: vec![
-                    LoadLiteral(Literal::Integer("2".into())),
-                    LoadLiteral(Literal::Float("2.5".into())),
-                    LoadLiteral(Literal::Boolean(true)),
-                    LoadLiteral(Literal::String("é".into())),
-                    LoadName("x".into()),
-                    StoreName("x".into()),
-                    StoreIndex,
-                    WidenFloat,
-                    WidenFloatArray { depth: 2 },
-                    Binary("+".into()),
-                    MakeArray { length: 1 },
-                    MakeStruct {
-                        type_name: "Point".into(),
-                        fields: vec!["x".into()],
-                    },
-                    LoadField("x".into()),
-                    Index,
-                    Jump { target: 0 },
-                    JumpIfFalse { target: 1 },
-                    Call {
-                        name: "f".into(),
-                        arguments: 1,
-                    },
-                    Return,
-                    Pop,
-                ],
-            }],
+            functions: vec![
+                IrFunction {
+                    name: "main".into(),
+                    parameters: vec!["x".into()],
+                    instructions: vec![
+                        LoadLiteral(Literal::Integer("2".into())),
+                        LoadLiteral(Literal::Float("2.5".into())),
+                        LoadLiteral(Literal::Boolean(true)),
+                        LoadLiteral(Literal::String("é".into())),
+                        LoadName("x".into()),
+                        StoreName("x".into()),
+                        StoreIndex,
+                        WidenFloat,
+                        WidenFloatArray { depth: 2 },
+                        Binary("+".into()),
+                        MakeArray { length: 1 },
+                        MakeStruct {
+                            type_name: "Point".into(),
+                            fields: vec!["x".into()],
+                        },
+                        LoadField("x".into()),
+                        Index,
+                        Jump { target: 0 },
+                        JumpIfFalse { target: 1 },
+                        Call {
+                            name: "f".into(),
+                            arguments: 1,
+                        },
+                        Return,
+                        Pop,
+                    ],
+                },
+                IrFunction {
+                    name: "f".into(),
+                    parameters: vec!["value".into()],
+                    instructions: vec![],
+                },
+            ],
         };
         assert_eq!(decode(&encode(&program).unwrap()).unwrap(), program);
     }
@@ -304,5 +358,102 @@ mod tests {
             }],
         };
         assert!(decode(&encode(&invalid_jump).unwrap()).is_err());
+    }
+
+    #[test]
+    fn encoder_rejects_images_its_decoder_cannot_read() {
+        let overlong_name = IrProgram {
+            functions: vec![IrFunction {
+                name: "x".repeat(MAX_ITEMS + 1),
+                parameters: vec![],
+                instructions: vec![],
+            }],
+        };
+        assert!(encode(&overlong_name).is_err());
+
+        let oversized_depth = IrProgram {
+            functions: vec![IrFunction {
+                name: "main".into(),
+                parameters: vec![],
+                instructions: vec![WidenFloatArray {
+                    depth: MAX_ITEMS + 1,
+                }],
+            }],
+        };
+        assert!(encode(&oversized_depth).is_err());
+    }
+
+    #[test]
+    fn decoder_rejects_invalid_instruction_payloads_before_execution() {
+        for instruction in [
+            Binary("unexpected".into()),
+            WidenFloatArray { depth: 0 },
+            MakeStruct {
+                type_name: "Point".into(),
+                fields: vec!["x".into(), "x".into()],
+            },
+        ] {
+            let program = IrProgram {
+                functions: vec![IrFunction {
+                    name: "main".into(),
+                    parameters: vec![],
+                    instructions: vec![instruction],
+                }],
+            };
+            assert!(decode(&encode(&program).unwrap()).is_err());
+        }
+    }
+
+    #[test]
+    fn decoder_accepts_every_runtime_binary_operator() {
+        for operator in ["+", "-", "*", "/", "==", "!=", "<", "<=", ">", ">="] {
+            let program = IrProgram {
+                functions: vec![IrFunction {
+                    name: "main".into(),
+                    parameters: vec![],
+                    instructions: vec![Binary(operator.into())],
+                }],
+            };
+            assert_eq!(decode(&encode(&program).unwrap()).unwrap(), program);
+        }
+    }
+
+    #[test]
+    fn decoder_rejects_missing_calls_and_wrong_arity_before_execution() {
+        for (name, arguments) in [("missing", 0), ("std::print", 0), ("helper", 1)] {
+            let program = IrProgram {
+                functions: vec![
+                    IrFunction {
+                        name: "main".into(),
+                        parameters: vec![],
+                        instructions: vec![Call {
+                            name: name.into(),
+                            arguments,
+                        }],
+                    },
+                    IrFunction {
+                        name: "helper".into(),
+                        parameters: vec![],
+                        instructions: vec![],
+                    },
+                ],
+            };
+            assert!(decode(&encode(&program).unwrap()).is_err(), "{name}");
+        }
+    }
+
+    #[test]
+    fn decoder_preserves_bare_print_alias() {
+        let program = IrProgram {
+            functions: vec![IrFunction {
+                name: "main".into(),
+                parameters: vec![],
+                instructions: vec![Call {
+                    name: "print".into(),
+                    arguments: 1,
+                }],
+            }],
+        };
+        assert_eq!(decode(&encode(&program).unwrap()).unwrap(), program);
     }
 }

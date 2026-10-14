@@ -1,6 +1,6 @@
 # Node-free Sovra application execution
 
-Status: **N1 partial proof implemented** (2026-10-12). This plan
+Status: **N1 partial proof implemented**, updated 2026-10-14. This plan
 changes the distribution goal: end users of a compiled Sovra application
 should need neither Node.js nor Rust nor the Sovra compiler. The existing
 interpreter, JavaScript backend, CLI, Task Manager CLI and browser GUI stay
@@ -10,7 +10,7 @@ records the approved first backend direction.
 The internal `cargo run --example native_builder -- SOURCE OUTPUT_DIR` command
 now compiles a checked `.svr` file or local package into a bounded private IR
 image and builds a host-native release executable with the Rust interpreter.
-The build machine needs Cargo; the resulting executable does not invoke Cargo,
+The build machine needs Cargo and trusted runtime source; the resulting executable does not invoke Cargo,
 Node or `svr`. This is an internal proof command, not public `svr build` syntax.
 On Windows, for example:
 
@@ -25,6 +25,65 @@ missing-parent write failures also matched. Full release acceptance
 still requires an isolated clean Windows image, import audit, broader failure
 parity and reproducible packaging. The Node-hosted GUI is unchanged.
 
+The internal `node scripts/test-native-task-manager.mjs` regression now builds
+the proof executable in a temporary directory and compares 18 Task Manager
+operations against `svr run`, including output, exit status, state bytes,
+interactive stdin/EOF, legacy-file migration, corrupt-file rejection and a
+write failure. On Windows it runs the proof with
+a PATH limited to Windows system directories. CI runs this check on hosted
+Windows; it is not clean-machine deployment evidence.
+
+`scripts/build-native-task-manager.ps1` now uses public `svr build --emit exe`
+and retains a Windows qualification ZIP
+with `task-manager.exe`, a binary checksum, direct imports and a PowerShell
+self-test. `build.json` records compiler version/hash, source hash and method.
+The artifact test verifies the ZIP checksum, extracts it, validates provenance, checks
+imports and runs the self-test; the 18-case parity runner then exercises the
+extracted executable. CI uploads that exact ZIP and checksum for the later
+[clean Windows VM test](../NATIVE_TASK_MANAGER_VM_TEST.md). This remains a
+qualification artifact; clean-machine and hosted release evidence remain pending.
+
+The Windows toolchain now carries an internal `runtime-source/` snapshot with
+its own file hashes. The payload test relocates it, links Task Manager outside
+the checkout, deletes runtime/source/build directories and runs all 18 parity
+cases. This removes the checkout dependency for the internal proof; Cargo and
+a host linker remain developer requirements. [ADR 0027](../adr/0027-native-build-cli.md)
+approves the installed `build --emit exe --output PATH` command, now implemented
+with payload validation, offline host linking and no-overwrite publication.
+
+The internal `native_builder` example refuses an existing output path and
+builds in a fresh sibling staging directory. It moves the complete Cargo
+project and executable into the requested output only after a successful link;
+a failed build removes its staging directory. Before staging, it requires a
+parameterless `main` entry point and verifies that the generated private image
+can be decoded. CI checks existing-output, missing-entry and missing-Cargo
+failures without changing any public `svr` command.
+The nested Cargo build uses an explicit staging target directory, so an
+inherited `CARGO_TARGET_DIR` cannot redirect its executable. The default parity
+runner exercises that environment setting; Linux and macOS CI also run this
+host-native proof. Cross-compilation and inherited target selection remain
+outside this host-native proof's supported scope.
+
+`node scripts/test-native-packages.mjs` builds the existing local-package
+example in a separate directory. It tests private helper calls, exported
+nominal records, qualified signatures and Float widening against interpreter
+output. After copying the executable, it deletes both the package source and
+generated build project, then launches from two working directories with a
+restricted PATH. CI runs this general package proof on all three host platforms;
+hosted execution does not replace clean-machine deployment qualification.
+
+`node scripts/test-native-runtime.mjs` builds one general-purpose fixture and
+compares 22 cases against the interpreter after removing the generated source
+copy and Cargo project. It checks overflow and retained output, division by
+zero, array bounds, call-depth limits, exit code 125, missing/invalid/oversized
+UTF-8 reads, the exact 16 MiB boundary, replacement bytes and failed writes
+preserving existing files. The executable runs with restricted PATH. This
+suite also exercises all 14 standard-library functions, the bare `print` alias,
+array copy isolation, nominal equality, loops, short-circuit evaluation and
+bounded stdin. It rejects missing fixture coverage when the builtin registry
+changes and is included in all three host-platform CI jobs. See the
+[capability matrix](../NATIVE_CAPABILITY_MATRIX.md) for evidence and remaining work.
+
 ## Verified starting point
 
 The single Rust Cargo package exposes the compiler pipeline through `src/compiler`.
@@ -35,8 +94,9 @@ stdout and the Rust text-file implementation. `svr build` emits human-readable
 IR or Node CommonJS JavaScript. The JS backend imports `node:fs` and `node:path`
 and uses Node process APIs; it is unsuitable as a Node-free application
 artifact or direct browser module. The current `IrProgram` is a Rust data
-structure, not a serialized portable artifact. There is no executable emitter,
-standalone runtime crate, WebAssembly target or native UI renderer today.
+structure. The internal native builder now serializes a private bounded image
+and links a standalone runner; it does not establish a public portable format.
+There is no separate runtime crate, WebAssembly target or native UI renderer today.
 
 The Task Manager CLI is a real `.svr` application: its direct and interactive
 commands persist a versioned UTF-8 file through the general text APIs. Its
@@ -44,7 +104,8 @@ Node-hosted browser GUI invokes that same program and has a private Sovra UI
 view/event prototype. Neither GUI route is a native window. The current
 release candidate distributes `svr` plus Task Manager source; `svr` itself is
 a native Rust binary, but the application still requires that compiler binary
-at runtime. These distinctions matter for the clean-machine acceptance test.
+at runtime. The separate native proof ZIP embeds the runtime and program image.
+These distinctions matter for the clean-machine acceptance test.
 
 ## Recommended first executable backend
 
@@ -63,10 +124,10 @@ developer machine                              end-user machine
   -> task-manager.exe                           (no Node, Rust, or svr install)
 ```
 
-The first `svr build --emit exe --target x86_64-pc-windows-msvc -o ...`
-interface is illustrative, **not approved CLI syntax**. Build tooling would
-compile Sovra source on the developer machine, serialize a bounded internal
-IR image, generate a small Rust entry point embedding that image, and link it
+The accepted first interface is `svr build --emit exe --output PATH SOURCE_OR_PACKAGE`.
+It supports host builds; `--target` and cross-compilation are not implemented.
+The build tooling compiles Sovra source on the developer machine, serializes a
+bounded internal IR image, generates a small Rust entry point embedding it, and links it
 with the runtime using Cargo/rustc. The Rust toolchain and Windows linker are
 *build-time* dependencies only. The final `.exe` contains the program image and
 runtime, not source files, a compiler process, a Node executable, or a JS

@@ -35,14 +35,46 @@ jobs:
       - run: cargo test --locked --all-targets
       - run: cargo test --locked --doc
       - run: cargo build --locked
+      - name: Relocated runtime payload offline native build
+        if: matrix.os == 'windows-latest'
+        run: node scripts/test-native-runtime-payload.mjs
+      - name: Native local-package linking and source-independent execution
+        run: node scripts/test-native-packages.mjs
+      - name: Native runtime errors and bounded file I/O
+        run: node scripts/test-native-runtime.mjs
+      - name: Native proof parity with a redirected Cargo target directory
+        if: matrix.os != 'windows-latest'
+        run: node scripts/test-native-task-manager.mjs
       - name: Build and install Windows toolchain
         if: matrix.os == 'windows-latest'
         shell: powershell
         run: |
           cargo build --locked --release
           if ($LASTEXITCODE -ne 0) { throw 'Release compiler build failed' }
+          node scripts/test-native-build-cli.mjs --compiler target/release/svr.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Optimized installed native acceptance failed' }
           .\scripts\build-windows-toolchain.ps1
           .\scripts\test-windows-toolchain.ps1 -Package target\toolchain\sovra-windows.zip
+      - name: Native Task Manager executable parity
+        if: matrix.os == 'windows-latest'
+        shell: powershell
+        run: |
+          .\scripts\build-native-task-manager.ps1
+          .\scripts\test-native-task-manager-artifact.ps1 -Package target\native-task-manager\sovra-task-manager.zip -ExtractTo target\native-task-manager\extracted
+          node scripts/test-native-task-manager.mjs --native target\native-task-manager\extracted\sovra-task-manager\task-manager.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Native Task Manager parity failed' }
+          cargo build --locked --example native_builder
+          if ($LASTEXITCODE -ne 0) { throw 'Internal native builder build failed' }
+          node scripts/test-native-builder-failures.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Native builder failure isolation failed' }
+      - name: Upload native Task Manager proof
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sovra-native-task-manager-proof
+          path: |
+            target/native-task-manager/sovra-task-manager.zip
+            target/native-task-manager/sovra-task-manager.zip.sha256
       - name: Upload Windows toolchain
         if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v4

@@ -11,6 +11,7 @@ The curriculum is being built incrementally around the executable language.
 - [Arrays and numeric assignments](arrays.md)
 - [Composing library-style inline modules](library-foundations.md)
 - [Consuming a local library package](local-packages.md)
+- [Building standalone CLI applications](native-builds.md)
 
 The full application syntax in Fielddesk remains a proposal; it is not part
 of these executable lessons.

@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- Implement accepted ADR 0027 host-native `svr build --emit exe --output PATH`,
+  installed runtime payload validation, offline linking, staged cleanup and
+  atomic no-overwrite publication. Preserve IR/JS stdout behavior. Rust/Cargo
+  and a compatible linker are required on the developer machine; clean-machine
+  release qualification remains pending.
+- Add `svr new <path>` with an embedded console template and refusal to
+  overwrite existing destinations under approved ADR 0026.
+- Add Windows toolchain packaging, integrity checks, user installation/PATH
+  setup and a package-contained create/check/run self-test. Clean-machine
+  qualification remains outstanding.
+- Add executable local dependency packages, exported nominal records and
+  compound value isolation, plus process input/status and bounded UTF-8 file
+  APIs with interpreter/JavaScript regression coverage.
+- Exercise nine dogfood application slices, persistent Task Manager and Notes,
+  File Manager/browser UI and HTTP host adapters through real Sovra execution.
+- Add the approved internal checked-IR standalone executable proof, bounded
+  image validation, build failure isolation and 18-case Task Manager parity.
+  Windows proof packaging includes checksums, imports and a self-test. Public
+  native build syntax and clean-machine deployment remain outstanding.
 - Add production-readiness gates, cross-platform CI, a Rust 1.74 check,
   source-package boundaries and manual verification artifacts. The earlier
   developer-preview publication plan is superseded.
@@ -21,9 +40,10 @@
 - Set the intended v1.0.0 version metadata for the Sovra toolchain.
 - Align the canonical `svr` binary version metadata and project
   manifests for the source compiler, IR, interpreter, and JS backend.
-- The user confirmed on 2026-10-03 that the full application platform and library
-  publishing are required before 1.0.0. Metadata does not establish publication
-  or readiness; the earlier compiler-only release scope is superseded.
+- On 2026-10-09 the user revised v1 scope to a production-quality Task Manager
+  CLI and qualified toolchain, with later versions adding platform capacity.
+  This supersedes the earlier full-platform/registry requirement. Metadata
+  does not establish publication or readiness; see the version-one gates.
 
 ## 0.1.0 - 2026-09-03
 

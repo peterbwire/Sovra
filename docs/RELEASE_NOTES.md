@@ -17,6 +17,9 @@ alias.
 
 - Source parsing, semantic validation, and IR lowering
 - Interpreter execution for the supported source subset
+- Host-native executable linking with `svr build --emit exe --output PATH`,
+  using checked IR and the embedded Rust interpreter; developer-side Rust/Cargo
+  and linker requirements remain, and clean-machine qualification is pending
 - JavaScript backend emission for supported programs
 - Records, arrays, branches, loops, mutable locals and local dependency packages
 - Value semantics and nominal equality for arrays and records

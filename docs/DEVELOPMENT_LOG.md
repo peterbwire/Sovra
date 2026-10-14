@@ -1,5 +1,243 @@
 # Development log
 
+## 2026-10-14: Qualify optimized public-command artifacts locally
+
+- Added a compiler selector to installed native acceptance and ran it against
+  `target/release/svr.exe`. Template, Task Manager and local-package builds,
+  failure isolation and compiler/source-independent launches passed; Task
+  Manager passed all 18 parity cases. Archive/install harness operations now
+  have their own two-minute deadline after an initial 30-second packaging timeout.
+- Native Task Manager packaging now invokes the approved public command instead
+  of the internal example. It records compiler version/hash, source hash, method
+  and architecture in `build.json`; extraction validates that provenance along
+  with checksum/imports and the packaged self-test. Exact extracted executable
+  passed all 18 parity cases locally.
+- Retained Task Manager artifact at
+  `target/native-task-manager/public-cli-qualified/sovra-task-manager.zip` and
+  optimized toolchain at `target/toolchain/optimized-qualified/sovra-windows.zip`,
+  each with SHA-256 sidecar. The optimized toolchain's package-contained
+  installation self-test passed with restricted PATH.
+- CI now uses the release compiler for installed native acceptance and retains
+  separate internal-builder failure checks. Updated VM/artifact documentation.
+- Local evidence is Windows GNU x86_64. Hosted CI/MSVC, minimum Rust and clean
+  compatible Windows VM qualification remain pending. Neither ZIP is a published
+  or fully qualified release. Next: collect those host/VM results for exact bytes.
+
+## 2026-10-14: Implement approved public native executable builds
+
+- Recorded user approval of ADR 0027 and implemented
+  `svr build --emit exe --output PATH SOURCE_OR_PACKAGE`. Native builds require
+  explicit output and preserve existing IR/JS stdout behavior. Windows output
+  requires `.exe`; usage errors return 2 and compilation/linking failures 1.
+- Added a Rust-owned native linking module. It validates checked image/entry,
+  discovers installed runtime source without checkout fallback, checks complete
+  payload hashes/file list/version, links offline in owned staging, publishes
+  with an atomic no-overwrite hard link and cleans staging. SHA-256 validation
+  has standard vectors including multi-block padding and million-byte input.
+- Added an installed-toolchain acceptance script covering missing/damaged/extra/
+  version-mismatched payloads, missing Cargo, invalid source/options, existing
+  output preservation, and template/Task Manager/local-package executable builds.
+  The executables run after installed compiler, payload and source trees are
+  deleted; Task Manager then passes all 18 parity cases.
+- That acceptance exposed and fixed the installer's omitted runtime copy and
+  Windows verbatim path incompatibilities with Cargo/GNU linking. Added path
+  normalization regression coverage. General native runtime/package suites
+  now exercise the public CLI on all host CI platforms.
+- Validation: 366 unit tests, 48 CLI tests, one example test, all nine dogfood
+  slices, 22 public native runtime cases/all 14 builtins, public package linking,
+  installed native acceptance/18 Task Manager cases, formatting and strict
+  Clippy passed locally. Added native build course/spec/reference/status updates.
+- Limitations: host-only linking, developer Rust/Cargo/linker requirements,
+  source-based runtime payload and hard-link-capable destination filesystem.
+  Clean compatible Windows VM, hosted platform/MSRV results and exact optimized
+  release artifact qualification remain pending. No language semantics changed.
+- Next: qualify the optimized installed artifact and public native output on
+  supported hosts, then collect the user's clean Windows VM evidence.
+
+## 2026-10-14: Populate the Windows toolchain with native linking source
+
+- Added an owned-stage payload builder that snapshots trusted Rust source,
+  Cargo manifest/lock, native builder and console template, with a complete
+  SHA-256 file manifest. Existing destinations are refused. The Windows package
+  now includes this version-matched snapshot and installer required-file checks.
+- Added payload isolation coverage: hashes and file lists, overwrite refusal,
+  relocation outside the checkout, offline Cargo bootstrap/linking, deletion of
+  runtime/source/build trees, and all 18 native Task Manager parity cases.
+- Validation: the relocated Windows build and parity suite passed. A new local
+  toolchain ZIP containing the debug compiler installed and passed its existing
+  restricted-PATH template/local-package/Task Manager checks. This does not
+  qualify an optimized release artifact or a clean Windows VM.
+- Prepared proposed ADR 0027 for public native-build syntax, required output,
+  no-overwrite publication, payload discovery and host-only target scope.
+  Public implementation awaits the AGENTS.md compatibility approval; internal
+  payload work uses accepted ADR 0025 and changes no language semantics.
+- Next: approve ADR 0027, implement the installed native command with failure
+  isolation tests, then qualify exact release artifacts on supported hosts.
+
+## 2026-10-14: Cover the complete current builtin registry in native execution
+
+- Expanded general native conformance from 12 to 22 cases. The fixture now
+  exercises all 14 registered builtins and the bare print alias, strict integer
+  parsing, splitting, line uniqueness, terminal escaping, process arguments,
+  EOF/CRLF input, exact/oversized stdin, malformed stdin and invalid exit status.
+  Array copy isolation, nominal equality, loop output, short-circuit side
+  effects and negative-zero text also have explicit expected outcomes.
+- Added a registry/fixture coverage guard and the native capability matrix,
+  separating implemented language/runtime evidence from missing public native
+  builds, runtime packaging, locks, test/format commands and editor tooling.
+- Validation: source check and all 22 cases passed through a real standalone
+  Windows executable after its generated source/build tree was removed.
+  No semantics changed. Hosted results and clean Windows VM remain pending.
+- Next: propose the public native build/output/target contract and installed
+  runtime payload before implementing them under AGENTS.md approval rules.
+
+## 2026-10-14: Verify standalone runtime failures and file boundaries
+
+- Added `tests/fixtures/native-runtime.svr` and a native conformance runner
+  using existing general language/stdlib operations. One executable exercises
+  12 cases after its generated source copy and Cargo project are deleted.
+- Verified overflow with retained output, division by zero, invalid indexing,
+  call-depth limits, exit code 125, missing/invalid UTF-8 reads, exact 16 MiB
+  reads, oversized rejection, failed-write preservation and replacement bytes.
+  The native executable matches interpreter stdout, stderr, status and files
+  with restricted PATH; explicit expected outcomes prevent shared failures
+  from being counted as parity success.
+- Validation: source checking, the real Windows native build, all 12 runtime
+  cases and JavaScript harness syntax passed. Added all-platform CI coverage.
+  No compiler or semantic changes were required. Hosted results and clean VM
+  deployment remain pending.
+- Next: qualify the exact artifacts and supported hosts, retaining the existing
+  toolchain and native proof deployment gates.
+
+## 2026-10-14: Prove general local packages in standalone executables
+
+- Added `scripts/test-native-packages.mjs`, building the existing local-package
+  consumer outside the repository. Its exported nominal record, qualified type
+  signature, private helper call and Float widening match interpreter output.
+- The test copies only the executable, deletes package sources and the Cargo
+  project, and launches with restricted PATH from two working directories.
+  It also exercises inherited `CARGO_TARGET_DIR` and a package path with spaces.
+  Added this proof to all three host-platform CI jobs.
+- Validation: the real Windows native build and both source-independent
+  launches passed; script syntax and Git whitespace checks passed. No compiler
+  special cases or language-contract changes were needed.
+- Local Unicode copying initially failed in the Node harness before Sovra ran;
+  Unicode path qualification remains separate from this space-path test.
+  Hosted Linux/macOS/Windows results and clean VM qualification remain pending.
+- Next: extend general native conformance to runtime failures and bounded I/O,
+  then collect exact-artifact deployment evidence.
+
+## 2026-10-14: Audit the working codebase and isolate native Cargo output
+
+- Reproduced a real Task Manager native build failing after a successful link
+  when inherited `CARGO_TARGET_DIR` redirected its executable. The nested build
+  now passes an explicit staging target directory. The default parity runner
+  retains this environment regression; Linux/macOS CI now run native parity
+  alongside the existing Windows exact-artifact checks.
+- Updated the front README, architecture overview, changelog, full-status
+  checkpoint and native architecture plan to reflect current implementation.
+  Corrected the superseded full-platform/registry v1 requirement in the changelog.
+- Validation: 362 unit tests, 47 CLI tests, one example test, all nine dogfood
+  slices, 18 native Task Manager cases under redirected Cargo output, runtime
+  matrix/131 Float values, process input, text files/decoding, Task Manager
+  persistence/GUI, File Manager, Notes, HTTP, GUI bridge and UI prototype passed
+  locally. Formatting, strict Clippy and archive member-safety tests passed.
+- Hosted Linux/macOS native checks and clean Windows VM qualification remain
+  external evidence to collect. Native public build syntax and target selection
+  remain separate decisions; this update does not change language semantics.
+
+## 2026-10-14: Reject unusable standalone programs before linking
+
+- Reproduced the internal native builder reaching Cargo for a checked source
+  containing only a helper function. It now requires a parameterless `main`
+  and decodes its generated image before reserving staging or linking.
+- Expanded the subprocess failure test to verify a missing entry fails with
+  the entry diagnostic and creates neither output nor staging directories.
+- Validation: failure-isolation regression, native-builder unit test, all 18
+  native Task Manager parity cases, formatting and strict Clippy passed locally.
+  Clean Windows VM qualification remains for the user; public native build
+  syntax remains a separate decision.
+- Next: extend standalone application conformance beyond Task Manager and
+  continue exact-artifact deployment qualification.
+
+## 2026-10-13: Validate standalone IR calls before execution
+
+- Reproduced a private native image with an unknown call target loading
+  successfully. The decoder now resolves each call against the standard
+  library and linked program functions and rejects wrong argument counts.
+  The bare `print` compatibility alias remains valid.
+- Validation: 362 unit tests, 47 CLI tests, one example test, strict Clippy,
+  and 18 native Task Manager parity cases passed locally. The user's clean
+  Windows VM qualification remains outstanding.
+- Next: continue internal native runner hardening and deployment checks;
+  retain the existing interpreter and JavaScript backend.
+
+## 2026-10-13: Exercise interactive native Task Manager behavior
+
+- Expanded standalone/interpreter parity from 11 to 18 cases. The new cases
+  cover interactive stdin, persistent state across processes, clean EOF,
+  mid-command EOF, terminal-control title rejection, legacy-file read without
+  mutation and migration on write.
+- The extracted Windows GNU proof passed all 18 cases with matching stdout,
+  stderr, exit status and state bytes. Hosted Windows CI and the user's later
+  clean VM test remain separate qualification gates.
+
+## 2026-10-13: Keep failed native builds out of the requested output
+
+- Reproduced `native_builder` accepting an existing directory and writing a
+  generated Cargo project into it. It now refuses existing output, reserves a
+  sibling staging directory, builds there and moves into place only after a
+  successful link. Failed builds clean their owned staging directory.
+- Added a Rust reservation regression and a Windows CI failure-path test for
+  existing output and missing Cargo. Local tests confirmed both failures leave
+  the requested output untouched; the full 11-case native Task Manager parity
+  runner passed after the staging change. This remains an internal N1 tool.
+
+## 2026-10-13: Retain an exact native Task Manager proof artifact
+
+- Added a Windows artifact builder for the approved internal checked-IR proof.
+  It packages `task-manager.exe`, binary and ZIP checksums, a direct PE import
+  record, README and a PowerShell self-test. The extraction test checks the
+  ZIP and import record and runs the packaged self-test; the 11-case parity
+  runner can target the extracted executable directly.
+- Added a hosted Windows CI artifact upload and a clean-VM procedure for the
+  user to run later. A local Windows GNU artifact passed extraction, self-test
+  and all 11 interpreter parity cases. This is still a partial N1 proof, not
+  a public native build interface or clean-machine deployment qualification.
+
+## 2026-10-13: Automate standalone Task Manager parity
+
+- Added `scripts/test-native-task-manager.mjs` to build the approved internal
+  checked-IR executable proof and compare 11 operations with `svr run`:
+  add/list/complete/delete, duplicate rejection, malformed state and a missing
+  parent write failure. It compares stdout, stderr, exit status and state bytes
+  after each case; the proof runs with restricted PATH on Windows.
+- Added the parity runner to hosted Windows CI. It passed locally on the Windows
+  GNU host. This does not replace the user's later clean Windows VM test or
+  establish a public native build command.
+
+## 2026-10-13: Validate standalone IR instruction payloads at load time
+
+- Added a regression showing the private image decoder accepted an unknown
+  binary operator, zero array-widening depth and duplicate record fields. It
+  now rejects these before the standalone runner executes; valid runtime binary
+  operators retain image round trips.
+- Validation: 360 Rust unit tests, 47 CLI tests, formatting and strict Clippy
+  passed. Rebuilt the internal Task Manager executable and ran add/list/
+  complete/delete through its embedded image locally.
+- This is internal N1 image validation, not a language or public CLI change.
+  The user will perform clean-machine Windows deployment testing later.
+
+## 2026-10-13: Keep standalone IR encoder within decoder limits
+
+- Reproduced a private native-image bug: `encode` accepted an overlong string
+  or count that `decode` rejected. Added a focused regression, then made the
+  encoder enforce the decoder's item cap and 32 MiB image bound.
+- This hardens the approved N1 internal proof without changing `.svr` syntax,
+  runtime semantics or public build commands. Next: continue native executable
+  parity and exact-artifact qualification; clean Windows VM testing remains
+  available to the user later.
+
 ## 2026-10-13: Check extracted Windows toolchain files before installation
 
 - The package builder now emits `integrity.json` with SHA-256 hashes for every

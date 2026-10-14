@@ -11,12 +11,12 @@ smoke test passes; a clean Windows VM installation is still required. Use the
 | Component | Current state | Boundary |
 | --- | --- | --- |
 | Rust compiler | Implemented subset | Lexer, parser, semantic checker and IR lowering in `src/compiler`; single Cargo package. |
-| `svr.exe` CLI | Implemented subset | `new`, `check`, `run`, `build --emit ir|js`, version/help. `check` on dependency packages uses full package compilation; shallow application project scanning is partial. |
+| `svr.exe` CLI | Implemented subset | `new`, `check`, `run`, `build --emit ir|js|exe`, version/help. Native output requires `--output PATH` and build-time Rust/linker. Project scanning remains partial. |
 | Interpreter and process runtime | Implemented subset | Rust `ProcessHost` supports arguments, line input, flushed output, UTF-8 text files and exit codes. |
 | JavaScript backend | Implemented, Node-hosted | Emits Node CommonJS and retains parity tests; it is not a browser or standalone native backend. |
 | Standard library | Implemented subset | Rust-owned builtins are compiled into `svr.exe`; no separately distributed stdlib source/archive yet. |
 | Local packages | Partial | Direct local dependency resolution, checking, linking and execution; no lockfile, registry or publication. |
-| Native app output | Experimental internal proof | `examples/native_builder.rs` embeds checked IR into an executable with the Rust interpreter. No public `svr build` native target or deployment qualification. |
+| Native app output | First host-native CLI slice | Accepted ADR 0027 adds `build --emit exe --output PATH` with embedded IR/interpreter, payload validation and no-overwrite publication. Deployment qualification remains pending. |
 | Browser UI | Experimental | Task Manager Node host and Sovra UI view/event prototype; no installed UI framework or Node-free desktop renderer. |
 | Language server, debugger, formatter, language test runner | Missing/planned | Reserved CLI names do not implement them. |
 
@@ -38,6 +38,7 @@ bin/svr-new.ps1             compatibility wrapper for svr new
 templates/console/          source and manifest template
 docs/                      repository specification, course and reference docs
 examples/                  source examples, including tested local packages
+runtime-source/            version-matched Rust source for internal native linking
 samples/task-manager/      tested Task Manager CLI source
 install.ps1                 user-scope copy and PATH setup
 verify-install.ps1          package-contained create/check/run self-test
@@ -120,3 +121,33 @@ and separately exercises a copied Task Manager source.
    replacements pass parity and accessibility tests.
 
 The version string in Cargo is not evidence that these gates have passed.
+
+## Native linking payload checkpoint (2026-10-14)
+
+The package builder now generates `runtime-source/` from the current trusted
+Rust source, Cargo manifest/lock, native builder and embedded console template.
+Its SHA-256 manifest and the enclosing toolchain integrity manifest cover the
+snapshot. The installer requires the payload's core files. This is a build-only
+source snapshot, not a separately stabilized runtime crate.
+
+The automated payload test relocates the snapshot outside the checkout, uses
+Cargo's offline mode to build Task Manager there, deletes all payload/source/
+build directories, then passes 18 native parity cases. A locally staged ZIP
+using the debug compiler also passed installation and package-contained checks
+with restricted PATH. Release artifact and clean-machine qualification remain
+separate. Building native applications still needs Rust/Cargo and a host linker.
+
+[ADR 0027](../adr/0027-native-build-cli.md) approves the public executable build
+interface, now implemented with complete payload hashes/file-list/version checks,
+owned staging and atomic no-overwrite publication. See the
+[native build lesson](../course/native-builds.md) for invocation and limits.
+
+`scripts/test-native-build-cli.mjs` now creates and installs a toolchain outside
+the checkout, checks missing/tampered/version-mismatched payload and missing-tool
+failures, then builds the console template, Task Manager and local-package
+consumer through installed `svr`. It removes installation and source trees
+before executing the programs. This passed locally, including 18 Task Manager
+parity cases. The acceptance also passed using the release compiler via
+`--compiler target/release/svr.exe`. A retained optimized toolchain ZIP passed
+its exact-package installation self-test locally. Hosted and clean VM
+qualification remain release gates.

@@ -101,6 +101,8 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
             println!("  Create a console project; the destination must not exist.");
         } else if command == "build" {
             println!("Usage: svr build [--emit ir|js] <source.svr|package-directory>");
+            println!("       svr build --emit exe --output PATH <source.svr|package-directory>");
+            println!("  exe: host-native output; Rust/Cargo and a host linker are build-time requirements.");
         } else if command == "check" {
             println!("Usage: svr check [--format human|json] [--service-calls] <source.svr|project-directory>");
             println!("  --service-calls  Experimental project-only contract checks; incomplete coverage fails.");
@@ -244,6 +246,13 @@ fn execute_ir(
         match emit {
             Emit::Ir => print!("{}", compiler::backend::render(ir)),
             Emit::Js => print!("{}", compiler::backend::render_javascript(ir)),
+            Emit::Exe(output) => match crate::native_build::build(ir, Path::new(&output)) {
+                Ok(path) => println!("{}", path.display()),
+                Err(error) => {
+                    eprintln!("svr: native build error: {error}");
+                    return ExitCode::from(1);
+                }
+            },
         }
         return ExitCode::SUCCESS;
     }
@@ -525,10 +534,11 @@ fn print_diagnostics(diagnostics: compiler::diagnostics::Diagnostics) {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum Emit {
     Ir,
     Js,
+    Exe(String),
 }
 
 fn parse_emit(command: &str, args: &[String]) -> Result<(Emit, Vec<String>), String> {
@@ -537,22 +547,49 @@ fn parse_emit(command: &str, args: &[String]) -> Result<(Emit, Vec<String>), Str
     }
     let mut emit = Emit::Ir;
     let mut source_args = Vec::new();
+    let mut output = None;
     let mut index = 0;
     while index < args.len() {
         let arg = &args[index];
         if arg == "--emit" {
             let Some(value) = args.get(index + 1) else {
-                return Err("svr: --emit expects `ir` or `js`".to_owned());
+                return Err("svr: --emit expects `ir`, `js` or `exe`".to_owned());
             };
             emit = parse_emit_value(value)?;
             index += 2;
         } else if let Some(value) = arg.strip_prefix("--emit=") {
             emit = parse_emit_value(value)?;
             index += 1;
+        } else if arg == "--output" || arg.starts_with("--output=") {
+            let value = if arg == "--output" {
+                index += 1;
+                args.get(index)
+                    .ok_or("svr: --output expects a file path")?
+                    .clone()
+            } else {
+                arg.strip_prefix("--output=").unwrap().to_owned()
+            };
+            if value.is_empty() || output.replace(value).is_some() {
+                return Err("svr: --output requires one nonempty file path".into());
+            }
+            index += 1;
         } else {
             source_args.push(arg.clone());
             index += 1;
         }
+    }
+    if matches!(emit, Emit::Exe(_)) {
+        let path = output.ok_or("svr: --emit exe requires --output PATH")?;
+        if cfg!(windows)
+            && !Path::new(&path)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("exe"))
+        {
+            return Err("svr: Windows executable output must end in .exe".into());
+        }
+        emit = Emit::Exe(path);
+    } else if output.is_some() {
+        return Err("svr: --output is supported only with --emit exe".into());
     }
     Ok((emit, source_args))
 }
@@ -561,6 +598,7 @@ fn parse_emit_value(value: &str) -> Result<Emit, String> {
     match value {
         "ir" => Ok(Emit::Ir),
         "js" => Ok(Emit::Js),
+        "exe" => Ok(Emit::Exe(String::new())),
         _ => Err(format!("svr: unsupported emit target `{value}`")),
     }
 }

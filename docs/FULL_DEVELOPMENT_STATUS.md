@@ -1,5 +1,46 @@
 # Full development status
 
+## Current toolchain checkpoint (2026-10-14)
+
+The Rust compiler, interpreter, Node JavaScript backend and local package
+linker execute the supported language subset. `svr new` creates console
+projects under accepted ADR 0026. The Windows toolchain ZIP includes the
+compiler, templates, documentation, examples, installer and a package-contained
+self-test; clean Windows installation qualification remains outstanding.
+
+Nine dogfood application slices pass source checks, both builds and behavioral
+tests in the interpreter and JavaScript. The Task Manager has variable-length
+persistent text records, scripted/interactive operation and a working local
+browser GUI. Notes, Budget and HTTP Server provide further reusable capability
+tests; the HTTP and browser hosts currently require Node.
+
+Accepted ADR 0025 has an internal standalone executable proof: checked IR is
+embedded with the Rust interpreter. Its builder validates the entry point and
+image before linking. Eighteen Task Manager cases match interpreter output,
+exit status and persisted bytes locally. Accepted ADR 0027 now implements
+`svr build --emit exe --output PATH` with installed payload validation and
+atomic no-overwrite publication. Clean Windows deployment qualification,
+native UI and WebAssembly remain planned.
+The local-package example also builds into a standalone executable and matches
+interpreter output after its sources and generated Cargo project are deleted.
+This exercises exported nominal records, private helpers and Float widening.
+An additional 22-case general native runtime fixture matches interpreter
+errors, process status and bounded UTF-8 file behavior locally, including
+preservation of existing files on failed writes. It exercises every one of the
+14 registered builtins, value isolation and bounded stdin; the
+[native capability matrix](NATIVE_CAPABILITY_MATRIX.md) tracks remaining gaps.
+
+The full Rust baseline is 366 unit tests, 48 CLI tests and one native-builder
+example test passing locally. This evidence does not approve publication.
+See [version-one gates](V1_DELIVERY_GATES.md),
+[Windows toolchain](architecture/WINDOWS_TOOLCHAIN.md), and
+[Node-free execution](architecture/NODE_FREE_APPLICATIONS.md) for active work.
+
+## Earlier implementation checkpoints
+
+The notes below record preceding feature slices. Their earlier open-work
+statements should be read with the current checkpoint and linked status plans.
+
 ADR 0014 Stage 1 is accepted and implemented: source/package `run` passes program
 arguments after `--`, the standard library provides argument access and explicit
 EOF UTF-8 line input, and output is flushed when printed in both execution hosts.

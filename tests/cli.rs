@@ -1361,7 +1361,7 @@ fn build_help_describes_current_usage() {
     assert!(output.status.success());
     assert_eq!(
         String::from_utf8_lossy(&output.stdout).trim(),
-        "Usage: svr build [--emit ir|js] <source.svr|package-directory>"
+        "Usage: svr build [--emit ir|js] <source.svr|package-directory>\n       svr build --emit exe --output PATH <source.svr|package-directory>\n  exe: host-native output; Rust/Cargo and a host linker are build-time requirements."
     );
 }
 
@@ -1551,4 +1551,48 @@ fn unknown_command_has_helpful_error() {
     };
     assert_eq!(output.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&output.stderr).contains("svr --help"));
+}
+
+#[test]
+fn native_build_rejects_invalid_output_options() {
+    for args in [
+        vec!["build", "--emit", "exe", "examples/hello-world/main.svr"],
+        vec![
+            "build",
+            "--output",
+            "app.exe",
+            "examples/hello-world/main.svr",
+        ],
+        vec![
+            "build",
+            "--emit",
+            "js",
+            "--output",
+            "app.exe",
+            "examples/hello-world/main.svr",
+        ],
+        vec![
+            "build",
+            "--emit",
+            "exe",
+            "--output=",
+            "examples/hello-world/main.svr",
+        ],
+        vec![
+            "build",
+            "--emit",
+            "exe",
+            "--output",
+            "a.exe",
+            "--output",
+            "b.exe",
+            "examples/hello-world/main.svr",
+        ],
+    ] {
+        let Some(output) = output_or_skip(svr().args(args)) else {
+            return;
+        };
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
+    }
 }

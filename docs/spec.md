@@ -1,5 +1,16 @@
 # Sovra specification
 
+## Host-native executable builds
+
+Accepted ADR 0027 adds `svr build --emit exe --output PATH SOURCE_OR_PACKAGE`.
+It uses existing checked source/package IR and the Rust interpreter without
+changing syntax, type identity, value semantics or host API contracts. Output
+is required, existing destinations are refused, and Windows paths end in `.exe`.
+The installed version-matched runtime snapshot is validated before offline
+Cargo linking. Rust/Cargo and a compatible host linker are developer requirements.
+This first slice supports the host and preserves IR/JS stdout behavior; see
+[native builds](course/native-builds.md) for errors, limits and verification.
+
 ## Status
 
 Opt-in M12 body inspection accepts `let mut` and direct local reassignment

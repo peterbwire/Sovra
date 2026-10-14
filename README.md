@@ -30,7 +30,10 @@ cargo test --all-targets
 `svr check` validates a source file or project; project checks have different
 coverage depending on the project type. `svr run` executes a `.svr` file or a
 local dependency package. `svr build` prints human-readable IR by default;
-`svr build --emit js` prints Node CommonJS JavaScript. For automation,
+`svr build --emit js` prints Node CommonJS JavaScript.
+`svr build --emit exe --output app.exe <source-or-package>` links a host-native
+standalone executable; the developer needs Rust/Cargo and a compatible linker.
+See [native builds](docs/course/native-builds.md). For automation,
 `svr check --format json <path>` emits a versioned diagnostic report. See
 [automated checks](docs/guides/automated-checks.md) for its scope and exit codes.
 
@@ -63,10 +66,16 @@ also checks and runs a copy of the Task Manager outside this repository. A
 clean compatible Windows VM test is still required before release.
 
 An [internal standalone executable proof](docs/architecture/NODE_FREE_APPLICATIONS.md)
-embeds checked Sovra IR and the Rust runtime into a Windows executable. It is
-not a public native build command and has not passed the clean-machine
-application-distribution gate. The existing interpreter and JavaScript backend
+embeds checked Sovra IR and the Rust runtime into a Windows executable. Its
+18-case Task Manager regression compares output, exit status and persistent
+state against the interpreter. A Windows proof ZIP includes checksums, an
+import record and a self-test for the later clean-machine test. It is
+now complemented by the approved public `build --emit exe --output PATH`
+command. Clean-machine application-distribution qualification remains pending.
+The existing interpreter and JavaScript backend
 remain supported development paths.
+The [executable capability matrix](docs/NATIVE_CAPABILITY_MATRIX.md) records
+verified language/runtime support and the remaining native toolchain gates.
 
 ## Applications and documentation
 

@@ -2,4 +2,5 @@
 
 pub mod cli;
 pub mod compiler;
+mod native_build;
 mod project_new;

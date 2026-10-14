@@ -14,7 +14,11 @@ if ($targetPrefix.StartsWith($sourcePrefix, [StringComparison]::OrdinalIgnoreCas
 foreach ($relative in @('bin\svr.exe','bin\svr-new.ps1','templates\console\main.svr',
         'templates\console\sovra.toml','docs\spec.md','examples\local-packages\app\main.svr',
         'samples\task-manager\main.svr','README.md','verify-install.ps1',
-        'imports.json','integrity.json','LICENSE','LICENSE-MIT','LICENSE-APACHE')) {
+        'imports.json','integrity.json','LICENSE','LICENSE-MIT','LICENSE-APACHE',
+        'runtime-source\payload.json','runtime-source\payload.sha256','runtime-source\Cargo.toml','runtime-source\Cargo.lock',
+        'runtime-source\src\lib.rs','runtime-source\examples\native_builder.rs',
+        'runtime-source\toolchain\templates\console\main.svr',
+        'runtime-source\toolchain\templates\console\sovra.toml')) {
     if (-not (Test-Path -LiteralPath (Join-Path $source $relative) -PathType Leaf)) {
         throw "Package is missing $relative."
     }
@@ -52,7 +56,7 @@ if (-not $stage.StartsWith($parent + '\', [StringComparison]::OrdinalIgnoreCase)
 }
 try {
     New-Item -ItemType Directory -Path $stage | Out-Null
-    foreach ($directory in @('bin','templates','samples','docs','examples')) {
+    foreach ($directory in @('bin','templates','samples','docs','examples','runtime-source')) {
         Copy-Item -LiteralPath (Join-Path $source $directory) -Destination $stage -Recurse
     }
     foreach ($file in @('README.md','verify-install.ps1','imports.json','integrity.json',

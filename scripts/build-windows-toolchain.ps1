@@ -23,6 +23,7 @@ Copy-Item -LiteralPath 'docs' -Destination $stage -Recurse
 Copy-Item -LiteralPath 'examples' -Destination $stage -Recurse
 Copy-Item -LiteralPath 'toolchain\README.md' -Destination (Join-Path $stage 'README.md')
 Copy-Item -LiteralPath 'LICENSE','LICENSE-MIT','LICENSE-APACHE' -Destination $stage
+& (Join-Path $PSScriptRoot 'build-native-runtime-payload.ps1') -Output (Join-Path $stage 'runtime-source')
 $auditJson = & .\scripts\audit-windows-imports.ps1 $compiler
 $audit = $auditJson | ConvertFrom-Json
 if ($audit.architecture -ne 'x86_64' -or @($audit.imports).Count -eq 0) {
