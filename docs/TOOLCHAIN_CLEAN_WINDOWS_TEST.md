@@ -26,7 +26,7 @@ svr.exe --version
 powershell -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Programs\Sovra\verify-install.ps1"
 ```
 
-The self-test creates, checks and runs a console project, runs a bundled local
+The self-test creates, checks, runs and tests a console project, runs a bundled local
 dependency example, and checks/adds/lists/completes/deletes tasks using the
 bundled Task Manager CLI source. It uses a unique temporary directory and
 removes that directory afterward. The GUI is not part of this Node-free test.

@@ -185,12 +185,26 @@ pub fn run_with_host_status(
     program: &IrProgram,
     host: &mut dyn RuntimeHost,
 ) -> Result<RunOutcome, String> {
+    run_function_with_host_status(program, "main", host)
+}
+
+/// Execute a zero-argument lowered user function for trusted Rust tooling.
+///
+/// The caller supplies checked IR and its exact lowered function name. This is
+/// not source-level name resolution or an access-control boundary. Function
+/// return values are discarded; output and exit status are retained. Each call
+/// starts fresh frames and exit status, while the caller owns host effects.
+pub fn run_function_with_host_status(
+    program: &IrProgram,
+    function_name: &str,
+    host: &mut dyn RuntimeHost,
+) -> Result<RunOutcome, String> {
     crate::compiler::ir::validate_declarations(program)?;
     let function = program
         .functions
         .iter()
-        .find(|function| function.name == "main")
-        .ok_or_else(|| "entry function `main` was not found".to_owned())?;
+        .find(|function| function.name == function_name)
+        .ok_or_else(|| format!("entry function `{function_name}` was not found"))?;
     let mut exit_code = 0;
     let (output, _) = execute_function(function, &[], program, host, &mut exit_code)?;
     Ok(RunOutcome { output, exit_code })
@@ -786,6 +800,55 @@ mod tests {
         assert_eq!(run(&program).unwrap_err(), "stack underflow on call");
     }
     use crate::compiler::{ir, parser::Parser, semantic::SemanticAnalyzer};
+
+    #[test]
+    fn named_tool_entry_preserves_original_main_and_helper_calls() {
+        let parsed = Parser::new().parse_source(
+            "fn main() { print(\"main\"); } fn helper() { print(\"helper\"); } fn chosen() { main(); helper(); }"
+        ).unwrap();
+        let program = ir::lower_program(&parsed).unwrap();
+        let before = program.clone();
+        let outcome = run_function_with_host_status(&program, "chosen", &mut MemoryHost).unwrap();
+        assert_eq!(outcome.output, ["main", "helper"]);
+        assert_eq!(outcome.exit_code, 0);
+        assert_eq!(program, before);
+        assert_eq!(run(&program).unwrap(), ["main"]);
+    }
+
+    #[test]
+    fn named_tool_entry_resets_status_and_runs_qualified_functions() {
+        let parsed = Parser::new().parse_source(
+            "fn selected() { std::set_exit_code(7); } mod checks { fn helper() { print(\"module\"); } export fn probe() { checks::helper(); } } fn main() {}"
+        ).unwrap();
+        let program = ir::lower_program(&parsed).unwrap();
+        assert_eq!(
+            run_function_with_host_status(&program, "selected", &mut MemoryHost)
+                .unwrap()
+                .exit_code,
+            7
+        );
+        let next =
+            run_function_with_host_status(&program, "checks::probe", &mut MemoryHost).unwrap();
+        assert_eq!(next.exit_code, 0);
+        assert_eq!(next.output, ["module"]);
+    }
+
+    #[test]
+    fn named_tool_entry_rejects_missing_functions_and_parameters() {
+        let parsed = Parser::new()
+            .parse_source("fn selected(value: Int) {} fn main() {}")
+            .unwrap();
+        let program = ir::lower_program(&parsed).unwrap();
+        assert_eq!(
+            run_function_with_host_status(&program, "missing", &mut MemoryHost).unwrap_err(),
+            "entry function `missing` was not found"
+        );
+        assert!(
+            run_function_with_host_status(&program, "selected", &mut MemoryHost)
+                .unwrap_err()
+                .contains("expects 1 argument")
+        );
+    }
 
     #[test]
     fn numeric_example_preserves_widening_and_integer_precision() {

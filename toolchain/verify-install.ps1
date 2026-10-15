@@ -39,6 +39,13 @@ try {
     if ($LASTEXITCODE -ne 0 -or $directoryResult -ne 'Hello, Sovra!') {
         throw "Installed project directory run failed: $directoryResult"
     }
+    $testReport = (& svr.exe test --format json $project) -join "`n"
+    if ($LASTEXITCODE -ne 0) { throw 'Installed project language tests failed.' }
+    $tests = $testReport | ConvertFrom-Json
+    if ($tests.schema_version -ne 1 -or $tests.success -ne $true -or
+        $tests.total -ne 1 -or $tests.tests[0].name -ne 'test_greeting') {
+        throw 'Installed project test report is invalid.'
+    }
     $packageExample = Join-Path $installed 'examples\local-packages\app'
     & svr.exe check $packageExample | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'Installed local-package example check failed.' }

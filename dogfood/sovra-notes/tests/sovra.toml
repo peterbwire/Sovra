@@ -1,0 +1,7 @@
+[project]
+name = "sovra-notes-tests"
+version = "1.0.0"
+entry = "tests.svr"
+
+[dependencies.noteslib]
+path = "../library"

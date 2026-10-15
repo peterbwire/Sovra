@@ -195,6 +195,11 @@ or parameter annotations through the executable compiler.
 
 ## M13 — Sovra Tests
 
+Implemented first slice (accepted ADR 0028): source/local-package root Unit
+`test_` functions through the Rust interpreter, captured output, human/JSON
+reports and installed-template verification. Additional backend targets and
+application contract tests remain planned.
+
 Make `svr test <project>` run Sovra-native unit, integration, service-contract,
 policy, and page tests.
 

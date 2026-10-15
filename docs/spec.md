@@ -954,3 +954,13 @@ models, service declarations, auth policies, routes, pages, background tasks,
 structured concurrency, tests, and project-level commands. Those constructs are
 the product direction for the next compiler milestones, not the current parser
 contract.
+
+## Language testing checkpoint (2026-10-14)
+
+Accepted ADR 0028 implements `svr test` through the Rust interpreter. Root
+`test_` functions must be parameterless and resolve to Unit. The full input is
+checked before any test executes. Each test has fresh frames/status, captured
+output and empty arguments. Runtime errors/nonzero status fail the test and
+remaining tests continue. Stdin is unavailable; file APIs retain real effects
+without sandboxing or rollback. Testless input fails. Native/JS test targets
+remain planned. See [testing](course/testing.md) and [JSON](reference/test-json.md).

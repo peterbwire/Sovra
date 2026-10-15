@@ -1467,7 +1467,7 @@ fn all_reserved_commands_are_recognized() {
         let Some(output) = output_or_skip(svr().arg(command)) else {
             return;
         };
-        if matches!(command, "new" | "run" | "build" | "check") {
+        if matches!(command, "new" | "run" | "build" | "check" | "test") {
             assert_eq!(output.status.code(), Some(2));
         } else {
             assert_ne!(output.status.code(), Some(2));
@@ -1551,6 +1551,37 @@ fn unknown_command_has_helpful_error() {
     };
     assert_eq!(output.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&output.stderr).contains("svr --help"));
+}
+
+#[test]
+fn test_command_reports_template_and_rejects_malformed_invocation() {
+    let source = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/toolchain/templates/console/main.svr"
+    );
+    let Some(output) = output_or_skip(svr().args(["test", "--format", "json", source])) else {
+        return;
+    };
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let json = String::from_utf8_lossy(&output.stdout);
+    assert!(json.starts_with("{\"schema_version\":1"));
+    assert!(json.contains("\"success\":true"));
+    assert!(json.contains("\"name\":\"test_greeting\""));
+    assert!(output.stderr.is_empty());
+    for args in [
+        vec!["test"],
+        vec!["test", "--format", "yaml", source],
+        vec!["test", source, source],
+    ] {
+        let Some(output) = output_or_skip(svr().args(args)) else {
+            return;
+        };
+        assert_eq!(output.status.code(), Some(2));
+    }
 }
 
 #[test]

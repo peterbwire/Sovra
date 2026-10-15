@@ -1,0 +1,21 @@
+use noteslib::notes;
+
+fn test_key_validation() {
+    if noteslib::notes::valid_key("") || noteslib::notes::valid_key("bad|key") || noteslib::notes::valid_key("bad\nkey") {
+        print("invalid note key accepted"); std::set_exit_code(1);
+    }
+}
+
+fn test_encode_nominal_note() {
+    let note = noteslib::notes::Note { key: "title", value: "hello" };
+    if noteslib::notes::encode(note) != "title|hello\n" {
+        print("note encoding mismatch"); std::set_exit_code(1);
+    }
+}
+
+fn test_parse_and_malformed_input() {
+    let parsed = noteslib::notes::parse("title|hello");
+    if parsed.ok == false || parsed.note.key != "title" || parsed.note.value != "hello" || noteslib::notes::parse("missing delimiter").ok {
+        print("note parsing mismatch"); std::set_exit_code(1);
+    }
+}

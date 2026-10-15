@@ -1,5 +1,71 @@
 # Development log
 
+## 2026-10-14: Implement approved language testing (ADR 0028)
+
+- Implemented `svr test [--format human|json] SOURCE_OR_PACKAGE`: full preflight,
+  root parameterless Unit discovery, sequential fresh frames/status, captured
+  output, continued runtime/nonzero failures and testless rejection.
+- Package checking preserves root AST and original IR/main. Stdin is unavailable;
+  arguments are empty and file operations retain real effects without rollback.
+- Added template testing, six reusable Notes/Budget library tests, subprocess
+  acceptance, CI integration and installed compiler verification.
+- Validation: 377 unit + 49 CLI + 1 example tests passed (427 total), strict Clippy,
+  subprocess acceptance, nine dogfood slices and Windows installation self-test.
+- New debug package: target/toolchain/language-tests/sovra-windows.zip.
+  Earlier final release artifacts predate this command. Release rebuild, hosted
+  CI evidence and clean Windows VM qualification remain pending.
+- Next: qualify refreshed release artifacts; propose further public tooling
+  contracts before compatibility changes. No syntax/type changes were needed.
+
+
+## 2026-10-14: Add reusable execution support for developer tools
+
+- Added trusted Rust `run_function_with_host_status` for a caller-selected
+  zero-argument lowered function. Existing main execution delegates to it;
+  original IR/main/helper calls stay intact, and each invocation resets frames
+  and status. This is not a new Sovra call syntax or visibility rule.
+- Added an internal `function_probe` Cargo example that checks source/packages
+  before invoking a selected function. It executed the existing local-package
+  example and produced its expected 49/25/1.5 output.
+- Added source-driven regressions for original main/helper preservation, qualified
+  function calls, exit-status isolation, unknown functions and parameter rejection.
+- Validation: 370 unit tests, 48 CLI tests, one example test and strict Clippy
+  passed. Prepared ADR 0028 for the public language test command; discovery,
+  signatures, effects, exit categories and human/JSON output await user approval.
+  `svr test` remains reserved until that decision is accepted and implemented.
+
+## 2026-10-14: Verify downloaded standalone artifacts in a separate CI job
+
+- Added a Windows job that downloads the native ZIP uploaded by the build job,
+  with no Rust/Node setup step, then verifies provenance/imports/checksums and
+  runs the package-contained self-test with developer tools absent from PATH.
+- Added schema-one JSON evidence for exact archive/binary hashes, build record,
+  imports, Windows/process details and success/failure. It explicitly records
+  `clean_machine_qualified: false`; hosted/local PATH isolation is not a VM test.
+- Added a corrupted-ZIP regression. A copied archive with one altered byte is
+  rejected before application execution and produces an accurate failure report.
+- Validation: both success and failure paths passed locally against the retained
+  final artifact. CI execution remains pending. The compiler/application bytes
+  are unchanged, so the existing final ZIP hashes remain valid.
+
+## 2026-10-14: Finish local implementation and pin the final handoff
+
+- Final review reproduced the runtime payload file-count budget allowing a
+  flat directory beyond its intended bound. Added a focused failing regression
+  and enforced the budget before each file insertion.
+- Final validation: 367 unit tests, 48 CLI tests, one example test, strict
+  Clippy, formatting and optimized compilation passed. Rebuilt final artifacts
+  from this compiler rather than reusing the preceding qualification copies.
+- `target/toolchain/final/sovra-windows.zip` passed exact-package restricted-PATH
+  installation/self-tests. The public-command Task Manager artifact at
+  `target/native-task-manager/final/sovra-task-manager.zip` passed checksum,
+  provenance/import verification, packaged self-test and 18 extracted-binary
+  parity cases. Both matching SHA-256 sidecars are retained.
+- Added `V1_IMPLEMENTATION_HANDOFF.md` with final hashes, implementation scope,
+  local evidence and the remaining hosted/MSRV/MSVC/clean VM publication gates.
+  Implementation is complete for this native CLI slice; release qualification
+  remains incomplete. Existing JavaScript, interpreter and GUI baselines remain.
+
 ## 2026-10-14: Qualify optimized public-command artifacts locally
 
 - Added a compiler selector to installed native acceptance and ran it against
@@ -3737,3 +3803,116 @@ structured application parser and named-type resolution under documented decisio
 - **Next task:** Reproduce and fix missing module-body semantic validation in a
   bounded regression-tested change, then address numeric/runtime/backend contract
   gaps before returning to the documented M12 service-contract expansion.
+
+## 2026-10-14: Refresh optimized Windows toolchain after ADR 0028
+
+- Built `cargo build --release --locked`; the optimized compiler passes the
+  complete language-test subprocess acceptance suite, including both reusable
+  dependency test packages, malformed input, effects and status isolation.
+- Packaged target/toolchain/language-tests-release/sovra-windows.zip and verified
+  its exact ZIP checksum, corruption rejection, installation/no-overwrite rules,
+  restricted-PATH project creation/check/run/test and Task Manager operations.
+- ZIP SHA-256: b99feff319aa97ce1b58371fc28a5e752d3d839a316e57c4b65380be27d882cf.
+- Compiler SHA-256: ef67d3988c307ee1c85bcdffd6526d252deb8aba49024929a99ea22e666f648e.
+- Formatting and diff whitespace checks pass. This is local release-profile
+  artifact evidence, not hosted CI or clean-machine deployment qualification.
+  The retained standalone Task Manager ZIP still belongs to the earlier baseline.
+- Next: run this ZIP on a clean compatible Windows VM and collect hosted CI
+  evidence; formatting/registry/editor tools remain planned public contracts.
+
+## 2026-10-14: Update the course for the installed toolchain
+
+- Added Windows installation and first-project lesson, plus Task Manager and
+  reusable Notes/Budget package exercises. Expanded the course index to include
+  existing I/O, decoding, terminal and application-checker lessons.
+- Explained installed `svr` versus contributor Cargo commands, shipped examples
+  versus repository-only dogfood paths, and Node/native deployment boundaries.
+- Updated native-build tutorial to test before building and module lesson to
+  distinguish executable local packages from partial application scanning.
+- Verified create/check/run/test with the optimized compiler, Task Manager
+  add/complete/list by exact title, all six library tests, relative course links
+  and diff whitespace. Corrected the draft completion example after actual
+  execution rejected a numeric selector; no compiler change was necessary.
+- Repaired accidental character substitutions in the preceding roadmap edit,
+  preserving HEAD content and adding the intended M13 implementation checkpoint.
+- Existing ZIPs retain their packaged documentation snapshot. Rebuild packaging
+  to include these newest lessons; clean Windows qualification remains pending.
+
+## 2026-10-14: Pre-VM functionality audit and package correction
+
+- Inspected current CLI/test routing, root package compilation, native runtime
+  validation/linking, project creation and Windows installation/packaging.
+- Reproduced the unwanted packaged course with a failing artifact regression.
+  The builder now excludes docs/course before computing integrity and ZIP hashes;
+  the replacement ZIP passes course exclusion and full installation verification.
+- Executed 427 Rust tests (none ignored), strict Clippy, formatting, doc-test stage,
+  Windows MSVC all-target compile check and all configured non-native acceptance
+  suites: nine dogfood apps, process/file/text/runtime parity, persistence, GUIs,
+  reusable adapters, Notes, HTTP, archive safety and structural depth checks.
+- Relocated/offline native runtime, installed optimized compiler builds and
+  source-independent package/application launches pass. Native runtime passed
+  22 cases exercising all 14 registered builtins. Task Manager parity passed
+  18 cases, matching output/status and stored bytes.
+- No compiler/runtime defect was reproduced by these checks; no speculative
+  semantics change or test weakening was introduced. See PRE_VM_AUDIT.md for
+  verified boundaries, remaining hosted/MSRV/clean-Windows qualification and
+  native/Node requirements. Fresh artifact verification is recorded below.
+
+### Final pre-VM artifact evidence
+
+- target/toolchain/pre-vm-ready/sovra-windows.zip passed exact-archive installation,
+  course exclusion and restricted-PATH create/check/run/test. SHA-256:
+  77942828ef471e3d98b460e433b0ac6da710ea6d8e754999fc636cb0904dfca3.
+- target/native-task-manager/pre-vm-audit/sovra-task-manager.zip passed archive
+  verification without developer tools on PATH, damaged-download rejection and
+  all 18 retained-executable parity cases. SHA-256:
+  47242e87ea7fa9a9f00e8cf3e3ac302db4ddd32da06cac14bfe2f44cca5408f9.
+- verification.json records local Windows evidence and clean_machine_qualified
+  false. User VM and hosted execution remain next gates, not completed claims.
+
+## 2026-10-14: Diagnose double-click launch and add terminal launcher
+
+- Executed the user's older downloaded native artifact with help and no arguments.
+  Both print usage and exit 0: this is the documented CLI behavior, not an OS block
+  or runtime crash. That archive explicitly omits the browser GUI.
+- Added start-task-manager.cmd to native packaging. It opens existing interactive
+  mode and uses LOCALAPPDATA/Sovra/Task Manager/tasks.txt for persistence. It keeps
+  failures visible and preserves exit status without changing compiler/main semantics.
+- Added real-launcher regression and CI coverage for paths containing spaces/!,
+  restricted PATH, task creation/restart and corruption preservation/error visibility.
+  The regression passes using the validated native application. A fresh launch-ready
+  package is being verified; no files in the user's extracted folder were changed.
+
+## 2026-10-15: Prioritize Sovra UI and implement a private desktop renderer
+
+- User clarified the app must open with Sovra UI in a desktop window; browser
+  and terminal launchers do not meet that goal. UI work is the active priority.
+- Added generic WPF/Windows PowerShell renderer and small C# WinExe launcher,
+  separate from the trusted Rust compiler. Existing private SVR-UI-1 views,
+  ui-view/ui-event functions and all application/persistence logic remain Sovra.
+  No browser, Node host, HTTP listener, public ABI or language changes were added.
+- Native Task Manager and an unrelated reusable component share the renderer.
+  Added real WPF control/event tests through interpreter and native execution,
+  literal Windows argv transport, views/size/node limits, stale actions, corrupt
+  state preservation, process-output limits, timeout and failure behavior.
+- Code review found hidden startup failures and invisible silent nonzero events.
+  Moved host import inside error handling, added launcher fallback diagnostics,
+  explicit nonzero event notices, and regression checks. Labels use literal
+  TextBlocks rather than interpreting underscores as native access-key markup.
+- Visible native-window Add/Complete/Delete test passed; screenshot retained at
+  target/desktop-ui/desktop-v1/window.png and inspected. Actual packaged WinExe
+  startup/close, spaced paths, no developer tools on PATH and missing-host error
+  dialog test also passed using isolated data; user state was not modified.
+- Exact desktop-v2 ZIP passes checksum/member safety/complete integrity checks
+  and actual native control tests after extraction to a path with spaces.
+  Corrupt ZIP, unsafe paths/links, duplicate members and bad manifests are rejected.
+- CI now packages/verifies/tests this private Windows adapter and uploads the ZIP.
+  Existing browser component tests still pass. No hosted or clean Windows
+  qualification is claimed. Public UI API and other platform adapters remain planned.
+- Retained UI ZIP: target/desktop-ui/desktop-v2/sovra-task-manager.zip
+  SHA-256: 520a0f44ab7662bbaa76145aff6e4141a8409a391f28675ff27eed6be5d12ed2.
+  Extract all files and open Sovra UI.exe. Windows PowerShell/.NET is required;
+  neither Node, Rust nor the Sovra compiler is required for this packaged app.
+- Next: stabilize component/layout/state/lifecycle contracts, preserve focus/input
+  during updates, improve Task Manager grouping, qualify accessibility/VM behavior,
+  then request approval before publishing a UI package/compatibility contract.

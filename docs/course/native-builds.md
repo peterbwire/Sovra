@@ -8,6 +8,7 @@ need Node, Rust, the source files or the Sovra compiler installed.
 ```powershell
 svr new .\hello
 svr check .\hello\main.svr
+svr test .\hello
 svr build --emit exe --output .\hello.exe .\hello\main.svr
 .\hello.exe
 ```

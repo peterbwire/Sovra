@@ -11,14 +11,14 @@ smoke test passes; a clean Windows VM installation is still required. Use the
 | Component | Current state | Boundary |
 | --- | --- | --- |
 | Rust compiler | Implemented subset | Lexer, parser, semantic checker and IR lowering in `src/compiler`; single Cargo package. |
-| `svr.exe` CLI | Implemented subset | `new`, `check`, `run`, `build --emit ir|js|exe`, version/help. Native output requires `--output PATH` and build-time Rust/linker. Project scanning remains partial. |
+| `svr.exe` CLI | Implemented subset | `new`, `check`, `run`, `test`, `build --emit ir|js|exe`, version/help. Native output requires `--output PATH` and build-time Rust/linker. Project scanning remains partial. |
 | Interpreter and process runtime | Implemented subset | Rust `ProcessHost` supports arguments, line input, flushed output, UTF-8 text files and exit codes. |
 | JavaScript backend | Implemented, Node-hosted | Emits Node CommonJS and retains parity tests; it is not a browser or standalone native backend. |
 | Standard library | Implemented subset | Rust-owned builtins are compiled into `svr.exe`; no separately distributed stdlib source/archive yet. |
 | Local packages | Partial | Direct local dependency resolution, checking, linking and execution; no lockfile, registry or publication. |
 | Native app output | First host-native CLI slice | Accepted ADR 0027 adds `build --emit exe --output PATH` with embedded IR/interpreter, payload validation and no-overwrite publication. Deployment qualification remains pending. |
 | Browser UI | Experimental | Task Manager Node host and Sovra UI view/event prototype; no installed UI framework or Node-free desktop renderer. |
-| Language server, debugger, formatter, language test runner | Missing/planned | Reserved CLI names do not implement them. |
+| Language tests | Implemented first slice | ADR 0028: checked root Unit test functions, Rust interpreter, human/JSON reports. |
 
 The included release candidate already ships `svr.exe` and Task Manager
 source, but its flat archive has no installation, PATH or project-creation
@@ -36,12 +36,12 @@ file. The package contains:
 bin/svr.exe                 compiler, interpreter, built-in stdlib
 bin/svr-new.ps1             compatibility wrapper for svr new
 templates/console/          source and manifest template
-docs/                      repository specification, course and reference docs
+docs/                      specification, operational and reference docs; course excluded
 examples/                  source examples, including tested local packages
 runtime-source/            version-matched Rust source for internal native linking
 samples/task-manager/      tested Task Manager CLI source
 install.ps1                 user-scope copy and PATH setup
-verify-install.ps1          package-contained create/check/run self-test
+verify-install.ps1          package-contained create/check/run/test self-test
 imports.json                direct PE imports of the packaged svr.exe
 integrity.json              SHA-256 list checked before installation
 README.md, LICENSE*         use and licensing
@@ -75,7 +75,7 @@ process also narrows PATH to Windows system directories and the installed
 Sovra `bin` directory. This is stronger artifact evidence than staging alone,
 but the hosted runner is not a clean Windows image.
 The package now includes its own `verify-install.ps1`, so a clean-machine
-tester can check PATH and create/check/run a temporary template project and
+tester can check PATH and create/check/run/test a temporary template project and
 the bundled local-package example and Task Manager CLI without checking out
 this repository. The
 CI artifact test calls that script
@@ -98,7 +98,7 @@ and separately exercises a copied Task Manager source.
    The PowerShell script delegates to it for compatibility. `svr init` and
    template version policy remain future decisions.
 3. **D3 — Developer commands.** Specify `svr build` artifact paths and package
-   mode; implement language-level `svr test`; implement syntax-aware `svr fmt`;
+   mode; language-level `svr test` first slice implemented under ADR 0028; implement syntax-aware `svr fmt`;
    improve file/span diagnostics and JSON reports; add language-server/editor
    tooling. Each public command needs invocation, invalid-input and
    out-of-repository tests. Keep `--emit ir|js` behavior compatible.

@@ -42,6 +42,8 @@ try {
         -Destination $outputPath
     Copy-Item -LiteralPath (Join-Path $repository 'toolchain\native-task-manager\README.md') `
         -Destination $outputPath
+    Copy-Item -LiteralPath (Join-Path $repository 'toolchain\native-task-manager\start-task-manager.cmd') `
+        -Destination $outputPath
     [IO.File]::WriteAllText((Join-Path $outputPath 'imports.json'),
         ($auditJson -join "`n"), [Text.UTF8Encoding]::new($false))
     $compilerVersion = (& $compiler --version) -join "`n"

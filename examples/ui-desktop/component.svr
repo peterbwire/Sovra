@@ -1,0 +1,74 @@
+// An unrelated component for the private, reusable desktop UI adapter.
+// The host renders these nodes; all state and event rules execute in Sovra.
+struct MessageState { ok: Bool, message: String }
+
+fn fail(message: String) {
+    std::set_exit_code(1);
+    print(std::escape_terminal(message));
+}
+
+fn valid_message(message: String) -> Bool {
+    return std::len(message) > 0 && std::len(message) <= 1024 &&
+        std::escape_terminal(message) == message;
+}
+
+fn load_message(path: String) -> MessageState {
+    let file = std::read_text(path);
+    if file.ok {
+        if valid_message(file.text) == false {
+            fail("error: invalid message state");
+            return MessageState { ok: false, message: "" };
+        }
+        return MessageState { ok: true, message: file.text };
+    }
+    if file.error == "not_found" {
+        return MessageState { ok: true, message: "Ready from Sovra" };
+    }
+    fail("error: load " + file.error);
+    return MessageState { ok: false, message: "" };
+}
+
+fn ui_view(message: String) {
+    print("SVR-UI-1");
+    print("heading|Sovra reusable component");
+    print("text|" + message);
+    print("input|save-message|Message|Save");
+    print("button|reset-message|Reset");
+}
+
+fn main() {
+    let count = std::arg_count();
+    if count < 2 {
+        fail("error: expected ui-view STATE or ui-event STATE ACTION [VALUE]");
+        return;
+    }
+    let command = std::arg(0);
+    if command == "ui-view" {
+        if count != 2 { fail("error: ui-view expects exactly one state path"); return; }
+    } else if command == "ui-event" {
+        if count < 3 || count > 4 {
+            fail("error: expected ui-event STATE ACTION [VALUE]"); return;
+        }
+        let action = std::arg(2);
+        if action == "save-message" {
+            if count != 4 { fail("error: save-message requires a value"); return; }
+            if valid_message(std::arg(3)) == false {
+                fail("error: message must contain 1 to 1024 UTF-8 bytes without controls");
+                return;
+            }
+        } else if action == "reset-message" {
+            if count != 3 { fail("error: reset-message does not accept a value"); return; }
+        } else { fail("error: unknown UI action"); return; }
+    } else { fail("error: unknown command"); return; }
+
+    let path = std::arg(1);
+    let state = load_message(path);
+    if state.ok == false { return; }
+    if command == "ui-view" { ui_view(state.message); return; }
+
+    let mut message = "Ready from Sovra";
+    if std::arg(2) == "save-message" { message = std::arg(3); }
+    let saved = std::write_text(path, message);
+    if saved.ok == false { fail("error: save " + saved.error); return; }
+    print("Message saved in Sovra");
+}

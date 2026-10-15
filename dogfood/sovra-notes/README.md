@@ -11,7 +11,11 @@ local Sovra packages can import `notelib::notes` through a manifest path.
 cargo run --locked -- run dogfood/sovra-notes/app -- put notes.txt greeting hello
 cargo run --locked -- run dogfood/sovra-notes/app -- get notes.txt greeting
 node scripts/test-notes.mjs
+cargo run --locked -- test dogfood/sovra-notes/tests
 ```
+
+The separate test package consumes this reusable library and checks key
+validation, nominal note encoding and malformed/valid record parsing.
 
 Keys are 1–80 UTF-8 bytes; values are at most 4,096 bytes. Both exclude `|`,
 CR and LF. The file is bounded by `std::read_text` (16 MiB) and 10,000 notes.

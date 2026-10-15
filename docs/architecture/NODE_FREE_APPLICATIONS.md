@@ -1,5 +1,14 @@
 # Node-free Sovra application execution
 
+Desktop checkpoint (2026-10-15): N4 has a private Windows WPF prototype at
+`toolchain/ui/windows/`. It renders existing Sovra views/events in native
+controls and packages a launcher plus the native application without Node.
+Actual control events, persistence, unrelated component reuse and a visible
+window smoke test pass. Windows PowerShell/.NET is a platform dependency;
+public desktop contracts and clean Windows qualification are still pending.
+This supersedes earlier statements below that no desktop renderer exists,
+without turning the private host into a published UI framework.
+
 Status: **N1 partial proof implemented**, updated 2026-10-14. This plan
 changes the distribution goal: end users of a compiled Sovra application
 should need neither Node.js nor Rust nor the Sovra compiler. The existing
@@ -42,6 +51,13 @@ imports and runs the self-test; the 18-case parity runner then exercises the
 extracted executable. CI uploads that exact ZIP and checksum for the later
 [clean Windows VM test](../NATIVE_TASK_MANAGER_VM_TEST.md). This remains a
 qualification artifact; clean-machine and hosted release evidence remain pending.
+
+CI also downloads the uploaded native ZIP in a separate Windows job with no
+Rust or Node setup step. `test-downloaded-native.ps1` verifies the archive and
+runs the packaged self-test under restricted PATH, writing schema-one evidence
+with exact archive/binary hashes, provenance, imports and failures. Its report
+explicitly keeps clean-machine qualification false. A corrupted-download test
+confirms rejection and accurate failure evidence before application execution.
 
 The Windows toolchain now carries an internal `runtime-source/` snapshot with
 its own file hashes. The payload test relocates it, links Task Manager outside

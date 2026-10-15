@@ -15,4 +15,8 @@ path. Invalid inputs return `ok: false`, including a zero limit.
 ```text
 cargo run --locked -- run dogfood/sovra-budget/app -- 100 40 20 10
 node scripts/test-dogfood.mjs
+cargo run --locked -- test dogfood/sovra-budget/tests
 ```
+
+The separate test package consumes the same library and checks totals, remaining
+amounts, truncated percentages, over-budget status and rejected input bounds.

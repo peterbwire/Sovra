@@ -1,5 +1,17 @@
 # Full development status
 
+## Active Sovra UI checkpoint (2026-10-15)
+
+The user prioritizes a reusable UI framework powering Task Manager in a desktop
+window. A private WPF/Windows PowerShell adapter is implemented under ADR 0029:
+strict bounded views, native controls, accessible input names, serial event
+dispatch and real Sovra persistence. Native-control tests pass with interpreter
+and compiled Task Manager plus an unrelated Sovra component. Visible window
+Add/Complete/Delete and screenshot capture pass. Existing compiler semantics,
+CLI and browser GUI remain unchanged. Public UI contracts, richer layout,
+focus/lifecycle, cross-platform adapters and clean-machine qualification remain
+pending. See [UI architecture](architecture/SOVRA_UI.md).
+
 ## Current toolchain checkpoint (2026-10-14)
 
 The Rust compiler, interpreter, Node JavaScript backend and local package
@@ -30,7 +42,7 @@ preservation of existing files on failed writes. It exercises every one of the
 14 registered builtins, value isolation and bounded stdin; the
 [native capability matrix](NATIVE_CAPABILITY_MATRIX.md) tracks remaining gaps.
 
-The full Rust baseline is 366 unit tests, 48 CLI tests and one native-builder
+The full Rust baseline is 377 unit tests, 49 CLI tests and one native-builder
 example test passing locally. This evidence does not approve publication.
 See [version-one gates](V1_DELIVERY_GATES.md),
 [Windows toolchain](architecture/WINDOWS_TOOLCHAIN.md), and
@@ -249,7 +261,7 @@ No restart or crate/layout migration is needed.
 | CLI | Partial | Help/version, source run/build/check, JSON check reports and shallow project check work. Other recognized commands are stubs. |
 | Standard library | Partial | print/println, len, to_string only; filesystem, collections, networking and other modules are planned. |
 | Project system | Partial | Manifest, source discovery and application wiring scanner; not application type-checking or execution. |
-| Tooling | Partial | Versioned JSON check outcomes implemented. Formatter, REPL, Sovra test runner, package resolution/registry, debugger, LSP and symbol inspection remain planned. |
+| Tooling | Partial | Versioned JSON check outcomes implemented. Sovra test runner first slice is implemented (ADR 0028). Formatter, REPL, registry, debugger, LSP and symbol inspection remain planned. |
 | Application libraries | Planned | Web/data/auth/cloud libraries follow a stable core; Fielddesk is target syntax. |
 
 Working features include `Int`, `Float`, `Bool`, `String`, `Unit`, typed
@@ -363,7 +375,7 @@ registry client or publisher yet; existing import checks do not provide them.
 4. Continue hardening control flow and structured data, with design records for
    syntax/type decisions and a reviewed memory-model decision before references
    and concurrency. Do not select a final memory model from scaffolding alone.
-5. Project creation/run/build, official formatter, REPL and Sovra test runner.
+5. Broader tooling beyond implemented new/run/build/test: formatter, REPL and additional test targets.
 6. Stdlib, packages/lockfiles, LSP/VS Code and structured agent inspection.
 7. Benchmark infrastructure, interop/native/WASM targets, cross-platform releases.
 8. Application libraries, deployment integration and Nova workflows.
@@ -372,3 +384,15 @@ Keep existing M0-M15 labels; this sequence records dependencies rather than
 renumbering completed slices. Continue authorized routine engineering between
 milestones. Document and pause before fundamental syntax, memory, type or
 compatibility changes. Do not label the overall platform production-ready.
+
+## Language testing checkpoint (2026-10-14)
+
+Accepted ADR 0028 implements `svr test` through the Rust interpreter. Root
+`test_` functions must be parameterless and resolve to Unit. The full input is
+checked before any test executes. Each test has fresh frames/status, captured
+output and empty arguments. Runtime errors/nonzero status fail the test and
+remaining tests continue. Stdin is unavailable; file APIs retain real effects
+without sandboxing or rollback. Testless input fails. Native/JS test targets
+remain planned. See [testing](course/testing.md) and [JSON](reference/test-json.md).
+
+The optimized toolchain refresh is now locally verified at `target/toolchain/language-tests-release/sovra-windows.zip`. Its language-test acceptance and restricted-PATH installation/self-test pass; hosted CI and clean Windows qualification remain pending.

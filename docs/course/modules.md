@@ -66,5 +66,7 @@ Private functions are callable from their own module using qualified names,
 such as `math::add`; external calls receive E3004. They are emitted into IR.
 Privacy is enforced by source checking, not by hiding generated symbols.
 Bare names still refer to top-level functions or builtins. Recursion uses the
-existing 256-frame limit. Cross-file loading remains planned. Project-directory checks use a separate, partial application
+existing 256-frame limit. General source-file loading remains planned. Local dependency packages are executable
+through the [local-package linker](local-packages.md); directories without dependencies
+retain separate, partial application
 scanner; they do not provide these source-file semantic guarantees.

@@ -19,7 +19,11 @@ Copy-Item -LiteralPath 'toolchain\templates' -Destination $stage -Recurse
 New-Item -ItemType Directory -Path (Join-Path $stage 'samples\task-manager') -Force | Out-Null
 Copy-Item -LiteralPath 'dogfood\01-task-manager\main.svr' -Destination (Join-Path $stage 'samples\task-manager\main.svr')
 Copy-Item -LiteralPath 'toolchain\samples\task-manager\README.md' -Destination (Join-Path $stage 'samples\task-manager\README.md')
-Copy-Item -LiteralPath 'docs' -Destination $stage -Recurse
+$docsDestination = Join-Path $stage 'docs'
+New-Item -ItemType Directory -Path $docsDestination | Out-Null
+# The course belongs to the main repository; distribute operational documentation only.
+Get-ChildItem -LiteralPath 'docs' | Where-Object { $_.Name -ne 'course' } |
+    ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $docsDestination -Recurse }
 Copy-Item -LiteralPath 'examples' -Destination $stage -Recurse
 Copy-Item -LiteralPath 'toolchain\README.md' -Destination (Join-Path $stage 'README.md')
 Copy-Item -LiteralPath 'LICENSE','LICENSE-MIT','LICENSE-APACHE' -Destination $stage

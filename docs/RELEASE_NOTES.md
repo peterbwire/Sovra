@@ -65,3 +65,13 @@ The repository can be used for compiler development; it is not a qualified 1.0
 release. Follow
 [docs/PRODUCTION_READINESS.md](PRODUCTION_READINESS.md) for the current acceptance
 and follow-on roadmap.
+
+## Language testing checkpoint (2026-10-14)
+
+Accepted ADR 0028 implements `svr test` through the Rust interpreter. Root
+`test_` functions must be parameterless and resolve to Unit. The full input is
+checked before any test executes. Each test has fresh frames/status, captured
+output and empty arguments. Runtime errors/nonzero status fail the test and
+remaining tests continue. Stdin is unavailable; file APIs retain real effects
+without sandboxing or rollback. Testless input fails. Native/JS test targets
+remain planned. See [testing](course/testing.md) and [JSON](reference/test-json.md).

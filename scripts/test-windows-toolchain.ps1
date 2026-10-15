@@ -63,6 +63,9 @@ try {
     $incomplete = Join-Path $testRoot 'incomplete-package'
     New-Item -ItemType Directory -Path (Join-Path $incomplete 'bin') -Force | Out-Null
     Copy-Item -LiteralPath (Join-Path $packageRoot 'bin\svr.exe') -Destination (Join-Path $incomplete 'bin')
+    if (Test-Path -LiteralPath (Join-Path $packageRoot 'docs\course')) {
+        throw 'Repository-only course content was included in the toolchain package.'
+    }
     Copy-Item -LiteralPath (Join-Path $packageRoot 'install.ps1') -Destination $incomplete
     $incompleteTarget = Join-Path $testRoot 'incomplete-install'
     $rejectedIncomplete = $false

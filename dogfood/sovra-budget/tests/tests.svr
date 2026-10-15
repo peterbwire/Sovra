@@ -1,0 +1,22 @@
+use budgetlib::budget;
+
+fn test_totals_and_remaining() {
+    let result = budgetlib::budget::evaluate(100, 30, 20, 10);
+    if result.ok == false || result.plan.spent != 60 || result.plan.remaining != 40 {
+        print("budget totals mismatch"); std::set_exit_code(1);
+    }
+}
+
+fn test_utilization_and_status() {
+    let result = budgetlib::budget::evaluate(3, 1, 0, 0);
+    let over = budgetlib::budget::evaluate(100, 100, 1, 0);
+    if result.plan.utilization != 33 || budgetlib::budget::status(over.plan) != "over budget" {
+        print("budget percentage/status mismatch"); std::set_exit_code(1);
+    }
+}
+
+fn test_invalid_bounds() {
+    if budgetlib::budget::evaluate(0, 0, 0, 0).ok || budgetlib::budget::evaluate(100, 0 - 1, 0, 0).ok {
+        print("invalid budget accepted"); std::set_exit_code(1);
+    }
+}

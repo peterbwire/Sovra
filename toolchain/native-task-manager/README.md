@@ -5,6 +5,18 @@ This executable is built from the Sovra Task Manager CLI through the approved
 interpreter. This archive awaits clean-machine release qualification. The
 browser GUI is not included.
 
+Double-click **start-task-manager.cmd** to open the interactive terminal app.
+It saves tasks in `%LOCALAPPDATA%\Sovra\Task Manager\tasks.txt`. Enter `add`,
+`list`, `complete` or `delete`, then answer the title prompt when requested.
+Enter `quit` to close it. Startup errors remain visible.
+
+Double-clicking `task-manager.exe` alone prints usage and exits normally;
+it does not open a graphical window. You can also start the app from PowerShell:
+
+```powershell
+.\task-manager.exe interactive .\tasks.txt
+```
+
 Run `task-manager.exe help` to see CLI commands. Tasks are stored in the text
 file path supplied to each command. To verify this package on Windows without
 Node, Rust or Sovra installed, run:

@@ -41,7 +41,7 @@ every possible input or every combination of language features.
 | Installed native build command | Implemented first slice: accepted ADR 0027 `build --emit exe --output PATH`, with installed acceptance tests and host-only output |
 | Compiler/runtime distribution | Partial: `svr.exe` installs with a version-matched runtime source snapshot; hashes, complete file list and version checked before offline linking |
 | Runtime isolation | Planned: separate build/runtime payload while preserving trusted Rust ownership and existing contracts |
-| Test and formatting commands | Planned: `svr test` and `svr fmt` remain reserved |
+| Language tests | Implemented: `svr test` uses the Rust interpreter; native/JS test targets remain planned |
 | Reproducible packages | Partial: local dependencies work; locks, registry fetching and publishing remain planned |
 | Source diagnostics in native failures | Partial: native errors provide messages, not source-level stack traces/debug symbols |
 | Editor/debugger integration | Planned: language server, debugger and source mapping |

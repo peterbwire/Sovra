@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add a private reusable Windows Sovra UI renderer and desktop packaging over
+  existing view/event functions; native Task Manager and unrelated component
+  controls execute real Sovra behavior. Public UI compatibility remains planned.
+
+- Implement approved ADR 0028 language tests, human/JSON reports, template and reusable-library tests, and installation/CI verification.
+
 - Implement accepted ADR 0027 host-native `svr build --emit exe --output PATH`,
   installed runtime payload validation, offline linking, staged cleanup and
   atomic no-overwrite publication. Preserve IR/JS stdout behavior. Rust/Cargo

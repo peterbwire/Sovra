@@ -55,3 +55,5 @@ implementation and verification proceed under existing approval. No registry
 endpoint, credentials, memory model for resources, scheduler or deployment target
 is silently selected by this plan. Publication itself is separate from preparing
 reviewable code and artifacts.
+
+Accepted ADR 0028 now implements interpreter-backed `svr test` for root Unit functions. Additional native/JS test targets remain planned. The course is repository-only and is excluded from newly built toolchain ZIPs.

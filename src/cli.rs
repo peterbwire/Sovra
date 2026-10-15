@@ -29,7 +29,7 @@ Commands:
   init             Initialize a Sovra project (planned)
   run              Compile and run a Sovra program
   build            Compile a Sovra source file
-  test             Run Sovra tests (planned)
+  test             Run checked Sovra test functions
   check            Check a Sovra source file or project
   fmt              Format Sovra source files (planned)
   repl             Start the Sovra REPL (planned)
@@ -95,10 +95,13 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
     } else {
         args.iter().any(|arg| arg == "--help" || arg == "-h")
     };
-    if help_requested && matches!(command, "new" | "run" | "build" | "check") {
+    if help_requested && matches!(command, "new" | "run" | "build" | "check" | "test") {
         if command == "new" {
             println!("Usage: svr new <path>");
             println!("  Create a console project; the destination must not exist.");
+        } else if command == "test" {
+            println!("Usage: svr test [--format human|json] <source.svr|package-directory>");
+            println!("  Run root-level parameterless Unit test_ functions; stdin is unavailable.");
         } else if command == "build" {
             println!("Usage: svr build [--emit ir|js] <source.svr|package-directory>");
             println!("       svr build --emit exe --output PATH <source.svr|package-directory>");
@@ -126,6 +129,9 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
     }
     if command == "check" {
         return check_command(args);
+    }
+    if command == "test" {
+        return test_command(args);
     }
 
     let mut message = String::new();
@@ -205,6 +211,64 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
     eprintln!("{message}.");
     eprintln!("See docs/roadmap.md for planned functionality.");
     ExitCode::from(1)
+}
+
+fn test_command(args: &[String]) -> ExitCode {
+    let mut format = "human";
+    let mut seen_format = false;
+    let mut path = None;
+    let mut index = 0;
+    while index < args.len() {
+        let argument = &args[index];
+        if argument == "--format" || argument.starts_with("--format=") {
+            if seen_format {
+                eprintln!("svr: --format may appear only once");
+                return ExitCode::from(2);
+            }
+            seen_format = true;
+            let value = if argument == "--format" {
+                index += 1;
+                args.get(index).map(String::as_str)
+            } else {
+                argument.strip_prefix("--format=")
+            };
+            match value {
+                Some(value @ ("human" | "json")) => format = value,
+                _ => {
+                    eprintln!("svr: --format expects human or json");
+                    return ExitCode::from(2);
+                }
+            }
+        } else if argument.starts_with('-') {
+            eprintln!("svr: unknown test option `{argument}`");
+            return ExitCode::from(2);
+        } else if path.replace(argument.as_str()).is_some() {
+            eprintln!("svr: test expects exactly one source or package");
+            return ExitCode::from(2);
+        }
+        index += 1;
+    }
+    let Some(path) = path else {
+        eprintln!("svr: test expects exactly one source or package");
+        return ExitCode::from(2);
+    };
+    if !Path::new(path).is_dir() && !path.ends_with(".svr") {
+        eprintln!("svr: test source path must end in .svr");
+        return ExitCode::from(2);
+    }
+    let report = compiler::testing::run(path);
+    if format == "json" {
+        println!("{}", compiler::testing::render_json(&report));
+    } else if report.diagnostics.is_empty() {
+        print!("{}", compiler::testing::render_human(&report));
+    } else {
+        eprint!("{}", compiler::testing::render_human(&report));
+    }
+    if report.success() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
 }
 
 fn new_command(args: &[String]) -> ExitCode {

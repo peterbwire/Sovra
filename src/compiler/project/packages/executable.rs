@@ -25,6 +25,12 @@ struct Import {
 /// Explicit `use dependency::module;` imports expose exported functions and records.
 /// All loaded bodies are checked; dependency entry points are never invoked.
 pub fn compile(root: impl AsRef<Path>) -> Result<IrProgram, Diagnostics> {
+    compile_with_root(root).map(|(ir, _, _)| ir)
+}
+
+pub(crate) fn compile_with_root(
+    root: impl AsRef<Path>,
+) -> Result<(IrProgram, Program, std::path::PathBuf), Diagnostics> {
     let graph = resolve(root)?;
     // Number packages by alias traversal, not absolute paths: relocation preserves IR.
     let mut order = vec![graph.root.clone()];
@@ -201,7 +207,15 @@ pub fn compile(root: impl AsRef<Path>) -> Result<IrProgram, Diagnostics> {
         interfaces.insert(root.clone(), exposed);
         public_names.insert(root.clone(), names);
     }
-    Ok(linked)
+    let entry = graph.packages[&graph.root].entry.clone();
+    let root_program = prepared
+        .remove(&graph.root)
+        .expect("root package was compiled");
+    Ok((linked, root_program, entry))
+}
+
+pub(crate) fn root_symbol(name: &str) -> String {
+    symbol(0, name)
 }
 
 fn record_names(program: &Program, package: usize, exported_only: bool) -> HashMap<String, String> {

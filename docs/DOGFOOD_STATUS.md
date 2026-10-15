@@ -1,5 +1,13 @@
 # Dogfood application status
 
+Current UI checkpoint (2026-10-15): the user prioritizes Sovra UI in a desktop
+window for Task Manager. A private Windows WPF renderer now builds native
+controls from the same Sovra view/event code, with real-control event and
+persistence tests plus unrelated component reuse. See
+[desktop adapter](../toolchain/ui/windows/README.md). The existing browser and
+CLI suites remain intact. The bounded flat prototype is not a public framework
+or clean-machine-qualified desktop release.
+
 Updated: 2026-10-12. Version one is gated on a production-quality Task Manager
 CLI and its requested local browser GUI; later applications validate later versions. Passing the current bounded
 slice does not establish version-one readiness. These applications live in the compiler repository so

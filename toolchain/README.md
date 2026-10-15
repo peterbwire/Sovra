@@ -2,7 +2,9 @@
 
 This package contains `bin/svr.exe`, the Rust-owned compiler/interpreter and
 standard library, a console project template, repository documentation and
-examples, and a user-scope PowerShell installer. No Node or Rust installation
+examples, and a user-scope PowerShell installer. The course lives only in the
+main Sovra repository and is excluded from this package. Links to course lessons
+inside bundled documents refer to that repository, not offline package files. No Node or Rust installation
 is needed to **check or run**
 the included template or bundled Task Manager CLI sample. Native application
 building uses `svr build --emit exe --output PATH` and requires Rust/Cargo
@@ -32,6 +34,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Programs\
 svr new .\hello
 svr check .\hello\main.svr
 svr run .\hello
+svr test .\hello
 ```
 
 `verify-install.ps1` is contained in the extracted package and uses a unique
@@ -56,8 +59,9 @@ and refuses to overwrite an existing prefix. Remove an old installation
 manually before reinstalling. PowerShell's execution policy may require the explicit
 `-ExecutionPolicy Bypass -File` invocation for `svr-new.ps1` as well.
 
-`svr test`, `svr fmt`, `svr install` and `svr update` are not
-implemented. `svr build` emits human-readable IR, Node JavaScript or a host-native
+`svr test` runs root-level parameterless Unit test functions with human or JSON
+reports; the template includes a test. `svr fmt`, `svr install` and `svr update`
+are not implemented. `svr build` emits human-readable IR, Node JavaScript or a host-native
 executable with `--emit exe --output app.exe`. Local dependency packages can be checked and run;
 registry publishing and lockfiles are not available.
 

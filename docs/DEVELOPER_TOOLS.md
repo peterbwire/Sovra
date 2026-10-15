@@ -1,0 +1,39 @@
+# Developer tooling implementation
+
+Updated 2026-10-14. Implemented public commands are `new`, `check`, `run` and
+`build` with IR/JS/host-native targets, and `test`. JSON checking and installation/native
+artifact checks support automation. Format/registry/editor commands retain
+their documented planned status.
+
+## Reusable named-function execution foundation
+
+Rust tooling can use
+`compiler::interpreter::run_function_with_host_status(program, name, host)`
+to execute a zero-argument lowered user function from checked IR. It uses the
+existing interpreter and declaration/frame validation. Original `main`, helpers
+and IR stay unchanged; each invocation starts new frames and exit status.
+The caller owns host effects, and return values are discarded.
+
+This is a trusted Rust API, not source-level visibility lookup or a new Sovra
+call syntax. The ordinary CLI/native application entry remains `main`.
+
+Internal probe from the development checkout:
+
+```text
+cargo run --example function_probe -- examples/local-packages/app main
+```
+
+The probe compiles/checks the source or package, selects the explicit lowered
+function and forwards subsequent arguments to the process host. It is internal
+tooling, not a new `svr` command or a test discovery convention.
+
+## Implemented language test runner
+
+[ADR 0028](adr/0028-language-test-command.md) implements `svr test`, with ordinary
+root `test_` functions, Unit signatures, sequential isolated frames, explicit
+failure status and human/JSON reporting. See the [testing guide](course/testing.md) and [JSON reference](reference/test-json.md) for invocation, effects and report contracts.
+
+Subsequent tooling should add syntax-aware formatting, reproducible package
+locks, richer source diagnostics and editor/debugger integration. Their public
+contracts need concrete proposals before implementation. Preserve existing
+commands and the trusted Rust compiler/runtime boundaries.

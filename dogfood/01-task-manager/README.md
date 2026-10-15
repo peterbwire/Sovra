@@ -134,3 +134,16 @@ grow; there is no binary file support. Success messages follow successful persis
 and a failed save does not claim the task was added. Conditions ending in identifiers use parentheses
 to avoid the current parser's record-literal ambiguity. See
 [DOGFOOD_STATUS](../../docs/DOGFOOD_STATUS.md) for approvals and next actions.
+# Desktop UI development
+
+The active UI work uses a private reusable Windows desktop renderer at
+[`toolchain/ui/windows`](../../toolchain/ui/windows/README.md). It creates native
+WPF controls from this application's existing Sovra `ui-view` and `ui-event`
+functions. It does not open a browser or put task rules in the renderer.
+The same controls/events are tested with an unrelated Sovra component.
+
+For a packaged desktop build, double-click **Sovra UI.exe**, keeping its entire
+extracted folder together. `application.exe` is the underlying CLI and does not
+open a window on its own. The desktop profile uses
+`%LOCALAPPDATA%\Sovra\Desktop\task-manager\state.txt`; CLI state files are left
+untouched. See the adapter README for dependencies and private-prototype limits.

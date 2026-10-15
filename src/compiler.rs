@@ -15,6 +15,7 @@ pub mod parser;
 pub mod project;
 pub mod semantic;
 pub mod stdlib;
+pub mod testing;
 pub mod text_files;
 
 const COMMANDS: &[&str] = &[

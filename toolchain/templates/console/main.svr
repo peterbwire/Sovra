@@ -1,3 +1,14 @@
+fn greeting() -> String {
+    return "Hello, Sovra!";
+}
+
 fn main() {
-    print("Hello, Sovra!");
+    print(greeting());
+}
+
+fn test_greeting() {
+    if greeting() != "Hello, Sovra!" {
+        print("unexpected greeting");
+        std::set_exit_code(1);
+    }
 }

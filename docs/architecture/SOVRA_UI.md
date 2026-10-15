@@ -1,10 +1,23 @@
 # Sovra UI architecture
 
-Status: **Partial private prototype** (2026-10-12). No public UI package,
+Status: **Partial private prototype** (updated 2026-10-15). No public UI package,
 renderer contract, language feature, or browser target is implemented. The
 Task Manager's Node-hosted GUI, `gui-list` stream and new `/ui` route are
 internal starting points, not this framework's public API. See
-[ADR 0023](../adr/0023-unified-ui-boundary.md).
+[ADR 0023](../adr/0023-unified-ui-boundary.md). A private Windows WPF desktop
+prototype is now the active implementation direction under
+[ADR 0029](../adr/0029-desktop-ui-prototype.md); implementation and desktop
+qualification must be established by its acceptance tests.
+
+Implemented private desktop slice (2026-10-15): `renderer.ps1` validates the
+existing view, builds WPF controls and invokes Sovra events. Native-control
+Add/Complete/Delete tests pass with both interpreter and compiled Task Manager;
+the unrelated message component also passes. A visible window smoke test passes
+and captures a rendered screenshot. The package includes a C# Windows launcher,
+the platform host and native Sovra application. Review caught and fixed silent
+startup failures, hidden nonzero event failures and literal-label mnemonic
+interpretation. Public API, richer layout/lifecycle, other platforms, full
+accessibility and clean Windows qualification remain pending.
 
 ## Goal and present boundary
 
@@ -18,9 +31,10 @@ arrays, local mutation and `if`/`while`. Local dependency packages can expose
 exported functions and records to an executable package. The interpreter runs
 IR. `build --emit js` emits a Node CommonJS program with Node process, input and
 file APIs; it is not a browser module and has no DOM binding. The CLI starts
-`main` and the host cannot call an arbitrary compiled function directly.
+`main`; the Rust tooling API can invoke a selected parameterless lowered
+function, but there is no published UI callback or component API.
 There are no closures, general callback/event types, browser runtime,
-native UI bridge, async scheduler or mobile toolchain. The project checker is
+public native UI bridge, async scheduler or mobile toolchain. The project checker is
 not a substitute for executable package compilation.
 
 Today `dogfood/01-task-manager/gui/bridge.mjs` compiles a Sovra program once and
@@ -42,8 +56,8 @@ Sovra application (.svr)
                  |
       versioned host transport / capability boundary
           /             |              \
-    web renderer    desktop adapter   mobile adapters
-    (first)          (later)           (Android/iOS later)
+    web renderer    desktop adapter        mobile adapters
+    (existing)      (private Windows)      (Android/iOS later)
 ```
 
 `UiTree` is a platform-neutral *concept*, not an existing Sovra type. A
@@ -93,12 +107,13 @@ renderer. It runs generated JavaScript through the existing bridge, with
 `svr run` parity tests. It does not require browser-executable JavaScript or
 new compiler syntax. A future browser-only target would require explicit
 runtime and capability work because generated code currently imports Node.
-Desktop may host the same web renderer in a system webview or implement a
-native widget adapter. Android and iOS may use a webview first or native
-adapters later. These are options, not selected implementations or release
-targets. All adapters must pass the same tree/event conformance fixtures and
-document platform-specific behavior such as focus, touch, back navigation and
-accessibility mapping.
+The private Windows desktop prototype selects native WPF controls through
+Windows PowerShell/.NET, as described below. A system webview or a different
+widget adapter remains a future option for a public desktop framework.
+Android and iOS may use a webview first or native adapters later; no mobile
+adapter or release target is selected. All adapters must pass the same
+tree/event conformance fixtures and document platform-specific behavior such
+as focus, touch, back navigation and accessibility mapping.
 
 Platform APIs are requested by named, versioned capabilities. An application
 declares what it needs; the host grants or rejects each capability and returns
@@ -176,6 +191,51 @@ the changed task persists and re-renders; malformed trees/events fail safely;
 the same event yields the same state and view in interpreter and generated
 JavaScript execution. Tests must run in CI and from an extracted candidate.
 
+## Private Windows desktop prototype
+
+The next concrete UI slice opens a desktop window rather than a browser or
+terminal. [ADR 0029](../adr/0029-desktop-ui-prototype.md) records the authorized
+private direction and its acceptance gates. Reusable WPF rendering functions
+live in `toolchain/ui/windows/renderer.ps1`; the adjacent `host.ps1` owns
+startup and application execution. This is an internal Windows adapter,
+not a published Sovra UI framework or a new compiler backend.
+
+The same `SVR-UI-1` heading/text/button/input stream drives native controls.
+The host asks the actual Sovra application for `ui-view STATE`, dispatches
+`ui-event STATE ACTION [VALUE]`, then reloads the view. Development can use
+the interpreter; a distributed desktop package uses the existing standalone
+application executable. Sovra chooses the interface text/actions, validates
+events and owns persistence. The WPF renderer owns generic layout, temporary
+input, focus, native controls and error display. It must contain no Task
+Manager command or task-file parsing branches.
+
+Views retain their 64 KiB/256-node bounds and must validate completely before
+rendering. Control labels and input remain literal data: the host must not
+generate PowerShell, command-shell source or XAML from them. Direct process
+execution must preserve quotes, backslashes, Unicode and argument boundaries.
+Events run serially with bounded process output/execution; errors remain
+visible and uncertain mutations are not retried automatically. WPF controls
+need accessible names and usable keyboard navigation. A full accessibility
+tree, live announcements and focus preservation remain qualification work
+because the private stream does not yet define those contracts.
+
+The first acceptance runs both `examples/ui-desktop/component.svr`, an
+unrelated component, and Task Manager through the same renderer. Native
+control events must execute real Sovra code, update the displayed view and
+preserve Task Manager changes across a restart. Test malformed views,
+application/startup failures, corrupt state, stale actions and argument
+transport as well as successful add/complete/delete. Preserve the browser
+and CLI regression suites. Only actual test evidence establishes implemented
+behavior; a decoder or empty window alone does not meet these gates.
+
+The platform dependency is Windows PowerShell plus WPF/.NET. The native
+application path needs no Node, Rust or installed Sovra compiler at runtime.
+Package the host, renderer, launcher and application together and document
+these dependencies; the CLI executable by itself supplies no desktop UI.
+Visible window testing and a clean Windows VM remain separate qualification
+steps. This work does not establish cross-platform desktop, mobile or browser
+execution, and a scrollable window does not remove the view-size limit.
+
 ## Errors, testing and build targets
 
 Distinguish compile/semantic errors, host transport errors, invalid UI trees,
@@ -193,9 +253,10 @@ accessibility and lifecycle tests.
 
 Proposed package layout after protocol approval: `packages/sovra-ui-core/` for
 Sovra component/data helpers, `packages/sovra-ui-web/` for the Node/web host,
-and adapter packages for desktop, Android and iOS only when implemented. During
-the private prototype, keep code under `dogfood/01-task-manager/gui/` plus a
-small reusable renderer module; avoid implying package publication.
+and adapter packages for desktop, Android and iOS only when implemented. The
+private web prototype remains under `dogfood/01-task-manager/gui/`; its Windows
+counterpart uses `toolchain/ui/windows/` and an unrelated example component.
+Neither location implies package publication.
 Potential build targets are `svr build --emit js` for the Node web host first,
 then explicitly designed browser, desktop and mobile targets. Today's CLI has
 no such targets, so no command names or target triples are reserved here.
@@ -209,3 +270,5 @@ syntax, callback/closure semantics, async model, memory/resource lifetime,
 browser runtime, native ABI, direct platform APIs or compatibility change also
 requires a separate approved ADR under `AGENTS.md`. The private prototype may
 use existing syntax and commands without making those decisions public.
+ADR 0029 records the user-authorized private Windows prototype; it does not
+approve the public protocol or a desktop build/distribution contract.

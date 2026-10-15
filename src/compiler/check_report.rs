@@ -232,7 +232,7 @@ fn push_receiver(output: &mut String, receiver: &crate::compiler::project::scope
     output.push_str("]}");
 }
 
-fn push_string(output: &mut String, value: &str) {
+pub(crate) fn push_string(output: &mut String, value: &str) {
     output.push('"');
     for character in value.chars() {
         match character {

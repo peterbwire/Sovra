@@ -5,6 +5,16 @@ current Rust implementation provides a compiler, interpreter, built-in standard
 library, local package linking, and a Node-targeted JavaScript backend. The
 canonical command is `svr` (`svr.exe` on Windows).
 
+**Active focus: Sovra UI powering the Task Manager in a desktop window.**
+The first private Windows renderer maps Sovra views and events to WPF native
+controls. Task rules and persistence stay in `.svr`; an unrelated component
+uses the same renderer. This adapter requires Windows PowerShell/.NET, with no
+Node, browser, Rust or Sovra installation needed by a packaged native app.
+See the [desktop adapter](toolchain/ui/windows/README.md) and
+[UI architecture](docs/architecture/SOVRA_UI.md) for tests and current limits.
+The standalone CLI executable alone does not include a window; a desktop
+package supplies a separate **Sovra UI.exe** launcher and renderer.
+
 **Version 1.0.0 is not yet approved for publication.** The version-one goal is
 a production-quality Task Manager CLI and a qualified installable toolchain.
 The Task Manager already supports interactive and scripted add/list/complete/
@@ -13,6 +23,8 @@ a Node host and Sovra-generated application code. Release qualification and a
 clean-machine installation test remain. See the
 [version-one gates](docs/V1_DELIVERY_GATES.md) and
 [Windows toolchain audit](docs/architecture/WINDOWS_TOOLCHAIN.md).
+The [implementation handoff](docs/V1_IMPLEMENTATION_HANDOFF.md) identifies the
+final local artifacts, verification evidence and remaining release gates.
 
 ## Try Sovra from source
 
@@ -37,9 +49,13 @@ See [native builds](docs/course/native-builds.md). For automation,
 `svr check --format json <path>` emits a versioned diagnostic report. See
 [automated checks](docs/guides/automated-checks.md) for its scope and exit codes.
 
-`svr new <path>` creates a console project. `svr test`, `svr fmt`, `svr install`
+`svr new <path>` creates a console project with a runnable test.
+`svr test [--format human|json] <source-or-package>` runs root-level Unit test
+functions; see [testing](docs/course/testing.md). `svr fmt`, `svr install`
 and `svr update` remain reserved. Local packages work without a registry; lockfiles,
 third-party publishing and a language server remain planned.
+The [developer tooling plan](docs/DEVELOPER_TOOLS.md) tracks reusable execution
+support and the proposed language test command.
 
 ## Windows developer toolchain
 

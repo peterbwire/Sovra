@@ -2,6 +2,7 @@
 
 mod executable;
 pub use executable::compile;
+pub(crate) use executable::{compile_with_root, root_symbol};
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
