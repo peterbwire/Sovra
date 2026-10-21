@@ -1,5 +1,81 @@
 # Full development status
 
+Project creation hardening (2026-10-21): `svr new` rollback tracks successful
+exclusive file creation and preserves interleaved main/manifest collisions and
+unrelated entries. Empty failed reservations are removed nonrecursively. This is
+failure cleanup, not a directory lock or transaction. The approved command is unchanged.
+
+Source formatter (2026-10-21): approved ADR 0032 is implemented for standalone
+files with comment/token/AST preservation and idempotence gates. Stdout/check modes
+do not modify source; guarded Windows writes are enabled. Non-Windows writes,
+imports/application syntax, directory traversal and repository-wide enforcement
+remain deferred. Real-application parity and installed checks are automated.
+Successful publication now disarms staging cleanup, preventing removal of a
+reused staging path. Failure cleanup and Windows attribute-change detection have
+regressions; the formatter runner includes 261 comment-placement cases.
+
+Toolchain doctor (2026-10-20): approved ADR 0031 is implemented with required and
+optional checks, bounded tool probes, installed integrity validation and human/JSON
+reports. It reuses runtime validation; interpreter mode does not require Node or
+Rust. Native linking remains explicitly unproven. Validation evidence is recorded
+in the development log; clean-host and hosted qualification remain separate.
+
+Indexed-expression recovery (2026-10-20): failed assignment-target probes no
+longer fall through to a second expression parse. Malformed index expressions
+and missing delimiters retain original errors; later statements are still checked.
+Valid reads/assignments and all language contracts remain unchanged.
+
+Nested parser recovery (2026-10-20): failed statements now recover inside their
+own block, preserving `else` branches and subsequent statements. Recovery stops
+at semicolons or unambiguous statement keywords, with a progress guard. Invalid
+source is still rejected by check/run/build; no grammar or runtime contract changed.
+
+Compiler recovery checkpoint (2026-10-20): declaration-level parser recovery now
+skips contiguous invalid tokens instead of reporting E2000 once per token. It
+retains module closing braces and later declaration boundaries so independent
+errors remain visible. Accepted syntax, diagnostic codes and compiler stage APIs
+are unchanged; any parser error still rejects the source.
+
+Desktop search/filter (2026-10-20): Sovra-owned title substring search combines
+with All/Open/Completed filters in the grouped Task Manager view. A validated
+private sidecar persists preferences without changing task format or task bytes.
+No compiler, renderer protocol or public language contracts changed.
+
+Task Manager editing (2026-10-20): private grouped desktop views expose Save
+fields. Sovra validates and persists renames while preserving ID/completion state.
+Escape cancels a focused draft locally. Existing flat browser and CLI interfaces
+remain unchanged; no compiler semantics or UI protocol extension was introduced.
+
+Desktop keyboard/accessibility (2026-10-20): unmodified Enter submits focused
+inputs with repeat/busy guards; Tab order follows the view. Repeated actions have
+contextual accessible names and status changes expose busy/results/errors, with
+polite live updates on supporting WPF hosts. Visible keyboard and automation
+activation tests through real Sovra pass. Headless checks are added to Windows CI;
+hosted execution and manual screen-reader qualification are not yet established.
+
+Grouped desktop layout (2026-10-20): private opt-in v2 views add generic card,
+vertical and wrapping-row groups. Task Manager supplies its own grouping from
+Sovra; existing flat view output is preserved. The same renderer serves an
+unrelated component and retains input state across group movement/orientation
+changes. Native/interpreter UI tests, two-engine view parity, browser regressions,
+nine dogfood slices, 18 native CLI cases and visible-window interaction pass.
+Public component/layout contracts remain proposed; see ADR 0030.
+
+Desktop responsiveness (2026-10-20): the private Windows host runs event work
+off the dispatcher thread, with visible busy state and one event per window.
+Forms disable while the window/scrolling remain active. Close waits for the
+current event and does not hide failures or automatically retry mutations.
+Native/interpreter event, dispatcher heartbeat, timeout, graceful-close and
+visible-window interaction tests pass. The public UI API and source-level async
+semantics remain unchanged/unimplemented.
+
+Desktop UI follow-up (2026-10-20): user reports the desktop app works. The next
+implemented slice preserves input drafts, text selection, focus and scroll during
+view updates, with keyed native-control reuse. Successful inputs clear their own
+field; rejected inputs retain text. Removed/changed controls cannot inherit old
+drafts. Regression and visible-window tests pass. Layout, responsiveness and
+public UI contracts remain subsequent work.
+
 ## Active Sovra UI checkpoint (2026-10-15)
 
 The user prioritizes a reusable UI framework powering Task Manager in a desktop
@@ -375,7 +451,7 @@ registry client or publisher yet; existing import checks do not provide them.
 4. Continue hardening control flow and structured data, with design records for
    syntax/type decisions and a reviewed memory-model decision before references
    and concurrency. Do not select a final memory model from scaffolding alone.
-5. Broader tooling beyond implemented new/run/build/test: formatter, REPL and additional test targets.
+5. Broader tooling beyond implemented new/run/build/test/doctor/fmt: package formatting, REPL and additional test targets.
 6. Stdlib, packages/lockfiles, LSP/VS Code and structured agent inspection.
 7. Benchmark infrastructure, interop/native/WASM targets, cross-platform releases.
 8. Application libraries, deployment integration and Nova workflows.

@@ -30,6 +30,7 @@ Open a new PowerShell window, then:
 
 ```powershell
 svr --version
+svr doctor
 powershell -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Programs\Sovra\verify-install.ps1"
 svr new .\hello
 svr check .\hello\main.svr
@@ -39,6 +40,7 @@ svr test .\hello
 
 `verify-install.ps1` is contained in the extracted package and uses a unique
 temporary project. It checks that PATH resolves the installed `svr.exe`, then
+validates installed integrity through `svr doctor`,
 creates, checks and runs the template, bundled local-package example and Task
 Manager CLI sample without
 the Sovra repository, Rust or Node. Pass `-Prefix <directory>` if you installed
@@ -50,8 +52,18 @@ The `samples/task-manager/main.svr` file is copied unchanged from the dogfood
 application; see its adjacent README for direct commands. Its browser GUI is
 not part of this Node-free compiler package.
 
+`svr doctor --target js|exe|desktop` checks the selected target's prerequisites;
+`--format json` produces a versioned report. Interpreter mode does not require
+Node or Rust. Doctor reports problems and remediation without installing tools,
+modifying projects or bypassing policy. Native linking and clean-machine support
+remain unproven until their separate acceptance tests pass. See
+`docs/reference/doctor-json.md` for output and probe limits.
+
 `svr new` refuses to overwrite an existing path. `svr-new.ps1` delegates to
-that command for older installation scripts. `install.ps1` uses
+that command for older installation scripts. Failed generation rolls back files
+it created, preserves colliding/unrelated files and only removes an empty reserved
+directory. It does not lock the directory against concurrent writers.
+`install.ps1` uses
 `%LOCALAPPDATA%\Programs\Sovra` and adds its `bin` directory to the current
 user's PATH. Use `-Prefix <directory>` for an alternate location. The installer
 validates the package before copying, stages files beside the final prefix,
@@ -60,8 +72,11 @@ manually before reinstalling. PowerShell's execution policy may require the expl
 `-ExecutionPolicy Bypass -File` invocation for `svr-new.ps1` as well.
 
 `svr test` runs root-level parameterless Unit test functions with human or JSON
-reports; the template includes a test. `svr fmt`, `svr install` and `svr update`
-are not implemented. `svr build` emits human-readable IR, Node JavaScript or a host-native
+reports; the template includes a test. `svr fmt [--check | --write] file.svr`
+formats standalone source without Node/Rust; Windows writes are guarded and atomic.
+Imports/application syntax are deferred; see `docs/reference/formatter.md`.
+`svr install` and `svr update` are not implemented.
+`svr build` emits human-readable IR, Node JavaScript or a host-native
 executable with `--emit exe --output app.exe`. Local dependency packages can be checked and run;
 registry publishing and lockfiles are not available.
 

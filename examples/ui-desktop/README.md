@@ -34,3 +34,10 @@ custom styling or asynchronous state. Standalone builds use the existing native
 build command and require the documented developer build tools. Windows desktop
 execution additionally requires the private PowerShell/WPF host; this source
 alone does not create a window.
+# Grouped desktop view
+
+The same component optionally supports `ui-layout-view STATE` and emits a private
+`SVR-UI-2` message card. `ui-view STATE` retains its existing flat output. Select
+`-ViewCommand ui-layout-view` in the development host to exercise grouped rendering.
+The generic renderer and event path are shared with Task Manager; this is not a
+published UI package or compatibility contract.

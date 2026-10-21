@@ -1,5 +1,437 @@
 # Development log
 
+## 2026-10-21: Preserve foreign files during project-creation rollback
+
+- Audited project creation and native publication cleanup after the formatter fix.
+  Reproduced a separate project-creation bug with a private post-reservation hook:
+  an interleaved main.svr/sovra.toml create_new collision fails generation, then
+  unconditional rollback deletes the other writer's file. The regression failed
+  with the foreign file/directory missing before the fix.
+- Record each successful exclusive file creation before writing its content.
+  On failure, remove only recorded template files, then try nonrecursive directory
+  removal. Failed exclusive reservations and unrelated entries remain untouched.
+  This does not provide locking or filesystem transactions against path replacement.
+- Regressions cover both template collision points, rollback of the completed
+  main file on manifest collision, and failures before writes with empty versus
+  foreign-populated reserved directories. No public command, naming, template,
+  language or runtime compatibility changes.
+- Native publication uses no-overwrite hard linking and owns a separate staging
+  directory; no equivalent output-path cleanup defect was confirmed in that audit.
+- Validation: all 461 Rust tests passed (405 library, 55 CLI, one example) with
+  CLI execution required. Rustfmt check, strict all-target/all-feature Clippy,
+  documentation tests and diff whitespace checks passed. The initial collision
+  regression failed before the fix and both collision points pass afterward.
+- Optimized build and exact archive installation passed: installed create/check/
+  run/test/fmt and Task Manager operations execute without Node/Rust on PATH.
+  Packaged doctor integrity, tamper/missing/extra/unsafe/duplicate and relocation
+  checks passed. Retained fix: `target/toolchain/project-rollback-v1/sovra-windows.zip`.
+  SHA-256: `e824090b155bb708d09a0905e3738926aaff618fe9869f5c4c077a300c98b5da`.
+  `verification.json` beside it records actual local checks. Previous artifacts
+  remain retained for provenance. MSVC execution, hosted and clean-VM qualification
+  remain pending; this does not approve publication.
+
+## 2026-10-21: Fix formatter cleanup after atomic publication
+
+- Reviewed the approved formatter filesystem contract and preserved all existing
+  work. A new regression reproduced a successful-publication cleanup bug: if the
+  old staging name is reused before the guard drops, unconditional removal deletes
+  the other writer's new file. The regression failed with the reused file missing.
+- The private staging guard now disarms removal immediately after successful
+  rename. Failed publication still cleans owned staging files and preserves the
+  destination. The regression covers both successful path reuse and failed rename
+  to a directory. No public CLI, syntax, runtime or compatibility rule changed.
+- Added a real Windows hidden-attribute change regression: the existing snapshot
+  comparison already detects it and rejects replacement; no metadata behavior
+  change was needed. It restores the fixture's attributes before cleanup.
+- Promoted a 261-case comment-placement audit to the automated formatter runner:
+  trailing, standalone and blank-separated comments at every token boundary of
+  a record/function/control-flow program must format without source mutation.
+- Validation: all 459 Rust tests passed (403 library, 55 CLI, one example) with
+  CLI execution required. The final failure-publication branch also passed its
+  focused rerun. Rustfmt check, strict Clippy and documentation tests passed.
+  Formatter corpus passed eight real programs in both engines plus all 261
+  comment placements, fixed-point/resource checks and persisted event comparisons.
+  The optimized compiler also passed the same expanded formatter corpus and all
+  139 depth cases; the depth report hash matches the packaged compiler.
+- Retained fix: `target/toolchain/formatter-v2/sovra-windows.zip`. Exact archive
+  installation, restricted-PATH create/check/run/test/fmt and Task Manager checks
+  passed, as did packaged doctor integrity/corruption checks. SHA-256:
+  `4b49f04a58207e04f5c601928a4c71107d1d57feadee976921ee3737c413f33e`.
+  `verification.json` beside the ZIP records the actual checks. Earlier v1 remains
+  retained for provenance; use v2 for the cleanup fix. MSVC, hosted, clean-VM and
+  Windows file-symlink execution qualification remain pending. No publication claimed.
+
+## 2026-10-21: Extend exact-compiler structural-depth qualification
+
+- Continued release qualification after formatter acceptance. Attempted the full
+  current suite with installed `stable-x86_64-pc-windows-msvc`, a separate
+  `target/msvc-qualification` Cargo directory and required CLI execution. Linking
+  failed because `link.exe` is unavailable. The Visual Studio C++ installation
+  locator is also absent. No MSVC test execution or passing result is claimed.
+- Added fmt stdout/check to the existing excessive-depth CLI regression: all nine
+  expression/block shapes must return E2007, emit no source and preserve input.
+  This focused test passed under Windows GNU with actual subprocess execution.
+- Extended the reusable depth probe to fmt and formatted-output fixed points.
+  Reports now include compiler SHA-256, enforced-limit status, total/failure counts
+  and full per-case results; CI uploads them for each supported OS.
+- Optimized GNU compiler passed all 139 depth cases. Its hash matches the compiler
+  in the retained formatter-v1 toolchain exactly:
+  `da154bb0b23735682b8cdbd3387b87c53e253e499227ec8fddcb72bdb0847406`.
+  Evidence: `target/depth-probe/results-release.json`. No executable source changed,
+  so the existing ZIP remains the tested artifact; no redundant rebuild performed.
+- Rustfmt check, strict all-target/all-feature Clippy and diff whitespace checks
+  passed. No syntax, runtime, public CLI compatibility or depth limit changed.
+- Next: collect MSVC execution on a host with its C++ linker available, hosted
+  artifact evidence and clean-VM qualification. GNU success does not clear those gates.
+
+## 2026-10-21: Implement approved ADR 0032 source formatter
+
+- User approved stdout/check/write command, style, first-slice scope, resource
+  limits and write contract. Added a private Rust formatter without changing
+  compiler stage APIs, language syntax, type semantics or runtime behavior.
+- Retained lexer token slices and source comments drive AST-guided layout.
+  Every mode validates exact token spelling/order, comment content/attachment,
+  AST equivalence ignoring spans, and idempotence. Formatting does not check types
+  or execute source; imports and application syntax fail explicitly.
+- Input/output limits are 1/4 MiB. Windows writes use a bounded snapshot, ordinary
+  permission checks, same-parent owned staging, flush/sync/close, source recheck
+  and atomic rename. Added injected failure/concurrent-edit/noop/readonly tests.
+  Conflict detection is best effort, not a filesystem lock or exact ACL guarantee.
+- Write mode is enabled only on Windows pending Unix qualification; Unix helper
+  tests are retained for hosted runs. Local Windows file-symlink fixture creation
+  required administrator privileges, so actual file-symlink execution is unverified
+  here; production guards reject links/reparse metadata. No privilege bypass used.
+- CLI tests cover stdout/check/write, invalid source/UTF-8/imports, options, dashed
+  filenames, type-invalid syntax, and proof that formatting does not execute code.
+  Corpus runner formats eight temporary copies, including Task Manager and the
+  unrelated UI component, comparing both engines and persisted events. Input and
+  output budget failures produce no source output or mutation.
+- Updated installation verification and CI, reference, main-repository course,
+  command documentation and status. No repository-wide source formatting applied.
+  A former reserved-command test was updated for the now-implemented fmt contract.
+- Validation: 457 Rust tests passed (401 library, 55 CLI, one example), with actual
+  CLI execution required. Rustfmt check, strict Clippy and documentation tests
+  passed. All nine dogfood slices and both grouped UI parity applications passed.
+  Formatter corpus passed eight real programs in both engines, fixed-point checks,
+  input/output budgets and persisted event comparisons. A transient Windows binary
+  lock during concurrent rebuild/application execution was resolved by sequencing
+  those checks; no test or OS policy was weakened.
+- Next: qualify the rebuilt exact Windows ZIP, then collect hosted/clean-VM and
+  privileged Windows file-link evidence. Extend imports only through a shared
+  validated parse path; qualify non-Windows replacement before enabling writes.
+
+### Retained formatter Windows distribution
+
+- Release build and release-compiler formatter corpus passed. Exact archive
+  `target/toolchain/formatter-v1/sovra-windows.zip` passed checksum/member and
+  installation tests, including restricted-PATH create/check/run/test/format and
+  Task Manager operations with no Node/Rust on PATH. Package doctor corruption,
+  missing/extra files, duplicate/unsafe entries and relocation checks also passed.
+- SHA-256: `26a82be220867bb1af3520758cb9ab3ed12daccb5ab0ee19060d4f2105c323c6`.
+  The package excludes the course, which remains in the main repository.
+  This is local Windows evidence, not hosted CI or clean-VM qualification.
+- The packaged runtime source also built `target/toolchain/formatter-v1/hello.exe`
+  through public `svr build --emit exe`; it printed `Hello, Sovra!` with developer
+  tools absent from PATH. `verification.json` beside the ZIP records these local
+  checks and explicitly leaves clean-machine/hosted/file-symlink qualification false.
+
+## 2026-10-21: Finish the source formatter proposal
+
+- Inspected reserved fmt handling, lexer comment/whitespace removal, executable
+  grammar and separate package-import path. AST-only regeneration cannot preserve
+  comments or all original token spelling; no compiler API replacement is proposed.
+- Added ADR 0032 with exact stdout/check/write modes, fixed style, limited standalone
+  scope, resource limits, comment/token/AST/idempotence gates and reviewed write
+  behavior. Imports/application syntax remain explicitly unsupported in this first
+  proposal. Concurrent replacement is a best-effort guard, not a locking promise.
+- Proposal only: no CLI registration, source rewrites or implementation claims.
+  git diff --check validates the documentation change; compiler tests need no rerun.
+- Next: approval of the concrete public CLI/style/write contract, then a pure
+  retained-trivia formatter engine and focused valid/invalid/preservation tests.
+
+## 2026-10-20: Implement approved toolchain doctor
+
+- User approved ADR 0031. Added doctor command/options, target-specific required
+  checks, human and schema-1 JSON reports, fixed check ordering and exit codes
+  0/1/2. Captured in-memory parse/check/lower/interpreter self-test exercises
+  ordinary language features; no application-specific behavior was introduced.
+- Reused native runtime discovery/validation through a private shared helper.
+  Installed bin copies cannot fall back to the builder checkout. Standard source
+  builds explicitly report installed integrity not_checked; relocated bare copies
+  fail. Added bounded Rust integrity validation matching the package inventory,
+  with safe paths, duplicate rejection, hash/required-file checks and no reparse
+  points or links. Existing installer verification remains independent.
+- Tool probes use explicit executable/argument vectors, hidden Windows launches,
+  five-second deadlines and 64 KiB combined captures. Private temporary files
+  avoid stranded pipe-reader threads; output-size polling can overshoot on disk,
+  and cleanup failures are reported. Probes isolate working directories, disable
+  automatic Rustup installation/Cargo networking and remove Node startup/coverage
+  hooks. Parent environment/project/installation files are unchanged. Evidence
+  exposes only validated numeric tool versions, never arbitrary child chatter.
+- Native linker readiness is explicitly unproven; desktop checks load WPF in STA
+  without opening a window. No repairs, user-program execution, builds or policy bypass
+  are performed by doctor. These checks do not replace deployment qualification.
+- 395 library tests, 54 CLI tests and one native-builder test pass (450 total),
+  including corruption, invalid paths/Unicode/JSON, target requirements, version
+  parsing, option validation, timeout/overflow, child environment and JSON ranges.
+  CLI execution was required. Doc tests, rustfmt, strict Clippy, all nine dogfood
+  slices and grouped UI parity pass. Actual interpreter/js/exe/desktop doctor
+  targets pass on this host. Installed-package evidence is recorded below.
+- Updated spec, CLI help, report reference, course (repository-only), architecture,
+  roadmap, upgrade flow, README, changelog and installation checks. Added Windows
+  CI acceptance for damaged, missing/extra, unsafe/duplicate, junction and bare-EXE
+  packages. Hosted CI execution is not claimed.
+- Next: retain clean-VM qualification as a separate release gate; implement future
+  developer tools only after their public compatibility contracts are reviewed.
+
+Doctor installation follow-up: the first exact-archive test exposed an existing
+installer omission: integrity.json listed install.ps1, but installation did not
+copy it. The installed doctor correctly failed its inventory check. A focused
+installed-manifest regression fails on the retained doctor-v1 ZIP with the omitted
+filename. Fixed the installer to preserve that file instead of weakening integrity
+checks. The updated archive and installed/corruption acceptance are tracked below.
+The installed runtime snapshot also successfully builds a standalone Hello app;
+the result runs with Node/Rust/Sovra tools removed from PATH.
+
+Final doctor-v2 archive passes complete installation, installed-manifest inventory,
+restricted-PATH doctor and create/check/run/test/Task Manager acceptance. The
+packaged-doctor fixture passes healthy state and rejects changed/missing/extra
+files, missing manifest, traversal/duplicate entries, a real Windows junction and
+a relocated bare EXE, then restores a healthy result. The compiler EXE and runtime
+payload manifest are byte-identical to the successful native-build proof above.
+Artifact: target/toolchain/doctor-v2/sovra-windows.zip
+SHA-256: 0c7ed458b6b3462e53f52fe1119a717a7ae9596bb472ff5d0c1cb5f8914b02dc.
+Doctor-v1 is retained as the installer-omission reproducer, not the recommended
+distribution. Final git diff --check passes. Clean-VM and hosted CI evidence remain
+outstanding; current checks establish local Windows behavior only.
+
+## 2026-10-20: Propose toolchain doctor contract
+
+- Inspected CLI command registration/help, native runtime discovery/validation,
+  installer integrity checks and installed/restricted-PATH acceptance scripts.
+  Existing mechanisms remain implemented; doctor is not registered or implemented.
+- Added ADR 0031 with a concrete read-only command, interpreter/js/exe/desktop
+  requirements, explicit unknown-linker evidence, bounded probes, JSON schema,
+  exit codes and validation milestones. Missing optional tools must not break
+  interpreter use. Finding prerequisites does not certify linking or deployment.
+- Public CLI/schema compatibility needs approval under AGENTS.md. No source code,
+  installed toolchain, syntax or runtime contract changed. Documentation-only
+  validation uses git diff --check; compiler tests need no rerun for this proposal.
+- Next after approval: private check/report model and bounded probe runner, then
+  shared validators, real probes, CLI and exact installed-package acceptance.
+
+## 2026-10-20: Avoid duplicate malformed-index diagnostics
+
+- Reproduced duplicate E2001 reports for an empty indexed statement before the
+  fix. Assignment-target probing could diagnose a malformed index, then fall
+  through to ordinary expression parsing and report the same fault again.
+- A failed probe that reports errors now returns to statement recovery instead
+  of reparsing. The depth-limit failure path is preserved. Clean probes continue
+  supporting indexed reads, binary expressions and assignments unchanged.
+- Added parser valid/invalid regressions and a JSON CLI fixture covering missing
+  index expressions, missing closing delimiters and a later independent error,
+  with original source ranges and stable E2001/E2005 codes. No grammar, runtime,
+  type, stage API or diagnostic schema changed.
+- 383 library tests, 52 CLI tests and one native-builder test pass (436 total).
+  Doc-test stage, formatting and strict all-target/all-feature Clippy pass;
+  CLI execution was required, so policy-based skips were disabled. Updated spec,
+  JSON reference, course, status and changelog. All nine dogfood slices and
+  interpreter/JavaScript grouped UI parity pass.
+- Optimized svr.exe builds; packaged compiler verifies the new index fixture,
+  rejects invalid execution and checks Task Manager. Archive integrity/install,
+  restricted-PATH project creation/check/run, self-test and Task Manager acceptance
+  pass. Artifact: target/toolchain/index-recovery-v1/sovra-windows.zip
+  SHA-256: 54471d7bc91a4a5a49d77b84ae6d06c028ccd15eb9ea68e536b93c84e5b7598f.
+  Clean-VM and hosted release qualification remain pending.
+- Next: broaden malformed-call/constructor diagnostic recovery coverage while
+  preserving the accepted grammar and compiler stage boundaries.
+
+## 2026-10-20: Preserve nested statements during parser recovery
+
+- Reproduced two failures before fixing them: malformed statements escaped an
+  if-block and lost its else branch; missing initializers swallowed subsequent
+  statement keywords. Nested blocks now recover locally, retaining closing braces,
+  and synchronization preserves let/return/if/while with an explicit progress guard.
+- Added focused parser regressions and a CLI fixture checking four original E2001
+  ranges across both branches and a following statement. CLI run/build reject the
+  entire invalid program with no executable output. No syntax, type, runtime,
+  compiler-stage API or diagnostic-code compatibility changes were introduced.
+- Full tests pass: 381 library, 51 CLI, one native-builder test (433 total), plus
+  the doc-test stage. CLI execution was required, disabling policy-based skips.
+  Formatting and strict all-target/all-feature Clippy pass. Updated spec, JSON
+  reference, course, README, status and changelog. All nine dogfood application
+  slices and interpreter/JavaScript grouped UI parity pass.
+- Release svr.exe builds and the packaged optimized compiler verifies all four
+  nested error ranges and rejects invalid-program execution. Windows archive
+  integrity/install, restricted-PATH package self-test, create/check/run and Task
+  Manager acceptance pass. Artifact:
+  target/toolchain/statement-recovery-v1/sovra-windows.zip
+  SHA-256: 376642fd74b262d42684f69ddd3af021f6860106535313be0a22573156501bed.
+  These local checks do not establish clean-VM or hosted release qualification.
+- Next: diagnostics for malformed expressions without widening accepted syntax;
+  clean-machine and hosted release qualification remain separate gates.
+
+## 2026-10-20: Compiler declaration-error recovery
+
+- Reproduced per-token E2000 floods with focused failing parser regressions.
+  Added declaration synchronization at top level and inside modules, preserving
+  declaration starts and module closing braces. Later independent syntax errors
+  retain their original ranges; invalid source still cannot compile or execute.
+- Added CLI JSON regression for recovery across a module and malformed function,
+  with stable E2000/E2001 codes and original source locations. No accepted syntax,
+  type/runtime semantics, public compiler APIs or JSON schema changed.
+- Full Windows validation passes: 379 library tests, 50 CLI tests, one native
+  builder test; zero failures. Doc-test stage, rustfmt and strict all-target/all-
+  feature Clippy pass. Focused CLI JSON execution also verifies recovery output.
+- Updated specification, check-JSON reference, course, development status and
+  changelog. Built target/release/svr.exe and a matching Windows toolchain ZIP.
+- Package integrity/installation, restricted-PATH self-test, project creation,
+  check/run and Task Manager acceptance pass. Packaged optimized svr.exe also
+  passes the recovery fixture, checks the current Task Manager and runs Hello.
+  Artifact: target/toolchain/compiler-recovery-v1/sovra-windows.zip
+  SHA-256: aa14a4c7c4cdf5e6a76c85a36e86c3824a7a1bb3515c103018942da9270f1a14.
+  These are local Windows checks, not clean-VM/hosted release qualification.
+- Next: improve statement-level recovery without changing the approved grammar;
+  retain clean-VM and hosted release qualification as separate gates.
+
+## 2026-10-20: Sovra-owned desktop search and status filters
+
+- Added All/Open/Completed and submitted case-sensitive title substring search
+  through existing generic input/button nodes. Clear search retains the status
+  filter. Matching and preference validation execute in Sovra, with no renderer
+  business rules, compiler changes or public UI protocol additions.
+- Private SVR-TASK-VIEW-1 preferences live at <task-path>.view, separate from task
+  bytes. They persist across restarts and are shared per path. Malformed or
+  unreadable preferences fail without overwriting; flat browser/CLI stay independent.
+  Controls hidden by filtering follow existing removal/draft-discard behavior.
+- Interpreter/JavaScript parity covers combined filtering, literal/case-sensitive
+  search, clear, status selection, rejected query/value and corrupt preferences.
+  Native/interpreter desktop controls verify matching, clear, unrelated drafts
+  and unchanged task bytes. Existing browser tests and 18 native CLI cases pass.
+- Exact extracted package passes layout/filter controls, visible keyboard and
+  automation checks, archive safety/integrity verification and git diff --check.
+  Hosted CI and clean-machine/manual screen-reader qualification remain pending.
+- Package: target/desktop-ui/filtering-v1/sovra-task-manager.zip
+  SHA-256: 8176ebe43d3214ada31eb3cfa5f4944a3b38c446a9b031d9390f81ea75cedc60.
+- Next: reusable confirmation dialogs and recovery flows; public UI contracts
+  still require review before publication.
+
+## 2026-10-20: Task Manager desktop editing
+
+- Added ordinary Sovra rename validation/persistence and grouped-view Save fields.
+  IDs, completion flags and next ID survive edits. Empty, duplicate, multiline,
+  terminal-control and missing-task edits fail without changing stored bytes.
+- Generic unmodified Escape clears a focused local draft without an event or
+  persistence. Save uses existing input events; failures retain drafts. Editors
+  are replacement-title fields, not prefilled modal forms. Flat views stay intact.
+- Interpreter/JavaScript edit and rejection parity, native control editing,
+  completion preservation, all 18 native CLI cases and existing browser/component
+  regressions pass. Extracted-package visible Escape/Enter/Tab/focus/automation
+  checks and package integrity validation pass. No Rust/compiler changes made.
+- Package: target/desktop-ui/editing-v1/sovra-task-manager.zip
+  SHA-256: 5bfa2b74fe1eb46d1db2d16cb2d37ca2553f067dab3222c3fcb3123a95f0c7b4.
+- Next: Sovra-owned search/filter state and reusable richer forms; manual desktop
+  accessibility/clean-host qualification remains outstanding.
+
+## 2026-10-20: Desktop keyboard and accessibility defaults
+
+- Added a regression reproducing indistinguishable repeated action names, then
+  generic contextual names derived from Sovra view text. No application-specific
+  renderer rules or language/public UI contract changes were introduced.
+- Inputs submit on unmodified Enter, reject repeats/overlapping work and preserve
+  existing draft/focus behavior. Explicit forward/reverse Tab order follows the
+  view. Status names update for busy/results/errors; supported WPF hosts receive
+  polite live-region events without raising the required platform API baseline.
+- Interpreter control regressions, grouped-layout and responsiveness checks pass.
+  The extracted native package passes visible Enter, Tab/reverse Tab, focus,
+  contextual naming, status and automation activation tests through real Sovra.
+  Added headless accessibility checks to Windows CI; hosted execution is pending.
+- ZIP integrity/member checks and git diff --check pass. Retained package:
+  target/desktop-ui/keyboard-v1/sovra-task-manager.zip
+  SHA-256: 3ed671bec943d2a04d052940a1b7728e78852a55d20bd072444bfa23c8407aa0.
+- Next: manual screen-reader, high-contrast/DPI and clean-host qualification;
+  request approval before publishing a stable accessibility/UI metadata contract.
+
+## 2026-10-20: Add opt-in Sovra-owned grouped desktop layouts
+
+- Preserved ui-view/SVR-UI-1 output and added private ui-layout-view/SVR-UI-2
+  under ADR 0030. Desktop profiles explicitly opt in. No compiler syntax,
+  type semantics, public UI ABI or old browser command behavior changed.
+- Sovra now emits Task Manager's input/task-list cards and one horizontal row
+  per task. The generic host maps bounded groups to native stacks, wrapping
+  panels and borders. An unrelated message component uses the same mechanism.
+- Validate matching group boundaries, unique keys/actions, known properties,
+  eight nesting levels, 256 primitive nodes, 256 groups/768 records and 64 KiB.
+  Action duplication is now rejected during parsing before event dispatch.
+  Group markers do not consume the existing primitive-control capacity.
+- Reconcile stateful controls across parent/orientation changes; tests verify
+  retained drafts/selection and native action placement. Malformed layout
+  prevents ui-event mutation. The worker carries explicit view-command data.
+- Validation passed: grouped and flat desktop conformance; interpreter/JS view
+  and persistence parity for both components; existing browser GUI/component
+  checks; all nine dogfood slices; 18 native Task Manager parity cases; actual
+  grouped-window Add/Complete/Delete with draft/focus/scroll preservation.
+- Rebuilt the native Task Manager from current source and verified the exact
+  grouped desktop ZIP checksum, member safety and complete integrity list.
+  Retained package: target/desktop-ui/grouped-v1/sovra-task-manager.zip.
+  SHA-256: 8f8847f83756ac81aab24c50a1a30d1557436396aaf855f47077c40723b23b23.
+  Extract all files and open Sovra UI.exe; existing task storage remains compatible.
+- Added Windows grouped-layout and all-host two-engine parity CI steps. Local
+  evidence is not hosted, accessibility or minimum-Windows qualification.
+- Next: keyboard/accessibility and lifecycle hardening, then review a typed
+  public component/layout package contract before publishing the prototype.
+
+## 2026-10-20: Keep the desktop window responsive during Sovra operations
+
+- Reproduced application work blocking the dispatcher with a slow real Sovra
+  event before the fix. Native clicks now start an isolated PowerShell worker;
+  only data crosses the boundary and native controls remain dispatcher-owned.
+- Added busy status, disabled forms, per-window single-flight rejection and
+  dispatcher-timer completion. Preserve drafts/focus/scroll after async updates,
+  including scroll changes while the worker runs. No queued or automatic retries.
+- Close waits for an in-flight event once and closes on success. Failure/timeout
+  keeps the error visible. Resources are disposed on completion; worker startup
+  failures restore enabled UI. Initial pre-window view loading remains synchronous.
+- Tests pass for source/interpreter and packaged native Task Manager plus the
+  unrelated component; dispatcher heartbeat, overlapping events, startup failure,
+  timeout cleanup, graceful close, exactly-once persistence and interaction state.
+  The actual visible native-window Add/Complete/Delete regression also passes.
+- Builder/manifest verification and Windows CI now include the worker and
+  responsiveness regression. No compiler, source-level async, callback, memory
+  semantics, private wire grammar or public UI compatibility rules changed.
+- Retained package: target/desktop-ui/responsive-v1/sovra-task-manager.zip.
+  SHA-256: 2b6aa2c46cab3c15f84af6b6e19a254e5cc99eb089204b5b238ebd1b7069838e.
+  Extract all files and open Sovra UI.exe; existing application/state paths remain.
+- Next: grouped component layouts; public component/lifecycle contracts still
+  need concrete review. Hosted and clean Windows/accessibility qualification
+  remain separate from these local tests.
+
+## 2026-10-20: Preserve desktop UI interaction across Sovra events
+
+- User reports the desktop app works and requests the next UI improvements.
+  Reproduced completing an existing task erasing an unrelated unfinished draft
+  with a real Sovra/native-control regression before fixing it.
+- Reconcile native action controls by private action ID plus node kind instead
+  of clearing the panel. Preserve drafts and selection for retained fields,
+  restore keyboard focus/scroll, and recover focus to the first input when its
+  action disappears. Reject duplicate action IDs before mutating the tree.
+- Clear only a successfully submitted input. Preserve rejected input and never
+  transfer drafts to another kind or resurrect drafts after a field is removed.
+  This is a private renderer change: no new wire grammar, compiler semantics,
+  public UI API or app-specific host logic.
+- Validation: source/interpreter and packaged native desktop conformance pass,
+  including Task Manager, unrelated component, silent failures, malformed views,
+  bounds/timeouts, stale actions, kind changes and removed-field tests. Actual
+  visible-window Add/Complete/Delete preserves draft/selection/focus/scroll.
+  ZIP checksum/member/integrity verification passes before native tests.
+- Updated package: target/desktop-ui/interaction-v1/sovra-task-manager.zip.
+  SHA-256: cad224e54894b4d6f6ad020cda1c536cc2ebc94e6611e34e82acbede9686c19b.
+  Extract all files and open Sovra UI.exe; existing profile/state paths remain
+  unchanged. This functional feedback does not establish a minimum Windows
+  deployment contract or full screen-reader/high-contrast qualification.
+- Next: component grouping/layout and nonblocking host operations, with explicit
+  review before expanding the private protocol into a public UI contract.
+
 ## 2026-10-14: Implement approved language testing (ADR 0028)
 
 - Implemented `svr test [--format human|json] SOURCE_OR_PACKAGE`: full preflight,

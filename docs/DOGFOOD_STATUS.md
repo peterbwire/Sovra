@@ -1,5 +1,20 @@
 # Dogfood application status
 
+Task Manager search/filter checkpoint (2026-10-20): grouped views use ordinary
+inputs/buttons for Sovra-owned matching and persisted private view preferences.
+The reusable host renders these controls without application-specific branches.
+Case-sensitive search, combined status filtering and clear-search leave task bytes
+intact; malformed preferences fail closed. Hidden editors discard drafts according
+to existing control-removal rules. Flat browser/CLI interfaces remain independent.
+
+Desktop editing checkpoint (2026-10-20): Task Manager's opt-in grouped view now
+provides Save fields using ordinary Sovra rename actions. Validation and storage
+remain Sovra-owned; IDs/completion status survive edits. Escape cancels a local
+draft without persistence. Two-engine rejection/parity, native editing and visible
+packaged keyboard tests pass alongside browser and 18 native CLI regressions.
+Reusable capability: generic renderer input submission, failed-draft retention and
+Escape cancellation; public UI packaging and clean-host qualification remain open.
+
 Current UI checkpoint (2026-10-15): the user prioritizes Sovra UI in a desktop
 window for Task Manager. A private Windows WPF renderer now builds native
 controls from the same Sovra view/event code, with real-control event and

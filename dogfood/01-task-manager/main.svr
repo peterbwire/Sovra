@@ -3,6 +3,27 @@ struct Task { id: Int, title: String, done: Bool }
 struct Tasks { rows: String, next_id: Int }
 struct Loaded { ok: Bool, tasks: Tasks }
 struct ParsedTask { ok: Bool, task: Task }
+struct ViewOptions { ok: Bool, mode: String, query: String }
+
+// Private application preferences are separate from the durable task format.
+fn view_options(path: String) -> ViewOptions {
+    let file = std::read_text(path + ".view");
+    if file.ok == false {
+        return ViewOptions { ok: file.error == "not_found", mode: "all", query: "" };
+    }
+    let header = std::split_once(file.text, "\n");
+    let mode = std::split_once(header.after, "\n");
+    let valid = header.before == "SVR-TASK-VIEW-1" && header.found && mode.found &&
+        (mode.before == "all" || mode.before == "open" || mode.before == "completed") &&
+        std::escape_terminal(mode.after) == mode.after && title_has_line_break(mode.after) == false;
+    return ViewOptions { ok: valid, mode: mode.before, query: mode.after };
+}
+fn matches_view(task: Task, options: ViewOptions) -> Bool {
+    if options.mode == "open" && task.done { return false; }
+    if options.mode == "completed" && task.done == false { return false; }
+    if options.query == "" { return true; }
+    return std::split_once(task.title, options.query).found;
+}
 
 fn fail(message: String) {
     std::set_exit_code(1);
@@ -97,6 +118,25 @@ fn complete(tasks: Tasks, id: Int, announce: Bool) -> Tasks {
     if (announce) { print("completed " + std::to_string(id)); }
     return replace(tasks, id, true, false);
 }
+fn rename(tasks: Tasks, id: Int, title: String) -> Tasks {
+    if title == "" { fail("error: empty title"); return tasks; }
+    if title_has_line_break(title) { fail("error: title contains a line break"); return tasks; }
+    if (std::escape_terminal(title) != title) {
+        fail("error: title contains terminal control"); return tasks;
+    }
+    let existing = find_title(tasks, title);
+    if (existing.id != 0 && existing.id != id) { fail("error: duplicate title"); return tasks; }
+    let mut rest = tasks.rows;
+    let mut rows = "";
+    while rest != "" {
+        let line = std::split_once(rest, "\n");
+        let task = parse_row(line.before, false).task;
+        if (task.id == id) { rows = rows + row(Task { id: id, title: title, done: task.done }); }
+        else { rows = rows + row(task); }
+        rest = line.after;
+    }
+    return Tasks { rows: rows, next_id: tasks.next_id };
+}
 fn remove(tasks: Tasks, id: Int, announce: Bool) -> Tasks {
     if find_id(tasks, id).id == 0 {
         fail("error: missing " + std::to_string(id)); return tasks;
@@ -134,8 +174,8 @@ fn gui_list(tasks: Tasks) {
     }
 }
 // Private UI component stream. The host renders nodes, not task rules.
-fn ui_view(tasks: Tasks) {
-    print("SVR-UI-1");
+fn ui_view(tasks: Tasks, grouped: Bool, options: ViewOptions) {
+    if (grouped) { print("SVR-UI-2"); } else { print("SVR-UI-1"); }
     print("heading|Sovra Task Manager");
     let mut rest = tasks.rows;
     let mut count = 0;
@@ -147,21 +187,51 @@ fn ui_view(tasks: Tasks) {
     let mut noun = "tasks";
     if (count == 1) { noun = "task"; }
     print("text|" + std::to_string(count) + " " + noun + " saved locally");
+    if (grouped) { print("group|add-task|vertical|card"); }
     print("input|add|Task title|Add");
+    if (grouped) {
+        print("end|add-task");
+        print("group|task-list|vertical|card");
+    }
     if count == 0 { print("text|No tasks yet."); }
     rest = tasks.rows;
+    let mut shown = 0;
     while rest != "" {
         let line = std::split_once(rest, "\n");
         let parsed = parse_row(line.before, false);
+        if grouped == false || matches_view(parsed.task, options) {
+        shown = shown + 1;
         let mut status = "Open";
         if parsed.task.done { status = "Done"; }
+        if (grouped) { print("group|task-" + std::to_string(parsed.task.id) + "|horizontal|plain"); }
         print("text|" + status + " #" + std::to_string(parsed.task.id) + " - " +
               std::escape_terminal(parsed.task.title));
         if parsed.task.done == false {
             print("button|complete-" + std::to_string(parsed.task.id) + "|Complete");
         }
         print("button|delete-" + std::to_string(parsed.task.id) + "|Delete");
+        if (grouped) { print("end|task-" + std::to_string(parsed.task.id)); }
+        if (grouped) {
+            print("input|rename-" + std::to_string(parsed.task.id) + "|New title for task #" +
+                  std::to_string(parsed.task.id) + " (Escape cancels draft)|Save");
+        }
+        }
         rest = line.after;
+    }
+    if (grouped) {
+        if shown == 0 && count > 0 { print("text|No matching tasks."); }
+        print("end|task-list");
+        print("group|view-options|vertical|card");
+        print("text|Showing " + std::to_string(shown) + " of " + std::to_string(count) +
+              " tasks; filter: " + options.mode + "; search: " + options.query);
+        print("input|search|Search titles (case-sensitive)|Search");
+        print("group|filters|horizontal|plain");
+        print("button|filter-all|All");
+        print("button|filter-open|Open");
+        print("button|filter-completed|Completed");
+        print("button|clear-search|Clear search");
+        print("end|filters");
+        print("end|view-options");
     }
 }
 fn encode(tasks: Tasks) -> String {
@@ -305,14 +375,55 @@ fn one_shot(command: String, path: String, title: String, value: String) {
     }
     if command == "list" { list(tasks); return; }
     if command == "gui-list" { gui_list(tasks); return; }
-    if command == "ui-view" { ui_view(tasks); return; }
+    if command == "ui-view" {
+        ui_view(tasks, false, ViewOptions { ok: true, mode: "all", query: "" }); return;
+    }
+    if command == "ui-layout-view" {
+        let options = view_options(path);
+        if options.ok == false { fail("error: invalid or unreadable view preferences"); return; }
+        ui_view(tasks, true, options); return;
+    }
     if command == "ui-event" {
+        if title == "search" || title == "clear-search" || title == "filter-all" ||
+            title == "filter-open" || title == "filter-completed" {
+            let options = view_options(path);
+            if options.ok == false { fail("error: invalid or unreadable view preferences"); return; }
+            let mut mode = options.mode;
+            let mut query = options.query;
+            if title == "search" {
+                if (title_has_line_break(value) || std::escape_terminal(value) != value) {
+                    fail("error: search contains terminal control"); return;
+                }
+                query = value;
+            } else {
+                if value != "" { fail("error: unexpected UI value"); return; }
+                if title == "clear-search" { query = ""; }
+                if title == "filter-all" { mode = "all"; }
+                if title == "filter-open" { mode = "open"; }
+                if title == "filter-completed" { mode = "completed"; }
+            }
+            let saved = std::write_text(path + ".view", "SVR-TASK-VIEW-1\n" + mode + "\n" + query);
+            if saved.ok == false { fail("error: save view " + saved.error); return; }
+            print("view updated"); return;
+        }
         if title == "add" {
             let updated = add(tasks, value, false);
             if (updated == tasks) { return; }
             let saved = std::write_text(path, encode(updated));
             if saved.ok == false { fail("error: save " + saved.error); return; }
             print("added " + std::to_string(tasks.next_id));
+            return;
+        }
+        let renamed = std::split_once(title, "rename-");
+        if renamed.found && renamed.before == "" {
+            let id = std::parse_int(renamed.after);
+            if id.ok == false || id.value <= 0 { fail("error: invalid UI action"); return; }
+            if find_id(tasks, id.value).id == 0 { fail("error: task unavailable"); return; }
+            let updated = rename(tasks, id.value, value);
+            if (updated == tasks) { return; }
+            let saved = std::write_text(path, encode(updated));
+            if saved.ok == false { fail("error: save " + saved.error); return; }
+            print("renamed " + std::to_string(id.value));
             return;
         }
         if value != "" { fail("error: unexpected UI value"); return; }
@@ -392,7 +503,7 @@ fn main() {
             if std::arg_count() != 2 { fail("error: expected list <path>"); return; }
             one_shot(command, std::arg(1), "", ""); return;
         }
-        if command == "gui-list" || command == "ui-view" {
+        if command == "gui-list" || command == "ui-view" || command == "ui-layout-view" {
             if std::arg_count() != 2 { fail("error: expected " + command + " <path>"); return; }
             one_shot(command, std::arg(1), "", ""); return;
         }

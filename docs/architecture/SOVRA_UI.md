@@ -1,5 +1,65 @@
 # Sovra UI architecture
 
+Search/filter checkpoint (2026-10-20): ordinary Sovra input/button nodes apply
+case-sensitive title substring search together with All/Open/Completed selection.
+Sovra owns matching, preference validation and a separate versioned `.view` sidecar;
+the renderer has no filtering rules. Task bytes and flat interfaces are unaffected.
+Preferences persist across restarts and are shared per task path, not per window.
+Hidden edit controls follow existing removal rules and discard unsaved drafts.
+This private application state is not a public UI state/navigation contract.
+
+Editing checkpoint (2026-10-20): Task Manager's grouped view emits ordinary input
+nodes with per-task rename actions. Sovra owns validation and persistence, retaining
+nominal task IDs and completion status. The renderer retains rejected drafts and
+clears successful submissions; unmodified Escape discards a focused local draft
+without sending an application event. No protocol, language or public UI contract
+extension is needed. This first slice uses always-visible replacement-title fields,
+not prefilled modal editors or a general application navigation model.
+
+Keyboard/accessibility checkpoint (2026-10-20): focused inputs submit on unmodified
+Enter, with repeat/busy guards. Explicit Tab order follows Sovra view order and
+cycles within the window. Repeated buttons receive contextual accessible names
+from view text. Busy, result and error status update their accessible names, with
+polite live-region events where WPF supports them. Real Sovra execution passes
+visible Enter, forward/reverse Tab, focus and automation activation tests. These
+are private renderer defaults; public accessibility metadata and manual screen
+reader, high-contrast, DPI and clean-host qualification remain pending.
+
+Grouped desktop checkpoint (2026-10-20): an opt-in private `SVR-UI-2` view adds
+keyed vertical groups, horizontal wrapping rows and card/plain presentation.
+Task Manager emits its layout through `ui-layout-view`; existing `ui-view`
+continues emitting v1 unchanged. Profiles explicitly opt in; no unknown command
+probing is performed. The renderer uses only generic layout nodes and preserves
+stateful controls when they move between groups. Task Manager and the unrelated
+message component pass native-control, event and cross-group draft tests.
+Interpreter/JavaScript view parity, existing browser tests, nine dogfood slices,
+18 native Task Manager cases and visible grouped-window interaction tests pass.
+See [ADR 0030](../adr/0030-private-grouped-ui-views.md) for bounded nesting and
+validation. This is not a public tree/ABI or a change to Sovra syntax/semantics.
+
+Responsive desktop checkpoint (2026-10-20): application event work now runs in
+an isolated PowerShell runspace. Only immutable program/state/event parameters
+are passed to it; native controls stay on the WPF dispatcher. The window remains
+enabled while forms are disabled, with a busy notice and single event in flight.
+A requested close waits for that event to finish and closes on success; failures
+remain visible. No automatic replay or rollback is introduced. This is a private
+host scheduling change, not Sovra async syntax, callbacks or a public lifecycle
+contract. Initial view loading is still synchronous before the window opens.
+Dispatcher-heartbeat, timeout/resource cleanup, duplicate-event rejection,
+exactly-once close persistence and existing interaction regressions pass.
+
+Desktop interaction checkpoint (2026-10-20): the private Windows renderer now
+reconciles stateful controls using existing action IDs and node kinds. Unchanged
+fields retain drafts and selection; updates restore focus and scroll. A successful
+input submission clears only that field, while a rejected submission retains it.
+Removed fields discard their drafts; changing kinds creates a new control. A
+focused action that disappears falls back to the first available input. Duplicate
+action IDs are rejected before changing the control tree. These are internal
+prototype rules, not approval of the public component identity contract.
+Real Sovra event tests and a visible-window focus/scroll regression pass.
+User feedback confirms the prior desktop app opened successfully; clean-machine,
+accessibility and supported-host qualification remain separate evidence.
+
 Status: **Partial private prototype** (updated 2026-10-15). No public UI package,
 renderer contract, language feature, or browser target is implemented. The
 Task Manager's Node-hosted GUI, `gui-list` stream and new `/ui` route are

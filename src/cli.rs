@@ -31,7 +31,8 @@ Commands:
   build            Compile a Sovra source file
   test             Run checked Sovra test functions
   check            Check a Sovra source file or project
-  fmt              Format Sovra source files (planned)
+  doctor           Diagnose toolchain prerequisites without repairs
+  fmt              Format a standalone Sovra source file
   repl             Start the Sovra REPL (planned)
   install          Install a package (planned)
   update           Update project dependencies (planned)
@@ -86,6 +87,13 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
         eprintln!("svr: unknown command '{command}'");
         eprintln!("Try 'svr --help' for available commands.");
         return ExitCode::from(2);
+    }
+
+    if command == "doctor" {
+        return crate::doctor::command(args);
+    }
+    if command == "fmt" {
+        return crate::formatter::command(args);
     }
 
     let help_requested = if command == "check" || command == "run" {

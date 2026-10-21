@@ -28,12 +28,14 @@ fn load_message(path: String) -> MessageState {
     return MessageState { ok: false, message: "" };
 }
 
-fn ui_view(message: String) {
-    print("SVR-UI-1");
+fn ui_view(message: String, grouped: Bool) {
+    if (grouped) { print("SVR-UI-2"); } else { print("SVR-UI-1"); }
     print("heading|Sovra reusable component");
+    if (grouped) { print("group|message-card|vertical|card"); }
     print("text|" + message);
     print("input|save-message|Message|Save");
     print("button|reset-message|Reset");
+    if (grouped) { print("end|message-card"); }
 }
 
 fn main() {
@@ -43,7 +45,7 @@ fn main() {
         return;
     }
     let command = std::arg(0);
-    if command == "ui-view" {
+    if command == "ui-view" || command == "ui-layout-view" {
         if count != 2 { fail("error: ui-view expects exactly one state path"); return; }
     } else if command == "ui-event" {
         if count < 3 || count > 4 {
@@ -64,7 +66,9 @@ fn main() {
     let path = std::arg(1);
     let state = load_message(path);
     if state.ok == false { return; }
-    if command == "ui-view" { ui_view(state.message); return; }
+    if command == "ui-view" || command == "ui-layout-view" {
+        ui_view(state.message, command == "ui-layout-view"); return;
+    }
 
     let mut message = "Ready from Sovra";
     if std::arg(2) == "save-message" { message = std::arg(3); }

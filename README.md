@@ -5,6 +5,15 @@ current Rust implementation provides a compiler, interpreter, built-in standard
 library, local package linking, and a Node-targeted JavaScript backend. The
 canonical command is `svr` (`svr.exe` on Windows).
 
+Use `svr doctor` to check installation health and optional tools, or
+`svr doctor --target exe --format json` for native-build prerequisite diagnostics.
+It reports fixes without applying them; see [doctor reports](docs/reference/doctor-json.md).
+
+Compiler diagnostics now recover at declaration boundaries, avoiding per-token
+error floods while retaining later independent errors and original source ranges.
+Invalid source still fails compilation; the accepted language grammar is unchanged.
+Nested block recovery also retains `else` branches and later statement diagnostics.
+
 **Active focus: Sovra UI powering the Task Manager in a desktop window.**
 The first private Windows renderer maps Sovra views and events to WPF native
 controls. Task rules and persistence stay in `.svr`; an unrelated component
@@ -51,8 +60,10 @@ See [native builds](docs/course/native-builds.md). For automation,
 
 `svr new <path>` creates a console project with a runnable test.
 `svr test [--format human|json] <source-or-package>` runs root-level Unit test
-functions; see [testing](docs/course/testing.md). `svr fmt`, `svr install`
-and `svr update` remain reserved. Local packages work without a registry; lockfiles,
+functions; see [testing](docs/course/testing.md). `svr fmt [--check | --write] file.svr`
+formats standalone source; write mode is currently enabled on Windows only.
+See [formatting](docs/reference/formatter.md). `svr install` and `svr update`
+remain reserved. Local packages work without a registry; lockfiles,
 third-party publishing and a language server remain planned.
 The [developer tooling plan](docs/DEVELOPER_TOOLS.md) tracks reusable execution
 support and the proposed language test command.

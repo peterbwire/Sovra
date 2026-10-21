@@ -12,6 +12,13 @@ if (-not [string]::Equals([IO.Path]::GetFullPath($resolved), $compiler, [StringC
 }
 $version = & svr.exe --version
 if ($LASTEXITCODE -ne 0 -or $version -notmatch '^svr [0-9]+\.') { throw 'Installed compiler version failed.' }
+$doctor = (& svr.exe doctor --format json) -join "`n"
+if ($LASTEXITCODE -ne 0) { throw 'Installed interpreter doctor failed.' }
+$health = $doctor | ConvertFrom-Json
+if ($health.schema_version -ne 1 -or $health.kind -ne 'doctor' -or $health.success -ne $true -or
+    @($health.checks | Where-Object { $_.id -eq 'install.integrity' -and $_.status -eq 'pass' -and $_.required }).Count -ne 1) {
+    throw 'Installed doctor did not validate package integrity.'
+}
 $testRoot = Join-Path ([IO.Path]::GetTempPath()) ("sovra-install-check-" + [guid]::NewGuid().ToString('N'))
 $project = Join-Path $testRoot 'hello'
 New-Item -ItemType Directory -Path $testRoot | Out-Null
@@ -23,6 +30,14 @@ try {
     $generatedSource = Get-Content -LiteralPath (Join-Path $project 'main.svr') -Raw
     $templateSource = Get-Content -LiteralPath (Join-Path $installed 'templates\console\main.svr') -Raw
     if ($generatedSource -ne $templateSource) { throw 'Embedded console template differs from packaged template.' }
+    $formatSource = Join-Path $testRoot 'format smoke.svr'
+    [IO.File]::WriteAllText($formatSource, 'fn main(){print("format smoke");}', (New-Object Text.UTF8Encoding($false)))
+    & svr.exe fmt --write $formatSource
+    if ($LASTEXITCODE -ne 0) { throw 'Installed formatter write failed.' }
+    & svr.exe fmt --check $formatSource
+    if ($LASTEXITCODE -ne 0) { throw 'Installed formatter check failed.' }
+    $formatResult = & svr.exe run $formatSource
+    if ($LASTEXITCODE -ne 0 -or $formatResult -ne 'format smoke') { throw 'Installed formatted program failed.' }
     $wrapperProject = Join-Path $testRoot 'wrapper'
     & $creator $wrapperProject | Out-Null
     if (-not (Test-Path -LiteralPath (Join-Path $wrapperProject 'main.svr'))) {

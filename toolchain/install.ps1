@@ -59,7 +59,7 @@ try {
     foreach ($directory in @('bin','templates','samples','docs','examples','runtime-source')) {
         Copy-Item -LiteralPath (Join-Path $source $directory) -Destination $stage -Recurse
     }
-    foreach ($file in @('README.md','verify-install.ps1','imports.json','integrity.json',
+    foreach ($file in @('README.md','install.ps1','verify-install.ps1','imports.json','integrity.json',
             'LICENSE','LICENSE-MIT','LICENSE-APACHE')) {
         Copy-Item -LiteralPath (Join-Path $source $file) -Destination $stage
     }

@@ -1,0 +1,4 @@
+stray tokens + 1;
+mod first { stray module tokens; }
+fn broken() { let value = ; }
+fn main() {}

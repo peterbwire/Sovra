@@ -1,5 +1,10 @@
 # Sovra handoff assessment
 
+Current tooling checkpoint (2026-10-21): the historical command table below is
+superseded by implemented `new`, `test`, `doctor` and standalone `fmt` commands.
+Formatter Windows writes are enabled; package formatting and other-host writes
+remain deferred. Consult the development log and full status for current evidence.
+
 Date: 2026-09-12. Baseline: `89ef9a1` (`auth policy validation`). The working
 tree was clean before reconnaissance. This handoff adds documentation only.
 

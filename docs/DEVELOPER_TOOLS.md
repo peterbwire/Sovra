@@ -1,9 +1,10 @@
 # Developer tooling implementation
 
-Updated 2026-10-14. Implemented public commands are `new`, `check`, `run` and
-`build` with IR/JS/host-native targets, and `test`. JSON checking and installation/native
-artifact checks support automation. Format/registry/editor commands retain
-their documented planned status.
+Updated 2026-10-21. Implemented public commands include `new`, `check`, `run`,
+`build` with IR/JS/host-native targets, `test`, `doctor` and standalone `fmt`.
+JSON reports and installation/native checks support automation. Formatter writes
+are enabled on Windows; imports/application syntax and non-Windows writes remain
+deferred. See [formatting](reference/formatter.md). Registry/editor commands remain planned.
 
 ## Reusable named-function execution foundation
 
@@ -33,7 +34,7 @@ tooling, not a new `svr` command or a test discovery convention.
 root `test_` functions, Unit signatures, sequential isolated frames, explicit
 failure status and human/JSON reporting. See the [testing guide](course/testing.md) and [JSON reference](reference/test-json.md) for invocation, effects and report contracts.
 
-Subsequent tooling should add syntax-aware formatting, reproducible package
+Subsequent tooling should extend package formatting, add reproducible package
 locks, richer source diagnostics and editor/debugger integration. Their public
 contracts need concrete proposals before implementation. Preserve existing
 commands and the trusted Rust compiler/runtime boundaries.

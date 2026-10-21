@@ -44,6 +44,9 @@ The generated project contains `sovra.toml` and `main.svr`. Its greeting helper
 returns `"Hello, Sovra!"`; `main` prints it, and `test_greeting` checks it.
 Expect one greeting from run and one passing test from test. Existing project
 paths are never overwritten. Project names use the existing ASCII name rule.
+If generation fails, Sovra rolls back the template files it created. A colliding
+file created by another writer is retained; unrelated files can leave the reserved
+directory in place. Project creation does not lock the directory against other writers.
 
 Edit `main.svr` and repeat check/run/test. Every function parameter requires a
 type annotation; local `let` bindings can infer types. An omitted return

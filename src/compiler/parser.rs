@@ -105,7 +105,7 @@ impl<'a> TokenParser<'a> {
                     "E2000",
                     "expected a type, struct, function or module declaration",
                 );
-                self.advance();
+                self.synchronize_declaration(false);
             }
         }
         Program {
@@ -200,7 +200,7 @@ impl<'a> TokenParser<'a> {
                     "E2000",
                     "expected a type, struct or function declaration in module",
                 );
-                self.advance();
+                self.synchronize_declaration(true);
             }
         }
         let end = self.expect_punctuation('}').unwrap_or(start);
@@ -255,10 +255,11 @@ impl<'a> TokenParser<'a> {
         self.expect_punctuation('{');
         let mut body = Vec::new();
         while !self.check_punctuation('}') && !self.at_eof() {
+            let start = self.position;
             if let Some(statement) = self.statement() {
                 body.push(statement);
             } else {
-                self.synchronize_statement();
+                self.synchronize_statement(start);
             }
         }
         let end = self.expect_punctuation('}').unwrap_or(start);
@@ -368,6 +369,7 @@ impl<'a> TokenParser<'a> {
                 },
             });
         }
+        let diagnostics_before_target = self.diagnostics.items.len();
         if let Some(target) = self.assignment_target() {
             if self.consume_operator("=") {
                 let start = target.span;
@@ -382,6 +384,13 @@ impl<'a> TokenParser<'a> {
                     },
                 });
             }
+        }
+        // A malformed indexed target has already diagnosed its expression.
+        // Falling through would parse it again (or parse its remaining suffix)
+        // and report duplicate/misleading errors. Only a clean non-assignment
+        // probe may fall back to ordinary expression parsing.
+        if self.depth_exceeded || self.diagnostics.items.len() > diagnostics_before_target {
+            return None;
         }
         let expression = self.expression()?;
         self.consume_punctuation(';');
@@ -426,7 +435,12 @@ impl<'a> TokenParser<'a> {
         self.expect_punctuation('{')?;
         let mut statements = Vec::new();
         while !self.check_punctuation('}') && !self.at_eof() {
-            statements.push(self.statement()?);
+            let start = self.position;
+            if let Some(statement) = self.statement() {
+                statements.push(statement);
+            } else {
+                self.synchronize_statement(start);
+            }
         }
         self.expect_punctuation('}')?;
         Some(statements)
@@ -687,9 +701,39 @@ impl<'a> TokenParser<'a> {
         Some(expression)
     }
 
-    fn synchronize_statement(&mut self) {
+    fn synchronize_declaration(&mut self, in_module: bool) {
+        // The caller has already diagnosed this token. Always consume it so
+        // recovery makes progress, then preserve the next declaration boundary.
+        self.advance();
+        while !self.at_eof() {
+            if self.check_keyword("fn")
+                || self.check_keyword("export")
+                || self.check_keyword("struct")
+                || self.check_keyword("type")
+                || (!in_module && self.check_keyword("mod"))
+                || (in_module && self.check_punctuation('}'))
+            {
+                return;
+            }
+            self.advance();
+        }
+    }
+
+    fn synchronize_statement(&mut self, statement_start: usize) {
+        // A failed statement may already have consumed its prefix. Keep the
+        // next unambiguous statement keyword, but never retry the same token.
+        if self.position == statement_start && !self.check_punctuation('}') {
+            self.advance();
+        }
         while !self.at_eof() && !self.check_punctuation('}') {
             if self.consume_punctuation(';') {
+                break;
+            }
+            if self.check_keyword("let")
+                || self.check_keyword("return")
+                || self.check_keyword("if")
+                || self.check_keyword("while")
+            {
                 break;
             }
             self.advance();
@@ -877,6 +921,99 @@ fn precedence(operator: &str) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn malformed_index_statement_is_not_reparsed_as_a_second_expression() {
+        for (statement, code) in [("items[;", "E2001"), ("items[0;", "E2005")] {
+            let source = format!("fn main() {{ {statement} let later = ; }}");
+            let errors = Parser::new().parse_source(&source).unwrap_err();
+            assert_eq!(errors.items.len(), 2, "{source}: {:?}", errors.items);
+            assert_eq!(errors.items[0].code, code);
+            assert_eq!(errors.items[1].code, "E2001");
+            assert!(errors.items[1].span.start > source.find("let later").unwrap());
+        }
+    }
+
+    #[test]
+    fn clean_index_probes_preserve_reads_and_assignments() {
+        let program = Parser::new()
+            .parse_source(
+                "fn main() { let mut items = [1]; items[0]; items[0] + 2; items[0] = 3; }",
+            )
+            .expect("valid indexed expressions and assignment");
+        assert_eq!(program.functions[0].body.len(), 4);
+        assert!(matches!(
+            program.functions[0].body[1],
+            Statement::Expression(_)
+        ));
+        assert!(matches!(
+            program.functions[0].body[2],
+            Statement::Expression(_)
+        ));
+        assert!(matches!(
+            program.functions[0].body[3],
+            Statement::Assign { .. }
+        ));
+    }
+
+    #[test]
+    fn nested_statement_recovery_preserves_else_and_following_statements() {
+        let source = "fn main() { if true { let first = ; let second = ; } else { let third = ; } let fourth = ; } fn later() {}";
+        let errors = Parser::new().parse_source(source).unwrap_err();
+        assert_eq!(errors.items.len(), 4, "{:?}", errors.items);
+        assert!(errors.items.iter().all(|error| error.code == "E2001"));
+        for (error, name) in errors
+            .items
+            .iter()
+            .zip(["first", "second", "third", "fourth"])
+        {
+            let start = source.find(name).unwrap();
+            assert_eq!(error.span.start, start + source[start..].find(';').unwrap());
+        }
+    }
+
+    #[test]
+    fn statement_recovery_preserves_next_keyword_without_a_semicolon() {
+        let source = "fn main() { let first = let second = ; while true { let third = return; } }";
+        let errors = Parser::new().parse_source(source).unwrap_err();
+        assert_eq!(errors.items.len(), 3, "{:?}", errors.items);
+        assert!(errors.items.iter().all(|error| error.code == "E2001"));
+        assert_eq!(
+            errors.items[0].span.start,
+            source.find("let second").unwrap()
+        );
+        assert_eq!(errors.items[2].span.start, source.find("return").unwrap());
+    }
+
+    #[test]
+    fn declaration_recovery_skips_noise_but_checks_later_functions() {
+        let source = "stray tokens + 1; fn broken() { let x = ; } fn valid() {}";
+        let errors = Parser::new().parse_source(source).unwrap_err();
+        assert_eq!(
+            errors
+                .items
+                .iter()
+                .filter(|error| error.code == "E2000")
+                .count(),
+            1
+        );
+        assert!(errors
+            .items
+            .iter()
+            .any(|error| error.span.start > source.find("fn broken").unwrap()));
+        assert!(errors.items.len() <= 3, "{:?}", errors.items);
+    }
+
+    #[test]
+    fn module_declaration_recovery_preserves_closing_brace_and_following_module() {
+        let source =
+            "mod first { stray tokens + 1; } mod second { more invalid tokens; } fn main() {}";
+        let errors = Parser::new().parse_source(source).unwrap_err();
+        assert_eq!(errors.items.len(), 2, "{:?}", errors.items);
+        assert!(errors.items.iter().all(|error| error.code == "E2000"));
+        assert_eq!(errors.items[0].span.start, source.find("stray").unwrap());
+        assert_eq!(errors.items[1].span.start, source.find("more").unwrap());
+    }
 
     #[test]
     fn compound_expression_and_block_depth_cannot_bypass_limits() {

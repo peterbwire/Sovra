@@ -12,6 +12,14 @@ foreach ($name in @('node.exe','cargo.exe','rustc.exe')) {
     if (Get-Command $name -ErrorAction SilentlyContinue) { throw "Test PATH still exposes $name" }
 }
 & (Join-Path $Prefix 'verify-install.ps1') -Prefix $Prefix | Out-Null
+foreach ($target in @('js','exe')) {
+    $json = (& svr.exe doctor --target $target --format json) -join "`n"
+    if ($LASTEXITCODE -ne 1) { throw "Doctor accepted missing $target prerequisites on restricted PATH." }
+    $health = $json | ConvertFrom-Json
+    if ($health.success -ne $false -or @($health.checks | Where-Object { $_.required -and $_.status -eq 'fail' }).Count -eq 0) {
+        throw "Doctor did not explain missing $target prerequisites."
+    }
+}
 $version = & svr.exe --version
 if ($LASTEXITCODE -ne 0 -or $version -notmatch '^svr [0-9]+\.') { throw 'Installed compiler version failed.' }
 $taskDir = Join-Path (Split-Path -Parent $Prefix) 'task-manager-checkout'

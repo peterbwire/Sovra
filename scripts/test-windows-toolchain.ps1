@@ -98,6 +98,12 @@ try {
         throw 'Installer accepted a prefix inside its package.'
     }
     & (Join-Path $packageRoot 'install.ps1') -Prefix $prefix -NoPersistPath | Out-Null
+    $installedManifest = Get-Content -LiteralPath (Join-Path $prefix 'integrity.json') -Raw | ConvertFrom-Json
+    foreach ($entry in $installedManifest.files) {
+        if (-not (Test-Path -LiteralPath (Join-Path $prefix $entry.path) -PathType Leaf)) {
+            throw "Installer omitted a manifest-listed file: $($entry.path)"
+        }
+    }
     $installedHash = (Get-FileHash -LiteralPath (Join-Path $prefix 'bin\svr.exe') -Algorithm SHA256).Hash
     $rejectedOverwrite = $false
     try { & (Join-Path $packageRoot 'install.ps1') -Prefix $prefix -NoPersistPath | Out-Null } catch {

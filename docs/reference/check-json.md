@@ -1,5 +1,21 @@
 # JSON check reports
 
+Parser declaration recovery reports one E2000 for a contiguous run of unexpected
+declaration tokens, then resumes at the next declaration (or module closing brace).
+Later independent syntax errors still appear with their original source ranges.
+Consumers must not rely on one diagnostic per invalid token or a fixed count of
+cascading errors. Diagnostic codes and schema version remain unchanged; any parser
+error still prevents compilation and execution.
+
+Statement recovery preserves nested block boundaries and subsequent unambiguous
+statement keywords. Independent malformed statements in both branches of an
+`if` retain their original E2001 ranges rather than producing misleading outer
+declaration errors. `run` and `build` still reject the complete source.
+
+Malformed indexed statements no longer duplicate errors during assignment-target
+probing. E2001 identifies an absent index expression; E2005 identifies a missing
+closing delimiter. Subsequent independent statements retain their own locations.
+
 ## Executable local packages
 
 Opt-in application diagnostics include E4140 for an invalid direct local

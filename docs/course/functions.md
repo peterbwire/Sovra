@@ -101,3 +101,18 @@ Declaring a top-level `fn print` produces E3016 because `print` is the builtin
 compatibility alias. Rename the user function; calling `print(value)` remains
 supported. Exact exported builtin collisions follow the same rule under
 [ADR 0003](../adr/0003-builtin-name-collisions.md).
+
+When a source contains unexpected tokens between declarations, the parser skips
+that invalid run and resumes at the next declaration. Fix the first reported
+syntax error before interpreting later errors; recovery never makes invalid code
+executable. JSON reports keep the original ranges of the errors that remain.
+
+Recovery inside nested `if`/`else` and `while` blocks keeps checking subsequent
+statements in that block. A malformed initializer does not consume a following
+`let`, `return`, `if` or `while` statement. This helps report independent syntax
+errors together; all syntax errors must still be fixed before execution.
+
+An indexed expression such as `items[0]` may be a read or the target of an
+assignment. If its index syntax is malformed, the parser reports that fault
+without repeating it during assignment detection. Add the missing expression
+or closing `]`, then check again.

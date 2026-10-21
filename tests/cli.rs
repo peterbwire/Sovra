@@ -3,6 +3,101 @@
 use std::io;
 use std::process::{Command, Output};
 
+#[test]
+fn formatter_command_preserves_source_and_validates_modes() {
+    let root = std::env::temp_dir().join(format!("svr-format-cli-{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    let path = root.join("source file.svr");
+    let source = "// Keep comment\r\nfn main(){print(\"Keep // text\");}";
+    std::fs::write(&path, source).unwrap();
+    let Some(output) = output_or_skip(svr().arg("fmt").arg(&path)) else {
+        std::fs::remove_dir_all(root).unwrap();
+        return;
+    };
+    assert!(output.status.success(), "{:?}", output);
+    let expected = "// Keep comment\nfn main() {\n    print(\"Keep // text\");\n}\n";
+    assert_eq!(output.stdout, expected.as_bytes());
+    assert!(output.stderr.is_empty());
+    assert_eq!(std::fs::read(&path).unwrap(), source.as_bytes());
+    let checked = svr().args(["fmt", "--check"]).arg(&path).output().unwrap();
+    assert_eq!(checked.status.code(), Some(1));
+    assert!(checked.stdout.is_empty());
+    let written = svr().args(["fmt", "--write"]).arg(&path).output().unwrap();
+    if cfg!(windows) {
+        assert!(written.status.success(), "{:?}", written);
+        assert_eq!(std::fs::read(&path).unwrap(), expected.as_bytes());
+        let modified = std::fs::metadata(&path).unwrap().modified().unwrap();
+        assert!(svr()
+            .args(["fmt", "--write"])
+            .arg(&path)
+            .status()
+            .unwrap()
+            .success());
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().modified().unwrap(),
+            modified
+        );
+    } else {
+        assert_eq!(written.status.code(), Some(1));
+        assert_eq!(std::fs::read(&path).unwrap(), source.as_bytes());
+        std::fs::write(&path, expected).unwrap();
+    }
+    assert!(svr()
+        .args(["fmt", "--check"])
+        .arg(&path)
+        .status()
+        .unwrap()
+        .success());
+    for invalid in ["fn main(){let x=;}", "use library::api; fn main(){}"] {
+        std::fs::write(&path, invalid).unwrap();
+        let result = svr().arg("fmt").arg(&path).output().unwrap();
+        assert_eq!(result.status.code(), Some(1));
+        assert!(result.stdout.is_empty());
+        assert_eq!(std::fs::read(&path).unwrap(), invalid.as_bytes());
+        let failed_write = svr().args(["fmt", "--write"]).arg(&path).output().unwrap();
+        assert_eq!(failed_write.status.code(), Some(1));
+        assert!(failed_write.stdout.is_empty());
+        assert_eq!(std::fs::read(&path).unwrap(), invalid.as_bytes());
+    }
+    std::fs::write(&path, [0xff]).unwrap();
+    assert_eq!(
+        svr().arg("fmt").arg(&path).output().unwrap().status.code(),
+        Some(1)
+    );
+    for args in [
+        vec!["fmt"],
+        vec!["fmt", "--check", "--write", "x.svr"],
+        vec!["fmt", "--help", "x.svr"],
+        vec!["fmt", "x.txt"],
+    ] {
+        assert_eq!(svr().args(args).output().unwrap().status.code(), Some(2));
+    }
+    assert!(svr().args(["fmt", "--help"]).status().unwrap().success());
+    let dashed = root.join("-source.svr");
+    std::fs::write(
+        &dashed,
+        "fn main(){std::write_text(\"must-not-exist.txt\",\"bad\");}",
+    )
+    .unwrap();
+    assert!(svr()
+        .current_dir(&root)
+        .args(["fmt", "--", "-source.svr"])
+        .output()
+        .unwrap()
+        .status
+        .success());
+    assert!(!root.join("must-not-exist.txt").exists());
+    std::fs::write(&path, "fn main(){print(unknown);}").unwrap();
+    assert!(svr()
+        .arg("fmt")
+        .arg(&path)
+        .output()
+        .unwrap()
+        .status
+        .success());
+    std::fs::remove_dir_all(root).unwrap();
+}
+
 fn svr() -> Command {
     Command::new(env!("CARGO_BIN_EXE_svr"))
 }
@@ -474,6 +569,8 @@ fn structural_depth_errors_replace_subprocess_crashes() {
             vec!["run", source_path],
             vec!["build", source_path],
             vec!["build", "--emit", "js", source_path],
+            vec!["fmt", source_path],
+            vec!["fmt", "--check", source_path],
         ] {
             let Some(output) = output_or_skip(svr().args(args)) else {
                 return;
@@ -485,6 +582,8 @@ fn structural_depth_errors_replace_subprocess_crashes() {
                 String::from_utf8_lossy(&output.stderr)
             );
             assert!(String::from_utf8_lossy(&output.stderr).contains("E2007"));
+            assert!(output.stdout.is_empty());
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), source);
         }
         let Some(output) = output_or_skip(svr().args(["check", "--format", "json", source_path]))
         else {
@@ -561,6 +660,153 @@ fn assert_json_report(output: &Output, assertions: &str) {
         result.status.success(),
         "{}",
         String::from_utf8_lossy(&result.stderr)
+    );
+}
+
+#[test]
+fn doctor_reports_source_health_without_optional_tools_and_fails_required_targets() {
+    let Some(output) = output_or_skip(svr().args(["doctor", "--format=json"]).env("PATH", ""))
+    else {
+        return;
+    };
+    assert_eq!(output.status.code(), Some(0));
+    assert_json_report(
+        &output,
+        r#"
+        assert.equal(report.kind, 'doctor');
+        assert.equal(report.target, 'interpreter');
+        assert.equal(report.success, true);
+        assert.equal(report.compiler.version, '1.0.0');
+        assert.ok(report.compiler.executable.endsWith(process.platform === 'win32' ? 'svr.exe' : 'svr'));
+        assert.deepEqual(report.checks.map(c => c.id), ['compiler.identity','compiler.self_test','install.integrity','native.runtime','tools.node','tools.rustc','tools.cargo','native.linker','desktop.host']);
+        assert.equal(report.checks.find(c => c.id === 'install.integrity').status, 'not_checked');
+        for (const id of ['tools.node','tools.rustc','tools.cargo']) {
+            const check = report.checks.find(c => c.id === id);
+            assert.equal(check.required, false);
+            assert.equal(check.status, 'warning');
+            assert.equal(typeof check.remediation, 'string');
+        }
+    "#,
+    );
+    for target in ["js", "exe"] {
+        let Some(output) = output_or_skip(
+            svr()
+                .args(["doctor", "--format", "json", "--target", target])
+                .env("PATH", ""),
+        ) else {
+            return;
+        };
+        assert_eq!(output.status.code(), Some(1));
+        assert_json_report(&output, "assert.equal(report.success, false); assert.ok(report.checks.some(c => c.required && c.status === 'fail')); ");
+    }
+}
+
+#[test]
+fn doctor_help_and_invalid_options_do_not_probe_or_emit_partial_json() {
+    let Some(output) = output_or_skip(svr().args(["doctor", "--help"])) else {
+        return;
+    };
+    assert!(output.status.success());
+    assert!(String::from_utf8_lossy(&output.stdout).contains("Usage: svr doctor"));
+    for args in [
+        vec!["--format=json", "--format=human"],
+        vec!["--target=js", "--target=exe"],
+        vec!["--format"],
+        vec!["--target=invalid"],
+        vec!["source.svr"],
+        vec!["--help", "--format=json"],
+    ] {
+        let Some(output) = output_or_skip(svr().arg("doctor").args(args)) else {
+            return;
+        };
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
+        assert!(!output.stderr.is_empty());
+    }
+}
+
+#[test]
+fn check_json_recovers_declarations_without_per_token_error_floods() {
+    let source = format!(
+        "{}/tests/fixtures/declaration-recovery.svr",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let Some(output) = output_or_skip(svr().args(["check", "--format=json", &source])) else {
+        return;
+    };
+    assert_eq!(output.status.code(), Some(1));
+    assert_json_report(
+        &output,
+        r#"
+        assert.equal(report.success, false);
+        assert.equal(report.diagnostics.length, 3);
+        assert.deepEqual(report.diagnostics.map(d => d.code), ['E2000', 'E2000', 'E2001']);
+        const bytes = require('node:fs').readFileSync(report.target);
+        for (const diagnostic of report.diagnostics) {
+            assert.equal(diagnostic.location.file, report.target);
+            assert.ok(diagnostic.location.end <= bytes.length);
+        }
+        assert.deepEqual(report.diagnostics.map(d => d.location.line), [0, 1, 2]);
+        "#,
+    );
+}
+
+#[test]
+fn nested_statement_recovery_reports_original_ranges_and_prevents_execution() {
+    let source = format!(
+        "{}/tests/fixtures/statement-recovery.svr",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let Some(output) = output_or_skip(svr().args(["check", "--format=json", &source])) else {
+        return;
+    };
+    assert_eq!(output.status.code(), Some(1));
+    assert_json_report(
+        &output,
+        r#"
+        assert.equal(report.success, false);
+        assert.equal(report.diagnostics.length, 4);
+        assert.deepEqual(report.diagnostics.map(d => d.code), Array(4).fill('E2001'));
+        assert.deepEqual(report.diagnostics.map(d => d.location.line), [2, 3, 5, 7]);
+        const bytes = require('node:fs').readFileSync(report.target);
+        for (const {location} of report.diagnostics) {
+            assert.equal(location.file, report.target);
+            assert.equal(bytes.subarray(location.start, location.end).toString(), ';');
+        }
+        "#,
+    );
+    for arguments in [vec!["run", &source], vec!["build", "--emit", "js", &source]] {
+        let Some(output) = output_or_skip(svr().args(arguments)) else {
+            return;
+        };
+        assert_eq!(output.status.code(), Some(1));
+        assert!(output.stdout.is_empty(), "invalid source produced output");
+        assert!(String::from_utf8_lossy(&output.stderr).contains("E2001"));
+    }
+}
+
+#[test]
+fn malformed_index_reports_one_error_per_fault_and_retains_later_locations() {
+    let source = format!(
+        "{}/tests/fixtures/index-recovery.svr",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let Some(output) = output_or_skip(svr().args(["check", "--format=json", &source])) else {
+        return;
+    };
+    assert_eq!(output.status.code(), Some(1));
+    assert_json_report(
+        &output,
+        r#"
+        assert.equal(report.success, false);
+        assert.deepEqual(report.diagnostics.map(d => d.code), ['E2001', 'E2005', 'E2001']);
+        assert.deepEqual(report.diagnostics.map(d => d.location.line), [1, 2, 3]);
+        const bytes = require('node:fs').readFileSync(report.target);
+        for (const {location} of report.diagnostics) {
+            assert.equal(location.file, report.target);
+            assert.equal(bytes.subarray(location.start, location.end).toString(), ';');
+        }
+        "#,
     );
 }
 
@@ -1467,7 +1713,7 @@ fn all_reserved_commands_are_recognized() {
         let Some(output) = output_or_skip(svr().arg(command)) else {
             return;
         };
-        if matches!(command, "new" | "run" | "build" | "check" | "test") {
+        if matches!(command, "new" | "run" | "build" | "check" | "test" | "fmt") {
             assert_eq!(output.status.code(), Some(2));
         } else {
             assert_ne!(output.status.code(), Some(2));

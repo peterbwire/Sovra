@@ -1,5 +1,11 @@
 # ADR 0029: Private Windows desktop UI prototype
 
+Implementation follow-up (2026-10-20): private event execution uses a background
+PowerShell runspace with data-only parameters and dispatcher-owned controls.
+One event runs per window; close waits for completion rather than cancelling or
+replaying it. Application failures stay visible. This is an adapter detail and
+does not define a public UI lifecycle or a source-level async/callback model.
+
 Status: **Private implementation direction authorized (2026-10-15).** The user
 requested that Sovra UI power the Task Manager in a desktop window. WPF is
 selected for this internal Windows prototype. Implementation evidence must be

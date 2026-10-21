@@ -8,6 +8,7 @@ $ErrorActionPreference = 'Stop'
 $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 if (-not $Renderer) { $Renderer = Join-Path $repository 'toolchain\ui\windows\renderer.ps1' }
 . $Renderer
+. (Join-Path $PSScriptRoot 'desktop-test-helpers.ps1')
 function Assert-Ui($Condition, [string]$Message) { if (-not $Condition) { throw $Message } }
 function Expect-UiError([scriptblock]$Operation) {
     $failed = $false
@@ -19,8 +20,9 @@ New-Item -ItemType Directory $scratch | Out-Null
 $taskWindow = $null
 $componentWindow = $null
 $failureWindow = $null
+$identityWindow = $null
 try {
-    foreach ($bad in @('SVR-UI-1', "SVR-UI-2`nheading|Wrong version`n", "SVR-UI-1`ntext|Missing heading`n",
+    foreach ($bad in @('SVR-UI-1', "SVR-UI-3`nheading|Wrong version`n", "SVR-UI-1`ntext|Missing heading`n",
             "SVR-UI-1`nheading|Hello`nbutton|Bad Key|No`n", "SVR-UI-1`nheading|Bad`ttext`n",
             "SVR-UI-1`nheading|Hello`ninput|save|Label`n", "SVR-UI-1`nheading|Hello`nscript|bad`n",
             ("SVR-UI-1`nheading|Hello`n" + ("text|more`n" * 256)),
@@ -55,18 +57,64 @@ try {
     Assert-Ui ([Windows.Automation.AutomationProperties]::GetName($session.Inputs['add']) -ceq 'Task title') 'Input has no accessible name.'
     $session.Inputs['add'].Text = 'Raised from native control'
     $session.Buttons['add'].RaiseEvent([Windows.RoutedEventArgs]::new([Windows.Controls.Button]::ClickEvent))
+    Wait-SovraDesktopIdle $session
     Assert-Ui ($session.Notice -match '^added ') ('Native control event did not execute Sovra: ' + $session.Status.Text)
     Assert-Ui ($session.Buttons.ContainsKey('complete-2')) 'Native control tree did not refresh.'
+    $draftInput = $session.Inputs['add']
+    $draftInput.Text = 'Unfinished draft for another task'
+    $draftInput.Select(4, 7)
+    $session.Buttons['complete-2'].RaiseEvent([Windows.RoutedEventArgs]::new([Windows.Controls.Button]::ClickEvent))
+    Wait-SovraDesktopIdle $session
+    Assert-Ui ($session.Inputs['add'].Text -ceq 'Unfinished draft for another task') 'Completing a task erased an unrelated draft.'
+    Assert-Ui ([object]::ReferenceEquals($draftInput, $session.Inputs['add'])) 'Stable input was unnecessarily recreated.'
+    Assert-Ui ($session.Inputs['add'].SelectionStart -eq 4 -and $session.Inputs['add'].SelectionLength -eq 7) 'Input selection was lost.'
+    $session.Buttons['add'].RaiseEvent([Windows.RoutedEventArgs]::new([Windows.Controls.Button]::ClickEvent))
+    Wait-SovraDesktopIdle $session
+    Assert-Ui ($session.Inputs['add'].Text -ceq '') 'Successful submission did not clear its own field.'
+    $session.Inputs['add'].Text = 'Unfinished draft for another task'
+    $session.Buttons['add'].RaiseEvent([Windows.RoutedEventArgs]::new([Windows.Controls.Button]::ClickEvent))
+    Wait-SovraDesktopIdle $session
+    Assert-Ui ($session.Inputs['add'].Text -ceq 'Unfinished draft for another task') 'Rejected submission erased the input.'
     $fixtureState = Join-Path $scratch 'unrelated component.txt'
     if ($ComponentProgram) { $fixture = New-SovraUiSession -Program $ComponentProgram -State $fixtureState }
     else { $fixture = New-SovraUiSession -Program $compilerPath -State $fixtureState -Source (Join-Path $repository 'examples\ui-desktop\component.svr') }
     $componentWindow = New-SovraDesktopWindow $fixture
     $fixture.Inputs['save-message'].Text = $title
     $fixture.Buttons['save-message'].RaiseEvent([Windows.RoutedEventArgs]::new([Windows.Controls.Button]::ClickEvent))
+    Wait-SovraDesktopIdle $fixture
     Assert-Ui (@($fixture.Nodes | Where-Object { $_.Text.Contains($title) }).Count -eq 1) ('Unrelated native component failed: ' + $fixture.Status.Text)
     $fixture.Buttons['reset-message'].RaiseEvent([Windows.RoutedEventArgs]::new([Windows.Controls.Button]::ClickEvent))
+    Wait-SovraDesktopIdle $fixture
     Assert-Ui (-not ($fixture.Nodes | Where-Object { $_.Text.Contains($title) })) 'Unrelated reset failed.'
+    Assert-Ui ($fixture.Inputs['save-message'].Text -ceq '') 'Successful unrelated submission did not clear its own field.'
     $utf8 = [Text.UTF8Encoding]::new($false)
+    $identitySource = Join-Path $scratch 'control-identity.svr'
+    $identityState = Join-Path $scratch 'control-identity.txt'
+    [IO.File]::WriteAllText($identitySource,
+        'fn main() { let state = std::read_text(std::arg(1)); print("SVR-UI-1"); print("heading|Identity fixture"); if state.text == "button" { print("button|shared|New button"); } else if state.text != "hidden" { print("input|shared|New input|Save"); } }', $utf8)
+    $identity = New-SovraUiSession -Program $compilerPath -Source $identitySource -State $identityState
+    $identityWindow = New-SovraDesktopWindow $identity
+    $identity.Inputs['shared'].Text = 'Old draft'
+    [IO.File]::WriteAllText($identityState, 'button', $utf8)
+    Update-SovraUiView $identity
+    Update-SovraDesktopControls $identity
+    Assert-Ui (-not $identity.Inputs.ContainsKey('shared')) 'Old input survived a change in control kind.'
+    [IO.File]::WriteAllText($identityState, 'input', $utf8)
+    Update-SovraUiView $identity
+    Update-SovraDesktopControls $identity
+    Assert-Ui ($identity.Inputs['shared'].Text -ceq '') 'Draft leaked into a different control kind.'
+    $identity.Inputs['shared'].Text = 'Removed draft'
+    [IO.File]::WriteAllText($identityState, 'hidden', $utf8)
+    Update-SovraUiView $identity
+    Update-SovraDesktopControls $identity
+    [IO.File]::WriteAllText($identityState, 'input', $utf8)
+    Update-SovraUiView $identity
+    Update-SovraDesktopControls $identity
+    Assert-Ui ($identity.Inputs['shared'].Text -ceq '') 'A removed field resurrected an obsolete draft.'
+    Expect-UiError {
+        $identity.Nodes = @(ConvertFrom-SovraUiView "SVR-UI-1`nheading|Duplicate keys`ninput|shared|Input|Save`nbutton|shared|Button`n")
+        Update-SovraDesktopControls $identity
+    }
     $failureSource = Join-Path $scratch 'silent-error.svr'
     [IO.File]::WriteAllText($failureSource,
         'fn main() { if std::arg(0) == "ui-view" { print("SVR-UI-1"); print("heading|Failure fixture"); print("button|reject|Reject_literal"); } else { std::set_exit_code(7); } }', $utf8)
@@ -74,6 +122,7 @@ try {
     $failureWindow = New-SovraDesktopWindow $failure
     Assert-Ui ($failure.Buttons['reject'].Content.Text -ceq 'Reject_literal') 'A label was interpreted as access-key markup.'
     $failure.Buttons['reject'].RaiseEvent([Windows.RoutedEventArgs]::new([Windows.Controls.Button]::ClickEvent))
+    Wait-SovraDesktopIdle $failure
     Assert-Ui ($failure.Status.Text -match 'Operation failed \(exit 7\)') 'Silent nonzero event was not shown as an error.'
     [IO.File]::WriteAllText($state, 'corrupt task data', $utf8)
     Expect-UiError { Update-SovraUiView $session }
@@ -96,6 +145,7 @@ try {
     if ($taskWindow) { $taskWindow.Close() }
     if ($componentWindow) { $componentWindow.Close() }
     if ($failureWindow) { $failureWindow.Close() }
+    if ($identityWindow) { $identityWindow.Close() }
     $resolved = [IO.Path]::GetFullPath($scratch)
     $tempPrefix = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\sovra-desktop-test-'
     if (-not $resolved.StartsWith($tempPrefix, [StringComparison]::OrdinalIgnoreCase)) { throw 'Unexpected test cleanup path.' }

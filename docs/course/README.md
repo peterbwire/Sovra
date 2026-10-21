@@ -1,6 +1,6 @@
 # Sovra course
 
-Updated 2026-10-14. Learn the implemented language with the installed `svr`
+Updated 2026-10-21. Learn the implemented language with the installed `svr`
 toolchain, from a console project to tested libraries and persistent applications.
 
 ## Start and learn the language
@@ -14,6 +14,8 @@ toolchain, from a console project to tested libraries and persistent application
 7. [Records and named types](records.md)
 8. [Inline modules and function validation](modules.md)
 9. [Test ordinary Sovra functions](testing.md)
+10. [Format standalone source](formatter.md)
+11. [Check toolchain health](doctor.md)
 
 ## Build reusable applications
 
@@ -45,6 +47,8 @@ These teach separately checked, partial application syntax, not application exec
 - [Application arrays](application-arrays.md)
 - [Application task returns](application-task-returns.md)
 
-HTTP/UI host adapters currently use Node. A registry, formatter, language server,
-native desktop UI and WebAssembly remain planned. Native Windows deployment
-qualification remains pending. Scanner success is not proof of runnable code.
+Browser HTTP/UI adapters use Node; a private Windows desktop renderer uses
+PowerShell/.NET. Public cross-platform UI contracts, a registry, language server
+and WebAssembly remain planned. Formatter imports/application syntax and
+non-Windows writes remain deferred. Native Windows deployment qualification
+remains pending. Scanner success is not proof of runnable code.

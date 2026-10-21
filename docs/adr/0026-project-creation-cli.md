@@ -58,3 +58,12 @@ without claiming that a partial project is valid. `svr --help` and
 Approved: `svr new <path>` uses the existing ASCII name rule, refuses to
 overwrite, embeds the template, and leaves `svr init` for a later decision.
 The implementation lives in `src/project_new.rs` and is called by `src/cli.rs`.
+
+## Failure cleanup hardening (2026-10-21)
+
+Rollback records files whose exclusive `create_new` succeeded. It must not remove
+a main/manifest file for which creation failed because another writer created it
+after directory reservation. It removes only its recorded files and attempts a
+nonrecursive directory removal; unrelated entries are preserved. This is failure
+cleanup, not a filesystem transaction or lock against concurrent path replacement.
+No naming, template, CLI or language contract changes.

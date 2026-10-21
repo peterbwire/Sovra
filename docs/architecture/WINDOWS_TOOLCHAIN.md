@@ -8,10 +8,17 @@ smoke test passes; a clean Windows VM installation is still required. Use the
 
 ## Architecture audit
 
+Toolchain diagnostics (2026-10-20): accepted [ADR 0031](../adr/0031-toolchain-doctor.md)
+adds `svr doctor` with target-specific requirements, bounded probes and human/JSON
+reports. It validates installed integrity and reuses native runtime validation.
+Installer/self-tests still verify actual project creation and execution; doctor
+does not certify native linking or deployment. See the
+[report contract](../reference/doctor-json.md).
+
 | Component | Current state | Boundary |
 | --- | --- | --- |
 | Rust compiler | Implemented subset | Lexer, parser, semantic checker and IR lowering in `src/compiler`; single Cargo package. |
-| `svr.exe` CLI | Implemented subset | `new`, `check`, `run`, `test`, `build --emit ir|js|exe`, version/help. Native output requires `--output PATH` and build-time Rust/linker. Project scanning remains partial. |
+| `svr.exe` CLI | Implemented subset | `new`, `check`, `run`, `test`, `doctor`, `build --emit ir|js|exe`, version/help. Native output requires `--output PATH` and build-time Rust/linker. Project scanning remains partial. |
 | Interpreter and process runtime | Implemented subset | Rust `ProcessHost` supports arguments, line input, flushed output, UTF-8 text files and exit codes. |
 | JavaScript backend | Implemented, Node-hosted | Emits Node CommonJS and retains parity tests; it is not a browser or standalone native backend. |
 | Standard library | Implemented subset | Rust-owned builtins are compiled into `svr.exe`; no separately distributed stdlib source/archive yet. |
@@ -98,7 +105,9 @@ and separately exercises a copied Task Manager source.
    The PowerShell script delegates to it for compatibility. `svr init` and
    template version policy remain future decisions.
 3. **D3 — Developer commands.** Specify `svr build` artifact paths and package
-   mode; language-level `svr test` first slice implemented under ADR 0028; implement syntax-aware `svr fmt`;
+   mode; language-level `svr test` first slice implemented under ADR 0028;
+   standalone `svr fmt` implemented under ADR 0032; package formatting and
+   non-Windows writes remain deferred;
    improve file/span diagnostics and JSON reports; add language-server/editor
    tooling. Each public command needs invocation, invalid-input and
    out-of-repository tests. Keep `--emit ir|js` behavior compatible.

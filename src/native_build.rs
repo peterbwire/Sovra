@@ -1,6 +1,6 @@
 //! Host-native executable linking behind the approved CLI contract.
 
-mod sha256;
+pub(crate) mod sha256;
 
 use crate::compiler::{ir::IrProgram, native_image};
 use std::{
@@ -67,6 +67,10 @@ fn reserve_stage(parent: &Path) -> Result<PathBuf, String> {
 
 fn discover_runtime() -> Result<PathBuf, String> {
     let executable = std::env::current_exe().map_err(|e| e.to_string())?;
+    discover_runtime_for(&executable)
+}
+
+pub(crate) fn discover_runtime_for(executable: &Path) -> Result<PathBuf, String> {
     let installed = executable
         .parent()
         .and_then(Path::parent)
@@ -78,11 +82,24 @@ fn discover_runtime() -> Result<PathBuf, String> {
     }
     let repository = Path::new(env!("CARGO_MANIFEST_DIR"));
     // Installed copies must never silently fall back to the builder's checkout.
-    if executable.starts_with(repository.join("target")) && repository.join("src/lib.rs").is_file()
+    if executable.starts_with(repository.join("target"))
+        && repository.join("src/lib.rs").is_file()
+        && !executable.parent().is_some_and(|p| p.ends_with("bin"))
     {
         return fs::canonicalize(repository).map_err(|e| e.to_string());
     }
     Err("native runtime-source payload is missing beside the installed bin directory".into())
+}
+
+pub(crate) fn is_source_build(executable: &Path) -> bool {
+    let repository = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let Some(parent) = executable.parent() else {
+        return false;
+    };
+    ["debug", "release"].iter().any(|profile| {
+        let build = repository.join("target").join(profile);
+        parent == build || parent == build.join("deps")
+    }) && repository.join("src/lib.rs").is_file()
 }
 
 fn validate_payload(root: &Path) -> Result<(), String> {
@@ -251,6 +268,22 @@ fn plain_path(path: &Path) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn source_identity_does_not_accept_arbitrary_relocated_or_installed_binaries() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        assert!(super::is_source_build(&root.join("target/debug/svr.exe")));
+        assert!(super::is_source_build(&root.join("target/release/svr.exe")));
+        assert!(!super::is_source_build(
+            &root.join("target/relocated/svr.exe")
+        ));
+        assert!(!super::is_source_build(
+            &root.join("target/debug/bin/svr.exe")
+        ));
+        assert!(
+            super::discover_runtime_for(&root.join("target/nonexistent-package/bin/svr.exe"))
+                .is_err()
+        );
+    }
     use super::*;
     #[test]
     fn payload_file_budget_rejects_the_next_file_at_the_limit() {

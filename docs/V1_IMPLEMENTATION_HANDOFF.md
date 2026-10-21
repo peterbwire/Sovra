@@ -1,5 +1,12 @@
 # Version-one implementation handoff
 
+Current tooling checkpoint (2026-10-21): `svr doctor` and standalone `svr fmt`
+are implemented after the historical artifacts below. Formatter writes are
+enabled on Windows; package formatting and other-host writes remain deferred.
+See [development log](DEVELOPMENT_LOG.md) for current artifact/test evidence;
+earlier hashes do not describe the new commands. Clean-VM and hosted qualification
+remain external release gates.
+
 Date: 2026-10-14. Status: **Implemented and verified locally; publication pending
 external qualification.** The scope is a useful Task Manager CLI and an
 installable developer toolchain, as revised by the user. GUI/platform/registry

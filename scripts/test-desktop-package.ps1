@@ -70,7 +70,7 @@ foreach ($item in $allEntries) {
     }
 }
 foreach ($required in @('Sovra UI.exe', 'application.exe', 'app.json', 'integrity.json',
-    'ui/host.ps1', 'ui/renderer.ps1')) {
+    'ui/host.ps1', 'ui/renderer.ps1', 'ui/worker.ps1')) {
     if (-not (Test-Path -LiteralPath (Join-Path $root $required) -PathType Leaf)) {
         throw "Desktop UI package is missing: $required"
     }
@@ -113,5 +113,8 @@ $profile = Get-Content -LiteralPath (Join-Path $root 'app.json') -Raw | ConvertF
 if ($profile.schema -ne 1 -or $profile.id -isnot [string] -or
     $profile.id -cnotmatch '^[a-z][a-z0-9-]{0,63}$' -or $profile.program -cne 'application.exe') {
     throw 'Desktop UI application profile is invalid.'
+}
+if ($profile.PSObject.Properties.Name -contains 'view_command') {
+    if ($profile.view_command -cnotin @('ui-view', 'ui-layout-view')) { throw 'Desktop UI view command is invalid.' }
 }
 Write-Output "Verified desktop UI package: $root"

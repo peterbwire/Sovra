@@ -19,6 +19,14 @@ scope are not v1 release gates.
 
 ## Execution order
 
+Local qualification update (2026-10-21): the retained formatter-v1 compiler passes
+139 check/build/fmt depth cases, including accepted-depth fixed points and rejected
+source preservation. Reports bind results to its exact SHA-256; CI uploads the
+same evidence on each OS. A local MSVC suite attempt could not link because
+`link.exe` and the Visual Studio C++ locator are unavailable. MSVC execution,
+hosted artifacts and clean-VM qualification remain pending; no successful MSVC
+run is inferred from GNU results.
+
 1. Harden the Task Manager's variable-length text records, which use existing
    general-purpose Sovra text/file operations and require no language-semantic
    decision. Existing version-one task files load and migrate on the next write.

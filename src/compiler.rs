@@ -19,7 +19,8 @@ pub mod testing;
 pub mod text_files;
 
 const COMMANDS: &[&str] = &[
-    "build", "check", "doc", "fmt", "init", "install", "new", "repl", "run", "test", "update",
+    "build", "check", "doc", "doctor", "fmt", "init", "install", "new", "repl", "run", "test",
+    "update",
 ];
 
 pub(crate) fn is_known_command(command: &str) -> bool {

@@ -29,8 +29,10 @@ try {
     New-Item -ItemType Directory -Path $scratch | Out-Null
     $app = Join-Path $scratch 'desktop app with spaces and !'
     Copy-Item -LiteralPath ([IO.Path]::GetFullPath($Package)) -Destination $app -Recurse
+    $profile = Get-Content -LiteralPath (Join-Path $app 'app.json') -Raw | ConvertFrom-Json
+    $profile.id = $appId
     [IO.File]::WriteAllText((Join-Path $app 'app.json'),
-        (@{ schema = 1; id = $appId; program = 'application.exe' } | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
+        ($profile | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
     $env:Path = "$env:SystemRoot\System32;$env:SystemRoot"
     $start = [Diagnostics.ProcessStartInfo]::new((Join-Path $app 'Sovra UI.exe'))
     $start.UseShellExecute = $false

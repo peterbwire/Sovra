@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+- Preserve other writers' files when `svr new` fails after reserving its directory.
+  Rollback now tracks successful file reservations instead of deleting template
+  pathnames unconditionally; collision and early-failure regressions cover cleanup.
+
+- Disarm formatter staging cleanup after successful publication so a reused
+  staging pathname cannot cause deletion of another writer's file. Retain cleanup
+  on failed publication and add Windows attribute-change and comment-placement tests.
+
+- Implement approved ADR 0032 `svr fmt`: comment/token/AST preservation, fixed-point
+  checks, bounded output and guarded atomic Windows writes. Package imports and
+  non-Windows write qualification remain open.
+
+- Implement approved ADR 0031 `svr doctor`: target-specific environment checks,
+  bounded probes, installed inventory/hash validation and human/JSON reports.
+- Preserve install.ps1 during installation so the installed file inventory
+  matches its integrity manifest; add an installation regression check.
+
+- Avoid duplicate parser diagnostics when malformed indexed statements are probed
+  as assignment targets; preserve valid indexed reads and assignments.
+
+- Recover malformed statements within nested blocks, retaining `else` branches,
+  later statement keywords and original error ranges without executing invalid code.
+
+- Reduce parser declaration-error floods by recovering at the next declaration
+  or module boundary, retaining original diagnostic codes and source ranges.
+
 - Add a private reusable Windows Sovra UI renderer and desktop packaging over
   existing view/event functions; native Task Manager and unrelated component
   controls execute real Sovra behavior. Public UI compatibility remains planned.

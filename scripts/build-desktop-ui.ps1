@@ -1,7 +1,8 @@
 param(
     [Parameter(Mandatory=$true)][string]$Program,
     [Parameter(Mandatory=$true)][string]$Output,
-    [Parameter(Mandatory=$true)][string]$AppId
+    [Parameter(Mandatory=$true)][string]$AppId,
+    [switch]$GroupedLayout
 )
 $ErrorActionPreference = 'Stop'
 $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -14,7 +15,7 @@ $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 if (-not (Test-Path -LiteralPath $csc -PathType Leaf)) { throw 'The Windows .NET Framework compiler is unavailable.' }
 New-Item -ItemType Directory -Path (Join-Path $stage 'ui') -Force | Out-Null
 $adapter = Join-Path $repository 'toolchain\ui\windows'
-Copy-Item -LiteralPath (Join-Path $adapter 'host.ps1'), (Join-Path $adapter 'renderer.ps1') -Destination (Join-Path $stage 'ui')
+Copy-Item -LiteralPath (Join-Path $adapter 'host.ps1'), (Join-Path $adapter 'renderer.ps1'), (Join-Path $adapter 'worker.ps1') -Destination (Join-Path $stage 'ui')
 Copy-Item -LiteralPath $application -Destination (Join-Path $stage 'application.exe')
 Copy-Item -LiteralPath (Join-Path $adapter 'README.md') -Destination $stage
 Copy-Item -LiteralPath (Join-Path $repository 'LICENSE-MIT'), (Join-Path $repository 'LICENSE-APACHE') -Destination $stage
@@ -22,6 +23,7 @@ Copy-Item -LiteralPath (Join-Path $repository 'LICENSE-MIT'), (Join-Path $reposi
 if ($LASTEXITCODE -ne 0) { throw 'Desktop launcher compilation failed.' }
 $utf8 = [Text.UTF8Encoding]::new($false)
 $profile = [pscustomobject]@{ schema = 1; id = $AppId; program = 'application.exe' }
+if ($GroupedLayout) { $profile | Add-Member -NotePropertyName view_command -NotePropertyValue 'ui-layout-view' }
 [IO.File]::WriteAllText((Join-Path $stage 'app.json'), ($profile | ConvertTo-Json), $utf8)
 $prefix = $stage.TrimEnd('\') + '\'
 $files = @(Get-ChildItem -LiteralPath $stage -File -Recurse | ForEach-Object {

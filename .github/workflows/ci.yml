@@ -35,6 +35,8 @@ jobs:
       - run: cargo test --locked --all-targets
       - run: cargo test --locked --doc
       - run: cargo build --locked
+      - name: Source formatter behavior and execution preservation
+        run: node scripts/test-formatter.mjs
       - name: Sovra language tests and report contract
         run: node scripts/test-language-tests.mjs
       - name: Relocated runtime payload offline native build
@@ -57,6 +59,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Optimized installed native acceptance failed' }
           .\scripts\build-windows-toolchain.ps1
           .\scripts\test-windows-toolchain.ps1 -Package target\toolchain\sovra-windows.zip
+          .\scripts\test-doctor-package.ps1 -Package target\toolchain\sovra-windows
       - name: Native Task Manager executable parity
         if: matrix.os == 'windows-latest'
         shell: powershell
@@ -67,10 +70,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Native Task Manager parity failed' }
           node scripts/test-native-launcher.mjs target\native-task-manager\extracted\sovra-task-manager
           if ($LASTEXITCODE -ne 0) { throw 'Native launcher acceptance failed' }
-          .\scripts\build-desktop-ui.ps1 -Program target\native-task-manager\extracted\sovra-task-manager\task-manager.exe -Output target\desktop-ui\sovra-task-manager -AppId task-manager
+          .\scripts\build-desktop-ui.ps1 -Program target\native-task-manager\extracted\sovra-task-manager\task-manager.exe -Output target\desktop-ui\sovra-task-manager -AppId task-manager -GroupedLayout
           .\scripts\test-desktop-package.ps1 -PackageZIP target\desktop-ui\sovra-task-manager.zip -ExtractTo target\desktop-ui\verified
           powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File scripts\test-desktop-ui.ps1 -TaskProgram target\desktop-ui\verified\sovra-task-manager\application.exe -Renderer target\desktop-ui\verified\sovra-task-manager\ui\renderer.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Private desktop renderer acceptance failed' }
+          powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File scripts\test-desktop-responsive.ps1 -Renderer target\desktop-ui\verified\sovra-task-manager\ui\renderer.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Desktop responsiveness acceptance failed' }
+          powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File scripts\test-desktop-layout.ps1 -TaskProgram target\desktop-ui\verified\sovra-task-manager\application.exe -Renderer target\desktop-ui\verified\sovra-task-manager\ui\renderer.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Grouped desktop layout acceptance failed' }
+          powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File scripts\test-desktop-accessibility.ps1 -TaskProgram target\desktop-ui\verified\sovra-task-manager\application.exe -Renderer target\desktop-ui\verified\sovra-task-manager\ui\renderer.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Desktop accessibility acceptance failed' }
           cargo build --locked --example native_builder
           if ($LASTEXITCODE -ne 0) { throw 'Internal native builder build failed' }
           node scripts/test-native-builder-failures.mjs
@@ -113,6 +122,8 @@ jobs:
         run: node scripts/test-gui-bridge.mjs
       - name: Sovra-owned UI component prototype
         run: node scripts/test-ui-prototype.mjs
+      - name: Sovra grouped UI view parity
+        run: node scripts/test-ui-layout-parity.mjs
       - name: File Manager local browser dogfood
         run: node scripts/test-file-manager.mjs
       - name: Sovra Notes persistent storage dogfood
@@ -131,6 +142,13 @@ jobs:
           path: target/dogfood/
           if-no-files-found: ignore
       - run: node scripts/probe-compiler-depth.mjs --assert-limits
+      - name: Upload exact-compiler depth evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compiler-depth-${{ matrix.os }}
+          path: target/depth-probe/results-*.json
+          if-no-files-found: warn
 
   msrv:
     name: Minimum Rust 1.74

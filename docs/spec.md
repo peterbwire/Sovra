@@ -1,5 +1,34 @@
 # Sovra specification
 
+## Source formatting checkpoint (2026-10-21)
+
+Accepted ADR 0032 adds `svr fmt [--check | --write] [--] SOURCE.svr` for
+standalone executable syntax. It preserves tokens, comments and AST structure
+without semantic checking or execution. Writes are enabled on Windows only;
+imports/application syntax and other-host write qualification remain deferred.
+This tool convention does not change the language grammar. See
+[formatter reference](reference/formatter.md) for limits and exit rules.
+
+## Parser diagnostic recovery
+
+Unexpected tokens between executable declarations report E2000 at the first
+unexpected token of each invalid run. Recovery resumes at the next declaration
+or the current module's closing brace. Recovery changes diagnostic presentation,
+not accepted grammar: any parser error rejects the entire compilation. Later
+independent errors retain their original source ranges; diagnostic counts are
+not a per-token compatibility contract.
+
+Nested `if`/`else` and `while` bodies also recover failed statements within
+their current block, retaining its closing brace. Statement recovery stops after
+a semicolon or before a subsequent `let`, `return`, `if` or `while` keyword.
+It always makes progress on an unrecognized token; recovered AST fragments are
+never executable when parser diagnostics exist.
+
+Indexed-statement assignment probing must not reparse an expression after it has
+already reported a syntax error. Malformed index expressions retain their original
+E2001/E2005 locations without duplicate fallback diagnostics. Clean probes still
+distinguish indexed reads from assignments using the existing grammar.
+
 ## Host-native executable builds
 
 Accepted ADR 0027 adds `svr build --emit exe --output PATH SOURCE_OR_PACKAGE`.
@@ -184,6 +213,14 @@ Function lookup errors also escape the original IR name when emitting JavaScript
 quotes, backslashes, newlines and Unicode remain data rather than generated code.
 
 ## Toolchain contract
+
+Accepted ADR 0031 implements `svr doctor [--format human|json]
+[--target interpreter|js|exe|desktop]`. It reports actual executable identity,
+an in-memory compiler self-test, installed integrity and target prerequisites.
+Default interpreter mode tolerates missing optional tools. Exit 0 means required
+checks pass; 1 means a required failure; 2 means malformed invocation. It performs
+no repairs or user-program execution. See [doctor JSON](reference/doctor-json.md)
+for the approved schema, limits and distinction from actual native-build evidence.
 
 * The package is named `sovra`; its canonical binary is `svr`.
 * The compiler, runtime, and core tooling are implemented in Rust.

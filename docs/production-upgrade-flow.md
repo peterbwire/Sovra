@@ -1,5 +1,10 @@
 # Production Upgrade Flow
 
+Tooling checkpoint (2026-10-21): ADR 0032 is approved and its standalone formatter
+is implemented. Keep token/comment/AST/idempotence gates in every mode; Windows
+writes are qualified separately from deferred non-Windows writes. Preserve the
+real-program corpus test and installed formatter smoke test when extending it.
+
 This is the handoff flow for continuing the production-grade Sovra upgrade.
 Use it when picking up M12 and later project/runtime work.
 
@@ -31,6 +36,11 @@ do not treat successful packaging as release approval.
    A malformed declaration should produce a diagnostic, not disappear silently.
 
 ## Current Checkpoint
+
+Toolchain environment diagnostics now follow approved ADR 0031: `svr doctor`
+checks required/optional capabilities with human or JSON reports. Keep linker
+readiness labelled unproven and retain installed/native/application acceptance
+tests; prerequisite discovery alone is not release evidence.
 
 ADR 0014 Stage 1 is accepted and implemented for general executable process
 arguments, explicit EOF line input and immediate output. ADR 0015 now adds

@@ -136,6 +136,11 @@ to avoid the current parser's record-literal ambiguity. See
 [DOGFOOD_STATUS](../../docs/DOGFOOD_STATUS.md) for approvals and next actions.
 # Desktop UI development
 
+Opt-in grouped desktop packages use Sovra's private `ui-layout-view` command to
+emit an input card, task-list card and wrapping action row per task. The older
+`ui-view` stream remains available unchanged for existing desktop/browser hosts.
+Layout is defined in `main.svr`, not inferred from task text by the renderer.
+
 The active UI work uses a private reusable Windows desktop renderer at
 [`toolchain/ui/windows`](../../toolchain/ui/windows/README.md). It creates native
 WPF controls from this application's existing Sovra `ui-view` and `ui-event`
@@ -147,3 +152,23 @@ extracted folder together. `application.exe` is the underlying CLI and does not
 open a window on its own. The desktop profile uses
 `%LOCALAPPDATA%\Sovra\Desktop\task-manager\state.txt`; CLI state files are left
 untouched. See the adapter README for dependencies and private-prototype limits.
+## Desktop task editing
+
+The grouped desktop view also offers All/Open/Completed filters and a submitted,
+case-sensitive substring search over original task titles. Search and status filters
+combine; Clear search keeps the current status filter. An empty query matches all
+titles. These actions never rewrite task data. Preferences are stored separately
+in `<task-path>.view`, shared by windows using that path and retained across restart.
+Invalid/unreadable preferences produce an error and are never silently overwritten;
+with the app closed, move that sidecar aside to reset preferences. The task file
+and existing flat browser/CLI interfaces do not depend on it. Filtering out an edit
+field discards its draft under the renderer's existing removed-control policy.
+
+The private grouped desktop view includes a new-title field and Save action for
+each task. Enter a replacement title and select Save (or press Enter). Escape
+in a focused field cancels its unsaved draft locally; it never changes storage.
+Renaming preserves the task ID, completion status and next ID. Empty, duplicate,
+multiline and terminal-control titles are rejected, leaving storage unchanged.
+Validation errors appear in the status region and retain the draft for correction.
+Existing CLI and flat browser views retain their current interface. Editing adds
+one leaf per task, so the existing bounded UI capacity is reached sooner.

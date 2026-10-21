@@ -1,8 +1,17 @@
 # Roadmap
 
+Tooling checkpoint (2026-10-21): accepted ADR 0032 implements standalone `svr fmt`
+with stdout/check modes and guarded Windows writes. Package imports/application
+syntax and non-Windows writes remain deferred. See [formatting](reference/formatter.md).
+
 The [Windows developer toolchain plan](architecture/WINDOWS_TOOLCHAIN.md)
 tracks installable `svr.exe`, project creation and developer command gates
 separately from standalone application output.
+
+Accepted ADR 0031 adds `svr doctor` for installation health and target prerequisites.
+It complements installed and native acceptance tests; it does not replace actual
+linking, application behavior or clean-machine qualification. See
+[doctor reports](reference/doctor-json.md).
 
 The [Node-free application execution plan](architecture/NODE_FREE_APPLICATIONS.md)
 adds N1–N5 work packages for standalone executables, native UI and WebAssembly.

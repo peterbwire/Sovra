@@ -2,7 +2,7 @@
 
 use std::fs::{self, OpenOptions};
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const MAIN: &str = include_str!("../toolchain/templates/console/main.svr");
 const MANIFEST: &str = include_str!("../toolchain/templates/console/sovra.toml");
@@ -44,6 +44,14 @@ pub(crate) fn project_name(path: &Path) -> Result<&str, &'static str> {
 
 /// Create a new console project at a path that does not already exist.
 pub(crate) fn create(path: &Path, name: &str) -> Result<(), CreateError> {
+    create_with(path, name, |_| Ok(()))
+}
+
+fn create_with(
+    path: &Path,
+    name: &str,
+    after_reserve: impl FnOnce(&Path) -> std::io::Result<()>,
+) -> Result<(), CreateError> {
     if fs::symlink_metadata(path).is_ok() {
         return Err(CreateError::Exists);
     }
@@ -60,19 +68,25 @@ pub(crate) fn create(path: &Path, name: &str) -> Result<(), CreateError> {
         Err(error) => return Err(CreateError::Io(error)),
     }
     let manifest = MANIFEST.replace("name = \"console-app\"", &format!("name = \"{name}\""));
-    let result = write_new(&path.join("main.svr"), MAIN)
-        .and_then(|()| write_new(&path.join("sovra.toml"), &manifest));
+    let mut created = Vec::new();
+    let result = after_reserve(path)
+        .and_then(|()| write_new(&path.join("main.svr"), MAIN, &mut created))
+        .and_then(|()| write_new(&path.join("sovra.toml"), &manifest, &mut created));
     if let Err(error) = result {
-        let _ = fs::remove_file(path.join("main.svr"));
-        let _ = fs::remove_file(path.join("sovra.toml"));
+        // A create_new collision belongs to somebody else. Roll back only files
+        // for which this operation successfully reserved a new file handle.
+        for owned in created.into_iter().rev() {
+            let _ = fs::remove_file(owned);
+        }
         let _ = fs::remove_dir(path);
         return Err(CreateError::Io(error));
     }
     Ok(())
 }
 
-fn write_new(path: &Path, text: &str) -> std::io::Result<()> {
+fn write_new(path: &Path, text: &str, created: &mut Vec<PathBuf>) -> std::io::Result<()> {
     let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
+    created.push(path.to_path_buf());
     file.write_all(text.as_bytes())
 }
 
@@ -87,6 +101,62 @@ mod tests {
         }
         for name in ["2task", "a.b", "café", "a space", "."] {
             assert!(project_name(Path::new(name)).is_err(), "{name}");
+        }
+    }
+
+    #[test]
+    fn creation_failure_preserves_files_created_by_another_writer() {
+        for collided in ["main.svr", "sovra.toml"] {
+            let unique = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let root = std::env::temp_dir()
+                .join(format!("svr-new-collision-{}-{unique}", std::process::id()));
+            fs::create_dir(&root).unwrap();
+            let project = root.join("app");
+            let result = create_with(&project, "app", |reserved| {
+                fs::write(reserved.join(collided), "another writer's file")
+            });
+            let retained = fs::read_to_string(project.join(collided));
+            let own_main_exists = collided == "sovra.toml" && project.join("main.svr").exists();
+            fs::remove_dir_all(root).unwrap();
+            assert!(result.is_err());
+            assert_eq!(retained.unwrap(), "another writer's file", "{collided}");
+            assert!(
+                !own_main_exists,
+                "our completed source should be rolled back"
+            );
+        }
+    }
+
+    #[test]
+    fn early_failure_removes_only_an_empty_reserved_directory() {
+        for foreign in [false, true] {
+            let unique = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let root = std::env::temp_dir()
+                .join(format!("svr-new-rollback-{}-{unique}", std::process::id()));
+            fs::create_dir(&root).unwrap();
+            let project = root.join("app");
+            let result = create_with(&project, "app", |reserved| {
+                if foreign {
+                    fs::write(reserved.join("notes.txt"), "keep notes")?;
+                }
+                Err(std::io::ErrorKind::PermissionDenied.into())
+            });
+            let retained_directory = project.exists();
+            let notes = if foreign {
+                Some(fs::read_to_string(project.join("notes.txt")).unwrap())
+            } else {
+                None
+            };
+            fs::remove_dir_all(root).unwrap();
+            assert!(matches!(result, Err(CreateError::Io(_))));
+            assert_eq!(retained_directory, foreign);
+            assert_eq!(notes.as_deref(), foreign.then_some("keep notes"));
         }
     }
 }
