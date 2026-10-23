@@ -130,6 +130,8 @@ jobs:
         run: node scripts/test-host-input.mjs
       - name: Text-file I/O parity
         run: node scripts/test-text-files.mjs
+      - name: Conditional text-file replacement and mixed-engine conflicts
+        run: node scripts/test-conditional-text-files.mjs
       - name: Task Manager persistence and corruption handling
         run: node scripts/test-task-persistence.mjs
       - name: Task Manager local browser GUI

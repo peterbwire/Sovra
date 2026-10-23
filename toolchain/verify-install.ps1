@@ -84,6 +84,22 @@ try {
     if ($LASTEXITCODE -ne 0 -or ($listed -join "`n") -notmatch '1 \| open \| Install proof') {
         throw "Bundled Task Manager list failed: $listed"
     }
+    $beforeBusy = [Convert]::ToBase64String([IO.File]::ReadAllBytes($state))
+    $marker = "$state.svr-write-lock"
+    [IO.File]::WriteAllText($marker, 'owned bundled self-test marker', (New-Object Text.UTF8Encoding($false)))
+    try {
+        $blocked = & svr.exe run $taskProgram -- add $state 'Blocked install proof'
+        if ($LASTEXITCODE -ne 1 -or $blocked -ne 'error: save busy') {
+            throw "Bundled Task Manager busy write was not rejected: $blocked"
+        }
+        if ([Convert]::ToBase64String([IO.File]::ReadAllBytes($state)) -cne $beforeBusy -or
+            [IO.File]::ReadAllText($marker) -cne 'owned bundled self-test marker') {
+            throw 'Bundled busy write changed state or another owner marker.'
+        }
+    } finally {
+        # Only this self-test's marker is removed after its invocation has exited.
+        Remove-Item -LiteralPath $marker
+    }
     $completed = & svr.exe run $taskProgram -- complete $state 'Install proof'
     if ($LASTEXITCODE -ne 0 -or $completed -ne 'completed 1') {
         throw "Bundled Task Manager complete failed: $completed"

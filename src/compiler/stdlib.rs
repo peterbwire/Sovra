@@ -19,6 +19,7 @@ const INDEX_PARAMETERS: &[&str] = &["Int"];
 const EXIT_CODE_PARAMETERS: &[&str] = &["Int"];
 const TEXT_PATH_PARAMETERS: &[&str] = &["String"];
 const TEXT_WRITE_PARAMETERS: &[&str] = &["String", "String"];
+const TEXT_WRITE_IF_PARAMETERS: &[&str] = &["String", "Bool", "String", "String"];
 
 /// Maximum byte length of one line returned from standard input.
 pub const MAX_INPUT_LINE_BYTES: usize = 1024 * 1024;
@@ -93,6 +94,11 @@ const FUNCTIONS: &[StdFunction] = &[
     StdFunction {
         name: "std::write_text",
         parameters: TEXT_WRITE_PARAMETERS,
+        return_type: TEXT_WRITE_TYPE,
+    },
+    StdFunction {
+        name: "std::write_text_if",
+        parameters: TEXT_WRITE_IF_PARAMETERS,
         return_type: TEXT_WRITE_TYPE,
     },
     StdFunction {
@@ -198,6 +204,7 @@ mod tests {
                 "std::read_line",
                 "std::read_text",
                 "std::write_text",
+                "std::write_text_if",
                 "std::split_once",
                 "std::lines_unique",
                 "std::parse_int",

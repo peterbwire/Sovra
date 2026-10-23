@@ -1,5 +1,26 @@
 # Version-one delivery gates
 
+Optimized toolchain checkpoint (2026-10-23): a release-profile compiler package
+with the current conditional-write runtime passes local installation and
+restricted-PATH Task Manager/API checks. Its shipped self-test now rejects a
+busy save, preserves state/foreign marker bytes and continues after removing
+only its own marker. Clean-VM and exact-commit hosted qualification remain open.
+
+Desktop ownership checkpoint (2026-10-23): compiled hosts now reject duplicate
+profile ownership through an exclusive lifetime file handle. Local core and
+packaged tests pass. A private Windows job terminates descendants on host exit.
+Private per-invocation workers also terminate descendants on timeout/transport
+failure without closing the GUI. CLI/browser/legacy-host coordination and atomic
+writer handoff remain separate production work; cancellation is not rollback.
+
+Cross-client storage checkpoint: approved
+[ADR 0034](adr/0034-conditional-text-file-replacement.md) adds cooperative
+`std::write_text_if` in both engines and all Task Manager save paths. Eight
+same/mixed-engine stale-snapshot schedules now reject the second save. A crash
+can retain a blocking marker and needs deliberate recovery after stopping all
+writers. Old binaries, unconditional writes and external editors remain outside
+coordination. Local Windows evidence does not qualify other hosts or a clean VM.
+
 Desktop capacity checkpoint (2026-10-23): Sovra-owned grouped pagination and
 bounded long-text display fix the reproduced 62-open-task renderer overflow.
 Tests cover 1,000 tasks and filter/page transitions while retaining existing

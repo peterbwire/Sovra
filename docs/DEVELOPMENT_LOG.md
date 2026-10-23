@@ -1,5 +1,234 @@
 # Development log
 
+## 2026-10-23: Qualify the current optimized installed toolchain locally
+
+- Built the current release-profile `svr.exe` and packaged a matching runtime
+  source snapshot. The prior conditional-write package used a debug compiler;
+  it remains historical evidence, not the current optimized candidate.
+- Extended the shipped `toolchain/verify-install.ps1` self-test to exercise an
+  owned busy marker, nonzero Task Manager save rejection, byte-for-byte state
+  and marker preservation, and continued task operations after removal of only
+  that test's marker. No user profile or user lock recovery is performed.
+- Strengthened the external restricted-PATH installed test with conditional
+  create/commit/conflict/invalid-snapshot cases, busy rejection and explicit
+  recovery. Added `--compiler PATH` selection to conditional engine tests and
+  forwarded that compiler to mixed-engine subprocesses. Installed native CLI
+  acceptance now runs the complete conditional suite through the installed
+  executable, avoiding accidental fallback to the checkout's debug compiler.
+- Validation: optimized ZIP installation, integrity, reinstall refusal, shipped
+  self-test and independent Task Manager/API checks pass with developer tools
+  removed from PATH. The separately installed release compiler passes both-engine
+  conditional behavior and all eight existing/absent same/mixed snapshot schedules.
+  Public native builds outside the checkout pass for the console template,
+  Task Manager and package consumer, including missing/corrupt payload and output
+  failure isolation. After installer/compiler/runtime/source removal from that
+  test area, resulting executables still run; native Task Manager passes all
+  21 interpreter parity cases. Node/PowerShell syntax and diff checks pass.
+- No language/runtime implementation changed this turn. No additional full Rust
+  suite or desktop GUI rerun is claimed; their previously recorded checks remain.
+  Existing CI invokes these strengthened installation/native tests automatically.
+- Candidate: `target/toolchain/conditional-write-release-v1.zip`, SHA-256
+  `7f573001029851c5d3e2d5056efe17b1028ccf0dbd3d82e7caf3b2e39a1ef388`.
+  Release compiler SHA-256:
+  `721d668709841c5c9bc71d735944b2291b505ae73211a1816e1163101dddc37d`.
+  Local evidence: `target/toolchain/conditional-write-release-v1.qualification.json`.
+  The separately tested desktop v11 archive is unchanged.
+- Remaining: exact-commit hosted/Windows MSVC and clean-compatible-Windows VM
+  qualification, supported-host policy and publication approval. Local restricted
+  PATH is not a clean machine, and removing a temporary installation does not
+  prove that development tools are absent from this host. Retained conditional
+  crash markers still require the approved deliberate recovery procedure.
+
+## 2026-10-23: Implement approved cooperative conditional text replacement
+
+- The user approved ADR 0034's additive API and fail-closed recovery policy.
+  Added `std::write_text_if(path, expected_exists, expected_text, replacement)`
+  returning the existing nominal `std::TextWrite`. Registry, semantic checks,
+  IR call handling, process/test hosts and generated JavaScript agree. Existing
+  unconditional `std::write_text` remains available and noncooperating.
+- Both hosts exclusively create the same sibling `.svr-write-lock` marker,
+  compare original existence/UTF-8 bytes under ownership and reuse existing
+  bounded private-file atomic replacement. Parent canonicalization coordinates
+  ordinary aliases; symlink/non-regular destinations are rejected. Explicit
+  conflict/busy/invalid-snapshot results do not replay mutations. Handled failure
+  releases only an owned marker; crashes or cleanup failures can retain it.
+  Operator recovery requires stopping all writers and inspecting the state.
+  No stale-marker expiry, PID inference, dependency or unsafe code was added.
+- Migrated every Task Manager save, including interactive/direct/UI task state,
+  page movement, view preferences and page reset, using the actual read snapshot.
+  Existing task/view/page formats remain. Preference updates are still separate
+  writes; a later failure does not roll back an earlier preference commit.
+- Found that JavaScript's TextDecoder removed a UTF-8 BOM from file reads while
+  Rust retained it. Added a byte-preservation regression and configured the JS
+  file decoder to preserve that character, matching strict file/snapshot semantics.
+- Validation: 465 Rust tests passed (409 library, 55 CLI, one example), no ignored
+  tests; strict Clippy, formatting and focused language-test-host follow-up pass.
+  All 55 CLI tests also passed with `SOVRA_REQUIRE_CLI_EXECUTION=1`, preventing
+  Application Control failures from being counted as skipped successful checks.
+  Rust fault/competition tests cover guarded replacement and unchanged data.
+  Both-engine conditional tests cover exact bounds, BOM/Unicode, missing/empty
+  snapshots, live/orphan markers, parent aliases, invalid files and Task Manager
+  busy rejection across interactive/direct/UI/preference paths. Eight ordered
+  same/mixed-engine existing/absent schedules reject the stale second snapshot;
+  the separate unconditional probe still confirms its four original limitations.
+- Existing text-file, Task Manager persistence, pagination, browser GUI, grouped
+  UI and all nine dogfood applications pass in both engines. Public native runtime
+  tests pass 26 cases/all 15 builtins with restricted PATH; rebuilt Task Manager
+  passes 21 interpreter/native cases including busy-save status/state preservation.
+- Packaged native GUI passes 281 checks, including visible busy rejection,
+  retained drafts, unchanged state/foreign marker and continued window lifetime.
+  ZIP members/integrity verification and Node/diff checks pass. New desktop ZIP:
+  `target/compiled-desktop/task-manager-compiled-v11.zip`, SHA-256
+  `cd6149f8c0e264888e26b0decdaf2635b8b7aa6fabca61a8e193eee14dd3df3c`.
+  Verified extraction: `target/compiled-desktop/verified-v11/task-manager-compiled-v11`.
+  The native proof is retained at
+  `target/compiled-desktop/native-task-manager-conditional-v1/target/release/sovra-native-proof.exe`.
+- Built the matching development toolchain from the current debug compiler at
+  `target/toolchain/conditional-write-v1.zip`, SHA-256
+  `5ccd755ff9390ff2ae4632ecfe72b400656ed1b4252a34ff363ed1bd90bafd25`.
+  Installation/integrity/self-test, project commands and the updated Task Manager
+  pass through the installed compiler with developer tools removed from PATH.
+  This is a local debug-compiler verification package with matching runtime
+  source, not optimized release or clean-machine qualification.
+- Added conditional tests to the existing host-platform CI matrix and synchronized
+  spec/course/ADR, capability/status/handoff docs, samples and changelog. Local
+  Windows runs do not claim hosted Linux/macOS/MSVC or clean-VM qualification.
+- Remaining: older apps, external editors, unconditional writes, hostile path
+  mutation and multi-file transactions remain outside coordination. Cancellation
+  can leave a marker and does not roll back committed data. Next release work is
+  exact-commit hosted qualification and a clean compatible Windows VM run; automatic
+  crash recovery needs a separate portable-locking design.
+
+## 2026-10-23: Reproduce cross-engine stale writes and prepare coordination decision
+
+- Inspected Task Manager interactive/direct/UI save paths, Node execution host,
+  Rust bounded replacement and existing file-I/O ADRs. Whole-file replacement
+  does not serialize read/modify/write operations. The interactive pre-save
+  recheck also leaves a check/write window. Existing single-writer guarantees
+  are preserved; this is a missing capability, not a violated API promise.
+- Added `scripts/fixtures/text-write-conflict.svr` and a bounded process probe,
+  `node scripts/probe-text-write-conflict.mjs [--compiler PATH]`. Snapshot barriers
+  deterministically arrange two stale writes without timing races or compiler
+  shortcuts. Four schedules (both same-engine pairs and both mixed orders)
+  confirm both callers report success while the second overwrites the first.
+  The probe uses only its own temporary directory, cleans up owned processes,
+  and writes labelled observation evidence with compiler/source hashes at
+  `target/text-write-conflict/observation.json`. It is not a green concurrency
+  test or a new application and has not been added as a release gate in CI.
+- Added proposed ADR 0034 for additive `std::write_text_if`, retaining existing
+  unconditional replacement behavior. It specifies cooperative cross-engine
+  serialization, conflict/busy results, path/size limits, Task Manager migration
+  and deterministic future acceptance gates. The proposed create-new marker
+  policy fails closed after crashes and explicitly requires operator recovery;
+  no automatic stale-lock deletion or crash-safe availability is promised.
+- Validation: all four limitation schedules executed and confirmed, the source
+  fixture passes actual `svr check`, Node syntax and diff whitespace checks pass.
+  No compiler/runtime changes, new full-suite run, new desktop package or clean
+  VM qualification is claimed. The v10 desktop candidate remains unchanged.
+- Next: obtain approval under AGENTS.md before introducing the proposed public
+  callable, error categories and crash/recovery compatibility policy. Then build
+  true conflict-prevention tests and implement/migrate both execution engines.
+
+## 2026-10-23: Cancel complete desktop invocation trees without closing the GUI
+
+- Reproduced the transport gap before fixing it: a timed-out invocation left
+  a descendant alive. Added private `InvocationWorker.cs`, re-entering the same
+  compiled executable before application execution. Each worker installs its own
+  nested kill-on-close job, so the application cannot run before protection is
+  established. The existing GUI-owned job still protects host-exit cleanup.
+- The bridge supervises the worker with its existing deadline, strict UTF-8 and
+  64 KiB stream bounds. Timeout/output overflow kills the worker; Windows closes
+  its non-inheritable job handle and terminates the invocation tree. Worker exit
+  also cleans up descendants after application completion. Direct inherited
+  stdout/stderr handles preserve output bytes; application status is returned.
+  Worker failures report stderr/nonzero status rather than opening a GUI.
+- No shell, new deployed executable, process enumeration, app-specific compiler
+  behavior, language/runtime contract, view protocol or persistence format change.
+  This is private adapter wiring; no public cancellation API is promised. The
+  baseline PowerShell adapter and packager default remain unchanged.
+- Added controlled child/grandchild regressions for timeout, output overflow and
+  nonzero application completion, suppression of delayed writes, and successful
+  subsequent invocation. These supplement real Sovra Task Manager/component
+  execution and the existing GUI responsiveness/error tests, not replace them.
+- Validation: 244 core checks and all 266 packaged checks passed. The actual
+  WinExe worker path passes native Task Manager operations, literal arguments,
+  keyboard/layout behavior, persistence, profile exclusion and startup failures.
+  ZIP safety/integrity, Node syntax and diff whitespace checks passed. The runner
+  already used by Windows CI compiles/hashes the new source. No new hosted CI,
+  clean-VM qualification or Rust-suite execution is claimed; Rust is unchanged.
+- Candidate: `target/compiled-desktop/task-manager-compiled-v10.zip`, SHA-256
+  `7d4b34514440bea29774312ada13197018f8548195e9928d2012caa8fb37abd1`.
+  Verified extraction: `target/compiled-desktop/verified-v10/task-manager-compiled-v10`.
+- Remaining: cancellation is not rollback or an atomic lease handoff. Cooperating
+  compiled hosts alone honor the profile lease; CLI/browser/legacy writers still
+  require coordination. Next: design that storage coordination boundary and
+  qualify the exact desktop archive on a clean compatible Windows VM.
+
+## 2026-10-23: Bound compiled desktop descendants to the host lifetime
+
+- Reproduced the orphan writer with a controlled process regression before the
+  fix: terminating its parent left the writer alive. Added private
+  `ProcessLifetime.cs`, installing an unnamed Windows kill-on-close job before
+  the desktop entry point starts children. Descendants inherit job membership;
+  the host alone retains the non-inheritable handle until process exit. Closing
+  it explicitly would kill the host, so this one handle deliberately has no
+  disposer/finalizer. Setup failure is reported before application execution.
+- Uses managed P/Invoke marshalling, no unsafe code, no process-start rewrite,
+  breakaway flags, public language changes or application-specific behavior.
+  Existing outer job restrictions are respected. Windows 8+ nested-job support
+  is required. Source is included in package compilation and hashed test evidence.
+- Controlled tests cover child and grandchild termination after forced shutdown
+  and normal exit, unchanged successful exit status, repeated initialization and
+  suppression of delayed writes. Real Sovra Task Manager/component GUI tests
+  remain in the same runner; the fixture is fault injection, not an application.
+- Validation: 223 core checks passed, then 245 packaged checks passed through
+  an isolated test profile. Actual GUI startup failures still return status 1;
+  normal packaged GUI closes successfully. ZIP member/integrity verification,
+  Node syntax and diff whitespace checks passed. No Rust code changed or Rust
+  suite rerun is claimed. Hosted CI and clean-VM qualification remain pending.
+- Candidate: `target/compiled-desktop/task-manager-compiled-v9.zip`, SHA-256
+  `fe878d065c7505a3323ffcd8c5608a39e15632827e5e30cbb5246068cb88e735`.
+  Verified extraction: `target/compiled-desktop/verified-v9/task-manager-compiled-v9`.
+- Limits/next: host termination is not an atomic profile lease handoff or
+  transaction rollback. CLI/browser/legacy hosts remain uncoordinated. Invocation
+  timeout currently kills the direct child; descendants while the host stays
+  alive need a separate bounded cancellation design. Qualify the exact archive
+  on a clean compatible Windows VM before promoting the optional adapter.
+
+## 2026-10-23: Guard cooperating compiled desktop profile owners
+
+- Added private `ProfileLease.cs`, holding an exclusive read/write file handle
+  at `<profile>/.desktop.lock` before the entry point starts any Sovra child.
+  The handle spans the window lifetime and is disposed on normal close/errors.
+  A sharing/locking violation produces an actionable duplicate-instance startup
+  diagnostic; unrelated I/O errors retain their original cause. The marker is
+  not deleted, avoiding release/recreation races, and contains no application data.
+- Tests cover same-process and cross-process exclusion, independent directories,
+  double disposal, clean release, missing-directory diagnostics and reacquisition
+  after terminating an owned test holder. The packaged regression attempts a
+  second GUI for the same profile, requires a diagnostic/nonzero exit, and checks
+  that the original writer and stored bytes are undisturbed.
+- The initial pre-implementation packaged test did not execute: automatic
+  approval review failed because account usage limits prevented review. It was
+  not treated as an unsafe verdict or a failing application regression. Completed
+  the implementation, workspace-contained core checks and package verification;
+  a later normal approval review succeeded and the packaged test then ran.
+  No approval or operating-system policy was bypassed.
+- Validation: 212 core checks passed, followed by all 234 packaged checks through
+  a temporary owned LocalAppData profile. ZIP integrity, Node syntax and diff
+  whitespace checks passed. New candidate:
+  `target/compiled-desktop/task-manager-compiled-v7.zip`, SHA-256
+  `650e7a8150b0d2a4a14863927a26f96eba6ba389678d84b8a7b323c4e7c5add5`.
+  Verified extraction: `target/compiled-desktop/verified-v7/task-manager-compiled-v7`.
+  No new Rust-suite, hosted CI or clean-VM qualification is claimed.
+- Boundary: this is ownership among cooperating compiled hosts, not a general
+  Sovra file-lock API. CLI/browser/legacy hosts do not acquire the lease. A child
+  does not inherit it; forced host termination during an event can leave an
+  orphaned writer. The termination test covered a holder without an application
+  child and is not proof of process-tree lifetime protection. Next: design and
+  qualify child lifetime handling and the cross-entry-point writer policy before
+  describing concurrency as production-ready or promoting the default adapter.
+
 ## 2026-10-23: Fix grouped Task Manager capacity through Sovra-owned pagination
 
 - Reproduced the actual desktop failure: 62 short open tasks emit 257 leaves

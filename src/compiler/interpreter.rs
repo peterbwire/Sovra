@@ -95,6 +95,19 @@ pub trait RuntimeHost {
             error: "io".into(),
         }
     }
+    /// Conditionally replace one file, coordinating with other conditional writers.
+    fn write_text_if(
+        &mut self,
+        _path: &str,
+        _exists: bool,
+        _expected: &str,
+        _text: &str,
+    ) -> crate::compiler::text_files::TextWrite {
+        crate::compiler::text_files::TextWrite {
+            ok: false,
+            error: "io".into(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -169,6 +182,15 @@ impl RuntimeHost for ProcessHost {
 
     fn write_text(&mut self, path: &str, text: &str) -> crate::compiler::text_files::TextWrite {
         crate::compiler::text_files::write_text(path, text)
+    }
+    fn write_text_if(
+        &mut self,
+        path: &str,
+        exists: bool,
+        expected: &str,
+        text: &str,
+    ) -> crate::compiler::text_files::TextWrite {
+        crate::compiler::text_files::write_text_if(path, exists, expected, text)
     }
 }
 
@@ -594,11 +616,27 @@ fn execute_std_call(
                 ],
             })));
         }
-        "std::write_text" => {
-            let (Value::String(path), Value::String(text)) = (&arguments[0], &arguments[1]) else {
-                return Err("std::write_text expects String path and text".into());
+        "std::write_text" | "std::write_text_if" => {
+            let result = if name == "std::write_text_if" {
+                let (
+                    Value::String(path),
+                    Value::Bool(exists),
+                    Value::String(expected),
+                    Value::String(text),
+                ) = (&arguments[0], &arguments[1], &arguments[2], &arguments[3])
+                else {
+                    return Err(
+                        "std::write_text_if expects String, Bool, String, String arguments".into(),
+                    );
+                };
+                host.write_text_if(path, *exists, expected, text)
+            } else {
+                let (Value::String(path), Value::String(text)) = (&arguments[0], &arguments[1])
+                else {
+                    return Err("std::write_text expects String path and text".into());
+                };
+                host.write_text(path, text)
             };
-            let result = host.write_text(path, text);
             stack.push(Value::Struct(Box::new(StructValue {
                 type_name: stdlib::TEXT_WRITE_TYPE.into(),
                 fields: vec![

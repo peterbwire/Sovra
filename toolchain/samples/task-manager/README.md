@@ -12,3 +12,11 @@ svr run .\samples\task-manager\main.svr -- list .\tasks.txt
 ```
 
 The browser GUI is a separate Node-hosted adapter and is not bundled here.
+
+This sample requires a compiler with approved ADR 0034 `std::write_text_if`.
+Current programs reject stale/busy saves without automatically retrying them.
+Old applications and external editors must not write the same file concurrently.
+A crashed writer can leave `<file>.svr-write-lock`: stop all writers, inspect
+the data, then deliberately remove the retained marker before retrying. Never
+remove it based only on age. See `docs/adr/0034-conditional-text-file-replacement.md`
+in the toolchain for the cooperative scope and recovery policy.

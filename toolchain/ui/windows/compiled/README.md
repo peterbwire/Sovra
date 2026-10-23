@@ -16,6 +16,40 @@ The existing private profile chooses a stable application ID. Data remains at
 location and Sovra file format. Do not run two writers against the same data.
 The host never interprets task rows or implements task-management operations.
 
+Compiled hosts now acquire an exclusive `.desktop.lock` handle in the profile
+directory before launching the application. A second cooperating host for that
+same directory shows a startup error and exits nonzero. Different profiles are
+independent. Closing releases the handle; process termination also releases it.
+The empty marker stays on disk and must not be deleted as a way to unlock a
+running profile. A leftover marker alone is not a stale lock.
+
+This protects cooperating compiled desktop hosts only. CLI, browser and older
+PowerShell hosts do not acquire this lease and must not write the same data
+concurrently. Before starting children, the host joins a private Windows job
+with kill-on-close and no breakaway. Its non-inheritable handle belongs to the
+host for the process lifetime; Windows terminates descendants on normal exit
+or forced termination. If the guard cannot be installed, startup fails before
+application execution. This requires nested-job support on Windows 8 or newer.
+The lease itself is not inherited: shutdown is not an atomic handoff between
+writers, nor a transaction/rollback guarantee.
+
+Each invocation re-enters this executable as a private worker. Before starting
+the application, the worker creates its own nested kill-on-close job. Timeout
+or output-limit failure terminates the worker and its application descendants,
+leaving the GUI alive. Worker exit also cleans up descendants left after normal
+application exit. Output bytes and exit status pass through unchanged; no shell
+or additional installed executable is involved. This internal mode is not a
+public Sovra CLI or cancellation API. Committed writes are not rolled back.
+
+The current Task Manager payload uses approved `std::write_text_if` for task,
+filter and page saves. Cooperating current CLI/browser/desktop programs reject
+stale or busy writes. This host does not add locking to arbitrary applications.
+A crash or cleanup failure can leave `<file>.svr-write-lock`; stop all writers,
+inspect the data, then deliberately remove that marker before retrying. Never
+delete it based only on age. An old app, unconditional write or external editor
+does not participate. Keep state in a private local directory; conditional writes
+reject symlink destinations and do not form multi-file transactions.
+
 Both `SVR-UI-1` and opt-in `SVR-UI-2` are supported: headings, text, labelled
 inputs, actions, vertical stacks, wrapping rows and card/plain groups. Existing
 limits remain: strict UTF-8, 64 KiB per stream, 256 leaf nodes, 256 groups, eight
@@ -45,7 +79,7 @@ application identity and view command are validated before execution. Startup
 failures display a diagnostic and return nonzero status. Tests cover malformed
 profiles and missing application executables without changing existing state.
 Controlled transport fixtures also verify that slow work leaves the dispatcher
-responsive, nonzero exits stay visible, timeouts terminate the child, and a
+responsive, nonzero exits stay visible, timeouts terminate invocation trees, and a
 malformed refreshed view blocks later stale mutations. These process fixtures
 test the host; Task Manager and the reusable component still run through Sovra.
 

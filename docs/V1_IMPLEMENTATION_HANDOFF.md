@@ -1,18 +1,39 @@
 # Version-one implementation handoff
 
+Optimized toolchain candidate (2026-10-23):
+`target/toolchain/conditional-write-release-v1.zip` contains the release-profile
+compiler, matching runtime source and stronger shipped installation self-tests.
+Its installation and conditional Task Manager checks pass locally with developer
+tools removed from PATH. The desktop candidate below is a separate artifact;
+neither local package is clean-VM or publication approval.
+
+Approved [ADR 0034](adr/0034-conditional-text-file-replacement.md) is implemented:
+conditional text replacement coordinates current Task Manager saves in both
+engines and native execution. Eight same/mixed-engine snapshot schedules reject
+stale saves. Retained crash markers fail closed; recovery requires stopping all
+writers first. Unconditional writes and older application binaries remain outside
+the guarantee. See the development log for executed checks and artifact identity.
+
 Compiled desktop candidate (2026-10-23): the internal packager's `-CompiledHost`
 option produces a C#/WPF `Sovra UI.exe` that owns its window and invokes the
 native Sovra application directly, with no PowerShell runtime scripts. Local
-qualification now passes 220 checks including native events, keyboard/layout
+qualification now passes 281 checks including native events, keyboard/layout
 behavior, bounded 1,000-task pagination, task editing/filtering, startup failures,
-responsiveness and restart persistence;
+responsiveness, duplicate-profile rejection and restart persistence;
 the baseline adapter also passes its retained tests. This is a private Windows
 candidate requiring compatible .NET/WPF, not a clean-VM or release approval.
 See [ADR 0033](adr/0033-compiled-desktop-host.md) and the latest development log
 for artifact paths and actual validation. The historical hashes below remain
 historical.
 
-The current capacity-fixed candidate is `target/compiled-desktop/task-manager-compiled-v6.zip`.
+The current candidate is `target/compiled-desktop/task-manager-compiled-v11.zip`.
+Its lease protects cooperating compiled desktop hosts; a private Windows job
+terminates descendants on host exit. Private invocation workers now clean up
+descendants after timeouts, transport failures and application completion while
+the GUI remains alive. Current Task Manager programs additionally use conditional
+writes across hosts. Older/noncooperating writers and atomic writer handoff
+remain separate; cancellation does not roll back writes already committed.
+See the latest development-log entry for completed checks and artifact identity.
 Repository cleanup retained the earlier v4 desktop candidate and the latest
 `target/toolchain/project-rollback-v1` toolchain. Older generated artifacts were
 removed; historical paths/hashes below describe past evidence, not a promise

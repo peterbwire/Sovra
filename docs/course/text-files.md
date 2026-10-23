@@ -47,3 +47,39 @@ cargo run --locked -- run dogfood/02-file-processor/main.svr -- copy input.txt o
 
 The interpreter and generated JavaScript receive the same source API. Run
 `node scripts/test-text-files.mjs` after building to exercise both engines.
+
+## Rejecting stale updates
+
+Approved ADR 0034 adds conditional replacement for cooperating writers:
+
+```svr
+fn main() {
+    let loaded = std::read_text("notes.txt");
+    if loaded.ok == false && loaded.error != "not_found" {
+        print("read failed: " + loaded.error);
+        return;
+    }
+    let saved: std::TextWrite = std::write_text_if(
+        "notes.txt", loaded.ok, loaded.text, loaded.text + "New note\n");
+    if saved.ok == false { print("not saved: " + saved.error); return; }
+    print("saved");
+}
+```
+
+The comparison uses the original content, including a UTF-8 BOM if present.
+`conflict` means another conditional writer changed existence or content; reload
+before asking the user to retry. `busy` means a coordination marker already
+exists. Neither result authorizes automatically replaying a mutation.
+
+Conditional writes use a sibling `.svr-write-lock` marker, not a public file
+handle. A crash or cleanup failure can leave it behind. Stop **all** writers,
+inspect the data, then deliberately remove a retained marker to recover. Never
+remove one based only on its age or while another writer might still run.
+Successful commit is not undone by marker-cleanup failure. Keep files in a
+private local directory, do not write internal marker paths, and keep old apps,
+unconditional `std::write_text` calls and external editors from writing the same
+state concurrently. Symlink destinations are rejected by the conditional API.
+Different files are independent; several conditional writes are not a transaction.
+
+Run `node scripts/test-conditional-text-files.mjs` for two-engine behavior,
+Task Manager rejection paths and deterministic mixed-engine conflict checks.

@@ -1,6 +1,6 @@
 # Standalone executable capability and readiness matrix
 
-Updated 2026-10-14. This matrix concerns the accepted internal N1 executable
+Updated 2026-10-23. This matrix concerns the accepted internal N1 executable
 proof and ADR 0027 public host-native builds, which embed checked Sovra IR and the Rust interpreter. `svr.exe` is
 the developer toolchain; a produced application executable is a separate
 artifact. The application runs without launching Node, Rust or `svr`. Building
@@ -17,9 +17,10 @@ or the toolchain's version-matched runtime source payload.
 | Scalar values | Signed 64-bit Int, Float, Bool, UTF-8 String and Unit | Runtime values/text/error cases; nominal package Float widening |
 | Collections and records | Arrays and nominal records retain interpreter value semantics | Copy isolation, indexed writes, structural equality within one nominal type, exported construction and field reads |
 | Control flow | Branches, loops, calls and short-circuit logical operators | Runtime fixture checks loop output and absence of skipped side effects |
-| Text and process APIs | All 14 registered standard functions and bare `print` alias | Runtime fixture calls the full registry; the runner rejects missing fixture coverage when registry names change |
+| Text and process APIs | All 15 registered standard functions and bare `print` alias | Runtime fixture calls the full registry; the runner rejects missing fixture coverage when registry names change |
 | Input and terminal output | Explicit EOF, UTF-8, bounded lines, flushed output and terminal escaping | Runtime stdin cases, retained output on failure and interactive Task Manager parity |
 | Files | Bounded UTF-8 reads and replacement writes with explicit result records | Exact 16 MiB boundary, oversized/invalid reads, failure preservation and persisted byte comparisons |
+| Conditional replacement | Cooperative `std::write_text_if` with conflict/busy results | Native runtime create/commit/conflict/busy cases and migrated Task Manager paths; crash markers require deliberate recovery |
 | Runtime errors | Overflow, zero division, bounds, call-depth and invalid host arguments return errors | Expected status/stderr checked against the interpreter |
 | Exit status | Approved 0–125 contract | Native exit 125 and rejection of 126 |
 | Image loading | Private versioned, bounded format validates declarations, payloads, jumps and calls | Decoder regressions; builder preflights its own image |

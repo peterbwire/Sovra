@@ -46,6 +46,7 @@ try {
         writeFileSync(join(directory, 'invalid.txt'), Buffer.from([0xff]));
         writeFileSync(join(directory, 'boundary.txt'), Buffer.alloc(16 * 1024 * 1024, 0x61));
         writeFileSync(join(directory, 'oversized.txt'), Buffer.alloc(16 * 1024 * 1024 + 1, 0x61));
+        writeFileSync(join(directory, 'busy.txt.svr-write-lock'), 'owned test marker');
     }
     const cases = [
         { args: ['arguments', 'caf\u00e9'], status: 0, output: '2\ncaf\u00e9\n' },
@@ -72,6 +73,10 @@ try {
         { args: ['copy', 'missing.txt', 'output.txt'], status: 1, output: 'not_found\n' },
         { args: ['copy', 'input.txt', 'missing-parent/output.txt'], status: 1, output: 'false\nnot_found\n' },
         { args: ['copy', 'input.txt', 'output.txt'], status: 0, output: 'true\n\n' },
+        { args: ['conditional', 'conditional.txt', 'false', '', 'first'], status: 0, output: 'true\n\n' },
+        { args: ['conditional', 'conditional.txt', 'true', 'stale', 'lost'], status: 0, output: 'false\nconflict\n' },
+        { args: ['conditional', 'conditional.txt', 'true', 'first', 'second'], status: 0, output: 'true\n\n' },
+        { args: ['conditional', 'busy.txt', 'false', '', 'lost'], status: 0, output: 'false\nbusy\n' },
     ];
     for (const test of cases) {
         const expected = execute(compiler, ['run', reference, '--', ...test.args],
@@ -84,6 +89,8 @@ try {
         else assert.equal(actual.stderr, '');
         assert.deepEqual(readFileSync(join(native, 'output.txt')),
             readFileSync(join(interpreted, 'output.txt')));
+        if (existsSync(join(native, 'conditional.txt'))) assert.deepEqual(
+            readFileSync(join(native, 'conditional.txt')), readFileSync(join(interpreted, 'conditional.txt')));
         if (test.args[0] === 'copy' && test.status !== 0) {
             assert.equal(readFileSync(join(native, 'output.txt'), 'utf8'), 'keep until replaced');
         }

@@ -8,7 +8,9 @@ struct PageOptions { ok: Bool, index: Int }
 
 // Navigation is separate from existing task and search/filter formats.
 fn page_options(path: String) -> PageOptions {
-    let file = std::read_text(path + ".page");
+    return parse_page_options(std::read_text(path + ".page"));
+}
+fn parse_page_options(file: std::TextRead) -> PageOptions {
     if file.ok == false { return PageOptions { ok: file.error == "not_found", index: 0 }; }
     let header = std::split_once(file.text, "\n");
     let value = std::split_once(header.after, "\n");
@@ -48,7 +50,9 @@ fn view_preview(text: String, label: String) -> String {
 
 // Private application preferences are separate from the durable task format.
 fn view_options(path: String) -> ViewOptions {
-    let file = std::read_text(path + ".view");
+    return parse_view_options(std::read_text(path + ".view"));
+}
+fn parse_view_options(file: std::TextRead) -> ViewOptions {
     if file.ok == false {
         return ViewOptions { ok: file.error == "not_found", mode: "all", query: "" };
     }
@@ -410,7 +414,8 @@ fn interactive(path: String, persistent: Bool) {
                     if (file_existed) { fail("error: task file changed"); return; }
                 } else { fail("error: load " + current.error); return; }
                 let next_text = encode(updated);
-                let saved = std::write_text(path, next_text);
+                let saved = std::write_text_if(path, file_existed, saved_text, next_text);
+                if saved.error == "conflict" { fail("error: task file changed"); return; }
                 if saved.ok == false { fail("error: save " + saved.error); return; }
                 saved_text = next_text;
                 file_existed = true;
@@ -446,7 +451,8 @@ fn one_shot(command: String, path: String, title: String, value: String) {
         if title == "page-next" || title == "page-previous" {
             if value != "" { fail("error: unexpected UI value"); return; }
             let options = view_options(path);
-            let page = page_options(path);
+            let page_file = std::read_text(path + ".page");
+            let page = parse_page_options(page_file);
             if options.ok == false || page.ok == false {
                 fail("error: invalid or unreadable view/page preferences"); return;
             }
@@ -459,15 +465,18 @@ fn one_shot(command: String, path: String, title: String, value: String) {
                 if index == 0 { fail("error: page unavailable"); return; }
                 index = index - 1;
             }
-            let saved = std::write_text(path + ".page", "SVR-TASK-PAGE-1\n" + std::to_string(index) + "\n");
+            let saved = std::write_text_if(path + ".page", page_file.ok, page_file.text,
+                "SVR-TASK-PAGE-1\n" + std::to_string(index) + "\n");
             if saved.ok == false { fail("error: save page " + saved.error); return; }
             print("page updated"); return;
         }
         if title == "search" || title == "clear-search" || title == "filter-all" ||
             title == "filter-open" || title == "filter-completed" {
-            let options = view_options(path);
+            let view_file = std::read_text(path + ".view");
+            let options = parse_view_options(view_file);
             if options.ok == false { fail("error: invalid or unreadable view preferences"); return; }
-            let page = page_options(path);
+            let page_file = std::read_text(path + ".page");
+            let page = parse_page_options(page_file);
             if page.ok == false { fail("error: invalid or unreadable page preferences"); return; }
             let mut mode = options.mode;
             let mut query = options.query;
@@ -483,16 +492,17 @@ fn one_shot(command: String, path: String, title: String, value: String) {
                 if title == "filter-open" { mode = "open"; }
                 if title == "filter-completed" { mode = "completed"; }
             }
-            let saved = std::write_text(path + ".view", "SVR-TASK-VIEW-1\n" + mode + "\n" + query);
+            let saved = std::write_text_if(path + ".view", view_file.ok, view_file.text,
+                "SVR-TASK-VIEW-1\n" + mode + "\n" + query);
             if saved.ok == false { fail("error: save view " + saved.error); return; }
-            let reset = std::write_text(path + ".page", "SVR-TASK-PAGE-1\n0\n");
+            let reset = std::write_text_if(path + ".page", page_file.ok, page_file.text, "SVR-TASK-PAGE-1\n0\n");
             if reset.ok == false { fail("error: reset page " + reset.error); return; }
             print("view updated"); return;
         }
         if title == "add" {
             let updated = add(tasks, value, false);
             if (updated == tasks) { return; }
-            let saved = std::write_text(path, encode(updated));
+            let saved = std::write_text_if(path, file.ok, file.text, encode(updated));
             if saved.ok == false { fail("error: save " + saved.error); return; }
             print("added " + std::to_string(tasks.next_id));
             return;
@@ -504,7 +514,7 @@ fn one_shot(command: String, path: String, title: String, value: String) {
             if find_id(tasks, id.value).id == 0 { fail("error: task unavailable"); return; }
             let updated = rename(tasks, id.value, value);
             if (updated == tasks) { return; }
-            let saved = std::write_text(path, encode(updated));
+            let saved = std::write_text_if(path, file.ok, file.text, encode(updated));
             if saved.ok == false { fail("error: save " + saved.error); return; }
             print("renamed " + std::to_string(id.value));
             return;
@@ -530,7 +540,7 @@ fn one_shot(command: String, path: String, title: String, value: String) {
         let mut updated = tasks;
         if (removing) { updated = remove(tasks, id.value, false); }
         else { updated = complete(tasks, id.value, false); }
-        let saved = std::write_text(path, encode(updated));
+        let saved = std::write_text_if(path, file.ok, file.text, encode(updated));
         if saved.ok == false { fail("error: save " + saved.error); return; }
         if (removing) { print("deleted " + std::to_string(id.value)); }
         else { print("completed " + std::to_string(id.value)); }
@@ -554,7 +564,7 @@ fn one_shot(command: String, path: String, title: String, value: String) {
         }
     }
     if (updated != tasks) {
-        let saved = std::write_text(path, encode(updated));
+        let saved = std::write_text_if(path, file.ok, file.text, encode(updated));
         if saved.ok == false { fail("error: save " + saved.error); return; }
     }
     if success != "" { print(success); }

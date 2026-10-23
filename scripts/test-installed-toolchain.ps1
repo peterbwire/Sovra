@@ -39,4 +39,45 @@ $done = & svr.exe run $taskProgram -- complete $state 'Independent task'
 if ($LASTEXITCODE -ne 0 -or $done -ne 'completed 1') { throw "Task Manager complete failed: $done" }
 $deleted = & svr.exe run $taskProgram -- delete $state 'Independent task'
 if ($LASTEXITCODE -ne 0 -or $deleted -ne 'deleted 1') { throw "Task Manager delete failed: $deleted" }
-Write-Output "Installed toolchain passed in restricted PATH: $version; package self-test and Task Manager."
+$beforeBusy = [IO.File]::ReadAllBytes($state)
+$marker = "$state.svr-write-lock"
+$utf8 = [Text.UTF8Encoding]::new($false)
+[IO.File]::WriteAllText($marker, 'owned installation test marker', $utf8)
+try {
+    $blocked = & svr.exe run $taskProgram -- add $state 'Blocked task'
+    if ($LASTEXITCODE -ne 1 -or $blocked -ne 'error: save busy') { throw "Installed busy save was not rejected: $blocked" }
+    if ([Convert]::ToBase64String([IO.File]::ReadAllBytes($state)) -cne [Convert]::ToBase64String($beforeBusy)) {
+        throw 'Installed busy save changed task bytes.'
+    }
+    if ([IO.File]::ReadAllText($marker) -cne 'owned installation test marker') {
+        throw 'Installed busy save removed or changed another owner marker.'
+    }
+} finally {
+    # This test created the marker; its owned invocations have already exited.
+    Remove-Item -LiteralPath $marker
+}
+$recovered = & svr.exe run $taskProgram -- add $state 'Recovered task'
+if ($LASTEXITCODE -ne 0 -or $recovered -ne 'added 2') { throw "Installed save did not recover after owned-marker removal: $recovered" }
+$conditionalSource = Join-Path $taskDir 'conditional.svr'
+$conditionalState = Join-Path $taskDir 'conditional.txt'
+[IO.File]::WriteAllText($conditionalSource, @'
+fn main() {
+    let path = std::arg(0);
+    let created: std::TextWrite = std::write_text_if(path, false, "", "base");
+    print(created.ok);
+    let conflict = std::write_text_if(path, true, "stale", "lost");
+    print(conflict.error);
+    let changed = std::write_text_if(path, true, "base", "updated");
+    print(changed.ok);
+    let invalid = std::write_text_if(path, false, "nonempty", "lost");
+    print(invalid.error);
+}
+'@, $utf8)
+$conditional = (& svr.exe run $conditionalSource -- $conditionalState) -join "`n"
+if ($LASTEXITCODE -ne 0 -or $conditional -cne "true`nconflict`ntrue`ninvalid_snapshot") {
+    throw "Installed conditional-write contract failed: $conditional"
+}
+if ([IO.File]::ReadAllText($conditionalState) -cne 'updated' -or (Test-Path -LiteralPath "$conditionalState.svr-write-lock")) {
+    throw 'Installed conditional replacement lost data or left its normal-completion marker.'
+}
+Write-Output "Installed toolchain passed in restricted PATH: $version; package self-test, conditional replacement and Task Manager."

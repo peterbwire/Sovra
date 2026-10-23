@@ -1,5 +1,28 @@
 # 01 — Task Manager CLI
 
+Compiled desktop lifecycle checkpoint (2026-10-23): the private C#/WPF host
+installs a Windows process job before launching Sovra. Normal exit or forced
+termination kills descendants; inability to install protection is a startup
+error. This complements profile ownership without changing task operations or
+storage syntax. Private per-invocation workers also clean up descendants on
+timeout or transport failure without closing the GUI. Transaction rollback
+remains separate work.
+
+Approved [ADR 0034](../../docs/adr/0034-conditional-text-file-replacement.md) is
+implemented. Current task, filter and page saves use `std::write_text_if` with
+the original snapshot, rejecting stale or busy saves without automatic replay.
+`node scripts/test-conditional-text-files.mjs` tests both engines, mixed pairs
+and application rejection paths. The unflagged write-conflict probe deliberately
+continues to show why unconditional writes do not coordinate.
+
+A crash or failed cleanup can leave `<file>.svr-write-lock`. Stop **all** writers,
+inspect your data, then deliberately remove the retained marker before retrying.
+Never remove a marker by age alone or while a writer might still be active.
+Keep state in a private local directory. Old application binaries, external
+editors and unconditional writes must not modify it concurrently. Symlink
+destinations are rejected by conditional writes. Multi-file updates are not
+transactions and committed data is not rolled back on cancellation.
+
 Status: **Partial**. Batch and interactive workflows execute in both engines.
 Optional file-backed state survives restarts. Variable-length task rows remove
 the old three-task ceiling without changing language semantics. Current
@@ -204,6 +227,14 @@ Filter/search preferences and navigation reset use separate atomic writes;
 a write failure may leave one preference updated, and is reported. These writes
 do not change task data and are not a multi-file transaction. Existing single-writer
 limitations remain.
+
+The compiled desktop host now rejects a second cooperating instance for the same
+profile using a lifetime file handle. This does not block a CLI, browser or older
+desktop host from writing that state path. Keep one writer across those entry
+points. Current Task Manager programs additionally coordinate conditional saves;
+old versions do not. The compiled host's Windows jobs terminate application
+descendants on host exit and invocation cancellation. See the compiled adapter
+README for the ownership boundary and retained-marker recovery policy.
 
 Run `node scripts/test-task-pagination.mjs` to check the original 62-task failure,
 1,000-task bounds, filtered navigation, restart, page clamping, long stored text,

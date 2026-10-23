@@ -38,7 +38,36 @@ Keep the existing 64 KiB per-stream bound, 256 leaves, 256 groups, eight group
 levels, 30-second child timeout, one in-flight event and no automatic mutation
 retry. A close request waits for success; an error keeps the window open.
 Existing application IDs retain their LocalAppData state paths and Sovra formats.
-The existing single-writer limitation is unchanged.
+The storage contract remains single-writer. Compiled hosts now hold an exclusive
+per-directory `.desktop.lock` file handle before application startup, rejecting
+a second cooperating host for the same profile. The OS releases the handle on
+process termination; the marker is retained to avoid deletion/recreation races.
+Independent profiles remain independent. This private ownership guard does not
+add a language locking primitive or coordinate CLI/browser/legacy hosts.
+Before any child starts, the host joins an unnamed Windows kill-on-close job
+without breakaway. The non-inheritable job handle is deliberately retained until
+process exit; explicitly disposing it would terminate the host itself. Windows
+terminates descendants when that final handle closes, including on host crash.
+Setup failure is a startup error, never a silent unprotected fallback. Existing
+outer job restrictions are respected; no sandbox escape is requested. Managed
+P/Invoke uses sequential structs and no unsafe code. This private adapter change
+does not alter Sovra semantics or the view protocol. Windows 8+ nested jobs are
+required. Atomic lease handoff/rollback and CLI/browser coordination remain
+separate work.
+
+For per-invocation cleanup, `InvocationWorker.cs` re-enters the same compiled
+executable in a private worker mode. The worker joins its own nested kill-on-close
+job before starting application code, preventing a start-then-assign race. It
+passes stdout/stderr handles directly through and returns the application status.
+The bridge's existing bounded reader/deadline supervises the worker. Killing it
+on timeout or transport failure closes its job handle and terminates that tree;
+worker exit after application completion also cleans up leftover descendants.
+The GUI remains outside the worker's job and can dispatch later operations.
+The worker mode is private adapter wiring, not a public command or cancellation
+contract. No process enumeration, shell, extra deployed executable, mutation
+retry or rollback is introduced. Existing enclosing job restrictions still apply.
+The inheritance/kill-on-close behavior follows the Windows
+[job object lifecycle](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects).
 
 ## Incremental delivery and validation
 

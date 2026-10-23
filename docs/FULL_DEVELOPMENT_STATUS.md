@@ -1,5 +1,12 @@
 # Full development status
 
+Conditional text replacement (2026-10-23): approved ADR 0034 adds
+`std::write_text_if` to the stdlib, interpreter process/test hosts and JavaScript
+backend. Current Task Manager task/filter/page saves compare original snapshots.
+Conflict, busy-marker, mixed-engine and native tests pass locally; retained crash
+markers require manual recovery after all writers stop. Unconditional writes,
+older binaries and multi-file transactions remain outside coordination.
+
 Project creation hardening (2026-10-21): `svr new` rollback tracks successful
 exclusive file creation and preserves interleaved main/manifest collisions and
 unrelated entries. Empty failed reservations are removed nonrecursively. This is

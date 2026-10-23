@@ -1,5 +1,19 @@
 # Sovra UI architecture
 
+Compiled profile-ownership checkpoint (2026-10-23): a retained exclusive file
+handle prevents two cooperating compiled hosts from opening the same profile.
+It is acquired before any Sovra child starts and held through the window lifetime.
+Normal close/process termination releases it without deleting the marker.
+Different profiles remain independent. A private Windows kill-on-close job now
+terminates descendants when the compiled host exits, including forced shutdown.
+Each invocation now runs through a private re-entry worker with its own nested
+job, so timeout/transport failure cleans up that tree while leaving the GUI alive.
+These guards do not impose storage rules on applications. Current Task Manager
+programs additionally use approved conditional text replacement (ADR 0034) across
+CLI/browser/desktop execution; old binaries and unconditional writes do not
+cooperate. Crash markers fail closed and need deliberate recovery. Atomic writer
+handoff and multi-file rollback remain outside these guards.
+
 Application pagination checkpoint (2026-10-23): Task Manager's grouped Sovra
 view emits 25 matching rows per page and generic Previous/Next buttons. Its
 `.page` sidecar is separate from existing task/filter formats. Long title/query

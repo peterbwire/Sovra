@@ -45,6 +45,9 @@ try {
     const installed = join(scratch, 'installed');
     success(powershell(join(packageRoot, 'install.ps1'), ['-Prefix', installed, '-NoPersistPath']));
     const svr = join(installed, 'bin', 'svr.exe');
+    const conditional = success(execute(process.execPath, [join(root, 'scripts', 'test-conditional-text-files.mjs'),
+        '--compiler', svr], root, process.env, 120000));
+    console.log(conditional.stdout.trim());
     const project = join(scratch, 'console');
     success(execute(svr, ['new', project]));
     const source = join(project, 'main.svr');

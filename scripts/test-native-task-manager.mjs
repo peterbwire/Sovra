@@ -113,6 +113,13 @@ try {
     compare(['add', 'legacy.txt', 'Migrated'], 0);
     assert.match(readFileSync(join(standalone, 'legacy.txt'), 'utf8'), /^SVR-TASKS-2\n/);
 
+    for (const directory of [interpreted, standalone]) writeFileSync(join(directory, 'tasks.txt.svr-write-lock'), 'owned parity marker');
+    compare(['add', 'tasks.txt', 'Blocked'], 1);
+    compare(['ui-event', 'tasks.txt', 'add', 'Blocked'], 1);
+    compare(['interactive', 'tasks.txt'], 1, 'add\nBlocked\nquit\n');
+    for (const directory of [interpreted, standalone]) assert.equal(
+        readFileSync(join(directory, 'tasks.txt.svr-write-lock'), 'utf8'), 'owned parity marker');
+
     console.log(`PASS native Task Manager parity: ${cases} cases, matching state bytes and exit status`);
 } finally {
     rmSync(scratch, { recursive: true, force: true });

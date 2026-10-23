@@ -1,5 +1,12 @@
 # Roadmap
 
+Conditional persistence checkpoint (2026-10-23): approved ADR 0034 is implemented
+in both engines and current Task Manager save paths. Cooperative conditional
+replacement rejects stale snapshots/busy markers. Retained crash markers need
+deliberate recovery; automatic unlocking, transactions and protection from old
+or unconditional writers remain outside this slice. Hosted/clean-VM qualification
+remains a release gate; this does not renumber the established milestones.
+
 Tooling checkpoint (2026-10-21): accepted ADR 0032 implements standalone `svr fmt`
 with stdout/check modes and guarded Windows writes. Package imports/application
 syntax and non-Windows writes remain deferred. See [formatting](reference/formatter.md).

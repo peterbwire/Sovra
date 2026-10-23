@@ -208,6 +208,15 @@ impl RuntimeHost for TestHost {
     fn write_text(&mut self, path: &str, text: &str) -> text_files::TextWrite {
         text_files::write_text(path, text)
     }
+    fn write_text_if(
+        &mut self,
+        path: &str,
+        exists: bool,
+        expected: &str,
+        text: &str,
+    ) -> text_files::TextWrite {
+        text_files::write_text_if(path, exists, expected, text)
+    }
 }
 
 /// Render safe human output with per-test status and totals.
@@ -439,12 +448,12 @@ mod tests {
         let fixture = Fixture::new();
         let marker = fixture.0.join("written.txt");
         let literal = format!("{:?}", marker.to_string_lossy().replace('\\', "/"));
-        let source = format!("fn test_write() {{ let saved = std::write_text({literal}, \"hello\"); print(saved.ok); }} fn test_read() {{ let loaded = std::read_text({literal}); print(loaded.text); }}");
+        let source = format!("fn test_write() {{ let saved = std::write_text({literal}, \"hello\"); print(saved.ok); let updated = std::write_text_if({literal}, true, \"hello\", \"updated\"); print(updated.ok); }} fn test_read() {{ let loaded = std::read_text({literal}); print(loaded.text); }}");
         let report = run(fixture.source(&source));
         assert!(report.success());
-        assert_eq!(report.tests[0].output, ["true"]);
-        assert_eq!(report.tests[1].output, ["hello"]);
-        assert_eq!(fs::read_to_string(marker).unwrap(), "hello");
+        assert_eq!(report.tests[0].output, ["true", "true"]);
+        assert_eq!(report.tests[1].output, ["updated"]);
+        assert_eq!(fs::read_to_string(marker).unwrap(), "updated");
     }
 
     #[test]

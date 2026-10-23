@@ -496,6 +496,30 @@ On Unix, replacement creates its temporary file with owner read/write mode
 narrows previously shared files on replacement. On Windows, directory security
 controls access; custom file ACL preservation is not guaranteed.
 
+### Conditional text replacement (ADR 0034)
+
+`std::write_text_if(path: String, expected_exists: Bool, expected_text: String,
+replacement: String) -> std::TextWrite` coordinates cooperating conditional
+writers. Both text inputs are bounded to 16 MiB. A missing expected file requires
+empty expected text (`invalid_snapshot` otherwise). After exclusive creation of
+`<filename>.svr-write-lock` in the canonical existing parent, compare existence
+and exact UTF-8 content under that marker, then use the existing atomic replacement.
+A mismatch returns `conflict`; an existing marker returns `busy`, without waiting
+or retries. Existing symlink/non-regular destinations return `invalid_path`.
+Read failures preserve their category and destination bytes. UTF-8 BOM characters
+remain part of file contents, including comparisons, in both engines.
+
+The marker is internal coordination metadata, never application data. A call
+removes only the marker it created on handled completion/failure. A crash or
+cleanup failure can leave a marker; subsequent calls fail closed with `busy`.
+Stop all writers and inspect the state before manually removing a retained
+marker. No age/PID-based unlocking is performed. A successful committed rename
+remains success even if marker removal subsequently fails. This is cooperative
+single-file coordination in a private local directory, not power-loss recovery,
+rollback, a multi-file transaction, a sandbox, or protection against unconditional
+`write_text`, old binaries, external editors, hard-link aliases or hostile path
+mutation. Runtime hosts without a conditional-write implementation return `io`.
+
 ### Text decoding (ADR 0016)
 
 `std::split_once(text: String, delimiter: String) -> std::SplitOnce` splits at

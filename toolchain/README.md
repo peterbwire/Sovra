@@ -13,6 +13,9 @@ The `runtime-source/` snapshot contains the trusted source and internal native
 builder needed to link without a Sovra checkout. Its README describes the
 source snapshot and internal proof invocation. The installed public command
 validates this snapshot before linking and fails clearly if it is missing or damaged.
+The installed self-test also verifies that a blocked Task Manager save preserves
+its data and another writer's marker, then resumes after deliberate recovery of
+the test's own marker. It does not remove or recover locks in user profiles.
 `imports.json` records the compiler's direct Windows DLL imports; it does not
 include transitive or dynamically loaded dependencies.
 `integrity.json` lists SHA-256 hashes for package files. The installer checks

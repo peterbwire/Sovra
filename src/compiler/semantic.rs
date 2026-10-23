@@ -2176,6 +2176,27 @@ mod tests {
     }
 
     #[test]
+    fn conditional_text_write_checks_signature_and_result() {
+        let valid = "fn main() { let saved: std::TextWrite = std::write_text_if(\"x\", false, \"\", \"new\"); print(saved.ok); print(saved.error); }";
+        let program = crate::compiler::parser::Parser::new()
+            .parse_source(valid)
+            .unwrap();
+        SemanticAnalyzer::new().analyze(&program).unwrap();
+        for invalid in [
+            "fn main() { std::write_text_if(\"x\", \"yes\", \"\", \"new\"); }",
+            "fn main() { std::write_text_if(\"x\", false, \"\"); }",
+            "fn main() { std::write_text_if(1, false, \"\", \"new\"); }",
+            "fn main() { std::write_text_if(\"x\", false, 1, \"new\"); }",
+            "fn main() { std::write_text_if(\"x\", false, \"\", 1); }",
+        ] {
+            let program = crate::compiler::parser::Parser::new()
+                .parse_source(invalid)
+                .unwrap();
+            assert!(SemanticAnalyzer::new().analyze(&program).is_err());
+        }
+    }
+
+    #[test]
     fn text_decoding_builtins_validate_types_and_fields() {
         let valid = "fn main() { let split: std::SplitOnce = std::split_once(\"a,b\", \",\"); if (split.found) { print(split.after); } let parsed: std::ParsedInt = std::parse_int(split.before); if (parsed.ok) { print(parsed.value); } }";
         let program = crate::compiler::parser::Parser::new()

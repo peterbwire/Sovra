@@ -89,12 +89,12 @@ restricted PATH. CI runs this general package proof on all three host platforms;
 hosted execution does not replace clean-machine deployment qualification.
 
 `node scripts/test-native-runtime.mjs` builds one general-purpose fixture and
-compares 22 cases against the interpreter after removing the generated source
+compares 26 cases against the interpreter after removing the generated source
 copy and Cargo project. It checks overflow and retained output, division by
 zero, array bounds, call-depth limits, exit code 125, missing/invalid/oversized
 UTF-8 reads, the exact 16 MiB boundary, replacement bytes and failed writes
 preserving existing files. The executable runs with restricted PATH. This
-suite also exercises all 14 standard-library functions, the bare `print` alias,
+suite also exercises all 15 standard-library functions, the bare `print` alias,
 array copy isolation, nominal equality, loops, short-circuit evaluation and
 bounded stdin. It rejects missing fixture coverage when the builtin registry
 changes and is included in all three host-platform CI jobs. See the

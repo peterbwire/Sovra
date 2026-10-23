@@ -75,6 +75,10 @@ fn main() {
         std::println(loaded.ok)
         std::println(loaded.error)
         std::println(std::len(loaded.text))
+    } else if mode == "conditional" {
+        let saved = std::write_text_if(std::arg(1), std::arg(2) == "true", std::arg(3), std::arg(4))
+        std::println(saved.ok)
+        std::println(saved.error)
     } else if mode == "copy" {
         let loaded = std::read_text(std::arg(1))
         if loaded.ok {

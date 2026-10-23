@@ -33,7 +33,7 @@ function run(binary, args, timeout = 120000) {
 }
 try {
     const framework = join(process.env.WINDIR, 'Microsoft.NET/Framework64/v4.0.30319');
-    const sources = ['Bridge.cs', 'DesktopWindow.cs', 'DesktopTheme.cs', 'ApplicationProfile.cs'].map(name => join(root, 'toolchain/ui/windows/compiled', name));
+    const sources = ['Bridge.cs', 'DesktopWindow.cs', 'DesktopTheme.cs', 'ApplicationProfile.cs', 'ProfileLease.cs', 'ProcessLifetime.cs', 'InvocationWorker.cs'].map(name => join(root, 'toolchain/ui/windows/compiled', name));
     report.sources = [...sources, join(root, 'toolchain/ui/windows/compiled/Entry.cs'),
         join(root, 'scripts/fixtures/CompiledDesktopTests.cs'), join(root, 'scripts/fixtures/UiProcessFixture.cs'),
         join(root, 'scripts/fixtures/ui-moving.svr'), join(root, 'dogfood/01-task-manager/main.svr'),
@@ -46,7 +46,9 @@ try {
             '/reference:' + join(framework, 'WPF', name + '.dll')), '/out:' + executable,
         ...sources, join(root, 'scripts/fixtures/CompiledDesktopTests.cs')]);
     run(join(framework, 'csc.exe'), ['/nologo', '/target:exe', '/platform:x64', '/optimize+',
-        '/out:' + join(scratch, 'ui-process-fixture.exe'), join(root, 'scripts/fixtures/UiProcessFixture.cs')]);
+        '/out:' + join(scratch, 'ui-process-fixture.exe'), join(root, 'scripts/fixtures/UiProcessFixture.cs'),
+        join(root, 'toolchain/ui/windows/compiled/ProfileLease.cs'),
+        join(root, 'toolchain/ui/windows/compiled/ProcessLifetime.cs')]);
     const testArgs = [root, scratch];
     if (args.length) {
         report.package = { path: resolve(args[1]), host_sha256: hash(join(resolve(args[1]), 'Sovra UI.exe')),

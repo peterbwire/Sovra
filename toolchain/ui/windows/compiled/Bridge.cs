@@ -146,9 +146,10 @@ namespace Sovra.Desktop
             var argv = new List<string>();
             if (Source != "") argv.AddRange(new string[] { "run", Source, "--" });
             argv.AddRange(arguments);
-            var encoded = new List<string>();
+            var encoded = new List<string> { Argument(InvocationWorker.Flag), Argument(Program) };
             foreach (string argument in argv) encoded.Add(Argument(argument));
-            var start = new ProcessStartInfo(Program, String.Join(" ", encoded.ToArray()));
+            var start = new ProcessStartInfo(System.Reflection.Assembly.GetExecutingAssembly().Location,
+                String.Join(" ", encoded.ToArray()));
             start.UseShellExecute = false; start.CreateNoWindow = true;
             start.RedirectStandardInput = true; start.RedirectStandardOutput = true; start.RedirectStandardError = true;
             using (var process = new Process { StartInfo = start })

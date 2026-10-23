@@ -24,6 +24,10 @@ installation needed by a packaged native app. The previous PowerShell adapter
 remains the packaging default during parity qualification.
 Grouped Task Manager views now paginate 25 matching tasks at a time and bound
 long-text display; 1,000-task navigation runs through actual Sovra execution.
+Current Task Manager saves also use approved conditional text replacement to
+reject stale updates across cooperating CLI/browser/desktop programs. Crash
+markers fail closed and require deliberate recovery; see the
+[file-I/O course](docs/course/text-files.md#rejecting-stale-updates) for limits.
 See the [desktop adapter](toolchain/ui/windows/README.md) and
 [UI architecture](docs/architecture/SOVRA_UI.md) for tests and current limits.
 The standalone CLI executable alone does not include a window; a desktop

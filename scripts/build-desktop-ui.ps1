@@ -29,7 +29,7 @@ if ($CompiledHost) {
 Copy-Item -LiteralPath (Join-Path $repository 'LICENSE-MIT'), (Join-Path $repository 'LICENSE-APACHE') -Destination $stage
 if ($CompiledHost) {
     $wpf = Join-Path (Split-Path -Parent $csc) 'WPF'
-    $sources = @('Bridge.cs', 'DesktopWindow.cs', 'DesktopTheme.cs', 'ApplicationProfile.cs', 'Entry.cs') |
+    $sources = @('Bridge.cs', 'DesktopWindow.cs', 'DesktopTheme.cs', 'ApplicationProfile.cs', 'ProfileLease.cs', 'ProcessLifetime.cs', 'InvocationWorker.cs', 'Entry.cs') |
         ForEach-Object { Join-Path $adapter ('compiled\' + $_) }
     & $csc /nologo /target:winexe /platform:x64 /optimize+ /reference:System.Web.Extensions.dll /reference:System.Xaml.dll `
         "/reference:$wpf\PresentationFramework.dll" "/reference:$wpf\PresentationCore.dll" "/reference:$wpf\WindowsBase.dll" `

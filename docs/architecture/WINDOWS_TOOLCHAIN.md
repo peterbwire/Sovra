@@ -6,6 +6,16 @@ environment, separate from the Node-free application executable proof in
 smoke test passes; a clean Windows VM installation is still required. Use the
 [clean-machine procedure](../TOOLCHAIN_CLEAN_WINDOWS_TEST.md) to collect that evidence.
 
+Optimized local checkpoint (2026-10-23): the current release-profile compiler and
+matching runtime payload are packaged at
+`target/toolchain/conditional-write-release-v1.zip`. Installation under restricted
+PATH passes project commands, bundled and independent Task Manager operations,
+conditional snapshot behavior, busy-marker preservation and deliberate recovery
+of test-owned markers. The shipped self-test includes the busy-save regression.
+These checks do not modify user profiles, establish a minimum supported Windows
+version, or replace clean-VM/exact-commit hosted qualification. See the latest
+development log for native-build acceptance and artifact hashes.
+
 ## Architecture audit
 
 Toolchain diagnostics (2026-10-20): accepted [ADR 0031](../adr/0031-toolchain-doctor.md)

@@ -30,6 +30,9 @@ The self-test creates, checks, runs and tests a console project, runs a bundled 
 dependency example, and checks/adds/lists/completes/deletes tasks using the
 bundled Task Manager CLI source. It uses a unique temporary directory and
 removes that directory afterward. The GUI is not part of this Node-free test.
+It also creates its own coordination marker, checks that a busy task save returns
+nonzero without changing data or removing the marker, then removes only its own
+marker and verifies subsequent task operations work. It never recovers user locks.
 Check that `Get-Command svr.exe` points to the newly installed `bin` directory
 and that the self-test exits 0. Also record the contents of `imports.json` and
 whether all named DLLs resolve on the image. The file lists direct PE imports

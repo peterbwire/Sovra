@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Extend installed-toolchain self-tests with conditional-write and busy-save
+  checks. Run same/mixed-engine conflict tests against an explicitly selected
+  installed compiler before standalone native-build acceptance.
+
+- Implement approved ADR 0034 `std::write_text_if` for cooperative conditional
+  text replacement in the interpreter and JavaScript backend. Migrate Task
+  Manager saves to reject stale/busy writes. Retained crash markers require
+  deliberate recovery; unconditional writes remain unchanged.
+- Preserve UTF-8 BOM bytes in generated JavaScript text-file reads, matching
+  Rust and exact snapshot comparisons.
+
 - Preserve other writers' files when `svr new` fails after reserving its directory.
   Rollback now tracks successful file reservations instead of deleting template
   pathnames unconditionally; collision and early-failure regressions cover cleanup.

@@ -1,5 +1,12 @@
 # Dogfood application status
 
+Task Manager storage checkpoint (2026-10-23): approved ADR 0034 is implemented
+in both engines and all task/preference save paths. Conditional writes reject
+stale snapshots/busy markers; CLI, browser and native operation tests run through
+real Sovra. A crash marker requires deliberate operator recovery. Older binaries,
+unconditional writes, multi-file transactions and hostile filesystem mutation
+remain outside coordination. See the application README for recovery and tests.
+
 Task Manager pagination checkpoint (2026-10-23): the private grouped view emits
 25 matching tasks per page with Sovra-owned Previous/Next actions and separate
 `.page` state. Bounded long-title/search notices keep output inside existing

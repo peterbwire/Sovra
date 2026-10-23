@@ -82,6 +82,17 @@ internal static class CompiledDesktopTests
             Check(window.LastOperationStatus != 0, "Invalid title unexpectedly succeeded.");
             Check(input.Text == "Bad\u001b[2J", "Rejected submission lost its draft.");
             Check(File.ReadAllText(state).StartsWith("SVR-TASKS-2\n"), "Sovra state format changed.");
+            string beforeBusy = File.ReadAllText(state);
+            string marker = state + ".svr-write-lock";
+            File.WriteAllText(marker, "owned test marker");
+            try
+            {
+                input.Text = "Retain blocked draft"; Click(window, "add");
+                Check(window.LastOperationStatus == 1 && bridge.Notice.Contains("save busy"), "Busy writer did not produce a visible rejection.");
+                Check(input.Text == "Retain blocked draft" && window.IsVisible, "Busy rejection lost the draft or closed the window.");
+                Check(File.ReadAllText(state) == beforeBusy && File.ReadAllText(marker) == "owned test marker", "Busy rejection changed data or removed another writer's marker.");
+            }
+            finally { File.Delete(marker); }
         }
         finally { window.Close(); }
     }
@@ -285,6 +296,49 @@ internal static class CompiledDesktopTests
         }
         finally { window.Close(); }
     }
+    private static void ExpectBusy(Action action)
+    {
+        bool busy = false;
+        try { action(); } catch (IOException error) { busy = error.Message.Contains("already open"); }
+        Check(busy, "Duplicate profile ownership was not rejected with an actionable error.");
+    }
+    private static void ProfileOwnership(string scratch)
+    {
+        string first = Path.Combine(scratch, "profile one");
+        string second = Path.Combine(scratch, "profile two");
+        Directory.CreateDirectory(first); Directory.CreateDirectory(second);
+        string state = Path.Combine(first, "state.txt"); File.WriteAllText(state, "preserve application data");
+        using (ProfileLease.Acquire(first))
+        {
+            ExpectBusy(delegate { using (ProfileLease.Acquire(first)) { } });
+            using (ProfileLease.Acquire(second)) Check(true, "Independent profile ownership failed.");
+            Check(File.ReadAllText(state) == "preserve application data", "Lease modified application state.");
+        }
+        var released = ProfileLease.Acquire(first); released.Dispose(); released.Dispose();
+        using (ProfileLease.Acquire(first)) Check(true, "Clean close did not release profile ownership.");
+        Check(File.Exists(Path.Combine(first, ".desktop.lock")), "Lease marker was deleted and could introduce an ownership race.");
+        bool missing = false;
+        try { using (ProfileLease.Acquire(Path.Combine(scratch, "missing profile"))) { } }
+        catch (DirectoryNotFoundException) { missing = true; }
+        Check(missing, "Non-lock I/O failure was misreported as another instance.");
+        var start = new ProcessStartInfo(Path.Combine(scratch, "ui-process-fixture.exe"),
+            "hold-profile " + Bridge.Argument(first));
+        start.UseShellExecute = false; start.CreateNoWindow = true; start.RedirectStandardOutput = true;
+        using (Process process = Process.Start(start))
+        {
+            try
+            {
+                var ready = process.StandardOutput.ReadLineAsync();
+                PumpUntil(delegate { return ready.IsCompleted; });
+                Check(ready.GetAwaiter().GetResult() == "lease-held", "Child did not acquire its profile lease.");
+                ExpectBusy(delegate { using (ProfileLease.Acquire(first)) { } });
+                using (ProfileLease.Acquire(second)) Check(true, "Another process blocked an independent profile.");
+                process.Kill(); Check(process.WaitForExit(5000), "Owned lease fixture did not terminate.");
+                using (ProfileLease.Acquire(first)) Check(true, "Process termination left a stale profile lock.");
+            }
+            finally { if (!process.HasExited) { process.Kill(); process.WaitForExit(5000); } }
+        }
+    }
     private static void Package(string directory, string id)
     {
         string owned = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Sovra", "Desktop", id);
@@ -342,6 +396,24 @@ internal static class CompiledDesktopTests
                     StartupError(directory, "already open");
                     Check(!process.HasExited && File.ReadAllText(Path.Combine(owned, "state.txt")) == beforeDuplicate,
                         "Duplicate launch disturbed the original writer or its state.");
+                    string marker = Path.Combine(owned, "state.txt.svr-write-lock");
+                    File.WriteAllText(marker, "owned packaged test marker");
+                    try
+                    {
+                        AutomationElement input = window.FindFirst(descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "input-add"));
+                        ((ValuePattern)input.GetCurrentPattern(ValuePattern.Pattern)).SetValue("Retain blocked packaged draft");
+                        AutomationElement add = window.FindFirst(descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "add"));
+                        ((InvokePattern)add.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
+                        PumpUntil(delegate {
+                            AutomationElement status = window.FindFirst(descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "application-status"));
+                            return status != null && status.Current.Name.Contains("save busy");
+                        });
+                        Check(((ValuePattern)input.GetCurrentPattern(ValuePattern.Pattern)).Current.Value == "Retain blocked packaged draft", "Packaged busy rejection lost its draft.");
+                        Check(!process.HasExited && File.ReadAllText(Path.Combine(owned, "state.txt")) == beforeDuplicate,
+                            "Packaged busy rejection changed state or closed the host.");
+                        Check(File.ReadAllText(marker) == "owned packaged test marker", "Packaged invocation removed another writer's marker.");
+                    }
+                    finally { File.Delete(marker); }
                 }
                 if (launch == 2)
                 {
@@ -405,9 +477,83 @@ internal static class CompiledDesktopTests
             finally { if (!process.HasExited) { process.Kill(); process.WaitForExit(5000); } }
         }
     }
+    private static void ChildLifetime(string scratch)
+    {
+        foreach (bool crash in new bool[] { true, false }) ChildLifetime(scratch, crash);
+    }
+    private static void InvocationLifetime(string scratch)
+    {
+        foreach (string mode in new string[] { "timeout", "flood", "exit" })
+        {
+            string marker = Path.Combine(scratch, "invocation-" + mode + ".txt");
+            var bridge = new Bridge(Path.Combine(scratch, "ui-process-fixture.exe"), marker, "", "ui-view");
+            bridge.TimeoutMilliseconds = 1500;
+            try
+            {
+                bool expected = false;
+                try { expected = bridge.Invoke("invocation-tree", marker, mode).Status == 7 && mode == "exit"; }
+                catch (TimeoutException) { expected = mode == "timeout"; }
+                catch (InvalidDataException) { expected = mode == "flood"; }
+                Check(expected, "Invocation did not preserve its failure/status: " + mode);
+                Check(File.Exists(marker + ".pids"), "Invocation tree was not exercised: " + mode);
+                foreach (string id in File.ReadAllText(marker + ".pids").Split(','))
+                {
+                    Process child = null;
+                    try { child = Process.GetProcessById(Int32.Parse(id)); }
+                    catch (ArgumentException) { }
+                    using (child) Check(child == null || child.WaitForExit(1000), "Invocation left a live descendant: " + mode);
+                }
+                Check(File.ReadAllText(marker) == "started", "Cancelled invocation performed a late write.");
+                Check(bridge.Invoke("ui-view", marker).Status == 0, "Host could not run another invocation after cleanup.");
+            }
+            finally
+            {
+                if (File.Exists(marker + ".pids")) foreach (string id in File.ReadAllText(marker + ".pids").Split(','))
+                {
+                    try { using (Process child = Process.GetProcessById(Int32.Parse(id))) { if (!child.HasExited) { child.Kill(); child.WaitForExit(5000); } } }
+                    catch (ArgumentException) { }
+                }
+            }
+        }
+    }
+    private static void ChildLifetime(string scratch, bool crash)
+    {
+        string marker = Path.Combine(scratch, "orphan-writer-" + crash + ".txt");
+        string fixture = Path.Combine(scratch, "ui-process-fixture.exe");
+        using (var parent = Process.Start(new ProcessStartInfo(fixture, "tree-parent " + Bridge.Argument(marker) + (crash ? "" : " normal")) {
+            UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true
+        }))
+        {
+            Process child = null;
+            Process grandchild = null;
+            try
+            {
+                var ready = parent.StandardOutput.ReadLineAsync();
+                Check(ready.Wait(5000), "Child lifetime fixture did not start.");
+                string[] ids = ready.Result.Split(',');
+                child = Process.GetProcessById(Int32.Parse(ids[0]));
+                grandchild = Process.GetProcessById(Int32.Parse(ids[1]));
+                PumpUntil(delegate { return File.Exists(marker); });
+                if (crash) parent.Kill();
+                Check(parent.WaitForExit(5000), "Fixture parent did not terminate.");
+                if (!crash) Check(parent.ExitCode == 0, "Lifetime guard changed normal exit status.");
+                Check(child.WaitForExit(1500), "Desktop host termination left its writer child alive.");
+                Check(grandchild.WaitForExit(1500), "Desktop host termination left its grandchild alive.");
+                Check(File.ReadAllText(marker) == "started", "Orphan child wrote after host termination.");
+            }
+            finally
+            {
+                if (!parent.HasExited) { parent.Kill(); parent.WaitForExit(5000); }
+                if (child != null) { if (!child.HasExited) { child.Kill(); child.WaitForExit(5000); } child.Dispose(); }
+                if (grandchild != null) { if (!grandchild.HasExited) { grandchild.Kill(); grandchild.WaitForExit(5000); } grandchild.Dispose(); }
+            }
+        }
+    }
     [STAThread]
     private static int Main(string[] args)
     {
+        int workerStatus;
+        if (InvocationWorker.TryRun(args, out workerStatus)) return workerStatus;
         if (args.Length == 2 && args[0] == "fixture")
         {
             if (args[1] == "flood") { Console.Write(new string('x', 65537)); return 0; }
@@ -419,6 +565,9 @@ internal static class CompiledDesktopTests
         {
             string root = args[0], scratch = args[1];
             Profiles();
+            ProfileOwnership(scratch);
+            ChildLifetime(scratch);
+            InvocationLifetime(scratch);
             foreach (string bad in new string[] {
                 "SVR-UI-1", "SVR-UI-3\nheading|Bad\n", "SVR-UI-1\ntext|No heading\n",
                 "SVR-UI-1\nheading|Bad\ttext\n", "SVR-UI-1\nheading|Title\ninput|add|No submit\n",

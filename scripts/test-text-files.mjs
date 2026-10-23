@@ -78,6 +78,9 @@ for (const host of hosts) {
     writeFileSync(input, Buffer.from([0xff]));
     assert.equal(host.copy(input, output), 'read error: invalid_utf8\n');
     assert.equal(readFileSync(output, 'utf8'), 'hello\ncafé\n');
+    writeFileSync(input, '\ufeffliteral BOM');
+    assert.equal(host.copy(input, output), 'copied bytes: 14\n');
+    assert.equal(readFileSync(output, 'utf8'), '\ufeffliteral BOM');
     writeFileSync(input, '');
     assert.equal(host.copy(input, output), 'copied bytes: 0\n');
     assert.equal(readFileSync(output, 'utf8'), '');

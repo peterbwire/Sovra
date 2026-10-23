@@ -116,7 +116,7 @@ function svrReadText(path) {
       chunks.push(chunk.subarray(0, count));
     }
     let text;
-    try { text = new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks)); }
+    try { text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(Buffer.concat(chunks)); }
     catch { return fail("invalid_utf8"); }
     return svrResult("std::TextRead", { ok: true, text, error: "" });
   } catch (error) { return fail(svrFileError(error)); }
@@ -155,6 +155,40 @@ function svrWriteText(path, text) {
     if (fd !== undefined) { try { svrFs.closeSync(fd); } catch {} }
     if (created) { try { svrFs.unlinkSync(temporary); } catch {} }
     return fail(svrFileError(error));
+  }
+}
+function svrWriteTextIf(path, exists, expected, replacement) {
+  const fail = error => svrResult("std::TextWrite", { ok: false, error });
+  if (typeof path !== "string" || typeof exists !== "boolean" ||
+      typeof expected !== "string" || typeof replacement !== "string")
+    throw new Error("std::write_text_if expects String, Bool, String, String arguments");
+  if (!path || path.includes("\0") || !svrPath.basename(path) ||
+      [".", ".."].includes(svrPath.basename(path))) return fail("invalid_path");
+  if (Buffer.byteLength(expected, "utf8") > svrMaxTextBytes ||
+      Buffer.byteLength(replacement, "utf8") > svrMaxTextBytes) return fail("too_large");
+  if (!exists && expected !== "") return fail("invalid_snapshot");
+  let marker, fd;
+  try {
+    const parent = svrFs.realpathSync(svrPath.dirname(path));
+    path = svrPath.join(parent, svrPath.basename(path));
+    marker = path + ".svr-write-lock";
+    try { fd = svrFs.openSync(marker, "wx", 0o600); }
+    catch (error) { return fail(error.code === "EEXIST" ? "busy" : svrFileError(error)); }
+    try { if (!svrFs.lstatSync(path).isFile()) return fail("invalid_path"); }
+    catch (error) { if (error.code !== "ENOENT") return fail(svrFileError(error)); }
+    const current = svrReadText(path).__svrStruct.fields;
+    if (current.ok) {
+      if (!exists || current.text !== expected) return fail("conflict");
+    } else if (current.error === "not_found") {
+      if (exists) return fail("conflict");
+    } else return fail(current.error);
+    return svrWriteText(path, replacement);
+  } catch (error) { return fail(svrFileError(error)); }
+  finally {
+    if (fd !== undefined) {
+      try { svrFs.closeSync(fd); } catch {}
+      try { svrFs.unlinkSync(marker); } catch {}
+    }
   }
 }
 function svrWriteLine(value) {
@@ -550,6 +584,12 @@ fn render_js_call(output: &mut String, name: &str, arguments: usize) {
         }
         "std::write_text" => {
             let _ = writeln!(output, "    stack.push(svrWriteText(args[0], args[1]));");
+        }
+        "std::write_text_if" => {
+            let _ = writeln!(
+                output,
+                "    stack.push(svrWriteTextIf(args[0], args[1], args[2], args[3]));"
+            );
         }
         "std::escape_terminal" => {
             let _ = writeln!(output, "    if (typeof args[0] !== \"string\") throw new Error(\"std::escape_terminal expects a String argument\");");
@@ -1058,6 +1098,9 @@ mod tests {
             ("std::read_text", 2),
             ("std::write_text", 0),
             ("std::write_text", 1),
+            ("std::write_text_if", 0),
+            ("std::write_text_if", 3),
+            ("std::write_text_if", 5),
         ] {
             let mut instructions =
                 vec![Instruction::LoadLiteral(Literal::String("unused".into())); arguments];
@@ -1092,6 +1135,24 @@ mod tests {
                     arguments: 2,
                 },
             ]);
+        }
+        for invalid_index in 0..4 {
+            let mut arguments = vec![
+                Literal::String("unused".into()),
+                Literal::Boolean(false),
+                Literal::String(String::new()),
+                Literal::String("content".into()),
+            ];
+            arguments[invalid_index] = Literal::Integer("1".into());
+            let mut instructions: Vec<_> = arguments
+                .into_iter()
+                .map(Instruction::LoadLiteral)
+                .collect();
+            instructions.push(Instruction::Call {
+                name: "std::write_text_if".into(),
+                arguments: 4,
+            });
+            assert_ir_failure_matches(instructions);
         }
     }
 
