@@ -1,0 +1,40 @@
+// Generic host regression fixture. All view changes execute through Sovra.
+fn next_phase(phase: String) -> String {
+    if phase == "" { return "right"; }
+    if phase == "right" { return "horizontal"; }
+    if phase == "horizontal" { return "button"; }
+    if phase == "button" { return "hidden"; }
+    return "";
+}
+
+fn main() {
+    let path = std::arg(1);
+    let saved = std::read_text(path);
+    let phase = saved.text;
+    if std::arg(0) == "ui-event" {
+        if std::arg(2) == "advance" {
+            let result = std::write_text(path, next_phase(phase));
+            if result.ok == false { std::set_exit_code(1); print(result.error); return; }
+            print("advanced");
+            return;
+        }
+        std::set_exit_code(1);
+        print("unexpected action");
+        return;
+    }
+    print("SVR-UI-2");
+    print("heading|Moving component");
+    print("button|advance|Advance layout");
+    if phase == "horizontal" { print("group|left|horizontal|card"); }
+    else { print("group|left|vertical|card"); }
+    print("text|Left context");
+    if phase == "button" { print("button|value|Value action"); }
+    else if phase != "right" && phase != "hidden" { print("input|value|Value|Save"); }
+    print("end|left");
+    print("group|right|vertical|plain");
+    print("text|Right context");
+    if phase == "right" { print("input|value|Value|Save"); }
+    print("button|right-action|Right action");
+    print("end|right");
+    print("button|root-action|Root action");
+}

@@ -136,6 +136,13 @@ to avoid the current parser's record-literal ambiguity. See
 [DOGFOOD_STATUS](../../docs/DOGFOOD_STATUS.md) for approvals and next actions.
 # Desktop UI development
 
+The internal desktop packager's `-CompiledHost` switch now builds a direct
+C#/WPF host. Its application runtime uses no PowerShell, Node, Rust or Sovra
+compiler; compatible Windows x64 and .NET/WPF remain required. Sovra continues
+to define the view and execute task operations. Existing profile IDs and state
+paths are preserved. The older adapter remains available during qualification;
+see the [compiled adapter](../../toolchain/ui/windows/compiled/README.md).
+
 Opt-in grouped desktop packages use Sovra's private `ui-layout-view` command to
 emit an input card, task-list card and wrapping action row per task. The older
 `ui-view` stream remains available unchanged for existing desktop/browser hosts.
@@ -170,5 +177,34 @@ in a focused field cancels its unsaved draft locally; it never changes storage.
 Renaming preserves the task ID, completion status and next ID. Empty, duplicate,
 multiline and terminal-control titles are rejected, leaving storage unchanged.
 Validation errors appear in the status region and retain the draft for correction.
-Existing CLI and flat browser views retain their current interface. Editing adds
-one leaf per task, so the existing bounded UI capacity is reached sooner.
+Existing CLI and flat browser views retain their current interface.
+
+## Bounded desktop pages
+
+Grouped desktop views show at most 25 matching tasks per page. Previous/Next
+controls and page labels come from Sovra, using the same reusable host nodes.
+Navigation persists across restart in `<task-path>.page`; it never rewrites task
+rows or IDs. The existing task and `.view` formats are unchanged. Search/filter
+changes reset to page one, and deleted/externally removed rows clamp the selected
+page to the remaining range. Empty matches show page one of one. Unavailable page
+actions and unexpected values are rejected. Leaving a page discards drafts for
+its removed task controls; the Add input retains its draft and focus.
+
+To preserve the renderer's 64 KiB/256-leaf bounds, grouped task titles and search
+summaries display bounded text. Values longer than 512 UTF-8 bytes (including
+terminal escaping) show a length notice instead of the full value. Stored title
+bytes, exact lookup, search matching and CLI/flat output are unchanged; use the
+CLI to read an omitted full title. This introduces no substring builtin or
+renderer-specific task behavior.
+
+The `.page` file uses private `SVR-TASK-PAGE-1` metadata. A missing file starts
+on the first page; invalid/unreadable metadata reports an error without replacing
+it. With the app closed, move the affected preference sidecar aside to reset it.
+Filter/search preferences and navigation reset use separate atomic writes;
+a write failure may leave one preference updated, and is reported. These writes
+do not change task data and are not a multi-file transaction. Existing single-writer
+limitations remain.
+
+Run `node scripts/test-task-pagination.mjs` to check the original 62-task failure,
+1,000-task bounds, filtered navigation, restart, page clamping, long stored text,
+corrupt metadata and interpreter/JavaScript parity.

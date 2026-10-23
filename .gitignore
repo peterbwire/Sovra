@@ -4,3 +4,13 @@
 *.swp
 *.swo
 *.log
+
+# Local Task Manager data; transcripts and sample files remain tracked.
+/tasks.txt
+/tasks.txt.view
+/tasks.txt.page
+
+# Operating-system file-manager metadata.
+.DS_Store
+Thumbs.db
+Desktop.ini

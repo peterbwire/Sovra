@@ -1,5 +1,19 @@
 # Version-one delivery gates
 
+Desktop capacity checkpoint (2026-10-23): Sovra-owned grouped pagination and
+bounded long-text display fix the reproduced 62-open-task renderer overflow.
+Tests cover 1,000 tasks and filter/page transitions while retaining existing
+host limits. Single-writer protection, exact hosted artifacts and clean-machine
+qualification remain separate work.
+
+Desktop migration checkpoint (2026-10-23): optional compiled C#/WPF packaging
+removes PowerShell from application execution while preserving Sovra-owned
+views/events and state paths. Local native-package interaction/restart tests
+pass; hosted reruns and clean-Windows qualification remain pending. The prior
+adapter remains the default during broader parity qualification. This adds no
+new v1 scope or claim that a cross-platform UI framework is complete. See
+[ADR 0033](adr/0033-compiled-desktop-host.md).
+
 Scope revised by the user on 2026-10-09: version one must support a useful,
 production-quality Task Manager CLI built in Sovra. Later versions will each
 grow the language and platform with their own test application, as capability

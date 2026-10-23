@@ -24,7 +24,7 @@ does not certify native linking or deployment. See the
 | Standard library | Implemented subset | Rust-owned builtins are compiled into `svr.exe`; no separately distributed stdlib source/archive yet. |
 | Local packages | Partial | Direct local dependency resolution, checking, linking and execution; no lockfile, registry or publication. |
 | Native app output | First host-native CLI slice | Accepted ADR 0027 adds `build --emit exe --output PATH` with embedded IR/interpreter, payload validation and no-overwrite publication. Deployment qualification remains pending. |
-| Browser UI | Experimental | Task Manager Node host and Sovra UI view/event prototype; no installed UI framework or Node-free desktop renderer. |
+| UI adapters | Private prototypes | Node-hosted browser GUI and Windows WPF adapters; optional compiled C#/WPF host removes PowerShell from application execution. No published UI package or mobile renderer. |
 | Language tests | Implemented first slice | ADR 0028: checked root Unit test functions, Rust interpreter, human/JSON reports. |
 
 The included release candidate already ships `svr.exe` and Task Manager

@@ -1,5 +1,13 @@
 # Dogfood application status
 
+Task Manager pagination checkpoint (2026-10-23): the private grouped view emits
+25 matching tasks per page with Sovra-owned Previous/Next actions and separate
+`.page` state. Bounded long-title/search notices keep output inside existing
+renderer limits. Task bytes, old `.view` metadata, CLI and flat view interfaces
+are unchanged. The 62-task overflow has a failing-before-fix regression; 1,000
+tasks, filtered pages and restart run through both engines and native controls.
+See the [application README](../dogfood/01-task-manager/README.md) for limits.
+
 Task Manager search/filter checkpoint (2026-10-20): grouped views use ordinary
 inputs/buttons for Sovra-owned matching and persisted private view preferences.
 The reusable host renders these controls without application-specific branches.

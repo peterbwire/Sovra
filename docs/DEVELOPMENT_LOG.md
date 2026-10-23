@@ -1,5 +1,250 @@
 # Development log
 
+## 2026-10-23: Fix grouped Task Manager capacity through Sovra-owned pagination
+
+- Reproduced the actual desktop failure: 62 short open tasks emit 257 leaves
+  and fail the existing 256-leaf decoder limit. Added a focused regression before
+  changing application code; it failed with exactly that count. A 1,000-task
+  view also exceeded the 64 KiB stream bound.
+- Implemented 25-matching-task pages, Previous/Next actions and page labels in
+  ordinary Sovra. A new private `.page` sidecar preserves navigation independently
+  of unchanged task/`.view` formats. Missing metadata defaults to page one;
+  malformed metadata is rejected without replacement. Search/filter changes reset
+  navigation; stale/huge saved page numbers clamp safely after data changes.
+  Views do not write task data, and unavailable page actions fail explicitly.
+- Grouped title/query display now uses bounded length notices when either raw
+  or escaped text exceeds 512 UTF-8 bytes. Original bytes, exact lookup, search
+  matching and flat/CLI output are preserved. No substring builtin, compiler
+  shortcut, new host node or raised renderer resource limit was introduced.
+- A sparse-filter regression caught repeated/skipped rows in the first draft;
+  the matching-row counter was corrected inside the filter condition. Final
+  tests cover 1,000 tasks, filtered pages, restart, boundaries, Int-max saved
+  indices, deletion of the final page, long Unicode titles/queries, malformed
+  metadata and interpreter/JavaScript equality. Windows oversized-argv testing
+  was corrected to seed long persisted queries, rather than exceeding OS argv
+  limits; no OS or language rule was changed.
+- Added native-control tests retaining stable Add drafts/focus during navigation,
+  discarding removed task drafts, and navigating an actual packaged native
+  1,000-task profile. The generic renderer is unchanged. The core compiled suite
+  passed 201 checks; the verified package passed all 220 checks in host context.
+  The new cross-engine pagination runner is included in CI.
+- Other validation passed: all nine dogfood applications, existing grouped/flat
+  view parity, Task Manager persistence in both engines, 18 native/interpreter
+  CLI parity cases, and the formatter corpus (eight real programs/261 comment
+  placements). Node syntax and diff whitespace checks passed. No new full Rust
+  suite, hosted CI or clean-VM result is claimed.
+- Retained artifact: `target/compiled-desktop/task-manager-compiled-v6.zip`,
+  SHA-256 `1270a03a753db6d75a9787e6d4a003d0f0ce2da032cad26c423d6a90f92781d9`.
+  Verified extraction: `target/compiled-desktop/verified-v6/task-manager-compiled-v6`.
+  The native application was freshly built from current source. Single-writer
+  limitations remain; search/filter save and navigation reset are separate
+  atomic writes, not a multi-file transaction. Next: per-profile desktop writer
+  protection and explicit CLI/GUI concurrency policy before default promotion.
+
+## 2026-10-23: Repository cleanup with retained current artifacts and local data
+
+- Audited all 441 initially tracked files, current untracked development work,
+  repository layout, generated output sizes, exact content duplicates and local
+  Markdown references. Found no empty tracked files or exact duplicate files.
+  Compiler/tests, distinct dogfood apps, website assets, metadata and compatibility
+  UI adapters retain real uses; they were not deleted because of old names.
+- Removed the unused M0-era `config/svr.toml` placeholder and its empty directory.
+  No source/documentation references used it; implemented project configuration
+  remains `sovra.toml`.
+- Removed root `tasks.txt` from Git's index while preserving the file and its
+  contents on disk. Added exact root state/preferences and OS metadata ignore
+  rules. Test transcripts and deliberate sample files remain tracked. Only this
+  index removal was staged; other existing work was preserved.
+- Removed 4,843 obsolete generated files in 211 named entries (445,613,960 bytes,
+  about 425 MiB): old candidate rehearsals, probes, corrupt-package fixtures,
+  superseded package copies and old diagnostic scratch outputs. Every resolved
+  deletion path was checked inside `target/`, protected paths were rejected,
+  file counts/bytes were rechecked, and links/reparse points were refused before
+  any recursive removal. Audit/result manifests remain in
+  `target/repository-cleanup/plan.json` and `result.json`.
+- Retained Rust caches, the compiled v4 ZIP/verified extraction/evidence, the
+  legacy baseline ZIP/extraction, the native build/launch-ready CLI package,
+  latest `project-rollback-v1` toolchain, MSVC installer downloads/qualification
+  diagnostics, depth evidence and latest compiler test logs. Historical artifact
+  paths in older log entries need not still exist after this cleanup.
+- Post-cleanup validation passed: all 461 Rust tests (405 library, 55 CLI, one
+  example) with CLI execution required; all nine dogfood applications through
+  interpreter and generated JavaScript; all three website tests; 198 local links
+  across 128 Markdown files with none broken; retained desktop ZIP checksum.
+  Added contributor guidance to prevent generated output/local state returning
+  to source control. No compiler behavior or public contract changed.
+
+## 2026-10-23: Bound desktop startup reads and qualify failure responsiveness
+
+- Extracted private `ApplicationProfile.cs` from the entry point. Its 16 KiB
+  limit now bounds the actual read, including an extra byte to detect overflow,
+  rather than relying on an earlier FileInfo size observation before ReadAllText.
+  Parsing uses a bounded snapshot, retains existing BOM detection and validates
+  the same schema, ID, executable name and optional view command. Caller-owned
+  streams remain open. This is startup hardening, not a new language contract.
+- Added profile checks for exact/oversized limits, invalid field types/values
+  and malformed UTF-8. Packaged tests now inspect real startup dialogs for an
+  invalid profile and missing application, require exit 1, and verify existing
+  application state remains unchanged.
+- Added a clearly separated compiled process fixture for controlled latency,
+  nonzero exit, timeout and malformed refreshed views. Dispatcher heartbeats
+  continue during slow work; failures stay visible; timed-out children are
+  terminated; subsequent stale actions cannot mutate behind an invalid view.
+  The fixture is host fault injection, not a replacement for real Sovra tests.
+- Validation: 190 core compiled-host checks passed. The fresh verified package
+  passed all 204 checks through host-context execution with one temporary owned
+  LocalAppData profile. Its native Sovra Task Manager retained restart persistence.
+  Node syntax/diff whitespace checks passed. Verification evidence now also hashes
+  the entry point, fault fixture and actual Sovra application/component inputs.
+- Artifact: `target/compiled-desktop/task-manager-compiled-v4.zip`, SHA-256
+  `f081d6a089cb1ce47aeb7ac86cefc268999888451b3e29f56d0f40ffec7d85b9`.
+  Verified extraction: `target/compiled-desktop/verified-v4/task-manager-compiled-v4`.
+  Hosted CI/clean-VM checks remain pending; no new full Rust-suite or local MSVC
+  qualification is claimed. Next: complete remaining manual desktop qualification
+  and review default-adapter migration with the collected evidence.
+
+## 2026-10-23: Enlarge compiled desktop presentation and interaction coverage
+
+- Added `DesktopTheme.cs`: ordinary styling, Windows high-contrast system
+  colors, and dispatcher-owned response to Windows setting notifications.
+  Presentation updates retain controls and never dispatch an application event.
+  Closed windows unsubscribe from static notifications. Enabled layout rounding
+  and pixel snapping. The system-color test does not change OS settings; actual
+  high-contrast switching, DPI and screen-reader qualification remain pending.
+- Extended real Sovra/native-control coverage for Enter/Escape, forward/reverse
+  focus traversal, contextual action names and live status; rename with literal
+  delimiters and completion preservation; combined search/status filters; and
+  view-only operations preserving task bytes and unrelated input drafts.
+- Added `scripts/fixtures/ui-moving.svr`, an independent executable regression
+  fixture that changes its interface through ordinary Sovra file state/events.
+  Tests retain input identity, text, selection and focus across group movement
+  and orientation changes, then verify kind changes/removal discard drafts.
+  This is a host regression fixture, not another claimed dogfood application.
+- Runner now writes `target/compiled-desktop/verification.json` with actual
+  completed check count, compiler/source and packaged executable hashes. A
+  failed test or cleanup cannot produce success. CI retains this evidence with
+  the compiled candidate artifact.
+- Validation: 157 compiled adapter checks passed. The fresh package's integrity
+  verification and full 166-check host-context acceptance passed, including
+  native Sovra events and persistence across packaged restarts under restricted
+  PATH. Node syntax and diff whitespace checks passed. Existing compiler syntax,
+  semantics and backends are unchanged; no new full Rust-suite result is claimed.
+- Candidate: `target/compiled-desktop/task-manager-compiled-v3.zip`, SHA-256
+  `0849674e84dd3f5b9f5742fad344dbbc2347b89569d9ff1d70bc1b5f7b8ab7ed`.
+  Verified extraction: `target/compiled-desktop/verified-v3/task-manager-compiled-v3`.
+  Earlier artifacts are retained. Hosted CI and clean-VM qualification remain
+  pending; the compatibility adapter remains the packaging default.
+
+## 2026-10-23: Compiled desktop candidate without a PowerShell application host
+
+- Following the user's sustainability direction, implemented a reusable C#/WPF
+  host in `toolchain/ui/windows/compiled`. It renders the existing private
+  `SVR-UI-1`/`SVR-UI-2` streams and directly invokes actual Sovra execution.
+  The host contains no Task Manager storage rules or task commands. Existing
+  IDs, state paths, node/stream limits, timeout and serial event behavior remain.
+  ADR 0033 records this private implementation direction without publishing a UI
+  ABI or changing language semantics, runtime contracts or compiler targets.
+- Added opt-in `-CompiledHost` packaging and validation. These packages contain
+  no PowerShell runtime scripts; `Sovra UI.exe` owns the window itself. The
+  original adapter remains the default while parity qualification continues.
+  Compatible Windows x64/.NET Framework/WPF remains required; this is not a
+  dependency-free native host or an implemented mobile framework.
+- New compiled acceptance harness exercises strict views, duplicate/stale actions,
+  output limits on both streams, malformed UTF-8, timeouts, literal Windows
+  argument boundaries, actual Sovra operations and persistence, flat/grouped
+  WPF controls, accessible names, concurrent-event rejection, draft/selection/
+  focus retention, close-after-success/error and an unrelated Sovra component.
+  Tests reproduced UI-thread completion and focus-loss bugs before fixes.
+- Local validation: 87 compiled adapter checks passed; 96 checks passed with the
+  extracted native package, including direct EXE window ownership, spaced paths,
+  restricted PATH, real native Sovra Add, close and persisted-state restart.
+  The packaged test initially reported a sandbox-denied LocalAppData write;
+  host-context execution passed using a fresh test-only profile and removed it.
+  No security policy was changed. Baseline ZIP verification and the existing
+  desktop UI acceptance also passed. Node syntax/diff whitespace checks passed.
+- Retained artifact: `target/compiled-desktop/task-manager-compiled-v2.zip`,
+  SHA-256 `68ff79e623a63ab218376a671f1f1d37c1c1b3aa4c6970b6e3812b79fd4adb73`.
+  Verified extraction is `target/compiled-desktop/verified-v2/task-manager-compiled-v2`.
+  The native program was freshly built from current Task Manager source with
+  the real generic native builder and default GNU toolchain. Hosted CI now
+  includes compiled adapter/package gates and a separate candidate artifact;
+  no hosted run on these uncommitted changes has been observed.
+- Finished the previous packaging checks: removing optional `Get-FileHash` also
+  reproduced a failure in the outer Windows packager. Both it and the shipped
+  installer now stream .NET SHA-256. The installed public native-build acceptance
+  passed with that function deliberately unavailable, including template/local
+  package executables, 18 Task Manager parity cases and compiler-free execution.
+  The exact archive also passed restricted-PATH installation/self-tests. An
+  earlier parallel run passed behavior but failed scratch cleanup with EPERM;
+  it was not counted as a passing run. The later full run exited zero.
+- Local MSVC qualification ended **failed**, not waiting: the installer exited
+  without a usable linker/SDK. Evidence remains in `target/msvc-qualification`.
+  Hosted MSVC's earlier 461-test result is separate. Next: broaden compiled-host
+  accessibility/layout parity and clean-Windows qualification before changing
+  desktop packaging defaults; resolve local MSVC installation independently.
+
+## 2026-10-22: Remove optional hashing-command dependency from runtime packaging
+
+- Inspected hosted CI for commit `a555cce7640b8b08e67978bf7e55d1a3b1d56c58`:
+  [Windows MSVC job](https://github.com/peterbwire/Sovra/actions/runs/39674084497/job/119479249380)
+  passed 405 library, 55 CLI and one example test (461 total), strict Clippy,
+  documentation tests, formatter corpus and language-test checks. Linux, macOS
+  and minimum-Rust jobs passed. Overall CI failed in runtime payload packaging;
+  downstream downloaded-artifact acceptance jobs were skipped.
+- Reproduced the exact missing `Get-FileHash` error before fixing it by removing
+  that function and disabling module autoload in a child Windows PowerShell.
+  Empty/incompatible module-path probes alone did not reproduce the failure;
+  the underlying hosted module-discovery cause is not established.
+- Payload hashing now streams through .NET SHA-256 and disposes both the file
+  stream and algorithm. Manifest format, overwrite refusal and digest validation
+  are unchanged. The existing relocation/offline-build test now exercises the
+  missing-command condition and independently checks every digest using Node.
+- Validation passed locally with the default GNU Rust toolchain: full payload
+  hashes, existing-output refusal, relocation, offline native linking and 18
+  standalone Task Manager parity cases matching state bytes and exit status.
+  Node syntax checks and `git diff --check` passed. This does not qualify MSVC
+  packaging or a clean Windows VM.
+- Local MSVC installation remains separate from the hosted result: the repair
+  and queued readiness monitor are still waiting for physical linker/SDK files.
+  Hosted CI must rerun on this change before claiming the packaging gate passes.
+
+## 2026-10-22: Resume MSVC installation and qualification
+
+- The previous Build Tools installation ended with exit 1603 after Microsoft's
+  download host failed to resolve (0x80072ee7/0x80072efd). Linker and SDK files
+  remained missing. Rust's MSVC toolchain being installed was insufficient.
+- Confirmed current Microsoft download connectivity and requested an elevated
+  repair of the same Build Tools 2022 instance. A non-elevated quiet operation
+  returned 5007; no Windows policy was weakened. Repair is processing packages
+  and verifying downloads; completion and compiler execution remain unclaimed.
+- Hardened `scripts/test-msvc.mjs` preflight: check a complete C++ installation
+  and physically locate its x64 linker, rather than trusting installer metadata
+  alone. This caught a registered-complete instance with link.exe still absent.
+  Failed evidence is retained with success false, not counted as passing tests.
+- Runner isolates Cargo output, requires CLI execution, selects MSVC only in
+  subprocesses, and retains logs/compiler hashes for Rust, formatter, dogfood,
+  depth and standalone console build/run evidence. No default toolchain change.
+  Added the developer-host guide; this does not replace hosted or clean-VM gates.
+- `cargo +stable-x86_64-pc-windows-msvc check --locked --all-targets` passed.
+  This is compile-check evidence only: linked tests still failed while link.exe
+  was missing, and no successful MSVC executable test count is claimed.
+- A direct Microsoft x64 runtime download succeeded and matched its published
+  payload SHA-256; the repair's own downloads subsequently advanced but remain
+  slow. No active installer files were replaced and no installer was killed.
+- Added bounded `--wait-for-tools` mode: wait up to one hour for physical linker,
+  x64 SDK libraries and installer exit, then execute qualification once. Waiting,
+  running, passed and failed are distinct report states. It creates no service,
+  scheduled task or startup entry and never stops installation processes.
+- Queued one hidden task-owned Node process. Its first sandboxed launch stopped
+  safely when process enumeration was denied; the approved host-context launch
+  is active, and readiness timestamps advanced after its launcher exited.
+  See `target/msvc-qualification/readiness.json`, `waiter.log`, `waiter-errors.log`,
+  `waiter-process.json` and `verification.json`. Current status is waiting, not
+  passed. Read the final report before changing any MSVC release gate.
+- Node syntax and diff whitespace checks passed. GNU remains the default Rust
+  toolchain. Next: inspect queued qualification after repair; if installation or
+  the bounded wait fails, retain vendor logs and report the actual blocker.
+
 ## 2026-10-21: Preserve foreign files during project-creation rollback
 
 - Audited project creation and native publication cleanup after the formatter fix.

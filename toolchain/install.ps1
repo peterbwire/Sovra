@@ -3,6 +3,21 @@ param(
     [switch]$NoPersistPath
 )
 $ErrorActionPreference = 'Stop'
+# Keep the installer self-contained; optional PowerShell hashing functions may
+# be unavailable even though the .NET runtime supports SHA-256.
+function Get-InstallSha256([string]$Path) {
+    $stream = [IO.File]::OpenRead($Path)
+    try {
+        $algorithm = [Security.Cryptography.SHA256]::Create()
+        try {
+            return [BitConverter]::ToString($algorithm.ComputeHash($stream)).Replace('-', '').ToLowerInvariant()
+        } finally {
+            $algorithm.Dispose()
+        }
+    } finally {
+        $stream.Dispose()
+    }
+}
 $source = [IO.Path]::GetFullPath($PSScriptRoot)
 $target = [IO.Path]::GetFullPath($Prefix)
 $sourcePrefix = $source.TrimEnd('\') + '\'
@@ -44,7 +59,7 @@ for ($index = 0; $index -lt $actualFiles.Count; $index++) {
     if ($actual.path -cne $expected.path -or $expected.sha256 -cnotmatch '^[0-9a-f]{64}$') {
         throw 'Package integrity file list mismatch.'
     }
-    $hash = (Get-FileHash -LiteralPath $actual.fullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    $hash = Get-InstallSha256 $actual.fullName
     if ($hash -cne $expected.sha256) { throw "Package integrity mismatch: $($actual.path)" }
 }
 if (Test-Path -LiteralPath $target) { throw "Install prefix already exists: $target" }

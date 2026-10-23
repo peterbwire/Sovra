@@ -13,3 +13,12 @@ Please include a concise description, validation commands, and any compatibility
 considerations in pull requests. See [SECURITY.md](SECURITY.md) for security
 reports.
 
+Keep generated builds, packages, probes and local qualification reports under
+`target/`. Keep application data such as the root `tasks.txt` out of source
+control; expected transcripts and intentional fixtures belong with their tests.
+Before deleting old artifacts, retain the current verified package and its
+checksum/report, inspect references, and verify cleanup paths stay within the
+workspace. Preserve working compatibility adapters until their replacement is
+qualified. An old filename or an unreferenced manual test is not sufficient
+evidence that source code is obsolete.
+

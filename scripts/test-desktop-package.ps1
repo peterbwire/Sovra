@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory=$true)][Alias('Package')][string]$PackageZIP,
-    [Parameter(Mandatory=$true)][string]$ExtractTo
+    [Parameter(Mandatory=$true)][string]$ExtractTo,
+    [switch]$CompiledHost
 )
 $ErrorActionPreference = 'Stop'
 $archive = [IO.Path]::GetFullPath($PackageZIP)
@@ -69,8 +70,12 @@ foreach ($item in $allEntries) {
         throw 'Extracted desktop package contains a reparse point.'
     }
 }
-foreach ($required in @('Sovra UI.exe', 'application.exe', 'app.json', 'integrity.json',
-    'ui/host.ps1', 'ui/renderer.ps1', 'ui/worker.ps1')) {
+$requiredFiles = @('Sovra UI.exe', 'application.exe', 'app.json', 'integrity.json')
+if (-not $CompiledHost) { $requiredFiles += @('ui/host.ps1', 'ui/renderer.ps1', 'ui/worker.ps1') }
+if ($CompiledHost -and @($allEntries | Where-Object { $_.Extension -in @('.ps1', '.psm1') }).Count -gt 0) {
+    throw 'Compiled desktop package must not contain PowerShell runtime scripts.'
+}
+foreach ($required in $requiredFiles) {
     if (-not (Test-Path -LiteralPath (Join-Path $root $required) -PathType Leaf)) {
         throw "Desktop UI package is missing: $required"
     }

@@ -3,6 +3,19 @@ param(
     [string]$Output = 'target\toolchain\sovra-windows'
 )
 $ErrorActionPreference = 'Stop'
+function Get-PackageSha256([string]$Path) {
+    $stream = [IO.File]::OpenRead($Path)
+    try {
+        $algorithm = [Security.Cryptography.SHA256]::Create()
+        try {
+            return [BitConverter]::ToString($algorithm.ComputeHash($stream)).Replace('-', '').ToLowerInvariant()
+        } finally {
+            $algorithm.Dispose()
+        }
+    } finally {
+        $stream.Dispose()
+    }
+}
 if (-not $IsWindows -and $PSVersionTable.PSVersion.Major -ge 6) { throw 'This package is for Windows.' }
 $compiler = [IO.Path]::GetFullPath($Binary)
 $stage = [IO.Path]::GetFullPath($Output)
@@ -38,13 +51,13 @@ $stagePrefix = $stage.TrimEnd('\') + '\'
 $packageFiles = @(Get-ChildItem -LiteralPath $stage -File -Recurse | ForEach-Object {
     [pscustomobject]@{
         path = $_.FullName.Substring($stagePrefix.Length).Replace('\', '/')
-        sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        sha256 = Get-PackageSha256 $_.FullName
     }
 } | Sort-Object path)
 $integrity = [pscustomobject]@{ schema = 1; files = $packageFiles }
 [IO.File]::WriteAllText((Join-Path $stage 'integrity.json'),
     ($integrity | ConvertTo-Json -Depth 4), [Text.UTF8Encoding]::new($false))
 Compress-Archive -LiteralPath $stage -DestinationPath $archive
-$hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+$hash = Get-PackageSha256 $archive
 "$hash  $([IO.Path]::GetFileName($archive))" | Set-Content -Encoding ascii "$archive.sha256"
 Write-Output "Staged $stage"

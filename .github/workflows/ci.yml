@@ -42,6 +42,9 @@ jobs:
       - name: Relocated runtime payload offline native build
         if: matrix.os == 'windows-latest'
         run: node scripts/test-native-runtime-payload.mjs
+      - name: Compiled desktop adapter through real Sovra execution
+        if: matrix.os == 'windows-latest'
+        run: node scripts/test-compiled-desktop.mjs
       - name: Native local-package linking and source-independent execution
         run: node scripts/test-native-packages.mjs
       - name: Native runtime errors and bounded file I/O
@@ -80,6 +83,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Grouped desktop layout acceptance failed' }
           powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File scripts\test-desktop-accessibility.ps1 -TaskProgram target\desktop-ui\verified\sovra-task-manager\application.exe -Renderer target\desktop-ui\verified\sovra-task-manager\ui\renderer.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Desktop accessibility acceptance failed' }
+          .\scripts\build-desktop-ui.ps1 -Program target\native-task-manager\extracted\sovra-task-manager\task-manager.exe -Output target\desktop-ui\sovra-task-manager-compiled -AppId task-manager -GroupedLayout -CompiledHost
+          .\scripts\test-desktop-package.ps1 -PackageZIP target\desktop-ui\sovra-task-manager-compiled.zip -ExtractTo target\desktop-ui\compiled-verified -CompiledHost
+          node scripts/test-compiled-desktop.mjs --package target\desktop-ui\compiled-verified\sovra-task-manager-compiled
+          if ($LASTEXITCODE -ne 0) { throw 'Compiled desktop package acceptance failed' }
           cargo build --locked --example native_builder
           if ($LASTEXITCODE -ne 0) { throw 'Internal native builder build failed' }
           node scripts/test-native-builder-failures.mjs
@@ -108,6 +115,15 @@ jobs:
           path: |
             target/desktop-ui/sovra-task-manager.zip
             target/desktop-ui/sovra-task-manager.zip.sha256
+      - name: Upload compiled Windows desktop UI candidate
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sovra-windows-desktop-ui-compiled-private
+          path: |
+            target/desktop-ui/sovra-task-manager-compiled.zip
+            target/desktop-ui/sovra-task-manager-compiled.zip.sha256
+            target/compiled-desktop/verification.json
       - name: Dogfood application behavior (interpreter and JavaScript)
         run: node scripts/test-dogfood.mjs
       - name: Process input and streaming output parity
@@ -124,6 +140,8 @@ jobs:
         run: node scripts/test-ui-prototype.mjs
       - name: Sovra grouped UI view parity
         run: node scripts/test-ui-layout-parity.mjs
+      - name: Task Manager bounded pagination and long-text views
+        run: node scripts/test-task-pagination.mjs
       - name: File Manager local browser dogfood
         run: node scripts/test-file-manager.mjs
       - name: Sovra Notes persistent storage dogfood

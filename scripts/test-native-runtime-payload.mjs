@@ -28,8 +28,21 @@ function files(directory, prefix = '') {
 try {
     const initial = join(scratch, 'initial');
     const script = join(root, 'scripts', 'build-native-runtime-payload.ps1');
-    const built = execute('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
-        script, '-Output', initial]);
+    // Hosted Windows packaging has encountered a host without Get-FileHash.
+    // Remove that optional function while retaining the inbox commands used by
+    // the builder, then verify every resulting digest independently with Node.
+    const quote = value => "'" + value.replaceAll("'", "''") + "'";
+    const withoutFileHash = `
+$ErrorActionPreference = 'Stop'
+Import-Module Microsoft.PowerShell.Utility
+Import-Module Microsoft.PowerShell.Management
+Remove-Item Function:\\Get-FileHash -ErrorAction SilentlyContinue
+$PSModuleAutoLoadingPreference = 'None'
+if (Get-Command Get-FileHash -ErrorAction SilentlyContinue) { throw 'Hash regression precondition failed' }
+& ${quote(script)} -Output ${quote(initial)}
+`;
+    const built = execute('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass',
+        '-EncodedCommand', Buffer.from(withoutFileHash, 'utf16le').toString('base64')]);
     assert.equal(built.status, 0, built.stderr + built.stdout);
     const manifestBytes = readFileSync(join(initial, 'payload.json'));
     const manifest = JSON.parse(manifestBytes);

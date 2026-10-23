@@ -15,14 +15,20 @@ Invalid source still fails compilation; the accepted language grammar is unchang
 Nested block recovery also retains `else` branches and later statement diagnostics.
 
 **Active focus: Sovra UI powering the Task Manager in a desktop window.**
-The first private Windows renderer maps Sovra views and events to WPF native
-controls. Task rules and persistence stay in `.svr`; an unrelated component
-uses the same renderer. This adapter requires Windows PowerShell/.NET, with no
-Node, browser, Rust or Sovra installation needed by a packaged native app.
+The private Windows renderer maps Sovra views and events to WPF native controls.
+Task rules and persistence stay in `.svr`; an unrelated component uses the same
+renderer. A compiled C#/WPF adapter now provides a PowerShell-free application
+runtime, selected with the internal packager's `-CompiledHost` switch. It requires
+compatible Windows x64 and .NET/WPF, with no Node, browser, Rust or Sovra
+installation needed by a packaged native app. The previous PowerShell adapter
+remains the packaging default during parity qualification.
+Grouped Task Manager views now paginate 25 matching tasks at a time and bound
+long-text display; 1,000-task navigation runs through actual Sovra execution.
 See the [desktop adapter](toolchain/ui/windows/README.md) and
 [UI architecture](docs/architecture/SOVRA_UI.md) for tests and current limits.
 The standalone CLI executable alone does not include a window; a desktop
-package supplies a separate **Sovra UI.exe** launcher and renderer.
+package supplies **Sovra UI.exe**. In a compiled-host package this executable
+owns the window and renderer directly.
 
 **Version 1.0.0 is not yet approved for publication.** The version-one goal is
 a production-quality Task Manager CLI and a qualified installable toolchain.

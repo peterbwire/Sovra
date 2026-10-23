@@ -1,5 +1,10 @@
 # ADR 0030: Private grouped desktop UI views
 
+Application follow-up (2026-10-23): ordinary Sovra logic now paginates Task
+Manager's grouped view in 25-row pages and bounds displayed titles/queries.
+Navigation is private application metadata, not a new host node or public UI
+navigation API. Existing renderer limits and flat interfaces remain unchanged.
+
 Status: **Private prototype design (2026-10-20)** within the user-authorized
 desktop work in ADR 0029. This does not approve a public UI protocol or change
 Sovra syntax, types, runtime semantics or compiler targets.

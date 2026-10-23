@@ -23,7 +23,19 @@ function execute(binary, args, cwd = scratch, env = process.env, timeout = 30000
 }
 function success(result) { assert.equal(result.status, 0, result.stderr + result.stdout); return result; }
 function powershell(script, args, cwd = scratch) {
-    return execute('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script, ...args],
+    const quote = value => "'" + value.replaceAll("'", "''") + "'";
+    const command = `
+$ErrorActionPreference = 'Stop'
+Import-Module Microsoft.PowerShell.Utility
+Import-Module Microsoft.PowerShell.Management
+Import-Module Microsoft.PowerShell.Archive
+Remove-Item Function:\\Get-FileHash -ErrorAction SilentlyContinue
+$PSModuleAutoLoadingPreference = 'None'
+if (Get-Command Get-FileHash -ErrorAction SilentlyContinue) { throw 'Hash regression precondition failed' }
+& ${quote(script)} ${args.map(value => /^-[A-Za-z]+$/.test(value) ? value : quote(value)).join(' ')}
+`;
+    return execute('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass',
+        '-EncodedCommand', Buffer.from(command, 'utf16le').toString('base64')],
         cwd, process.env, 120000);
 }
 try {

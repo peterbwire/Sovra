@@ -1,5 +1,19 @@
 param([string]$Output = 'target\toolchain\runtime-source')
 $ErrorActionPreference = 'Stop'
+function Get-PayloadSha256([string]$Path) {
+    # Use the runtime directly: Get-FileHash is not available in every packaging host.
+    $stream = [IO.File]::OpenRead($Path)
+    try {
+        $algorithm = [Security.Cryptography.SHA256]::Create()
+        try {
+            return [BitConverter]::ToString($algorithm.ComputeHash($stream)).Replace('-', '').ToLowerInvariant()
+        } finally {
+            $algorithm.Dispose()
+        }
+    } finally {
+        $stream.Dispose()
+    }
+}
 $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $destination = [IO.Path]::GetFullPath($Output)
 if (Test-Path -LiteralPath $destination) { throw "Output already exists: $destination" }
@@ -27,7 +41,7 @@ try {
     $files = @(Get-ChildItem -LiteralPath $stage -File -Recurse | ForEach-Object {
         [pscustomobject]@{
             path = $_.FullName.Substring($prefix.Length).Replace('\', '/')
-            sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            sha256 = Get-PayloadSha256 $_.FullName
         }
     } | Sort-Object path)
     $manifest = [pscustomobject]@{ schema = 1; kind = 'sovra-native-runtime-source'; files = $files }

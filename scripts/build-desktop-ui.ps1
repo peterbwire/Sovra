@@ -2,7 +2,8 @@ param(
     [Parameter(Mandatory=$true)][string]$Program,
     [Parameter(Mandatory=$true)][string]$Output,
     [Parameter(Mandatory=$true)][string]$AppId,
-    [switch]$GroupedLayout
+    [switch]$GroupedLayout,
+    [switch]$CompiledHost
 )
 $ErrorActionPreference = 'Stop'
 $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -13,13 +14,29 @@ if (-not (Test-Path -LiteralPath $application -PathType Leaf)) { throw 'Build th
 if ((Test-Path -LiteralPath $stage) -or (Test-Path -LiteralPath "$stage.zip")) { throw 'Desktop output already exists.' }
 $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 if (-not (Test-Path -LiteralPath $csc -PathType Leaf)) { throw 'The Windows .NET Framework compiler is unavailable.' }
-New-Item -ItemType Directory -Path (Join-Path $stage 'ui') -Force | Out-Null
+New-Item -ItemType Directory -Path $stage -Force | Out-Null
 $adapter = Join-Path $repository 'toolchain\ui\windows'
-Copy-Item -LiteralPath (Join-Path $adapter 'host.ps1'), (Join-Path $adapter 'renderer.ps1'), (Join-Path $adapter 'worker.ps1') -Destination (Join-Path $stage 'ui')
+if (-not $CompiledHost) {
+    New-Item -ItemType Directory -Path (Join-Path $stage 'ui') | Out-Null
+    Copy-Item -LiteralPath (Join-Path $adapter 'host.ps1'), (Join-Path $adapter 'renderer.ps1'), (Join-Path $adapter 'worker.ps1') -Destination (Join-Path $stage 'ui')
+}
 Copy-Item -LiteralPath $application -Destination (Join-Path $stage 'application.exe')
-Copy-Item -LiteralPath (Join-Path $adapter 'README.md') -Destination $stage
+if ($CompiledHost) {
+    Copy-Item -LiteralPath (Join-Path $adapter 'compiled\README.md') -Destination $stage
+} else {
+    Copy-Item -LiteralPath (Join-Path $adapter 'README.md') -Destination $stage
+}
 Copy-Item -LiteralPath (Join-Path $repository 'LICENSE-MIT'), (Join-Path $repository 'LICENSE-APACHE') -Destination $stage
-& $csc /nologo /target:winexe /platform:x64 /optimize+ /reference:System.Windows.Forms.dll "/out:$(Join-Path $stage 'Sovra UI.exe')" (Join-Path $adapter 'launcher.cs')
+if ($CompiledHost) {
+    $wpf = Join-Path (Split-Path -Parent $csc) 'WPF'
+    $sources = @('Bridge.cs', 'DesktopWindow.cs', 'DesktopTheme.cs', 'ApplicationProfile.cs', 'Entry.cs') |
+        ForEach-Object { Join-Path $adapter ('compiled\' + $_) }
+    & $csc /nologo /target:winexe /platform:x64 /optimize+ /reference:System.Web.Extensions.dll /reference:System.Xaml.dll `
+        "/reference:$wpf\PresentationFramework.dll" "/reference:$wpf\PresentationCore.dll" "/reference:$wpf\WindowsBase.dll" `
+        "/out:$(Join-Path $stage 'Sovra UI.exe')" $sources
+} else {
+    & $csc /nologo /target:winexe /platform:x64 /optimize+ /reference:System.Windows.Forms.dll "/out:$(Join-Path $stage 'Sovra UI.exe')" (Join-Path $adapter 'launcher.cs')
+}
 if ($LASTEXITCODE -ne 0) { throw 'Desktop launcher compilation failed.' }
 $utf8 = [Text.UTF8Encoding]::new($false)
 $profile = [pscustomobject]@{ schema = 1; id = $AppId; program = 'application.exe' }

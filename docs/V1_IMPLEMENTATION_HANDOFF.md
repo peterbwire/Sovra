@@ -1,5 +1,24 @@
 # Version-one implementation handoff
 
+Compiled desktop candidate (2026-10-23): the internal packager's `-CompiledHost`
+option produces a C#/WPF `Sovra UI.exe` that owns its window and invokes the
+native Sovra application directly, with no PowerShell runtime scripts. Local
+qualification now passes 220 checks including native events, keyboard/layout
+behavior, bounded 1,000-task pagination, task editing/filtering, startup failures,
+responsiveness and restart persistence;
+the baseline adapter also passes its retained tests. This is a private Windows
+candidate requiring compatible .NET/WPF, not a clean-VM or release approval.
+See [ADR 0033](adr/0033-compiled-desktop-host.md) and the latest development log
+for artifact paths and actual validation. The historical hashes below remain
+historical.
+
+The current capacity-fixed candidate is `target/compiled-desktop/task-manager-compiled-v6.zip`.
+Repository cleanup retained the earlier v4 desktop candidate and the latest
+`target/toolchain/project-rollback-v1` toolchain. Older generated artifacts were
+removed; historical paths/hashes below describe past evidence, not a promise
+that every local build copy remains available. See the cleanup entry in the
+development log and `target/repository-cleanup/result.json`.
+
 Current tooling checkpoint (2026-10-21): `svr doctor` and standalone `svr fmt`
 are implemented after the historical artifacts below. Formatter writes are
 enabled on Windows; package formatting and other-host writes remain deferred.

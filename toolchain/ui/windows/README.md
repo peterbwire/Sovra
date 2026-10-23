@@ -1,5 +1,12 @@
 # Sovra UI Windows desktop prototype
 
+Compiled-host migration (2026-10-23): the internal packager now accepts
+`-CompiledHost` to produce a direct C#/WPF executable with no PowerShell runtime
+scripts or shell child. Application behavior still executes in Sovra. See the
+[compiled adapter](compiled/README.md) and [ADR 0033](../../../docs/adr/0033-compiled-desktop-host.md)
+for dependencies, tests and remaining qualification. The description below
+documents the retained PowerShell compatibility baseline.
+
 This private reusable renderer turns the current `SVR-UI-1` Sovra view into WPF
 headings, text, labelled inputs and buttons. It opens a desktop window, with no
 browser, local HTTP server or Node process. Application rules and persistence

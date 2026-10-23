@@ -1,5 +1,38 @@
 # Sovra UI architecture
 
+Application pagination checkpoint (2026-10-23): Task Manager's grouped Sovra
+view emits 25 matching rows per page and generic Previous/Next buttons. Its
+`.page` sidecar is separate from existing task/filter formats. Long title/query
+display is bounded without changing original matching/storage. Hosts still
+validate 64 KiB/256-leaf limits; no protocol, renderer or language expansion was
+needed. This fixes the reproduced 62-open-task overflow. Flat interfaces retain
+their existing behavior and limits.
+
+Compiled startup/failure checkpoint (2026-10-23): application profiles are read
+as bounded 16 KiB snapshots before validation. Packaged tests verify malformed
+profiles and missing executables produce visible diagnostics and nonzero status
+without changing stored state. Controlled process fixtures verify dispatcher
+responsiveness, timeout termination and malformed-view mutation rejection; real
+Sovra execution continues to cover application operations and reusable components.
+
+Compiled presentation follow-up (2026-10-23): `DesktopTheme.cs` selects the
+existing palette or Windows system colors for high contrast; the host observes
+Windows setting changes on its dispatcher without sending Sovra events or
+rebuilding inputs. Layout rounding/pixel snapping is enabled. Real Sovra tests
+now cover the grouped Task Manager's rename/search/filter workflow, Enter/Escape,
+forward/reverse focus traversal, contextual automation names and action controls
+moving between groups, changing kind, disappearing and returning. A forced
+system-color palette test is not actual Windows high-contrast or DPI qualification.
+
+Compiled Windows host checkpoint (2026-10-23): the optional C#/WPF adapter in
+`toolchain/ui/windows/compiled` consumes the existing bounded private v1/v2 views
+and invokes the actual Sovra application directly. Its executable owns the window,
+background event execution and generic controls; it launches no PowerShell host.
+The internal packager selects it with `-CompiledHost`. The older adapter stays
+available during parity qualification. This is a Windows adapter migration, not
+a public UI ABI, mobile runtime or compiler target. See
+[ADR 0033](../adr/0033-compiled-desktop-host.md).
+
 Search/filter checkpoint (2026-10-20): ordinary Sovra input/button nodes apply
 case-sensitive title substring search together with All/Open/Completed selection.
 Sovra owns matching, preference validation and a separate versioned `.view` sidecar;
