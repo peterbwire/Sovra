@@ -72,7 +72,7 @@ function svrReadLine() {
       if (newline !== -1 && bytes.at(-1) === 13) bytes = bytes.subarray(0, bytes.length - 1);
       if (bytes.length > 1048576) throw new Error("standard input line exceeds 1048576 bytes");
       let text;
-      try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); }
+      try { text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes); }
       catch { throw new Error("standard input is not valid UTF-8"); }
       return { __svrStruct: { typeName: "std::InputLine",
         fields: { eof: false, text }, fieldOrder: ["eof", "text"] } };
@@ -1190,6 +1190,89 @@ mod tests {
             Instruction::LoadLiteral(Literal::Integer("1".into())),
             Instruction::StoreIndex,
         ]);
+    }
+
+    #[test]
+    fn record_alias_construction_preserves_nominal_identity() {
+        let source = r#"
+            struct Point { x: Float }
+            type Alias = Point;
+            type Chained = Alias;
+            mod geometry {
+                struct Point { x: Float }
+                type Alias = Point;
+                export fn equal() -> Bool {
+                    return Alias { x: 1 } == Point { x: 1 };
+                }
+            }
+            fn main() {
+                print(Alias { x: 1 } == Point { x: 1 });
+                print(Chained { x: 1 } == Alias { x: 1 });
+                print([Chained { x: 1 }] == [Point { x: 1 }]);
+                print(geometry::equal());
+                let value = Chained { x: 9007199254740993 };
+                print(value.x);
+            }
+        "#;
+        let parsed = crate::compiler::parser::Parser::new()
+            .parse_source(source)
+            .unwrap();
+        let ir = crate::compiler::ir::lower_program(&parsed).unwrap();
+        let expected = ["true", "true", "true", "true", "9007199254740992"];
+        assert_eq!(crate::compiler::interpreter::run(&ir).unwrap(), expected);
+        let output = execute_javascript(&render_javascript(&ir));
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .lines()
+                .collect::<Vec<_>>(),
+            expected
+        );
+    }
+
+    #[test]
+    fn empty_nested_array_holes_preserve_float_widening() {
+        let source = "fn main() {
+            let empty = [];
+            let mut rows = [empty, [2.0]];
+            let ints = [9007199254740993];
+            rows[0] = ints;
+            print(rows[0][0]);
+            print(ints[0]);
+            print(rows[0][0] / 2);
+            let mut cubes = [[[]], [[4.0]]];
+            cubes[0] = [[9007199254740993]];
+            print(cubes[0][0][0]);
+        }";
+        let program = crate::compiler::parser::Parser::new()
+            .parse_source(source)
+            .unwrap();
+        let ir = crate::compiler::ir::lower_program(&program).unwrap();
+        let expected = [
+            "9007199254740992",
+            "9007199254740993",
+            "4503599627370496",
+            "9007199254740992",
+        ];
+        assert_eq!(crate::compiler::interpreter::run(&ir).unwrap(), expected);
+        let output = execute_javascript(&render_javascript(&ir));
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .lines()
+                .collect::<Vec<_>>(),
+            expected
+        );
     }
 
     #[test]

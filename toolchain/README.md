@@ -16,6 +16,8 @@ validates this snapshot before linking and fails clearly if it is missing or dam
 The installed self-test also verifies that a blocked Task Manager save preserves
 its data and another writer's marker, then resumes after deliberate recovery of
 the test's own marker. It does not remove or recover locks in user profiles.
+It also checks record alias identity, nested-array Float widening and preservation
+of the original Int array through actual installed compiler execution.
 `imports.json` records the compiler's direct Windows DLL imports; it does not
 include transitive or dynamically loaded dependencies.
 `integrity.json` lists SHA-256 hashes for package files. The installer checks

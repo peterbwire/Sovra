@@ -12,6 +12,8 @@ $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvar
 if ($line -cne "$hash  $([IO.Path]::GetFileName($archive))") {
     throw 'Native Task Manager ZIP checksum mismatch.'
 }
+. (Join-Path $PSScriptRoot 'assert-windows-zip.ps1')
+Assert-WindowsZipMembers $archive | Out-Null
 Expand-Archive -LiteralPath $archive -DestinationPath $destination
 $folders = @(Get-ChildItem -LiteralPath $destination -Directory)
 if ($folders.Count -ne 1) { throw 'Native Task Manager ZIP has an unexpected root layout.' }

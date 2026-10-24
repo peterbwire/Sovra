@@ -28,6 +28,24 @@ requires a direct mutable binding. Replacing `rows[0]` is supported; nested
 assignment such as `rows[0][0] = 5` is not currently supported. Float-to-Int
 narrowing is not implicit. This does not introduce array annotation syntax.
 
+An empty row does not erase the element type supplied by later compatible rows:
+
+```svr
+fn main() {
+    let empty = []
+    let mut rows = [empty, [1.0]]
+    let ints = [5]
+    rows[0] = ints
+    print(rows[0][0] / 2) // 2.5: inferred Float row retains widening
+    print(ints[0] / 2)   // 2: the original Int array is unchanged
+}
+```
+
+After inference learns a row's element type, later incompatible rows are errors.
+For example, `[[], [1], ["text"]]` reports E3007. Empty arrays remain valid, and
+using the same empty binding in different array literals does not change its
+value or establish a shared mutable element type between those literals.
+
 Under approved [ADR 0012](../adr/0012-compound-value-semantics.md), arrays and
 records are values. Reading or passing one creates an independent logical
 snapshot. Array equality compares corresponding elements recursively, while

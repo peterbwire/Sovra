@@ -36,6 +36,9 @@ alias, source parsing and application syntax stay intact.
   `{ eof: false, text: "" }`; EOF is `{ eof: true, text: "" }`. Invalid UTF-8,
   read failures and excessive line length are runtime errors with matching
   interpreter/JS categories. The initial line-size limit is **1 MiB of UTF-8**.
+  Correctness clarification (2026-10-24): preserve a leading U+FEFF character as
+  data on every line, matching the Rust host. It counts as three UTF-8 bytes;
+  it is not a request to strip a stream signature or normalize input.
 - Interactive output is emitted and flushed when `print` executes, in both
   engines. Earlier printed lines remain visible if a later read or computation
   fails. This changes the current CLI's buffered-output behavior and therefore

@@ -388,6 +388,36 @@ mod tests {
     }
 
     #[test]
+    fn record_constructor_aliases_keep_identity_across_package_boundaries() {
+        let fixture = Fixture::new();
+        let library = fixture.package("lib", "");
+        std::fs::write(library.join("main.svr"),
+            "mod geometry { export struct Point { x: Float } type Local = Point; export fn make() -> Point { return Local { x: 3 } } }").unwrap();
+        let root = fixture.package("app", "[dependencies.shapes]\npath = \"../lib\"");
+        std::fs::write(root.join("main.svr"),
+            "use shapes::geometry; type Alias = shapes::geometry::Point; type Chain = Alias; fn main() { let value = Chain { x: 3 }; print(value == shapes::geometry::make()); print([value] == [shapes::geometry::Point { x: 3 }]); }").unwrap();
+        let linked = compile(&root).unwrap();
+        assert_eq!(
+            crate::compiler::interpreter::run(&linked).unwrap(),
+            ["true", "true"]
+        );
+        let output = std::process::Command::new("node")
+            .arg("-e")
+            .arg(crate::compiler::backend::render_javascript(&linked))
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n"),
+            "true\ntrue\n"
+        );
+    }
+
+    #[test]
     fn exported_records_from_distinct_packages_are_nominally_distinct() {
         let fixture = Fixture::new();
         for name in ["left", "right"] {

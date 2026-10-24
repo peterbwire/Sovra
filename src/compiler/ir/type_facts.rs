@@ -81,15 +81,21 @@ impl TypeFacts {
         facts
     }
 
-    pub(super) fn annotation(&self, name: &str) -> ValueType {
+    // Aliases name the same declaration; they must not become runtime identities.
+    pub(super) fn canonical_name<'a>(&'a self, name: &'a str) -> &'a str {
         let mut current = name;
         let mut seen = HashSet::new();
         while let Some(target) = self.aliases.get(current) {
             if !seen.insert(current) {
-                return ValueType::Other;
+                break;
             }
             current = target;
         }
+        current
+    }
+
+    pub(super) fn annotation(&self, name: &str) -> ValueType {
+        let current = self.canonical_name(name);
         if current == "Float" {
             ValueType::Float
         } else if self.fields.contains_key(current) {
@@ -134,11 +140,9 @@ impl TypeFacts {
             }
             ExpressionKind::ArrayLiteral(items) => {
                 let mut element = ValueType::Other;
-                for (index, item) in items.iter().enumerate() {
+                for item in items {
                     let value = self.expression(item, locals);
-                    if index == 0 || value == ValueType::Float {
-                        element = value;
-                    }
+                    element = refine_array_facts(element, value);
                 }
                 ValueType::Array(Box::new(element))
             }
@@ -161,5 +165,18 @@ impl TypeFacts {
             }
             _ => ValueType::Other,
         }
+    }
+}
+
+// Semantic checking already guarantees compatibility. Retain widening facts
+// through empty nested rows instead of treating the first row as definitive.
+fn refine_array_facts(current: ValueType, observed: ValueType) -> ValueType {
+    match (current, observed) {
+        (ValueType::Other, observed) => observed,
+        (ValueType::Array(current), ValueType::Array(observed)) => {
+            ValueType::Array(Box::new(refine_array_facts(*current, *observed)))
+        }
+        (_, ValueType::Float) => ValueType::Float,
+        (current, _) => current,
     }
 }

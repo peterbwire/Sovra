@@ -66,7 +66,7 @@ try {
         assert.deepEqual(nativeResult, interpretedResult,
             `Native/interpreter output differs for ${args.join(' ')}`);
         assert.equal(nativeResult.status, expectedStatus, `Unexpected status for ${args.join(' ')}`);
-        for (const name of ['tasks.txt', 'broken.txt', 'interactive.txt', 'legacy.txt']) {
+        for (const name of ['tasks.txt', 'broken.txt', 'interactive.txt', 'legacy.txt', 'bom-input.txt']) {
             const left = join(interpreted, name);
             const right = join(standalone, name);
             assert.equal(existsSync(right), existsSync(left), `State presence differs: ${name}`);
@@ -103,6 +103,9 @@ try {
     compare(['interactive', 'interactive.txt'], 1, 'add\n');
     compare(['interactive', 'interactive.txt'], 0, '');
     compare(['interactive', 'interactive.txt'], 1, 'add\nBad\u001b[2J\nquit\n');
+    compare(['interactive', 'bom-input.txt'], 0, 'add\n\ufeffCafé\nquit\n');
+    assert.equal(readFileSync(join(standalone, 'bom-input.txt'), 'utf8'), 'SVR-TASKS-2\n2\n1|0|\ufeffCafé\n');
+    compare(['complete', 'bom-input.txt', '\ufeffCafé'], 0);
 
     const legacy = 'SVR-TASKS-1\n8\n5|0|Legacy\n0|0|\n7|1|Done\n';
     writeFileSync(join(interpreted, 'legacy.txt'), legacy);

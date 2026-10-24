@@ -38,6 +38,27 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Installed formatter check failed.' }
     $formatResult = & svr.exe run $formatSource
     if ($LASTEXITCODE -ne 0 -or $formatResult -ne 'format smoke') { throw 'Installed formatted program failed.' }
+    $semanticsSource = Join-Path $testRoot 'value semantics.svr'
+    [IO.File]::WriteAllText($semanticsSource, @'
+struct Point { x: Float }
+type Alias = Point;
+type Chain = Alias;
+fn main() {
+    print(Chain { x: 3 } == Point { x: 3 });
+    print([Alias { x: 3 }] == [Point { x: 3 }]);
+    let mut rows = [[], [2.0]];
+    let original = [9007199254740993];
+    rows[0] = original;
+    print(rows[0][0]);
+    print(original[0]);
+}
+'@, (New-Object Text.UTF8Encoding($false)))
+    & svr.exe check $semanticsSource | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Installed value-semantics check failed.' }
+    $semanticsResult = (& svr.exe run $semanticsSource) -join "`n"
+    if ($LASTEXITCODE -ne 0 -or $semanticsResult -cne "true`ntrue`n9007199254740992`n9007199254740993") {
+        throw "Installed record identity or array value semantics failed: $semanticsResult"
+    }
     $wrapperProject = Join-Path $testRoot 'wrapper'
     & $creator $wrapperProject | Out-Null
     if (-not (Test-Path -LiteralPath (Join-Path $wrapperProject 'main.svr'))) {

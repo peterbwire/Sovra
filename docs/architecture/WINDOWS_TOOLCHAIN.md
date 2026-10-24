@@ -6,17 +6,29 @@ environment, separate from the Node-free application executable proof in
 smoke test passes; a clean Windows VM installation is still required. Use the
 [clean-machine procedure](../TOOLCHAIN_CLEAN_WINDOWS_TEST.md) to collect that evidence.
 
-Optimized local checkpoint (2026-10-23): the current release-profile compiler and
+Optimized local checkpoint (2026-10-24): the current release-profile compiler and
 matching runtime payload are packaged at
-`target/toolchain/conditional-write-release-v1.zip`. Installation under restricted
+`target/toolchain/record-identity-release-v1.zip`. This includes record alias
+constructor identity, nested-array
+inference/widening corrections and the JavaScript stdin decoder that preserves
+U+FEFF input characters. Installation under restricted
 PATH passes project commands, bundled and independent Task Manager operations,
 conditional snapshot behavior, busy-marker preservation and deliberate recovery
-of test-owned markers. The shipped self-test includes the busy-save regression.
+of test-owned markers. The shipped self-test includes busy-save, record identity
+and nested-array precision/value-isolation regressions.
 These checks do not modify user profiles, establish a minimum supported Windows
 version, or replace clean-VM/exact-commit hosted qualification. See the latest
 development log for native-build acceptance and artifact hashes.
 
 ## Architecture audit
+
+Archive verification checkpoint (2026-10-24): repository ZIP verifiers inspect
+all member paths/types after checksum validation and before extraction. A shared
+preflight rejects traversal, absolute/reserved paths, case aliases, file/directory
+conflicts, multiple roots and link/reparse/special-type metadata. The Windows CI
+gate exercises the helper and all three artifact entry points. This repository
+verification is separate from the extracted package's installer/self-test; it
+does not establish publisher authenticity or clean-machine compatibility.
 
 Toolchain diagnostics (2026-10-20): accepted [ADR 0031](../adr/0031-toolchain-doctor.md)
 adds `svr doctor` with target-specific requirements, bounded probes and human/JSON

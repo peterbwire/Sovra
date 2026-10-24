@@ -44,6 +44,11 @@ read failures and invalid argument indices are runtime errors. The interpreter
 and generated JavaScript have matching supported behavior; generated JS uses
 Node.js process streams and receives arguments after its script path.
 
+A UTF-8 BOM character (U+FEFF) is preserved as input data, including at the start
+of each line. It contributes three bytes to the 1 MiB limit. A line containing
+only that character is distinct from an empty line and EOF. Only the documented
+LF/CR terminator handling removes characters; no Unicode normalization occurs.
+
 Under accepted [ADR 0019](../adr/0019-process-exit-status.md), programs can
 set a portable process status without stopping immediately:
 

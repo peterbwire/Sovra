@@ -29,33 +29,8 @@ function Assert-SafeRelativePath([string]$Name) {
 
 # Validate every member before extraction; do not trust Expand-Archive to define
 # the package boundary or interpret ambiguous Windows paths safely.
-Add-Type -AssemblyName System.IO.Compression
-Add-Type -AssemblyName System.IO.Compression.FileSystem
-$zip = [IO.Compression.ZipFile]::OpenRead($archive)
-$memberNames = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-$roots = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
-try {
-    foreach ($entry in $zip.Entries) {
-        # Windows Compress-Archive writes backslash separators; validate their
-        # canonical slash form with the same duplicate and traversal rules.
-        $name = $entry.FullName.Replace('\', '/')
-        $directory = $name.EndsWith('/')
-        if ($directory) { $name = $name.Substring(0, $name.Length - 1) }
-        Assert-SafeRelativePath $name
-        if (-not $memberNames.Add($name)) { throw 'Desktop UI ZIP contains duplicate member paths.' }
-        $parts = $name.Split('/')
-        if ($parts.Count -lt 2 -and -not $directory) {
-            throw 'Desktop UI ZIP requires one containing root directory.'
-        }
-        [void]$roots.Add($parts[0])
-        $attributes = $entry.ExternalAttributes
-        if ((($attributes -shr 16) -band 0xf000) -eq 0xa000 -or
-            ($attributes -band 0x400) -ne 0) {
-            throw 'Desktop UI ZIP contains a symbolic link or reparse point.'
-        }
-    }
-    if ($roots.Count -ne 1) { throw 'Desktop UI ZIP requires exactly one root directory.' }
-} finally { $zip.Dispose() }
+. (Join-Path $PSScriptRoot 'assert-windows-zip.ps1')
+Assert-WindowsZipMembers $archive | Out-Null
 
 Expand-Archive -LiteralPath $archive -DestinationPath $destination
 $rootEntries = @(Get-ChildItem -LiteralPath $destination -Force)

@@ -6,6 +6,13 @@ Use a compatible, disposable Windows image with no Sovra, Rust/Cargo or Node.js
 installed. Record the image version and architecture before testing. Do not
 reuse a machine with an existing Sovra user PATH entry or installation.
 
+Before transferring the artifact, run the repository's
+`scripts/test-windows-toolchain.ps1 -Package PATH.zip` on the build/qualification
+host. It verifies the checksum and preflights all ZIP members before extracting
+and testing installation. Windows CI also runs
+`scripts/test-windows-archive-safety.ps1` to verify rejection paths. These source
+repository checks are not a replacement for this separate clean-VM procedure.
+
 Copy `sovra-windows.zip` and `sovra-windows.zip.sha256` from the same CI run to
 the image. In PowerShell, from their directory:
 

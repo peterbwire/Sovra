@@ -1194,6 +1194,8 @@ fn check_expression(
                         format!("array elements must share a compatible type, found {element_type:?} and {item_type:?}"),
                         item.span,
                     ));
+                } else {
+                    element_type = refine_array_inference(&element_type, &item_type);
                 }
             }
             Type::Array(Box::new(element_type))
@@ -1590,6 +1592,19 @@ fn numeric_or_string_comparison_compatible(left: &Type, right: &Type) -> bool {
             | (Type::Float, Type::Float)
             | (Type::Bool, Type::Bool)
     )
+}
+
+// Empty nested literals contribute inference holes, not permission to forget
+// concrete types observed in later compatible elements. This does not broaden
+// compatibility or choose a new numeric common-type policy.
+fn refine_array_inference(expected: &Type, actual: &Type) -> Type {
+    match (expected, actual) {
+        (Type::Unknown, actual) => actual.clone(),
+        (Type::Array(expected), Type::Array(actual)) => {
+            Type::Array(Box::new(refine_array_inference(expected, actual)))
+        }
+        _ => expected.clone(),
+    }
 }
 
 fn types_compatible(expected: &Type, actual: &Type, named_types: &HashMap<String, Type>) -> bool {
@@ -2194,6 +2209,46 @@ mod tests {
                 .unwrap();
             assert!(SemanticAnalyzer::new().analyze(&program).is_err());
         }
+    }
+
+    #[test]
+    fn empty_nested_arrays_do_not_erase_known_element_types() {
+        for body in [
+            "let values = [[], [1], [\"bad\"]];",
+            "let values = [[[]], [[1]], [[true]]];",
+            "let mut values = [[], [2.0]]; values[0] = [\"bad\"];",
+            "let values = [[], [1], [2.0]];",
+            "let empty = []; let values = [empty, [1], [\"bad\"]];",
+        ] {
+            let source = format!("fn main() {{ {body} }}");
+            let program = crate::compiler::parser::Parser::new()
+                .parse_source(&source)
+                .unwrap();
+            let errors = SemanticAnalyzer::new()
+                .analyze(&program)
+                .expect_err("empty arrays must not erase a known element type");
+            assert!(errors.items.iter().any(|error| error.code == "E3007"));
+        }
+        for body in [
+            "let values = [[], [1], [2]];",
+            "let mut values = [[], [2.0], [1]]; values[0] = [3];",
+            "let values = [[[]], [[1]], [[2]]];",
+            "let values = [[], []];",
+            "let empty = []; let ints = [empty, [1]]; let strings = [empty, [\"ok\"]];",
+        ] {
+            let source = format!("fn main() {{ {body} }}");
+            let program = crate::compiler::parser::Parser::new()
+                .parse_source(&source)
+                .unwrap();
+            SemanticAnalyzer::new().analyze(&program).unwrap();
+        }
+        let nominal = "struct Left { value: Int } struct Right { value: Int }
+            fn main() { let values = [[], [Left { value: 1 }], [Right { value: 1 }]]; }";
+        let program = crate::compiler::parser::Parser::new()
+            .parse_source(nominal)
+            .unwrap();
+        let errors = SemanticAnalyzer::new().analyze(&program).unwrap_err();
+        assert!(errors.items.iter().any(|error| error.code == "E3007"));
     }
 
     #[test]

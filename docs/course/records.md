@@ -27,6 +27,9 @@ each value has a compatible type. Field reads can be chained through nested
 records. Records can be passed to and returned from functions. Type aliases
 resolve to their declared targets, so a field or function annotated with an
 alias still uses the underlying record type.
+Constructors through an alias also retain that identity: if `type Position = Point`,
+then `Position { x: 3, y: 4 }` equals `Point { x: 3, y: 4 }` and displays as `Point`.
+This holds through alias chains; it does not make separate struct declarations equivalent.
 
 Record identity includes its declaring module and, for dependencies, its package.
 Identically shaped records in different modules cannot be passed interchangeably.

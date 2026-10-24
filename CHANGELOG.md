@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- Preserve a record declaration's nominal identity when constructing through a
+  type alias, including alias chains and module-local aliases. Fix equality and
+  displayed type names in both engines and standalone builds.
+
+- Refine nested-array element inference after leading empty rows. Reject
+  incompatible later rows and preserve Float widening through replacement rows
+  without mutating the source Int array. Extend depth-boundary regressions.
+
+- Preserve leading UTF-8 BOM characters in generated JavaScript standard-input
+  lines, matching Rust. Add BOM-only, CRLF/EOF, byte-boundary and persisted-title
+  regressions; distinguish character data from empty input and EOF.
+
+- Validate Windows toolchain, native-app and desktop ZIP members before
+  extraction. Share path/type checks across verifiers and reject traversal,
+  Windows path aliases, duplicate/conflicting members and link metadata.
+
 - Extend installed-toolchain self-tests with conditional-write and busy-save
   checks. Run same/mixed-engine conflict tests against an explicitly selected
   installed compiler before standalone native-build acceptance.

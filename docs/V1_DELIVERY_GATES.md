@@ -1,5 +1,35 @@
 # Version-one delivery gates
 
+Optimized candidate checkpoint (2026-10-24):
+`target/toolchain/record-identity-release-v1.zip` now contains the record identity
+fix and stronger shipped self-tests. Local restricted-PATH installation, all 162
+depth checks and installed native-build acceptance pass; standalone Task Manager
+passes 23 parity cases. Hashes and evidence are in the development log. Exact-commit
+hosted/MSVC and clean-VM qualification remain pending; desktop v11 is unchanged.
+
+Record identity checkpoint (2026-10-24): alias constructors now preserve their
+underlying declaration identity in both engines. Local validation passes 469 Rust
+tests, nine dogfood apps and 31 native runtime cases. Existing packaged EXEs must
+be rebuilt to include this fix; hosted/MSVC and clean-VM qualification remain open.
+
+Nested-array checkpoint (2026-10-24): executable semantic analysis refines empty
+array inference slots rather than accepting incompatible rows. Lowering keeps
+Float widening facts through those rows. Local validation passes 467 Rust tests,
+all nine dogfood applications in both engines, 30 native runtime cases and 162
+depth checks. These correctness results do not qualify a clean Windows machine.
+
+Standard-input parity checkpoint (2026-10-24): a reproduced JavaScript-only
+loss of leading U+FEFF characters is fixed under the existing UTF-8 contract.
+Both-engine input and Task Manager persistence regressions pass, together with
+29 native runtime and 23 native Task Manager parity cases. Rebuild and qualify
+the updated toolchain separately from earlier retained archives.
+
+Archive qualification checkpoint (2026-10-24): toolchain/native/desktop ZIP
+verifiers now reject unsafe members before extraction through one shared policy.
+Thirty negative/positive regression checks pass, along with retained artifact
+verification and the optimized toolchain's restricted-PATH installation checks.
+Existing archives are unchanged; hosted execution and clean-VM testing remain open.
+
 Optimized toolchain checkpoint (2026-10-23): a release-profile compiler package
 with the current conditional-write runtime passes local installation and
 restricted-PATH Task Manager/API checks. Its shipped self-test now rejects a

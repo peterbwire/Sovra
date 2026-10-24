@@ -96,7 +96,8 @@ After extracting the ZIP, follow the included
 user's profile by default, adds `svr.exe` to PATH, and provides
 `svr new <path>` for creating a console project. The bundled `svr-new.ps1`
 remains as a compatibility wrapper. The package includes `verify-install.ps1` for a
-repository-free create/check/run self-test. The automated smoke test uses the
+repository-free create/check/run self-test, including record alias identity,
+nested-array precision and source-value isolation. The automated smoke test uses the
 installed compiler
 from a fresh PowerShell process with Node, Cargo and Rust absent from PATH. It
 also checks and runs a copy of the Task Manager outside this repository. A
@@ -104,7 +105,7 @@ clean compatible Windows VM test is still required before release.
 
 An [internal standalone executable proof](docs/architecture/NODE_FREE_APPLICATIONS.md)
 embeds checked Sovra IR and the Rust runtime into a Windows executable. Its
-18-case Task Manager regression compares output, exit status and persistent
+23-case Task Manager regression compares output, exit status and persistent
 state against the interpreter. A Windows proof ZIP includes checksums, an
 import record and a self-test for the later clean-machine test. It is
 now complemented by the approved public `build --emit exe --output PATH`

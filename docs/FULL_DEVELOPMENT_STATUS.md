@@ -1,5 +1,22 @@
 # Full development status
 
+Record aliases (2026-10-24): constructors now retain the canonical declaration's
+runtime identity instead of the alias spelling. Direct, chained and module-local
+aliases compare equal to the same underlying record, including inside arrays.
+Float-field widening remains intact; distinct declarations remain nominally distinct.
+
+Nested-array inference (2026-10-24): compatible later rows now refine unknown
+slots from leading empty arrays. The executable checker rejects subsequent
+incompatible rows with E3007 and lowering retains Float widening through nested
+arrays and replacement rows. Regression tests preserve nominal identity and
+source-array value isolation; no new compatibility or annotation rule was added.
+
+Standard-input parity (2026-10-24): generated JavaScript now preserves leading
+U+FEFF characters on every input line, matching Rust. Regressions cover BOM-only
+EOF/terminated lines, repeated lines, CRLF, buffered input and exact UTF-8 byte
+limits. Task Manager persists and looks up these titles without changing bytes.
+This fixes decoding under the existing contract; no syntax or API was added.
+
 Conditional text replacement (2026-10-23): approved ADR 0034 adds
 `std::write_text_if` to the stdlib, interpreter process/test hosts and JavaScript
 backend. Current Task Manager task/filter/page saves compare original snapshots.

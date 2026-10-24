@@ -26,6 +26,10 @@ jobs:
           node-version: '22'
       - name: Reject unsafe release archive members
         run: node scripts/test-archive-member-safety.mjs
+      - name: Reject unsafe Windows ZIP members before extraction
+        if: matrix.os == 'windows-latest'
+        shell: powershell
+        run: .\scripts\test-windows-archive-safety.ps1
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy

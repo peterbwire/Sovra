@@ -132,6 +132,8 @@ Record identity includes the canonical package, module and declaration: identica
 names/layouts in different packages never imply structural equivalence. Multiple
 aliases and diamond dependency paths to the same declaration preserve its identity.
 Scalar aliases and aliases to exported records resolve in their owning package.
+Constructing through a record type alias retains the underlying declaration's
+runtime identity and displayed name, including alias chains and nested equality.
 
 All fields of an exported record are externally readable and constructible for
 this milestone; constructors must provide every field exactly once with compatible
@@ -381,6 +383,15 @@ indexed assignment such as `values[0][1] = 42` is not supported and reports
 E3003. The interpreter and JavaScript backend both validate index type and
 bounds.
 
+Empty nested literals contribute unknown element slots during inference. Later
+compatible rows refine those slots; a leading empty row must not hide a known
+element type or allow a later incompatible row. Thus `[[], [1], ["bad"]]`
+reports E3007. `[[], [2.0]]` retains its Float row element type for subsequent
+compatible assignments and numeric operations. Lowering preserves these facts
+through deeper arrays and inferred/copied bindings without changing source values.
+This refinement does not introduce a new common-type, nominal-equivalence or
+array-annotation rule; existing compatibility checks still decide acceptance.
+
 Arrays and records have value semantics: reading a binding, assigning a value,
 passing an argument and returning a value transfer a logical snapshot. Changing
 an indexed element of a mutable array does not change a prior binding or the
@@ -440,7 +451,9 @@ the corresponding arguments after its script path.
 
 `std::read_line() -> std::InputLine` returns the public nominal standard record
 with `eof: Bool` and `text: String`. EOF is distinct from an empty input line.
-One LF and its preceding CR are removed. Invalid UTF-8, read errors and lines
+One LF and its preceding CR are removed. Other characters, including U+FEFF at
+the start of any line, remain data; a BOM-only line is not empty or EOF. Its
+three UTF-8 bytes count toward the byte limit. Invalid UTF-8, read errors and lines
 longer than 1,048,576 UTF-8 bytes are runtime errors. The input-line identity is
 reserved; a source declaration cannot redefine `std::InputLine`.
 

@@ -3,6 +3,8 @@ fn recurse(depth: Int) -> Int {
 }
 
 struct Point { x: Int, y: Int }
+type PointAlias = Point;
+type PointChain = PointAlias;
 
 fn side() -> Bool {
     std::println("unexpected side effect")
@@ -43,6 +45,22 @@ fn main() {
         if false && side() { std::println("wrong") }
         if true || side() { std::println("short circuit") }
         std::println(0.0 / (0.0 - 1.0))
+    } else if mode == "record-alias" {
+        let original = Point { x: 2, y: 3 }
+        let aliased = PointChain { x: 2, y: 3 }
+        std::println(aliased == original)
+        std::println([aliased] == [original])
+        std::println(aliased)
+    } else if mode == "array-holes" {
+        let empty = []
+        let mut rows = [empty, [2.0]]
+        let original = [9007199254740993]
+        rows[0] = original
+        std::println(rows[0][0])
+        std::println(original[0])
+        let mut cubes = [[[]], [[4.0]]]
+        cubes[0] = [[5]]
+        std::println(cubes[0][0][0] / 2)
     } else if mode == "stdin" {
         let first = std::read_line()
         std::println(first.eof)

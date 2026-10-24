@@ -632,7 +632,7 @@ fn lower_expression(
             }
             ExpressionKind::StructLiteral { type_name, fields } => {
                 pending.push(Work::Emit(Instruction::MakeStruct {
-                    type_name: type_name.clone(),
+                    type_name: type_facts.canonical_name(type_name).to_owned(),
                     fields: fields.iter().map(|(name, _)| name.clone()).collect(),
                 }));
                 let float_fields = float_struct_fields.get(type_name);

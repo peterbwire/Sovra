@@ -18,6 +18,8 @@ try {
     if ($packageRoot.EndsWith('.zip', [StringComparison]::OrdinalIgnoreCase)) {
         $checksum = "$packageRoot.sha256"
         Assert-ToolchainChecksum $packageRoot $checksum
+        . (Join-Path $PSScriptRoot 'assert-windows-zip.ps1')
+        Assert-WindowsZipMembers $packageRoot | Out-Null
         $corruptDir = Join-Path $testRoot 'corrupt'
         New-Item -ItemType Directory -Path $corruptDir | Out-Null
         $corrupt = Join-Path $corruptDir ([IO.Path]::GetFileName($packageRoot))

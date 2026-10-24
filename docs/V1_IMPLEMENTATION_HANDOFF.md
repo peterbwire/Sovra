@@ -1,6 +1,35 @@
 # Version-one implementation handoff
 
-Optimized toolchain candidate (2026-10-23):
+Record-identity candidate (2026-10-24): the rebuilt optimized toolchain at
+`target/toolchain/record-identity-release-v1.zip` includes the latest constructor
+alias fix. The bundled self-test now verifies alias equality and nested-array
+precision/value isolation. Consult the newest development-log entry for completed
+qualification and artifact hashes; older ZIPs do not contain this compiler fix.
+Local installation, 162 depth cases and installed native builds pass, including
+23 Task Manager parity cases after compiler/source removal. Hosted/MSVC and
+clean-VM qualification remain pending.
+
+Compiler-correctness checkpoint (2026-10-24): leading empty nested rows now
+retain element types supplied by compatible later rows. Invalid mixed rows
+report E3007, and Float replacement rows retain widening/value isolation.
+The updated optimized candidate is `target/toolchain/array-inference-release-v1.zip`.
+See the newest development-log entry for exact checks and hashes. Earlier
+toolchain candidates are retained historical artifacts; desktop v11 is unchanged.
+
+Input-correctness checkpoint (2026-10-24): the JavaScript backend preserves
+stdin U+FEFF characters instead of silently stripping them. Source tests cover
+line endings, EOF, byte bounds and Task Manager persistence. The rebuilt optimized
+candidate is `target/toolchain/stdin-unicode-release-v1.zip`; see the latest log
+for completed artifact checks and hashes. Desktop v11 is unchanged because its
+Rust input host already preserved those bytes.
+
+Artifact preflight (2026-10-24): all repository Windows ZIP verifiers use
+`scripts/assert-windows-zip.ps1` before extraction. Run
+`scripts/test-windows-archive-safety.ps1` for its 30 local regression checks.
+The optimized toolchain and desktop v11 remain the same archives; no new
+application release or clean-VM qualification is implied by verifier hardening.
+
+Earlier optimized toolchain candidate (2026-10-23):
 `target/toolchain/conditional-write-release-v1.zip` contains the release-profile
 compiler, matching runtime source and stronger shipped installation self-tests.
 Its installation and conditional Task Manager checks pass locally with developer

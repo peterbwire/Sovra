@@ -59,6 +59,11 @@ try {
         const directPath = join(directory, `${engine}-direct.txt`);
         const direct = (...arguments_) => run(executable, [...prefix, ...arguments_]);
         const directError = (...arguments_) => run(executable, [...prefix, ...arguments_], '', 1);
+        const bomState = join(directory, `${engine}-bom-input.txt`);
+        assert.match(run(executable, [...prefix, 'interactive', bomState], 'add\n\ufeffCafé\nquit\n'), /added 1\n/);
+        assert.equal(readFileSync(bomState, 'utf8'), 'SVR-TASKS-2\n2\n1|0|\ufeffCafé\n');
+        assert.equal(direct('complete', bomState, '\ufeffCafé'), 'completed 1\n');
+        assert.equal(readFileSync(bomState, 'utf8'), 'SVR-TASKS-2\n2\n1|1|\ufeffCafé\n');
         assert.equal(direct('list', directPath), 'tasks:\ncount 0\n');
         assert.match(direct('add', directPath, 'Write tests'), /added 1\n/);
         assert.match(direct('add', directPath, 'Café|猫'), /added 2\n/);

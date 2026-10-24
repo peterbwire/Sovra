@@ -1,5 +1,173 @@
 # Development log
 
+## 2026-10-24: Qualify the optimized record-identity toolchain candidate
+
+- Rebuilt the release compiler and matching runtime-source payload with the
+  constructor alias fix. Extended the shipped installation self-test with actual
+  record alias/array equality, nested empty-row Float widening and unchanged
+  source Int-array checks. No command or runtime contract changed.
+- Candidate: `target/toolchain/record-identity-release-v1.zip`, SHA-256
+  `fce9ccf22eaa8f6a8d436a6feb125dd67297f3352fe97fd32e548e5a3e23ec8c`.
+  Compiler SHA-256:
+  `6aec861674edf2f2292fd78ecb66700441d756d69344aa09df35793b5bc31d87`.
+  Retained local evidence: `target/toolchain/record-identity-release-v1.qualification.json`.
+- The ZIP passes integrity, corruption/overwrite rejection, member preflight,
+  installation and all bundled/independent tests under restricted PATH with
+  Node/Cargo/Rust unavailable. ZIP guard regression runner passes all 30 checks.
+  The exact staged compiler passes interpreter/JavaScript alias equality and all
+  162 depth/fixed-point checks. A manual JavaScript probe initially used Windows
+  PowerShell's UTF-16 redirection; rerunning with explicit UTF-8 passes.
+- Installed optimized native-build acceptance passes template, Task Manager and
+  package-consumer compilation outside the checkout, then removes compiler,
+  runtime payload and app sources before executing standalone programs. Task
+  Manager passes 23 state-byte/exit-status parity cases. Installed conditional
+  text tests pass both engines and all eight same/mixed-engine stale snapshots.
+- Updated installation guidance and candidate handoff. Existing 469-test source
+  baseline is unchanged; no compiler implementation changed in this slice.
+  Desktop v11 is unchanged. Next gates: exact-commit hosted CI, MSVC execution
+  and a clean compatible Windows VM. This is local GNU qualification, not a
+  published release or evidence that a clean machine has been tested.
+
+## 2026-10-24: Preserve declared record identity through constructor aliases
+
+- Reproduced a valid-source miscompile before the fix: constructing the same
+  record through an alias made equality return false. The failing regression
+  covered direct aliases, alias chains, module-local aliases and array equality;
+  Float fields already widened correctly and that behavior is preserved.
+- Lowering now resolves constructor aliases to the canonical declaration name
+  before emitting MakeStruct. The existing IR and both runtimes are unchanged.
+  This repairs the approved nominal identity contract rather than introducing
+  structural equivalence or new syntax. Added both-engine package coverage for
+  dependency-owned constructors and consumer alias chains; existing rejection
+  tests for distinct package record identities remain in the full suite.
+- Native runtime conformance now passes 31 cases/all 15 builtins, including
+  constructor identity, nested equality and canonical record display with source
+  removed and PATH restricted. All nine dogfood applications pass in both engines.
+- Full validation: 469 Rust tests pass (413 library, 55 CLI, one example), none
+  ignored, with required CLI execution. Rustfmt and strict all-target Clippy pass.
+- Updated the specification, record course, changelog, full status and native
+  conformance documentation. Earlier optimized toolchain ZIPs and desktop v11
+  have not been rebuilt for this fix. Next: rebuild/qualify a release candidate,
+  then exact-commit hosted/MSVC and clean-Windows VM acceptance; local GNU results
+  do not close those qualification gates.
+
+## 2026-10-24: Retain nested-array inference through leading empty rows
+
+- Reproduced two executable-compiler defects before fixing them: `[[], [1],
+  ["bad"]]` passed semantic checking because the first empty row kept an unknown
+  element slot forever; accepted Float-row programs lost widening during indexed
+  row replacement. An exact precision regression printed Int 9007199254740993
+  where the inferred Float value must round to 9007199254740992. Initially,
+  arithmetic through the unresolved slot could also reject otherwise valid code.
+- Semantic analysis now refines unknown nested-array slots only after existing
+  compatibility checks succeed. It does not select a new numeric common-type
+  policy or broaden nominal identity. Later incompatible rows and assignments
+  report existing E3007. All-empty arrays remain valid; independently using an
+  empty binding does not couple the inferred element types of other literals.
+- Lowering now merges widening facts through compatible nested arrays instead
+  of treating the first row as definitive. Existing Float-array widening IR is
+  reused; no runtime instruction, source syntax, memory rule or stage API changed.
+  Tests cover deeper rows, known incompatible and nominal records, inferred
+  bindings, numeric operations and unchanged original Int-array values.
+- Validation: 467 Rust tests pass (411 library, 55 CLI, one example), no ignored
+  tests, with required CLI execution. Formatting and strict Clippy pass. All nine
+  dogfood applications pass in both engines. Native runtime conformance passes
+  30 cases/all 15 builtins, including nested-empty-row widening and copy isolation.
+  Expanded the existing depth probe with compatible empty/Float row inference:
+  all 162 supported/rejected check/build/fmt/fixed-point cases pass locally with
+  compiler-bound evidence at `target/depth-probe/results-debug.json`.
+- Rebuilt the optimized toolchain. Its exact staged compiler rejects the invalid
+  mixed-row repro with JSON E3007 and passes interpreter/JS precision/value-copy
+  execution. Repro files and diagnostic report are retained under
+  `target/array-inference-proof`. The ZIP passes shared member preflight and full
+  restricted-PATH installation, self-test, conditional-I/O and Task Manager checks.
+- Candidate: `target/toolchain/array-inference-release-v1.zip`, SHA-256
+  `ca56d356739f5d2ff888f83bea2af476f1f8228b5392e6ce1c1ab176450c5a09`.
+  Compiler SHA-256:
+  `78fc3cbd5a6fa9fba5da650f5c4f60e831187d034f8dadac26e59c676e1ba002`.
+  Local evidence: `target/toolchain/array-inference-release-v1.qualification.json`.
+- Updated specification, array course, full status, native case documentation,
+  handoff, toolchain checkpoint, gates and changelog. Existing CI already runs the
+  new Rust regressions, expanded depth probe and native fixture. Desktop v11 is
+  unchanged and no new GUI run is claimed. Earlier toolchain archives remain
+  historical; exact-commit hosted/MSVC and clean-VM qualification remain pending.
+
+## 2026-10-24: Preserve UTF-8 BOM characters in JavaScript standard input
+
+- Reproduced a backend mismatch before the fix: Rust retained leading U+FEFF
+  characters on input lines, while generated JavaScript silently removed them
+  from each separately decoded line. A two-line differential regression passed
+  the interpreter and failed JavaScript with the missing characters visible.
+- Configured the JS stdin TextDecoder to preserve BOM characters, matching Rust
+  and the existing strict UTF-8 contract. Only the documented LF/CR terminator
+  handling removes input characters. No syntax, API, result record or resource
+  limit changed. File reads already had this byte-preservation fix.
+- Expanded real-process input coverage for repeated BOM-prefixed lines, BOM-only
+  terminated/EOF input, a multibyte character across a read-buffer boundary and
+  exact/overflow 1 MiB byte limits. Added explicit compiler selection and owned
+  temp-directory cleanup to the input runner. Existing empty/CRLF/invalid-UTF-8,
+  retained-output, EOF and prompt-before-input regressions remain.
+- Added Task Manager regression transcripts that persist a BOM-prefixed Unicode
+  title and complete it through exact argument lookup in both engines. Native
+  parity additionally compares stored bytes for the same workflow. Extended
+  general native runtime stdin tests to verify byte counts for BOM-prefixed,
+  BOM-only and repeated-line input.
+- Validation: all 465 Rust tests pass (409 library, 55 CLI, one example), with
+  required CLI execution; strict Clippy and formatting pass. Both-engine input
+  tests, prompt flushing and full Task Manager persistence suites pass. Native
+  runtime passes 29 cases/all 15 builtins; the retained native Task Manager
+  proof passes 23 parity cases. Node syntax/diff checks pass. Existing CI already
+  runs the expanded input, persistence and native suites.
+- Rebuilt the optimized compiler and matching toolchain ZIP. The exact staged
+  compiler passes the expanded interpreter/JS input suite via `--compiler PATH`;
+  its ZIP passes shared member preflight, installation/integrity, conditional
+  I/O and Task Manager self-tests with developer tools removed from PATH.
+  Candidate: `target/toolchain/stdin-unicode-release-v1.zip`, SHA-256
+  `9179b228a135886e9be9cf138a847757cbc7e33f20866fe5b7479dbe7916cf46`.
+  Compiler SHA-256:
+  `d1fed32f067c317958065f4fb41da3eed28ac005a49486fb3c99d47513581b6d`.
+  Local evidence: `target/toolchain/stdin-unicode-release-v1.qualification.json`.
+- Updated spec, ADR 0014 clarification, course/status/handoff and changelog.
+  The prior conditional-write archive is historical and lacks this JS fix.
+  Desktop v11 is unchanged: its native Rust stdin decoder was already correct;
+  no new GUI interaction run is claimed. Exact-commit hosted/MSVC and clean-VM
+  qualification remain pending, and publication remains unapproved.
+
+## 2026-10-24: Reject unsafe Windows ZIP members before artifact extraction
+
+- Found that toolchain and native-app artifact verifiers checked checksums but
+  extracted before validating member paths. A correctly checksummed controlled
+  traversal fixture reached extraction in the toolchain verifier and failed only
+  later on root layout. The regression required preflight rejection instead.
+  Fixtures contain no executable payloads; integration traversal stays inside
+  the verifiers' owned temporary extraction areas even before the fix.
+- Added private `scripts/assert-windows-zip.ps1`, validating every member before
+  extraction: canonical separator form, relative components, reserved/ambiguous
+  Windows names, one root, case-insensitive duplicates, file/directory prefix
+  conflicts and link/reparse/special-type metadata. Entry type/path conflicts
+  are rejected; ordinary Windows Compress-Archive backslashes remain supported.
+- Integrated the shared policy into toolchain/native/desktop ZIP verification.
+  Replaced desktop's duplicate member loop while retaining its manifest-path,
+  extracted-reparse, required-file and complete-integrity checks. No compiler,
+  language, installer or application behavior changed and no archive was rebuilt.
+- Validation: all 30 fixture checks pass, covering preflight rejection through
+  all three verifier entry points plus invalid/valid helper cases. An attempted
+  control-character fixture was rejected by .NET's ZIP creation API itself; it
+  is not counted as an executed archive-reader test. The helper still rejects
+  control characters in its path policy.
+- The existing optimized conditional-write toolchain ZIP passes full installation
+  and restricted-PATH self-tests under the new preflight. Desktop v11 passes
+  checksum/member/integrity verification. The older retained native launch-ready
+  archive passes its own verifier; this is backward-compatibility evidence, not
+  current Task Manager runtime qualification. Corrupted native download rejection
+  still retains accurate failure evidence. PowerShell syntax and diff checks pass.
+- Added the 30-check fixture runner to Windows CI and updated release/handoff/VM
+  documentation. No new Rust suite, GUI interaction, hosted run or clean-VM test
+  is claimed. Existing optimized-toolchain and desktop artifact hashes remain.
+- Remaining: exact-commit hosted qualification and the user's clean Windows VM
+  run. Preflight/checksums do not authenticate a publisher or make an attacker-
+  mutable artifact directory a security boundary. Publication remains unapproved.
+
 ## 2026-10-23: Qualify the current optimized installed toolchain locally
 
 - Built the current release-profile `svr.exe` and packaged a matching runtime
