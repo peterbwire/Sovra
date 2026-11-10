@@ -36,6 +36,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all -- --check
       - run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Deterministic compiler input mutation regressions
+        timeout-minutes: 2
+        run: cargo test --locked --test compiler_security
       - run: cargo test --locked --all-targets
       - run: cargo test --locked --doc
       - run: cargo build --locked
@@ -166,6 +169,7 @@ jobs:
           path: target/dogfood/
           if-no-files-found: ignore
       - run: node scripts/probe-compiler-depth.mjs --assert-limits
+      - run: node scripts/test-compiler-security.mjs
       - name: Upload exact-compiler depth evidence
         if: always()
         uses: actions/upload-artifact@v4

@@ -1,5 +1,521 @@
 # Development log
 
+## 2026-11-10: Enable approved cumulative package compilation defaults
+
+- User approved ADR 0038 graph ceilings: 1,000,000 source AST nodes, 250,000
+  interface metadata nodes, 4,000,000 linked IR instructions and 256 MiB retained
+  linked IR strings. Ordinary package compile, source-limit and graph-limit APIs
+  now apply these quotas; package check/run/build/test inherit the same compiler.
+  Explicit compilation-limit callers retain their selected allowances.
+- Added real default-boundary regressions for exactly 1,000,000 AST nodes across
+  two canonical sources and exactly 250,000 materialized interface nodes.
+  Overflow is rejected with E3020/E3023; a larger explicit interface allowance
+  still compiles and executes correctly. All five CLI paths (human/JSON check,
+  run, build and test) reject interface overflow before program execution.
+- Validation: all 529 tests passed, none ignored (437 library, 70 CLI, two
+  mutation, seven frontend-limit, five lowering-limit, seven package-limit and
+  one example). Cargo check/build, root/fuzz formatting, strict root/fuzz
+  all-target Clippy and diff checks passed.
+- Updated accepted ADR, specification, diagnostic/security references and
+  changelog. Task Manager/UI unchanged; changes remain local. Component quotas
+  still exclude interface string bytes, initial parsing allocations, repeated
+  semantic work, helper/temporary storage and backend output. Next compiler work:
+  bound interface string materialization and investigate repeated semantic work.
+
+## 2026-11-10: Add cumulative package admission and linked IR quotas
+
+- Implemented compile_with_compilation_limits with canonical-source AST,
+  interface metadata-materialization and final linked instruction/string quotas.
+  ASTs are counted before semantic cloning; signatures, parameters, record cache
+  entries/attachments and aliases are charged before metadata materialization.
+  Exhaustion uses E3020/E3023 and E3021/E3022 without successful partial output.
+- Moved function/call/record symbol rewriting into the shared IR emitter so
+  qualified UTF-8 names count at their final linked sizes across all packages.
+  Signature normalization now copies metadata directly instead of cloning and
+  immediately clearing a function body for each import.
+- Five package regression tests cover exact/overflow/zero quotas, canonical alias
+  deduplication, repeated interface copies, every smaller instruction/string
+  allowance, empty entry names, semantic failure and interpreter output parity.
+  A new failing provenance assertion reproduced foreign declaration offsets being
+  paired with a consumer path; consumer record-copy errors now use import ranges.
+- Validation: all 526 tests passed, none ignored. Cargo check/build, root/fuzz
+  formatting and strict root Clippy passed. An AddressSanitizer source campaign
+  on the shared emitter completed 41,802 runs in 16 seconds without a reported
+  failure; retained log/hash: target/fuzz-evidence/package-emitter-source.*.
+- Profiled the two reviewed local-package examples without executing source;
+  exact counts and limits are documented in ADR 0038. Proposed graph defaults:
+  1,000,000 AST nodes, 250,000 interface nodes, 4,000,000 IR instructions and
+  256 MiB linked IR strings. Existing package default acceptance is unchanged
+  pending the compatibility decision required by AGENTS.md.
+- Updated specification, diagnostic/security references and changelog. Task
+  Manager/UI untouched. These quotas exclude interface string bytes, temporary
+  and helper storage, initial parsing, repeated semantic work and backend output;
+  they are not complete memory/CPU bounds. Next: decide the graph default policy.
+
+## 2026-11-10: Enable approved standalone AST and IR defaults
+
+- User approved ADR 0037 defaults: 250,000 AST nodes, 1,000,000 retained IR
+  instructions and 64 MiB retained IR string payload per standalone source unit.
+  SemanticAnalyzer::analyze now admits syntax before semantic cloning; checked
+  ir::lower_program, standalone run/build and source test compilation additionally
+  enforce emission quotas. Test compilation preserves diagnostic file identity.
+- Explicit budget APIs continue honoring selected limits without an additional
+  hidden default check. Trusted raw IR lowering and imported package linking keep
+  their existing contracts; no whole-package emission ceiling is claimed.
+- Added exact 250,000-node admission and overflow regressions, explicit allowance
+  override coverage, default/ordinary IR equality, and CLI overflow rejection for
+  check (human/JSON), run, build and test before execution/emission.
+- Validation: all 521 tests passed with none ignored (437 library, 69 CLI,
+  two mutation, seven frontend-limit, five lowering-limit and one example).
+  Cargo check/build, root/fuzz formatting, strict root/fuzz all-target Clippy
+  and diff checks passed. No Task Manager/UI changes.
+- Updated accepted ADR, specification, JSON/security references, fuzz guide and
+  changelog. Limits remain component quotas rather than complete memory/CPU
+  bounds. Next compiler work: cumulative package admission/linking accounting.
+
+## 2026-11-10: Add opt-in AST admission and retained IR quotas
+
+- Implemented borrowed AST node counting before semantic cloning and checked
+  lowering APIs with caller-selected instruction/string budgets. Exhaustion
+  reports E3020/E3021/E3022 without returning partial typed/IR success.
+- Sealed instruction storage behind a charging emitter; jump patching can only
+  change numeric targets. Exhaustive accounting includes owned instruction text,
+  function names and parameters. Original stage APIs/default acceptance remain.
+- Added exact/overflow/zero/UTF-8/metadata/wide-input coverage and tested every
+  instruction cutoff in a branching, looping and short-circuit fixture. Successful
+  bounded lowering matches ordinary IR and executes with the expected output.
+- Validation: all 519 tests passed, none ignored; focused quota tests passed again
+  after final accounting cleanup. Root check/build, formatting and strict Clippy
+  passed. Source fuzzing exercised bounded admission/lowering for 51,143 runs in
+  16 seconds without a reported failure; log and binary hash are retained in
+  target/fuzz-evidence/admission-ir-source.*.
+- ADR 0037 proposes per-source-unit defaults of 250,000 AST nodes, 1,000,000 IR
+  instructions and 64 MiB retained IR string bytes. Default adoption awaits the
+  compatibility decision required by AGENTS.md. Package cumulative/linker quotas,
+  parser allocation, temporary/helper storage and repeated semantic work remain
+  separate limits to address; these mechanisms are not process memory/CPU bounds.
+- Compiler/security/specification references and fuzz documentation updated.
+  Task Manager/UI unchanged. Next: review the proposed defaults, then wire the
+  approved source-unit policy before extending accounting to package linking.
+
+## 2026-11-10: Bound retained diagnostic messages and release oversized buffers
+
+- Reproduced failing regressions for oversized semantic/Unicode manifest messages
+  and a short message retaining a 1 MiB backing allocation. Added a guarded 4 KiB
+  message-storage ceiling with UTF-8-safe prefix clipping and a visible
+  [message truncated] suffix. Allocate a bounded replacement instead of merely
+  truncating String length; short messages with excessive capacity are recopied.
+- Capped-error production now uses bounded storage. Common lexer/parser,
+  project/package and test-discovery/configuration emitters use the same guarded
+  path; source-check IO diagnostics are bounded before human/JSON rendering.
+  Severity, error codes, full ranges and source-file identity are unchanged.
+  The public raw Diagnostic/Diagnostics APIs and caller-owned records remain
+  unchanged and are not automatically capped at rendering time.
+- Added exact 4,096-byte/overflow, UTF-8, backing-capacity release, idempotence,
+  raw-API compatibility, source/manifest range and CLI human/JSON regressions.
+  A valid 10,000-character identifier still checks/runs, printing 42; invalid long
+  identifiers retain full token spans despite clipped display text. Mutations and
+  source fuzzing now assert retained message length and capacity as well as counts.
+- Validation on Linux/Rust 1.99.1: all 515 tests pass (437 library, 68 CLI,
+  two mutation, seven frontend-limit and one example tests), none ignored.
+  Cargo check/build, root/fuzz formatting, strict root/fuzz all-target Clippy and
+  diff checks pass. An AddressSanitizer source campaign with seed 5, a reviewed
+  long-name seed and 16 KiB maximum input completed 89,420 runs in 16 seconds
+  without a reported failure. Log and binary SHA-256 are retained in
+  target/fuzz-evidence/bounded-message-source.*.
+- Updated specification, JSON/security references, ADR notes, fuzz guide and
+  changelog. This hardens presentation/storage for invalid-input diagnostics,
+  not valid-source acceptance. It excludes transient format allocations, owning
+  file strings, JSON escaping, runtime output and unrelated raw emitters; it is
+  not a total process memory limit or security certification.
+- Next: measured valid-input semantic/IR expansion budgets and transient
+  formatting limits. No application/UI/release work was performed; changes remain local.
+
+## 2026-11-10: Bound manifest and executable semantic error reports at production
+
+- Reproduced three failing regressions before fixes: malformed manifests and
+  semantic body/type/declaration floods exceeded a 256-entry report budget.
+  Added a scoped capped-error emitter without changing the public raw Diagnostics
+  struct/push API. Compiler-owned failing stages retain the first 255 errors and
+  a final stopping notice at the incoming error's original location.
+- Manifest syntax errors use E4018 and stop further line inspection; malformed
+  initial project classification now returns attached diagnostics immediately
+  instead of classifying a partial manifest or reparsing it through another path.
+  Executable semantic errors use E3019 across normal analysis/type qualification.
+  Exhausted body/expression/type validation skips later work where safe and
+  always returns failure, never a successful partially checked program or IR.
+- This changes reports for already-invalid inputs, not valid-source acceptance,
+  type rules or runtime behavior. It does not introduce a new valid-input size
+  ceiling requiring another compatibility decision. Raw caller-mutated diagnostic
+  collections and unrelated application-checker helpers are not globally capped.
+- Tests cover 255/256/1,000-error boundaries, body/declaration/module-type floods,
+  source ranges, package dependency file identity, source/package test reports,
+  malformed classification, and no execution or native publication on failure.
+  Deterministic mutations now assert report counts as well as ranges; the source
+  fuzz target includes the same invariant and a reviewed semantic-flood seed.
+- Validation on Linux/Rust 1.99.1: all 510 tests pass (433 library, 67 CLI,
+  two mutation, seven frontend-limit and one example tests), none ignored.
+  The strengthened mutation checks pass separately. Cargo check/build, formatting,
+  strict all-target/all-feature Clippy and diff checks pass. AddressSanitizer
+  source fuzzing with seed 4 completed 119,703 runs in 16 seconds without a
+  reported failure; log and binary SHA-256 are retained under target/fuzz-evidence/.
+- Updated specification, JSON/security guidance, ADR status notes and changelog.
+  Message bytes, valid-input semantic/IR expansion and complete CPU/memory quotas
+  remain open; this is not an execution sandbox or security certification.
+- Next: bound retained diagnostic message bytes, then design measured semantic/IR
+  work budgets. No application/UI/release work was performed; changes remain local.
+
+## 2026-11-10: Enable approved manifest and dependency-edge defaults
+
+- User explicitly approved ADR 0036 defaults: 1 MiB per manifest, 8 MiB total
+  canonical manifest bytes and 8,192 dependency alias edges. Added public
+  PackageGraphLimits::DEFAULT and applied it through normal resolve/compile
+  paths, including source-limit compilation and package language tests.
+- Initial dependency classification and ordinary scanner-only project checks
+  now share a bounded 1 MiB manifest reader. This prevents a full unbounded root
+  read before graph quotas apply. IO errors retain E4000; exhaustion is E4112
+  with the owning manifest. Canonical graph accounting and explicit Rust graph
+  limits remain available; existing source/frontend ceilings are unchanged.
+- Added command tests at actual default boundaries: 1 MiB manifests, exactly
+  8 MiB total across unique packages with an alias, and 8,192 distinct aliases
+  targeting one dependency. One-byte/one-edge overflow rejects through package
+  check/run/build/test paths. The excess edge names a missing target and still
+  reports the quota before target resolution. Native output is never published.
+- Direct ordinary project-check rejection is also covered, along with initial
+  classification of oversized manifests without dependencies. Existing source
+  boundary, graph accounting, UTF-8, cycle and containment regressions remain green.
+- Validation on Linux/Rust 1.99.1: all 506 tests pass (430 library, 66 CLI,
+  two mutation, seven frontend-limit and one example tests), none ignored.
+  Cargo check/build, formatting, strict all-target/all-feature Clippy and diff
+  whitespace checks pass. Other-host/MSRV and broad performance qualification
+  were not performed in this slice.
+- Updated ADRs 0035/0036, spec, JSON/security references, package course and
+  changelog. These newly enforced compatibility ceilings are approved and
+  implemented; no further gate applies to their scope. Graph totals count
+  canonical input bytes, not every repeated OS read across a CLI invocation.
+- Next: bound manifest diagnostic accumulation and semantic/IR expansion work.
+  Current input limits are not a complete CPU/memory quota or execution sandbox.
+  No application/UI/release work was performed; changes remain local.
+
+## 2026-11-10: Add caller-selected manifest and dependency-edge budgets
+
+- Added public PackageGraphLimits with per-manifest bytes, total manifest bytes
+  and dependency alias-edge allowances, plus resolve_with_limits and
+  compile_with_graph_limits. Existing approved entry-source/frontend defaults
+  remain intact; default manifest/edge acceptance awaits its separate decision.
+- Reused the metadata-independent bounded UTF-8 reader with the smaller remaining
+  manifest allowance plus one detection byte. Actual bytes count once per unique
+  canonical package, including the root. Aliases/diamonds do not reload or charge
+  the same manifest twice. Each alias declaration consumes an edge separately.
+- Edge exhaustion is checked before resolving the next target or scheduling its
+  traversal. E4112 identifies the owning manifest/header; manifest byte overflow
+  identifies the file. Existing IO E4000, cycle E4111 and containment behavior
+  remain. Exhaustion returns no partial graph/IR and executes no package code.
+- Added exact/overflow, UTF-8, zero allowance, shared-manifest/alias accounting,
+  missing excess-target and cycle-preservation tests. Non-limiting graph budgets
+  produce the same resolved graph and linked IR as ordinary compilation.
+- Validation on Linux/Rust 1.99.1: all 503 tests pass (430 library, 63 CLI,
+  two mutation, seven frontend-limit and one example tests), none ignored.
+  Formatting, cargo check, strict all-target/all-feature Clippy and diff checks
+  pass. The existing actual 64 MiB package command regression remains green.
+- ADR 0036 proposes 1 MiB per manifest, 8 MiB aggregate canonical manifest bytes
+  and 8,192 alias edges. Default adoption must include the initial classifier's
+  root read; its per-file cap would also cover scanner-only project manifests.
+  Advisory example measurement found 121/69-byte manifests, 190 total, one edge;
+  this is not representative production memory/CPU evidence.
+- Updated spec/security guidance and changelog. Approval of the new default
+  ceilings is pending under AGENTS.md's compatibility-decision requirement.
+  Existing CLI graph acceptance remains unchanged; this is not a complete
+  manifest-diagnostic, semantic/IR or process-resource quota.
+- Next after approval: wire the policy into normal graph/compiler paths and
+  initial manifest classification, then add command-level boundary/overflow
+  coverage before semantic/IR budgeting. No application/UI/release work was done.
+
+## 2026-11-10: Enable approved 64 MiB aggregate package-source default
+
+- User explicitly approved the proposed aggregate entry-source ceiling. Added
+  DEFAULT_PACKAGE_SOURCE_BYTES (64 MiB) and applied it through the shared package
+  compiler entry used by check/run/build and package language tests. Explicit
+  compile_with_source_limit remains available to trusted Rust hosts; the 16 MiB
+  per-file ceiling and existing canonical-package deduplication remain intact.
+- Added a real command-level boundary fixture: four 16 MiB entry sources, an
+  alias to an existing package and an empty fifth dependency. Exact 64 MiB
+  check succeeds. One additional whitespace byte in the final dependency produces
+  E1003 with the aggregate ceiling and source identity through check, run, IR/JS/
+  native build and package tests. No native executable is published, no runtime
+  output executes, and the excess source is unchanged.
+- Validation on Linux/Rust 1.99.1: all 500 tests pass (427 library, 63 CLI,
+  two mutation, seven frontend-limit and one example tests), none ignored.
+  Formatting, cargo build, strict all-target/all-feature Clippy and diff checks
+  pass. The aggregate command fixture completes in about 30 seconds in this debug
+  environment; it is boundary evidence, not a general performance guarantee.
+- Updated ADR 0035, language specification, JSON/security references, package
+  course and changelog. Both per-file and aggregate policy decisions are now
+  approved and implemented; no further gate applies to those scopes.
+- Remaining resource work: bound manifests/graph edges and semantic/IR expansion,
+  then qualify CPU/memory behavior and supported hosts. The aggregate source-byte
+  limit is not an execution sandbox or total compilation resource quota. No
+  application/UI/release work was performed; changes remain local.
+
+## 2026-11-10: Add caller-selected aggregate package entry-source budgets
+
+- Added public packages::compile_with_source_limit(root, max_source_bytes),
+  preserving default command acceptance while the 64 MiB aggregate policy is
+  reviewed separately from the already approved per-file ceilings.
+- Count the root and each canonical dependency package once in existing
+  deterministic traversal order. Shared dependencies and aliases do not double
+  count. Each read uses the smaller of remaining aggregate bytes and the 16 MiB
+  per-file ceiling, plus one detection byte; returned UTF-8 byte length consumes
+  the allowance. This avoids relying on file metadata or reading a whole excess
+  entry. Aggregate overflow retains E1003 and the offending source file.
+- All source loading/parsing finishes before body checking and linking. Exhaustion
+  returns no IR and never executes package code. Empty files consume no bytes;
+  UTF-8 comments/whitespace do consume their actual encoded bytes. Graph loading,
+  manifest/edge work and semantic/IR expansion remain outside this byte budget.
+- Added exact/overflow, diamond/alias deduplication, UTF-8, malformed excess-source,
+  zero/empty-file and per-file-ceiling regressions. Advisory metadata measurement
+  found examples/local-packages/app uses two packages, one edge and 765 source
+  bytes; this sample is not representative large-program or CPU/memory evidence.
+- Validation on Linux/Rust 1.99.1: all 499 tests pass (427 library, 62 CLI,
+  two mutation, seven frontend-limit and one example tests), none ignored.
+  Formatting, cargo check, strict all-target/all-feature Clippy and diff checks
+  pass. Updated spec/security guidance, ADR 0035 and changelog. No application,
+  UI, native runtime behavior or deployment changed.
+- Default-policy approval for the proposed 64 MiB aggregate ceiling is pending,
+  as required by the repository's compatibility-decision rule. The opt-in
+  implementation is concrete and reviewable; no default aggregate guard is claimed.
+- Next after approval: apply that aggregate policy to package CLI/language-test
+  compilation and add command-level boundary/rejection coverage; then address
+  manifest/edge and semantic/IR work budgets. All changes remain local.
+
+## 2026-11-10: Enable approved frontend defaults and bounded executable-source reads
+
+- User explicitly approved the proposed 16 MiB/source, 1,000,000 non-EOF token
+  and 256 lexer/parser diagnostic ceilings. Marked ADR 0035 accepted for that
+  per-file scope; the separate 64 MiB aggregate proposal remains unimplemented.
+- Normal lexer/parser APIs now use FrontendLimits::DEFAULT. Caller-selected APIs
+  remain available for trusted Rust consumers. Public token parsing enforces
+  the default token cap as well as its diagnostic cap; package preprocessing
+  consumes the original token budget before stripping imports.
+- Added shared bounded source reads for CLI check/run/build, source language
+  tests and every executable package entry. At most the source-byte ceiling plus
+  one detection byte is read; no file-size metadata is trusted for that bound.
+  Existing I/O error codes are preserved, size overflow reports E1003, and
+  package errors retain their owning source identity. Formatter's existing
+  bounded 1 MiB guard remains stricter and its parser gains the default caps.
+- Added metadata-free infinite-reader and UTF-8/boundary tests, exact million-token
+  boundary and overflow, default diagnostic floods, exact 16 MiB source check/run,
+  command-level source overflow, no native output on rejection, package dependency
+  byte limits and import-stripping token-bypass rejection. Oversized source is
+  rejected before any checked program can execute or native linking can publish.
+- Validation on Linux/Rust 1.99.1: all 496 tests pass (424 library, 62 CLI,
+  two mutation, seven frontend-limit and one example tests), none ignored.
+  Formatting, cargo check/build, strict all-target/all-feature Clippy and diff
+  checks pass; all 185 depth probes and 24 isolated security checks pass.
+  A seed-3 AddressSanitizer source campaign completed 124,440 runs in 16 seconds
+  without a reported failure; log retained under target/fuzz-evidence/.
+- Updated specification, JSON/security guidance, ADR, fuzz guide and changelog.
+  This changes acceptance for oversized inputs, as approved. Aggregate package
+  sources, manifest/edge counts, semantic/IR quotas, scanner-only project reads
+  and full CPU/memory isolation remain outside this slice. No other-host/MSRV
+  qualification or complete compilation resource guarantee is claimed.
+- Next: measure aggregate package work and design its bounded loading/semantic
+  quotas. All changes remain local; no application/UI/release work was performed.
+
+## 2026-11-10: Add opt-in frontend budgets and prepare default-policy review
+
+- Traced frontend allocations, diagnostic accumulation, CLI/package source reads
+  and graph loading. Package resolution already limits canonical packages to
+  1,024; source/token/diagnostic and aggregate-source budgets were absent.
+- Implemented public FrontendLimits and Lexer::tokenize_with_limits /
+  Parser::parse_source_with_limits. Source bytes are checked before token
+  allocation, non-EOF tokens are bounded before scanning the next token, and
+  lexical/parser error floods stop with bounded diagnostics. E1003/E2008 retain
+  error status; capacity zero normalizes to one and exhaustion never returns a
+  partially successful program. Existing APIs/CLI defaults remain unchanged.
+- Added five boundary/overflow/zero-budget tests, including UTF-8 byte counting,
+  EOF/comment accounting and parser recovery. Existing 4,096-source mutation
+  tests now compare generous-budget parsing against default parsing and exercise
+  strict budgets. Source fuzzing also checks bounded diagnostics and ranges.
+- Validation on Linux/Rust 1.99.1: all 488 tests pass (422 library, 58 CLI,
+  two mutation, five frontend-budget and one example tests), none ignored.
+  Formatting, cargo check, root/fuzz strict all-target Clippy and diff checks
+  pass. All 185 depth probes and 24 isolated security checks pass. A seed-2
+  AddressSanitizer campaign completed 138,884 source runs in 16 seconds without
+  a reported failure; log retained at target/fuzz-evidence/frontend-limits-source.log.
+- ADR 0035 documents the implemented opt-in mechanism and a concrete proposed
+  default policy: 16 MiB/source, 1,000,000 non-EOF tokens and 256 frontend
+  diagnostics, followed by bounded reads and 64 MiB aggregate package source.
+  These are proposed ceilings, not a complete process-memory/CPU guarantee.
+- Default adoption is pending the compatibility decision required by AGENTS.md:
+  "Document and pause before fundamental syntax, memory-model, type-semantics or
+  compatibility decisions." Defaults would reject previously accepted large
+  files. No default acceptance change or bounded source-file reader is claimed.
+- Next after approval: wire the selected policy through executable source CLI
+  and package paths using bounded reads, then enforce package aggregates and
+  design semantic/IR work quotas. No application/UI/release work was performed.
+
+## 2026-11-10: Run coverage-guided source and native-image fuzzing
+
+- Added isolated cargo-fuzz source and native_ir targets, reviewed source seeds,
+  a keyword dictionary and a generator that seeds both working corpora from the
+  current checked compiler. Fuzz dependencies and their lockfile live separately
+  under fuzz/; normal compiler Cargo.toml/Cargo.lock are unchanged.
+- Source fuzzing checks parser/semantic errors and UTF-8 byte ranges, then lowers
+  accepted programs, round-trips their images and renders JS. Native-image fuzzing
+  decodes arbitrary bytes and round-trips accepted programs. Neither target
+  executes generated programs or invokes native linking. Harness input ceilings
+  and process budgets do not change the language's accepted-input contracts.
+- Built with cargo-fuzz 0.13.2, libfuzzer-sys 0.4.13, nightly rustc
+  1.102.0 (ac8310ba6, 2026-11-09) and AddressSanitizer on Linux x86_64.
+  Two seed-1, 30-second campaigns completed normally (31 seconds reported each):
+  270,659 source runs and 1,683,584 native IR runs. No crash, sanitizer finding
+  or per-input timeout was reported. The campaign maximum was 4,096 input bytes,
+  five seconds per input and 1,024 MiB RSS; larger workloads remain unqualified.
+- Retained logs and exact instrumented-binary SHA-256 identities under ignored
+  target/fuzz-evidence/, with report.json recording the dirty working-tree build.
+  Working corpora remain ignored for continued campaigns. No minimized crash
+  regression was needed because these runs found no failure.
+- All 483 ordinary tests pass; root/fuzz formatting and strict fuzz-target
+  all-target Clippy pass. Documented setup, replay/minimization and private
+  triage. Short successful fuzz campaigns are not an exhaustive audit, security
+  certification or evidence of sustained long-term fuzzing.
+- Next: longer diverse-seed campaigns, package-linker fuzz coverage and explicit
+  compilation work-budget design. No application, UI, release or deployment
+  work was performed; all changes remain local.
+
+## 2026-11-10: Reject malformed native numerics and exercise mutated compiler inputs
+
+- Continued compiler-only security work, preserving preceding local changes.
+  A failing regression confirmed native image decoding accepted invalid integer
+  and Float strings, including out-of-range integers in unreachable instructions.
+  This was a validation gap; no code-injection exploit was demonstrated, and the
+  existing JavaScript emitter already parses/escapes numeric payloads safely.
+- Decoder preflight now validates numeric payloads with the same i64/f64 parsing
+  used by execution before returning any program. Invalid images fail closed
+  even when an invalid instruction is unreachable. Signed integer boundaries,
+  negative zero, exponent overflow, NaN and infinities retain supported runtime
+  behavior; no source grammar or native format version changed.
+- Added dependency-free fixed-seed integration checks: 4,096 source mutations
+  across eight seeds and 4,096 native-image mutations, plus every truncation of
+  a valid image and trailing-byte rejection. Accepted source passes semantic
+  analysis, lowering, image round-tripping and JS rendering without execution;
+  rejected source has nonempty diagnostics with valid UTF-8 byte ranges. Accepted
+  mutated images must round-trip. No mutated program executes host effects.
+- Added a two-minute CI step for these tests and updated compiler security
+  guidance/changelog. These are deterministic regression cases, not sustained
+  coverage-guided fuzzing or a security certification.
+- Validation on Linux/Rust 1.99.1: all 483 tests pass (422 library, 58 CLI,
+  two mutation tests, one example), none ignored; formatting, cargo check,
+  strict all-target/all-feature Clippy and diff whitespace checks pass. No
+  application, UI, packaging or deployment changes were made.
+- Next: add coverage-guided source/native-image fuzz targets and retain minimized
+  counterexamples, then address total compilation-work budgets and native build
+  configuration trust as documented in COMPILER_SECURITY.md.
+
+## 2026-11-10: Establish compiler security boundaries and close else-chain depth bypass
+
+- User prioritizes security while retaining compiler-only scope. Reviewed source
+  parsing, public AST/IR boundaries, JavaScript name/literal rendering, native IR
+  decoding and native linking/payload handling. This was a focused source review,
+  not exhaustive audit or comparative security certification.
+- Reproduced a structural-limit bypass with a failing bounded regression:
+  unbraced else chains exceeded the existing AST statement-depth limit because
+  token preflight counted open braces but parsing recursed before AST validation.
+  Long chains could therefore exhaust the parser's stack before diagnostics.
+- Parser entry to each statement now checks active statement depth before
+  recursion and unwinds the counter after success or failure. If/while nodes
+  retain the existing block-depth contract. Boundary 127 chains pass; level 128
+  and mixed block/else nesting reject with one E2007. No new syntax, resource
+  ceiling or execution permission model was introduced.
+- Added two parser regressions, expanded isolated depth probes to else chains,
+  and added a CI security regression runner with timeouts. Its 24 checks cover
+  check/JSON, run, IR and JS builds against a 20,000-branch chain, mixed nesting,
+  deep arrays/grouping, an invalid integer and malformed declarations. All reject
+  normally without executing source, emitting code, mutating input or timing out.
+- Validation on Linux/Rust 1.99.1: all 479 Rust tests pass (420 library, 58 CLI,
+  one example), none ignored; formatting, cargo check/build, strict all-target
+  all-feature Clippy and diff checks pass. All 185 depth/fixed-point probes pass.
+  Node subprocess probes initially hit sandbox EPERM; the same probes passed
+  through approved execution outside the sandbox. No Windows/MSRV result claimed.
+- Added compiler security threat model and review requirements, linked from the
+  existing security policy, and synchronized specification/course/ADR/changelog.
+  Recorded open total-work budgets, sustained fuzzing, native-build trust and
+  runtime isolation work. Current run/test are not sandboxes, payload hashes are
+  not signatures, and this fix does not establish "most secure" status.
+- Next security work: build a minimized malformed-input corpus and sustained
+  lexer/parser/IR fuzzing; define compatible source/token/diagnostic work budgets
+  and audit native build environment inheritance before stronger assurances.
+  No application, UI, packaging or deployment work was performed.
+
+## 2026-11-09: Complete record-literal error inspection and stabilize output
+
+- Continued compiler-only validation work, preserving earlier local fixes.
+  A failing regression reproduced field-value diagnostics being skipped when
+  the record type was unknown or a field name was duplicated.
+- Semantic inspection now checks every field value in these cases, retaining
+  the original E3004/E3008 errors and reporting independent expression errors
+  once at their original ranges. Accepted syntax, record identity and runtime
+  behavior are unchanged; invalid literals remain compilation failures.
+- Missing required fields now use alphabetical name order rather than hash-map
+  iteration order. Presence checks reuse the existing field-name set instead
+  of rescanning every supplied field for each required field.
+- Added unknown-record, primitive-alias constructor, duplicate/extra-field,
+  later-statement and repeated-order regressions, plus CLI JSON range/order
+  checks. Updated the spec, JSON reference and changelog.
+- Validation on Linux/Rust 1.99.1: all 477 tests pass (418 library, 58 CLI,
+  one example), none ignored. Formatting, cargo check, strict all-target and
+  all-feature Clippy, and diff whitespace checks pass. No application, UI,
+  packaging or deployment changes were made; no other-host qualification claimed.
+- Next compiler task: inspect declaration-level recovery and diagnostic ordering
+  for similar skipped validation or nondeterministic output, with reproductions
+  before fixes and no syntax expansion.
+
+## 2026-11-09: Retain independent semantic errors after invalid targets
+
+- Continued compiler-only hardening while preserving the preceding entry-return
+  fix. Reproduced hidden diagnostics with a failing regression:
+  `missing_target = missing_value` diagnosed only the target and skipped the
+  value. Non-array indexed assignments and computed calls had similar exits.
+- Semantic analysis now checks assignment values even when their target is
+  undefined, non-array or unsupported. Computed calls still report E3003 and
+  also inspect their callee expression and every argument. Validation remains
+  static: no expression executes, and invalid programs cannot reach lowering.
+- Regression coverage checks each independent undefined-name occurrence exactly
+  once at its original byte range, including computed callees/indexes, multiple
+  arguments and later statements. CLI coverage verifies JSON locations and
+  rejection without stdout code/output from run, IR build and JavaScript build.
+  Diagnostic codes, schema and accepted syntax remain unchanged.
+- Validation on Linux/Rust 1.99.1: all 474 tests pass (416 library, 57 CLI,
+  one example), none ignored; formatting, cargo check, strict all-target and
+  all-feature Clippy, and diff whitespace checks pass. Updated compiler spec,
+  JSON reference and changelog; no application/UI/release files changed.
+- Next compiler task: continue auditing early semantic exits for independent
+  expression coverage, with focused reproductions before implementation.
+
+## 2026-11-09: Resolve entry return types before enforcing the Unit contract
+
+- Compiler-only work: reproduced a semantic validation bypass with a failing
+  regression. `type Result = Int; fn main() -> Result { return 1; }` passed
+  analysis because entry validation classified the spelling without consulting
+  the resolved type registry. Record names bypassed the same rule.
+- Entry validation now uses the existing named-type resolver and canonical type.
+  Unit aliases remain valid; other primitive aliases, alias chains, qualified
+  module types and record results obey the existing E3010 restriction. Unknown
+  annotations retain the existing E3017 path. No syntax or runtime rule changed.
+- Added semantic cases and subprocess coverage for human/JSON check, run, IR
+  and JavaScript build. Invalid programs emit no executable output or code;
+  valid chained Unit aliases still execute. Updated the spec, function lesson
+  and changelog. No application, UI, packaging or deployment changes were made.
+- Validation on Linux with Rust 1.99.1: all 472 tests pass (415 library, 56 CLI,
+  one example), none ignored. Formatting, cargo check, strict all-target and
+  all-feature Clippy, and diff whitespace checks pass. The regression was
+  observed failing before the implementation change. Other-host and minimum
+  Rust qualification were not performed in this slice.
+- Next compiler task: audit other declaration-specific checks for raw annotation
+  spelling where resolved type identity is required; reproduce defects before
+  changing behavior.
+
 ## 2026-10-24: Qualify the optimized record-identity toolchain candidate
 
 - Rebuilt the release compiler and matching runtime-source payload with the

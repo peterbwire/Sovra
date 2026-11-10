@@ -11,7 +11,9 @@ use super::{
     semantic::{self, SemanticAnalyzer, Type},
     stdlib, text_files,
 };
-use std::{fs, path::Path};
+#[cfg(test)]
+use std::fs;
+use std::path::Path;
 
 /// Outcome of one discovered test function.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -113,15 +115,21 @@ pub fn run(path: impl AsRef<Path>) -> TestReport {
 fn compile_source(
     path: &Path,
 ) -> Result<(ir::IrProgram, Program, std::path::PathBuf), Diagnostics> {
-    let text = fs::read_to_string(path)
-        .map_err(|error| configuration("E0001", format!("cannot read source: {error}"), None))?;
+    let text = super::resources::read_source(path).map_err(|error| match error {
+        super::resources::SourceReadError::Limit(errors) => locate(errors, path),
+        super::resources::SourceReadError::Io(error) => {
+            configuration("E0001", format!("cannot read source: {error}"), None)
+        }
+    })?;
     let parsed = Parser::new()
         .parse_source(&text)
         .map_err(|errors| locate(errors, path))?;
     let typed = SemanticAnalyzer::new()
         .analyze(&parsed)
         .map_err(|errors| locate(errors, path))?;
-    Ok((ir::lower(&typed), typed.program, path.to_owned()))
+    let lowered = ir::lower_with_limits(&typed, super::resources::LoweringLimits::DEFAULT)
+        .map_err(|errors| locate(errors, path))?;
+    Ok((lowered, typed.program, path.to_owned()))
 }
 
 fn discover(program: &Program, entry: &Path, diagnostics: &mut Diagnostics) -> Vec<String> {
@@ -138,7 +146,7 @@ fn discover(program: &Program, entry: &Path, diagnostics: &mut Diagnostics) -> V
             .unwrap_or(Type::Unit)
             .canonicalize(&known);
         if !function.parameters.is_empty() || result != Type::Unit {
-            diagnostics.push(Diagnostic {
+            diagnostics.push_bounded(Diagnostic {
                 severity: Severity::Error,
                 code: "E5001",
                 message: format!(
@@ -177,7 +185,8 @@ fn configuration(code: &'static str, message: String, source_file: Option<String
                 line: 0,
                 column: 0,
             },
-        }],
+        }
+        .bounded()],
     }
 }
 fn locate(mut errors: Diagnostics, path: &Path) -> Diagnostics {

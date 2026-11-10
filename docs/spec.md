@@ -272,6 +272,95 @@ of the stream. Empty streams and missing, embedded or repeated EOF markers
 produce `E2006`; an EOF-only stream parses as an empty program. Source parsing
 continues to obtain its EOF marker from the lexer.
 
+Rust callers may opt into `compiler::resources::FrontendLimits` through
+`Lexer::tokenize_with_limits` and `Parser::parse_source_with_limits`. Source-byte
+and non-EOF token exhaustion return E1003. Lexer/parser diagnostic caps include
+a terminal exhaustion notice (E1003/E2008); zero diagnostic capacity is treated
+as one so failure is never hidden. Exhaustion returns an error, not a partially
+checked successful program. These APIs do not bound file reads, semantic checking
+or package totals. Normal lexer/parser entry points now use approved defaults:
+16 MiB/source, 1,000,000 non-EOF tokens and 256 diagnostics per frontend stage.
+CLI executable source reads (including test/package entries) read at most the
+byte ceiling plus one detection byte. The formatter retains its stricter 1 MiB
+input limit. Inputs exceeding these ceilings may now be rejected; explicit Rust
+with-limits APIs remain available. Scanner-only project checks do not imply the
+same end-to-end bounds. See accepted ADR 0035.
+
+Rust hosts may compile local dependency packages with
+`project::packages::compile_with_source_limit(root, max_source_bytes)`. This adds
+an aggregate UTF-8 entry-source budget, including the root and counting each
+canonical package once. Reads stop within the remaining allowance plus one
+detection byte and retain the per-file ceiling. Exhaustion reports E1003 with
+the offending file and returns no linked program. Ordinary package compilation
+uses the approved 64 MiB aggregate default, including through package command and
+language-test paths. This API does not bound manifests, graph edges, semantic work
+or IR expansion; trusted Rust hosts may select explicit aggregate policies.
+
+Rust hosts can additionally select `compiler::resources::PackageGraphLimits`
+through `packages::resolve_with_limits` or `packages::compile_with_graph_limits`.
+Per-manifest and total UTF-8 byte budgets constrain reads before parsing; total
+dependency alias edges are checked before resolving the next target. Manifest
+bytes count once per canonical package, while separate aliases count separately
+as edges. Exhaustion returns E4112 with the manifest identity (and the header
+range for an edge failure), never a partial successful graph or program. IO,
+cycle and containment diagnostics retain existing codes. Normal graph loading
+uses approved defaults of 1 MiB per manifest, 8 MiB total canonical manifests
+and 8,192 alias edges. Initial classification and ordinary project manifest reads
+also use the per-file cap. Explicit Rust graph-limit APIs remain available;
+see accepted ADR 0036. These are input budgets, not a full CPU/memory quota.
+
+Manifest syntax inspection and executable semantic analysis also cap their own
+error collections at 256 entries, including the final limit notice. E4018 marks
+manifest exhaustion and E3019 marks semantic exhaustion at the stopping error's
+original range. Remaining validation is skipped where the exhausted stage can
+return safely; a partial result never becomes a successful checked program.
+Initial project classification returns malformed-manifest diagnostics directly.
+Existing error codes remain on earlier entries. This bounds retained report
+entries, not message bytes, every project-helper diagnostic collection, valid-input
+semantic work or total IR allocation. Valid-program acceptance is unchanged.
+
+Guarded compiler diagnostic paths retain at most 4,096 UTF-8 bytes per message,
+including a visible `[message truncated]` suffix when text is clipped. Clipping
+preserves UTF-8, severity, diagnostic code, full source range and owning file.
+Oversized backing buffers are replaced so a short message cannot retain a large
+allocation. This covers capped semantic/manifest reports and common lexer/parser,
+project/package and test-configuration emitters; the public raw Diagnostics API
+and manually constructed records are unchanged. The ceiling excludes file identity,
+JSON escaping, runtime output and transient formatting allocations. It is not a
+total process-memory limit and does not constrain valid identifier lengths.
+
+Caller-selected source-unit admission/emission budgets are available through
+`resources::check_ast_budget`, `SemanticAnalyzer::analyze_with_node_limit`,
+`ir::lower_with_limits` and checked `ir::lower_program_with_limits`. AST admission
+uses borrowed iterator frames before semantic cloning and reports E3020. Retained
+IR emission charges instructions and owned UTF-8 string payloads across functions
+and reports E3021/E3022 on exhaustion, returning no partial successful program.
+Function/parameter names count even without instructions; numeric jump patches
+do not consume new payload. Approved standalone defaults admit 250,000 AST nodes,
+1,000,000 retained IR instructions and 64 MiB of retained IR string payload.
+`SemanticAnalyzer::analyze` and source `check` enforce AST admission;
+`ir::lower_program` and standalone run/build/test also enforce emission limits.
+Explicit budget APIs remain caller-selected; trusted raw `ir::lower` and package
+linking do not acquire these source-unit emission defaults.
+These budgets do not bound initial parsing, helper/temporary allocations,
+repeated semantic passes or serialized backend output. See accepted ADR 0037.
+
+`packages::compile_with_compilation_limits` accepts `PackageCompilationLimits`
+for cumulative canonical-source AST admission, interface metadata materializations
+and linked IR emission. Source nodes count once per canonical package; imported
+signatures/parameters, record cache/attachment fields and generated aliases count
+per materialization. E3023 reports interface-node exhaustion; E3020/E3021/E3022
+retain their AST/instruction/string meanings. Final linked function/call/record
+names are charged at their qualified UTF-8 lengths before emission retention.
+No partial linked program succeeds. Approved package defaults admit 1,000,000
+cumulative source AST nodes, 250,000 interface metadata nodes, 4,000,000 linked
+instructions and 256 MiB retained linked IR string payload. Ordinary compile,
+source-limit and graph-limit APIs, plus package check/run/build/test paths using
+the executable compiler, enforce these defaults; explicit compilation limits
+remain caller-selected. See accepted ADR 0038. Interface string bytes, parsing
+allocations, semantic repetitions, helper/temporary storage and backend output
+are excluded.
+
 Under accepted ADR 0007, source compilation permits at most 128 nested open
 parentheses, square brackets and braces (each counted independently), and
 expression-tree depth 128. Brace accounting includes function/module bodies and
@@ -280,6 +369,9 @@ index nodes add one to their deepest child (including a call's callee). Grouping
 parenthesis nesting but does not add an AST node. Thus 128 grouping pairs,
 127 nested calls/arrays, or a left-associated chain of 128 leaves are boundary
 examples. A top-level function body permits 127 nested `if`/`while` blocks.
+Unbraced `else` statements, including `else if` chains, count toward the same
+statement depth as nested blocks. Their depth is checked before recursive parsing,
+so a long chain cannot bypass the limit by keeping few braces open.
 Wide argument lists do not consume extra depth. Excess depth returns one E2007
 at the offending delimiter/operator/call token, before constructing an over-deep
 tree; no recursive recovery cascade follows. This is a compatibility restriction
@@ -312,6 +404,17 @@ only when needed. Successful analysis produces a stack IR containing loads,
 stores, operators, branches, calls, returns, and value pops.
 Diagnostics use stable `E30xx` codes. Function names and parameters must be
 unique, and the `main` entry function takes no arguments and returns `Unit`.
+Invalid assignment targets do not suppress checking of the assigned expression.
+Invalid computed call targets do not suppress checking of their callee expression
+or arguments. Independent errors retain their original source ranges and are
+reported once per occurrence; source with any error still cannot run or build.
+Record literals check all field values even when the record type is unknown or
+a field name repeats. Duplicate fields retain E3008 and unknown records retain
+E3004; their independent value diagnostics are no longer skipped. Missing required
+fields are reported in alphabetical field-name order for reproducible output.
+Entry return validation resolves declared aliases, including alias chains and
+qualified names: an alias to `Unit` is valid, while aliases to other primitives
+and record return types produce E3010. Unresolved annotations retain E3017.
 Module function-name uniqueness applies to private and exported declarations
 alike; E3008 identifies the repeated declaration regardless of visibility.
 

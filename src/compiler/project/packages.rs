@@ -1,7 +1,9 @@
 //! Local package graph resolution and executable entry-module linking.
 
 mod executable;
-pub use executable::compile;
+pub use executable::{
+    compile, compile_with_compilation_limits, compile_with_graph_limits, compile_with_source_limit,
+};
 pub(crate) use executable::{compile_with_root, root_symbol};
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -9,12 +11,19 @@ use std::path::{Path, PathBuf};
 
 use super::{Manifest, MANIFEST_FILE};
 use crate::compiler::diagnostics::{Diagnostic, Diagnostics, Severity, Span};
+use crate::compiler::resources::{PackageGraphLimits, SourceReadError};
 
 const MAX_PACKAGES: usize = 1024;
 
 pub(crate) fn declares_dependencies(root: &Path) -> Result<bool, Diagnostics> {
-    let source = super::read_manifest(&root.join(MANIFEST_FILE))?;
-    Ok(Manifest::parse_mode(&source, true)
+    let path = root.join(MANIFEST_FILE);
+    let source = super::read_manifest(&path)?;
+    let mut manifest = Manifest::parse_mode(&source, true);
+    if !manifest.diagnostics.is_empty() {
+        super::attach_line_locations(&path, &source, &mut manifest.diagnostics.items);
+        return Err(manifest.diagnostics);
+    }
+    Ok(manifest
         .sections
         .iter()
         .any(|(section, _)| section.starts_with("dependencies.")))
@@ -47,7 +56,19 @@ pub struct LocalGraph {
 /// Resolve local dependencies in deterministic alias order without executing code.
 /// Traversal is iterative, deduplicates canonical roots and rejects cycles.
 /// At most 1024 packages may be loaded. Mutable paths are not content locks.
+/// Approved default manifest-byte and alias-edge ceilings also apply (ADR 0036).
 pub fn resolve(root: impl AsRef<Path>) -> Result<LocalGraph, Diagnostics> {
+    resolve_with_limits(root, PackageGraphLimits::DEFAULT)
+}
+
+/// Resolve with caller-selected per-manifest, total-manifest and alias-edge
+/// budgets. Bytes count once per canonical package; aliases are separate edges.
+/// Exhaustion returns E4112 without a partial successful graph. The existing
+/// 1024-package cap still applies. This is not a complete CPU/memory quota.
+pub fn resolve_with_limits(
+    root: impl AsRef<Path>,
+    limits: PackageGraphLimits,
+) -> Result<LocalGraph, Diagnostics> {
     let root = canonical_root(root.as_ref())?;
     let mut graph = LocalGraph {
         root: root.clone(),
@@ -56,6 +77,8 @@ pub fn resolve(root: impl AsRef<Path>) -> Result<LocalGraph, Diagnostics> {
     let mut pending = vec![(root, false)];
     let mut active = Vec::new();
     let mut done = BTreeSet::new();
+    let mut remaining_manifest_bytes = limits.max_total_manifest_bytes;
+    let mut remaining_edges = limits.max_dependency_edges;
     while let Some((root, exiting)) = pending.pop() {
         if exiting {
             active.pop();
@@ -85,7 +108,12 @@ pub fn resolve(root: impl AsRef<Path>) -> Result<LocalGraph, Diagnostics> {
                 None,
             ));
         }
-        let package = load(&root)?;
+        let package = load(
+            &root,
+            limits,
+            &mut remaining_manifest_bytes,
+            &mut remaining_edges,
+        )?;
         active.push(root.clone());
         pending.push((root.clone(), true));
         for target in package.dependencies.values().rev() {
@@ -114,7 +142,12 @@ fn canonical_root(path: &Path) -> Result<PathBuf, Diagnostics> {
     Ok(canonical)
 }
 
-fn load(root: &Path) -> Result<LocalPackage, Diagnostics> {
+fn load(
+    root: &Path,
+    limits: PackageGraphLimits,
+    remaining_manifest_bytes: &mut usize,
+    remaining_edges: &mut usize,
+) -> Result<LocalPackage, Diagnostics> {
     let manifest_path = root.join(MANIFEST_FILE);
     // A symlinked manifest must not silently change the package's authority root.
     let canonical_manifest = manifest_path.canonicalize().map_err(|cause| {
@@ -134,7 +167,45 @@ fn load(root: &Path) -> Result<LocalPackage, Diagnostics> {
             None,
         ));
     }
-    let source = super::read_manifest(&manifest_path)?;
+    let allowance = limits.max_manifest_bytes.min(*remaining_manifest_bytes);
+    let source = crate::compiler::resources::read_utf8_with_limit(&manifest_path, allowance)
+        .map_err(|cause| match cause {
+            SourceReadError::Limit(_) => {
+                let message = if *remaining_manifest_bytes < limits.max_manifest_bytes {
+                    format!(
+                        "aggregate manifest byte limit of {} exceeded",
+                        limits.max_total_manifest_bytes
+                    )
+                } else {
+                    format!(
+                        "manifest byte limit of {} exceeded",
+                        limits.max_manifest_bytes
+                    )
+                };
+                error(
+                    "E4112",
+                    message,
+                    Some((
+                        &manifest_path,
+                        Span {
+                            start: 0,
+                            end: 0,
+                            line: 0,
+                            column: 0,
+                        },
+                    )),
+                )
+            }
+            SourceReadError::Io(cause) => error(
+                "E4000",
+                format!(
+                    "cannot read project manifest `{}`: {cause}",
+                    manifest_path.display()
+                ),
+                None,
+            ),
+        })?;
+    *remaining_manifest_bytes -= source.len();
     let mut manifest = Manifest::parse_mode(&source, true);
     manifest.source_file = Some(manifest_path.to_string_lossy().into_owned());
     super::attach_line_locations(&manifest_path, &source, &mut manifest.diagnostics.items);
@@ -183,6 +254,17 @@ fn load(root: &Path) -> Result<LocalPackage, Diagnostics> {
         let Some(alias) = section.strip_prefix("dependencies.") else {
             continue;
         };
+        if *remaining_edges == 0 {
+            return Err(error(
+                "E4112",
+                format!(
+                    "dependency edge limit of {} exceeded",
+                    limits.max_dependency_edges
+                ),
+                Some((&manifest_path, *span)),
+            ));
+        }
+        *remaining_edges -= 1;
         let Some(path) = manifest
             .value(section, "path")
             .filter(|path| !path.is_empty())
@@ -210,7 +292,7 @@ fn load(root: &Path) -> Result<LocalPackage, Diagnostics> {
 
 fn error(code: &'static str, message: String, location: Option<(&Path, Span)>) -> Diagnostics {
     let mut diagnostics = Diagnostics::new();
-    diagnostics.push(Diagnostic {
+    diagnostics.push_bounded(Diagnostic {
         severity: Severity::Error,
         code,
         message,
@@ -289,6 +371,204 @@ mod tests {
         );
         assert_eq!(app.dependencies["alias"], app.dependencies["left"]);
         assert!(!app.dependencies.contains_key("shared"));
+    }
+
+    #[test]
+    fn graph_manifest_limits_cover_exact_bytes_utf8_and_total_overflow() {
+        let fixture = Fixture::new();
+        let leaf = fixture.package("leaf", "");
+        let root = fixture.package("app", "[dependencies.leaf]\npath = \"../leaf\"");
+        let path = leaf.join(MANIFEST_FILE);
+        let text = format!("# λ\n{}", std::fs::read_to_string(&path).unwrap());
+        std::fs::write(&path, &text).unwrap();
+        let root_bytes = std::fs::read(root.join(MANIFEST_FILE)).unwrap().len();
+        let total = root_bytes + text.len();
+        let limits = PackageGraphLimits {
+            max_manifest_bytes: root_bytes.max(text.len()),
+            max_total_manifest_bytes: total,
+            max_dependency_edges: 1,
+        };
+        assert_eq!(
+            resolve_with_limits(&root, limits).unwrap(),
+            resolve(&root).unwrap()
+        );
+        assert_eq!(
+            compile_with_graph_limits(&root, limits).unwrap(),
+            compile(&root).unwrap()
+        );
+        let errors = resolve_with_limits(
+            &root,
+            PackageGraphLimits {
+                max_total_manifest_bytes: total - 1,
+                ..limits
+            },
+        )
+        .unwrap_err();
+        assert_eq!(errors.items.len(), 1);
+        assert_eq!(errors.items[0].code, "E4112");
+        assert!(errors.items[0].message.contains("aggregate manifest"));
+        assert_eq!(
+            errors.items[0].source_file.as_deref(),
+            path.canonicalize().unwrap().to_str()
+        );
+        let errors = resolve_with_limits(
+            &root,
+            PackageGraphLimits {
+                max_manifest_bytes: root_bytes - 1,
+                ..limits
+            },
+        )
+        .unwrap_err();
+        assert!(errors.items[0].message.contains("manifest byte limit"));
+        assert!(!errors.items[0].message.contains("aggregate"));
+    }
+
+    #[test]
+    fn graph_edges_count_aliases_but_manifests_count_canonical_packages_once() {
+        let fixture = Fixture::new();
+        let shared = fixture.package("shared", "");
+        let left = fixture.package("left", "[dependencies.shared]\npath = \"../shared\"");
+        let right = fixture.package("right", "[dependencies.shared]\npath = \"../shared\"");
+        let root = fixture.package("app", "[dependencies.alias]\npath = \"../left\"\n[dependencies.left]\npath = \"../left\"\n[dependencies.right]\npath = \"../right\"");
+        let total = [&root, &left, &right, &shared]
+            .iter()
+            .map(|root| std::fs::read(root.join(MANIFEST_FILE)).unwrap().len())
+            .sum();
+        let limits = PackageGraphLimits {
+            max_manifest_bytes: total,
+            max_total_manifest_bytes: total,
+            max_dependency_edges: 5,
+        };
+        assert_eq!(
+            resolve_with_limits(&root, limits).unwrap().packages.len(),
+            4
+        );
+        let errors = resolve_with_limits(
+            &root,
+            PackageGraphLimits {
+                max_dependency_edges: 4,
+                ..limits
+            },
+        )
+        .unwrap_err();
+        assert_eq!(errors.items[0].code, "E4112");
+        assert!(errors.items[0].message.contains("edge limit"));
+        let source = std::fs::read_to_string(right.join(MANIFEST_FILE)).unwrap();
+        let span = errors.items[0].span;
+        assert_eq!(source[span.start..span.end].trim(), "[dependencies.shared]");
+        assert_eq!(
+            errors.items[0].source_file.as_deref(),
+            right.join(MANIFEST_FILE).canonicalize().unwrap().to_str()
+        );
+    }
+
+    #[test]
+    fn graph_limits_reject_edges_before_resolving_excess_targets() {
+        let fixture = Fixture::new();
+        let root = fixture.package(
+            "app",
+            "[dependencies.missing]\npath = \"../does-not-exist\"",
+        );
+        let limits = PackageGraphLimits {
+            max_manifest_bytes: 1000,
+            max_total_manifest_bytes: 1000,
+            max_dependency_edges: 0,
+        };
+        let errors = resolve_with_limits(&root, limits).unwrap_err();
+        assert_eq!(errors.items[0].code, "E4112");
+        let ordinary = resolve(&root).unwrap_err();
+        assert_eq!(ordinary.items[0].code, "E4110");
+        let errors = resolve_with_limits(
+            &root,
+            PackageGraphLimits {
+                max_manifest_bytes: 0,
+                ..limits
+            },
+        )
+        .unwrap_err();
+        assert_eq!(errors.items[0].code, "E4112");
+        let errors = resolve_with_limits(
+            &root,
+            PackageGraphLimits {
+                max_total_manifest_bytes: 0,
+                ..limits
+            },
+        )
+        .unwrap_err();
+        assert_eq!(errors.items[0].code, "E4112");
+        let empty = fixture.package("empty", "");
+        assert!(resolve_with_limits(&empty, limits).is_ok());
+        let cycle = fixture.package("cycle", "[dependencies.self_alias]\npath = \".\"");
+        let errors = compile_with_graph_limits(
+            &cycle,
+            PackageGraphLimits {
+                max_dependency_edges: 1,
+                ..limits
+            },
+        )
+        .unwrap_err();
+        assert_eq!(errors.items[0].code, "E4111");
+    }
+
+    #[test]
+    fn aggregate_source_budget_counts_canonical_packages_once() {
+        let fixture = Fixture::new();
+        fixture.package("shared", "");
+        fixture.package("left", "[dependencies.shared]\npath = \"../shared\"");
+        fixture.package("right", "[dependencies.shared]\npath = \"../shared\"");
+        let root = fixture.package("app", "[dependencies.left]\npath = \"../left\"\n[dependencies.alias]\npath = \"../left\"\n[dependencies.right]\npath = \"../right\"");
+        let bytes = "fn main() {}".len() * 4;
+        let expected = compile(&root).unwrap();
+        assert_eq!(compile_with_source_limit(&root, bytes).unwrap(), expected);
+        let errors = compile_with_source_limit(&root, bytes - 1).unwrap_err();
+        assert_eq!(errors.items.len(), 1);
+        assert_eq!(errors.items[0].code, "E1003");
+        assert!(errors.items[0].message.contains("aggregate package"));
+        assert_eq!(
+            errors.items[0].source_file.as_deref(),
+            Some(
+                fixture
+                    .0
+                    .join("shared/main.svr")
+                    .canonicalize()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+            )
+        );
+    }
+
+    #[test]
+    fn aggregate_source_budget_counts_utf8_and_rejects_before_parsing_excess_source() {
+        let fixture = Fixture::new();
+        let library = fixture.package("library", "");
+        let root = fixture.package("app", "[dependencies.library]\npath = \"../library\"");
+        let text = "// λ\nfn main() {}";
+        std::fs::write(library.join("main.svr"), text).unwrap();
+        let bytes = "fn main() {}".len() + text.len();
+        assert!(compile_with_source_limit(&root, bytes).is_ok());
+        let errors = compile_with_source_limit(&root, bytes - 1).unwrap_err();
+        assert_eq!(errors.items[0].code, "E1003");
+        // Invalid source beyond the remaining budget must fail on the byte bound,
+        // before parsing or retaining an excess AST.
+        std::fs::write(library.join("main.svr"), "@".repeat(bytes)).unwrap();
+        let errors = compile_with_source_limit(&root, bytes).unwrap_err();
+        assert_eq!(errors.items.len(), 1);
+        assert!(errors.items[0].message.contains("aggregate package"));
+    }
+
+    #[test]
+    fn aggregate_source_budget_handles_zero_empty_files_and_per_file_limit() {
+        let fixture = Fixture::new();
+        let root = fixture.package("app", "");
+        assert!(compile_with_source_limit(&root, 0).is_err());
+        std::fs::write(root.join("main.svr"), "").unwrap();
+        assert!(compile_with_source_limit(&root, 0).is_ok());
+        let file = std::fs::File::create(root.join("main.svr")).unwrap();
+        file.set_len(16 * 1024 * 1024 + 1).unwrap();
+        let errors = compile_with_source_limit(&root, usize::MAX).unwrap_err();
+        assert_eq!(errors.items[0].code, "E1003");
+        assert!(!errors.items[0].message.contains("aggregate"));
     }
 
     #[test]

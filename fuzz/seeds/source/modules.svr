@@ -1,0 +1,2 @@
+mod local { export fn value(x: Int) -> Int { return x + 1; } }
+fn main() { print(local::value(2)); }

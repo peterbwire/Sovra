@@ -261,8 +261,30 @@ pub fn check_project(path: impl AsRef<Path>) -> Result<ProjectCheck, Diagnostics
 }
 
 fn read_manifest(path: &Path) -> Result<String, Diagnostics> {
-    fs::read_to_string(path).map_err(|error| {
+    use crate::compiler::resources::{read_utf8_with_limit, PackageGraphLimits, SourceReadError};
+    read_utf8_with_limit(path, PackageGraphLimits::DEFAULT.max_manifest_bytes).map_err(|error| {
         let mut diagnostics = Diagnostics::new();
+        let error = match error {
+            SourceReadError::Limit(_) => {
+                diagnostics.push_bounded(Diagnostic {
+                    severity: Severity::Error,
+                    code: "E4112",
+                    message: format!(
+                        "manifest byte limit of {} exceeded",
+                        PackageGraphLimits::DEFAULT.max_manifest_bytes
+                    ),
+                    source_file: Some(path.to_string_lossy().into_owned()),
+                    span: Span {
+                        start: 0,
+                        end: 0,
+                        line: 0,
+                        column: 0,
+                    },
+                });
+                return diagnostics;
+            }
+            SourceReadError::Io(error) => error,
+        };
         push_error(
             &mut diagnostics,
             "E4000",
@@ -1546,6 +1568,9 @@ impl Manifest {
         let spans = source_line_spans(source);
 
         for (line_index, line) in source.lines().enumerate() {
+            if manifest.diagnostics.limit_reached("E4018") {
+                break;
+            }
             let line_without_comment = strip_line_comment(line, "#");
             let trimmed = line_without_comment.trim();
             if trimmed.is_empty() {
@@ -1807,7 +1832,7 @@ fn source_line_spans(source: &str) -> Vec<Span> {
 }
 
 fn push_error(diagnostics: &mut Diagnostics, code: &'static str, message: impl Into<String>) {
-    diagnostics.push(Diagnostic {
+    diagnostics.push_bounded(Diagnostic {
         source_file: None,
         severity: Severity::Error,
         code,
@@ -1827,24 +1852,54 @@ fn push_manifest_error(
     code: &'static str,
     message: impl Into<String>,
 ) {
-    diagnostics.push(Diagnostic {
-        source_file: None,
-        severity: Severity::Error,
-        code,
-        message: message.into(),
-        span: Span {
-            start: 0,
-            end: 0,
-            line: line_index,
-            column: 0,
+    diagnostics.push_capped_error(
+        Diagnostic {
+            source_file: None,
+            severity: Severity::Error,
+            code,
+            message: message.into(),
+            span: Span {
+                start: 0,
+                end: 0,
+                line: line_index,
+                column: 0,
+            },
         },
-    });
+        crate::compiler::resources::FrontendLimits::DEFAULT.max_diagnostics,
+        "E4018",
+        "manifest",
+    );
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn long_manifest_messages_remain_bounded_with_unicode() {
+        let source = format!("[{}]\n", "λ".repeat(5000));
+        let manifest = Manifest::parse_mode(&source, true);
+        let error = &manifest.diagnostics.items[0];
+        assert_eq!(error.code, "E4010");
+        assert!(error.message.len() <= 4096);
+        assert!(error.message.capacity() <= 4096);
+        assert!(error.message.ends_with("[message truncated]"));
+    }
+
+    #[test]
+    fn manifest_error_floods_are_bounded_in_both_parse_modes() {
+        for dependencies in [false, true] {
+            for count in [255, 256, 1000] {
+                let source = "bad\n".repeat(count);
+                let manifest = Manifest::parse_mode(&source, dependencies);
+                assert_eq!(manifest.diagnostics.items.len(), count.min(256));
+                let last = manifest.diagnostics.items.last().unwrap();
+                assert_eq!(last.code, if count < 256 { "E4012" } else { "E4018" });
+                assert_eq!(last.span.line, count.min(256) - 1);
+            }
+        }
+    }
 
     #[test]
     fn source_discovery_handles_nested_and_sibling_directories() {

@@ -1,0 +1,5 @@
+fn main() {
+    let mut values = [1, 2];
+    while (false) { values[0] = 3; }
+    if (false) {} else if (true) { print(values[0]); }
+}

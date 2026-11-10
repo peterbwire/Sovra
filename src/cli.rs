@@ -188,9 +188,13 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
             }
             None => unreachable!("argument count is validated above"),
         };
-        let source = match fs::read_to_string(path) {
+        let source = match compiler::resources::read_source(std::path::Path::new(path)) {
             Ok(source) => source,
-            Err(error) => {
+            Err(compiler::resources::SourceReadError::Limit(diagnostics)) => {
+                print_diagnostics(diagnostics);
+                return ExitCode::from(1);
+            }
+            Err(compiler::resources::SourceReadError::Io(error)) => {
                 eprintln!("svr: cannot read `{path}`: {error}");
                 return ExitCode::from(1);
             }
@@ -213,7 +217,16 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
                 return ExitCode::from(1);
             }
         };
-        let ir = compiler::ir::lower(&typed);
+        let ir = match compiler::ir::lower_with_limits(
+            &typed,
+            compiler::resources::LoweringLimits::DEFAULT,
+        ) {
+            Ok(ir) => ir,
+            Err(diagnostics) => {
+                print_diagnostics(diagnostics);
+                return ExitCode::from(1);
+            }
+        };
         execute_ir(command, emit, &ir, program_args)
     }
     eprintln!("{message}.");
@@ -455,9 +468,13 @@ fn check_source_file(path: &str, format: CheckFormat) -> ExitCode {
         eprintln!("svr: source path `{path}` must have a .svr extension");
         return ExitCode::from(2);
     }
-    let source = match fs::read_to_string(path) {
+    let source = match compiler::resources::read_source(std::path::Path::new(path)) {
         Ok(source) => source,
-        Err(error) => {
+        Err(compiler::resources::SourceReadError::Limit(diagnostics)) => {
+            print_check_diagnostics(path, CheckKind::Source, format, diagnostics);
+            return ExitCode::from(1);
+        }
+        Err(compiler::resources::SourceReadError::Io(error)) => {
             print_check_io_error(
                 path,
                 Some(CheckKind::Source),
@@ -567,23 +584,25 @@ fn print_check_diagnostics(
 }
 
 fn print_check_io_error(path: &str, kind: Option<CheckKind>, format: CheckFormat, message: String) {
+    let diagnostic = Diagnostic {
+        source_file: None,
+        severity: Severity::Error,
+        code: "E0001",
+        message,
+        span: Span {
+            start: 0,
+            end: 0,
+            line: 0,
+            column: 0,
+        },
+    }
+    .bounded();
     if format == CheckFormat::Human {
-        eprintln!("{message}");
+        eprintln!("{}", diagnostic.message);
         return;
     }
     let diagnostics = Diagnostics {
-        items: vec![Diagnostic {
-            source_file: None,
-            severity: Severity::Error,
-            code: "E0001",
-            message,
-            span: Span {
-                start: 0,
-                end: 0,
-                line: 0,
-                column: 0,
-            },
-        }],
+        items: vec![diagnostic],
     };
     println!("{}", check_report::render(path, kind, &diagnostics));
 }

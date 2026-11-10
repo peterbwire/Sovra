@@ -36,13 +36,19 @@ pub(super) fn resolve(program: &Program) -> Result<Program, Diagnostics> {
                     .map(|decl| (&decl.name, decl.span)),
             )
         {
+            if diagnostics.limit_reached("E3019") {
+                return Err(diagnostics);
+            }
             if Type::from_name_with_known(name, None) != Type::Unknown {
-                diagnostics.push(diagnostic(
+                diagnostics.push_semantic(diagnostic(
                     "E3008",
                     format!("duplicate type `{name}`"),
                     span,
                 ));
             }
+        }
+        if diagnostics.limit_reached("E3019") {
+            return Err(diagnostics);
         }
         let qualify = |name: &mut String| {
             if local_names.contains(name) {

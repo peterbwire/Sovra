@@ -2,6 +2,73 @@
 
 ## Unreleased
 
+- Add caller-selected cumulative package AST/interface and linked IR quotas,
+  counting final qualified names before retention. Import signatures without
+  cloning their bodies. Enable approved graph defaults of 1,000,000 AST nodes,
+  250,000 interface nodes, 4,000,000 instructions and 256 MiB linked strings
+  (ADR 0038).
+
+- Add caller-selected AST admission and retained IR instruction/string budgets,
+  with incremental emission accounting and safe numeric jump backpatching.
+  Enable approved standalone defaults of 250,000 AST nodes, 1,000,000 IR
+  instructions and 64 MiB retained IR string payload (ADR 0037).
+
+- Bound guarded diagnostic messages to 4 KiB with UTF-8-safe truncation notices
+  and released oversized backing buffers. Preserve codes, severity, owning files,
+  full source ranges and valid long identifiers; keep the raw diagnostic API intact.
+
+- Bound malformed-manifest and executable semantic error reports to 256 entries
+  as produced, with E4018/E3019 stopping notices and original source ranges.
+  Abort malformed classification early and skip exhausted validation without
+  accepting partial programs; valid-source acceptance is unchanged.
+
+- Enable approved graph defaults: 1 MiB per manifest, 8 MiB total canonical
+  manifests and 8,192 alias edges. Bound initial classification/project manifest
+  reads and stop excess edges before target resolution; retain explicit graph
+  budgets for trusted Rust hosts (ADR 0036).
+
+- Enable approved 64 MiB aggregate entry-source defaults for package compilation
+  and package command/test paths. Count canonical packages once and bound each
+  read by its remaining allowance; retain explicit budgets for trusted Rust hosts
+  and the existing 16 MiB per-file ceiling.
+
+- Enable approved executable frontend defaults: 16 MiB/source, 1,000,000 tokens
+  and 256 lexer/parser diagnostics. Bound CLI/test/package-entry file reads to
+  the byte ceiling plus one detection byte; preserve formatter's stricter 1 MiB
+  guard and apply token budgets before package import removal. Aggregate package
+  and semantic/IR quotas remain follow-up work.
+
+- Add caller-selected Rust frontend source-byte, non-EOF token and diagnostic
+  budgets. Reject exhausted inputs without partial success; accepted ADR 0035
+  defines their approved default policy and remaining resource work.
+
+- Add isolated coverage-guided source and native IR fuzz targets using libFuzzer
+  and AddressSanitizer, reviewed seeds, reproducible corpus generation, a separate
+  dependency lockfile and private failure-triage guidance. Normal compiler
+  dependencies and source semantics are unchanged.
+
+- Reject malformed/out-of-range native IR numeric literals at decode time,
+  including in unreachable instructions. Preserve supported runtime numeric forms
+  and add deterministic source/image mutation regressions to CI without executing
+  mutated programs.
+
+- Close a parser structural-depth bypass through unbraced `else`/`else if`
+  chains. Count statement nesting before recursive parsing, add isolated
+  adversarial CI regressions, and document compiler security trust boundaries
+  and remaining work without claiming certification or sandbox isolation.
+
+- Check field values in unknown-record and duplicate-field literals instead of
+  hiding independent errors. Report missing required fields in stable alphabetical
+  order and avoid rescanning the literal for each required field.
+
+- Preserve independent semantic errors in assignment values and computed-call
+  expressions after an invalid target. Retain original ranges in JSON reports
+  and continue rejecting invalid source before execution or code emission.
+
+- Resolve aliases when validating the `main` return type. Reject non-Unit
+  aliases and records with E3010 before execution or code emission; retain valid
+  Unit aliases and existing unresolved-type diagnostics.
+
 - Preserve a record declaration's nominal identity when constructing through a
   type alias, including alias chains and module-local aliases. Fix equality and
   displayed type names in both engines and standalone builds.

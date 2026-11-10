@@ -56,6 +56,9 @@ change for older Sovra code that omitted parameter annotations.
 
 Omitting a return annotation means `Unit`. It does not infer a return type.
 For example, `fn main()` has a Unit return type and may end without `return`.
+An explicit alias to `Unit` is also valid for `main`. Aliases do not bypass the
+entry rule: `type Result = Int; fn main() -> Result { return 1; }` produces
+`E3010`, as does a record return type. Other functions may return those types.
 A function declared `-> Int` must use an explicit return statement; an
 expression at the end of the body does not implicitly return its value.
 Returning a value of an incompatible type produces `E3002`; a non-Unit function
@@ -92,6 +95,10 @@ crashing. A chain of 127 nested calls is at the expression-tree boundary because
 the innermost value also counts as one level. Split deeply nested calculations
 into sequential `let` bindings; adding more shallow statements does not consume
 nesting depth. Application inspection separately limits block nesting to 128.
+Nested `else if` chains share the statement-depth budget with `if`/`while`
+blocks, even when the source has few open braces. A function can contain 127
+nested control statements; the next level produces E2007 before constructing
+an excessive recursive tree.
 
 Function values are not implemented. `let value = std::len` produces E3015;
 `let value = std::len("hello")` calls the function and infers an Int result.

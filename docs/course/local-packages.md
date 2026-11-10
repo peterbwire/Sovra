@@ -4,6 +4,21 @@ Implemented scope: local path dependencies, one executable entry file per packag
 ordinary inline modules, exported functions and exported records. No registry or installation step
 is involved. The trusted compiler remains implemented in Rust.
 
+Compilation permits at most 16 MiB per entry file and 64 MiB total entry sources
+across the canonical dependency graph, including the root. Shared dependencies
+and multiple aliases to one package count once. UTF-8 comments/whitespace count
+toward the byte limits. Each file also has a 1,000,000-token limit and a
+256-diagnostic lexer/parser cap. Aggregate overflow reports E1003 at the entry
+that exceeds the remaining allowance; compilation and package tests stop before
+running any code. See [ADR 0035](../adr/0035-frontend-resource-budgets.md).
+
+Package loading also permits at most 1 MiB per manifest, 8 MiB total canonical
+manifest bytes and 8,192 dependency aliases. A shared package's manifest counts
+once; separate aliases still consume separate edges. E4112 identifies an excess
+manifest or alias header, before resolving the over-budget target. These limits
+also protect the initial project-classification manifest read; see
+[ADR 0036](../adr/0036-package-graph-resource-budgets.md).
+
 The [consumer](../../examples/local-packages/app/main.svr) declares this dependency
 in its [manifest](../../examples/local-packages/app/sovra.toml):
 
