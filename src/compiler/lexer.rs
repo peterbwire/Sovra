@@ -1,6 +1,7 @@
 //! Lexical analysis for the M1 source foundation.
 
 use crate::compiler::diagnostics::{Diagnostic, Diagnostics, Severity, Span};
+use crate::compiler::resources::FrontendLimits;
 
 /// The kinds of lexical tokens recognized by Sovra M1.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,12 +43,37 @@ impl Lexer {
         Self
     }
 
-    /// Tokenize source, returning all lexical errors together.
+    /// Tokenize source within approved default budgets (ADR 0035).
     pub fn tokenize(&self, source: &str) -> Result<Vec<Token>, Diagnostics> {
+        self.tokenize_with_limits(source, FrontendLimits::DEFAULT)
+    }
+
+    /// Tokenize with caller-selected byte, token and diagnostic budgets.
+    /// Resource exhaustion returns E1003 and never a partial successful stream.
+    pub fn tokenize_with_limits(
+        &self,
+        source: &str,
+        limits: FrontendLimits,
+    ) -> Result<Vec<Token>, Diagnostics> {
         let mut scanner = Scanner::new(source);
+        if source.len() > limits.max_source_bytes {
+            scanner.resource_error(format!(
+                "source exceeds {} UTF-8 bytes",
+                limits.max_source_bytes
+            ));
+            return Err(scanner.diagnostics);
+        }
         let mut tokens = Vec::new();
 
         while let Some(character) = scanner.peek() {
+            if scanner.diagnostics.items.len() >= limits.max_diagnostics.max(1) {
+                scanner.diagnostics.items.pop();
+                scanner.resource_error(format!(
+                    "lexical diagnostic limit of {} reached",
+                    limits.max_diagnostics.max(1)
+                ));
+                return Err(scanner.diagnostics);
+            }
             if character.is_whitespace() {
                 scanner.advance();
                 continue;
@@ -63,6 +89,10 @@ impl Lexer {
             }
 
             let span = scanner.current_span();
+            if tokens.len() >= limits.max_tokens {
+                scanner.resource_error(format!("token limit of {} exceeded", limits.max_tokens));
+                return Err(scanner.diagnostics);
+            }
             let kind = if character.is_ascii_alphabetic() || character == '_' {
                 scanner.identifier()
             } else if character.is_ascii_digit() {
@@ -71,7 +101,7 @@ impl Lexer {
                 match scanner.string() {
                     Ok(value) => TokenKind::String(value),
                     Err(diagnostic) => {
-                        scanner.diagnostics.push(diagnostic);
+                        scanner.diagnostics.push_bounded(diagnostic);
                         continue;
                     }
                 }
@@ -82,7 +112,7 @@ impl Lexer {
                 TokenKind::Punctuation(character)
             } else {
                 scanner.advance();
-                scanner.diagnostics.push(Diagnostic {
+                scanner.diagnostics.push_bounded(Diagnostic {
                     source_file: None,
                     severity: Severity::Error,
                     code: "E1000",
@@ -128,6 +158,16 @@ struct Scanner<'a> {
 }
 
 impl<'a> Scanner<'a> {
+    fn resource_error(&mut self, message: String) {
+        self.diagnostics.push_bounded(Diagnostic {
+            source_file: None,
+            severity: Severity::Error,
+            code: "E1003",
+            message,
+            span: self.current_span(),
+        });
+    }
+
     fn new(source: &'a str) -> Self {
         Self {
             source,

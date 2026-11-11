@@ -3,6 +3,7 @@
 use crate::compiler::ast::{Expression, ExpressionKind, Function, Parameter, Program, Statement};
 use crate::compiler::diagnostics::{Diagnostic, Diagnostics, Severity, Span};
 use crate::compiler::lexer::{Lexer, Token, TokenKind};
+use crate::compiler::resources::FrontendLimits;
 
 /// The Sovra parser.
 #[derive(Debug, Default)]
@@ -14,15 +15,50 @@ impl Parser {
         Self
     }
 
-    /// Lex and parse a complete source file.
+    /// Lex and parse a complete source file within approved default budgets.
     pub fn parse_source(&self, source: &str) -> Result<Program, Diagnostics> {
         let tokens = Lexer::new().tokenize(source)?;
         self.parse_tokens(&tokens)
     }
 
+    /// Parse source within caller-selected frontend budgets, rejecting exhausted
+    /// inputs instead of returning a partially inspected program. These budgets
+    /// do not constrain semantic analysis, package loading or source file reads.
+    pub fn parse_source_with_limits(
+        &self,
+        source: &str,
+        limits: FrontendLimits,
+    ) -> Result<Program, Diagnostics> {
+        let tokens = Lexer::new().tokenize_with_limits(source, limits)?;
+        self.parse_tokens_inner(&tokens, limits.max_diagnostics.max(1))
+    }
+
     /// Parse a token stream containing exactly one EOF token, at its end.
     /// Empty streams and misplaced or missing EOF markers produce E2006.
+    /// Default token and parser-diagnostic budgets also apply (ADR 0035).
     pub fn parse_tokens(&self, tokens: &[Token]) -> Result<Program, Diagnostics> {
+        if tokens.len().saturating_sub(1) > FrontendLimits::DEFAULT.max_tokens {
+            return Err(Diagnostics {
+                items: vec![Diagnostic {
+                    source_file: None,
+                    severity: Severity::Error,
+                    code: "E1003",
+                    message: format!(
+                        "token limit of {} exceeded",
+                        FrontendLimits::DEFAULT.max_tokens
+                    ),
+                    span: tokens[FrontendLimits::DEFAULT.max_tokens].span,
+                }],
+            });
+        }
+        self.parse_tokens_inner(tokens, FrontendLimits::DEFAULT.max_diagnostics)
+    }
+
+    fn parse_tokens_inner(
+        &self,
+        tokens: &[Token],
+        max_diagnostics: usize,
+    ) -> Result<Program, Diagnostics> {
         let first_eof = tokens.iter().position(|token| token.kind == TokenKind::Eof);
         if tokens.is_empty() || first_eof != tokens.len().checked_sub(1) {
             let span = first_eof
@@ -36,7 +72,7 @@ impl Parser {
                     column: 0,
                 });
             let mut diagnostics = Diagnostics::new();
-            diagnostics.push(Diagnostic {
+            diagnostics.push_bounded(Diagnostic {
                 source_file: None,
                 severity: Severity::Error,
                 code: "E2006",
@@ -50,6 +86,8 @@ impl Parser {
             position: 0,
             diagnostics: Diagnostics::new(),
             depth_exceeded: false,
+            statement_depth: 0,
+            max_diagnostics,
         };
         if let Err(span) = super::limits::check_nesting(tokens, true) {
             parser.depth_error(span);
@@ -69,6 +107,8 @@ struct TokenParser<'a> {
     position: usize,
     diagnostics: Diagnostics,
     depth_exceeded: bool,
+    statement_depth: usize,
+    max_diagnostics: usize,
 }
 
 impl<'a> TokenParser<'a> {
@@ -278,6 +318,23 @@ impl<'a> TokenParser<'a> {
     }
 
     fn statement(&mut self) -> Option<Statement> {
+        // Else bodies can recurse without another open brace. Count active
+        // statements as well as lexical delimiters before building the AST.
+        let depth = self.statement_depth + 1;
+        if depth > super::limits::MAX_STRUCTURAL_DEPTH
+            || (depth == super::limits::MAX_STRUCTURAL_DEPTH
+                && (self.check_keyword("if") || self.check_keyword("while")))
+        {
+            self.depth_error(self.peek().span);
+            return None;
+        }
+        self.statement_depth = depth;
+        let statement = self.statement_inner();
+        self.statement_depth -= 1;
+        statement
+    }
+
+    fn statement_inner(&mut self) -> Option<Statement> {
         if self.consume_keyword("let") {
             let start = self.previous().span;
             let is_mutable = self.consume_keyword("mut");
@@ -843,7 +900,24 @@ impl<'a> TokenParser<'a> {
         if self.depth_exceeded {
             return;
         }
-        self.diagnostics.push(Diagnostic {
+        if self.diagnostics.items.len() >= self.max_diagnostics {
+            return;
+        }
+        if self.diagnostics.items.len() == self.max_diagnostics - 1 {
+            self.diagnostics.push_bounded(Diagnostic {
+                source_file: None,
+                severity: Severity::Error,
+                code: "E2008",
+                message: format!(
+                    "parser diagnostic limit of {} reached",
+                    self.max_diagnostics
+                ),
+                span: self.peek().span,
+            });
+            self.position = self.tokens.len() - 1;
+            return;
+        }
+        self.diagnostics.push_bounded(Diagnostic {
             source_file: None,
             severity: Severity::Error,
             code,
@@ -862,7 +936,7 @@ impl<'a> TokenParser<'a> {
 
     fn depth_error(&mut self, span: Span) {
         self.diagnostics.items.clear();
-        self.diagnostics.push(Diagnostic {
+        self.diagnostics.push_bounded(Diagnostic {
             source_file: None,
             severity: Severity::Error,
             code: "E2007",
@@ -1013,6 +1087,47 @@ mod tests {
         assert!(errors.items.iter().all(|error| error.code == "E2000"));
         assert_eq!(errors.items[0].span.start, source.find("stray").unwrap());
         assert_eq!(errors.items[1].span.start, source.find("more").unwrap());
+    }
+
+    #[test]
+    fn mixed_blocks_and_else_chains_share_one_statement_depth_budget() {
+        for (blocks, accepted) in [(63, true), (64, false)] {
+            let source = format!(
+                "fn main() {{ {}{}print(1); {} }}",
+                "while (false) {".repeat(blocks),
+                "if (false) {} else ".repeat(64),
+                "}".repeat(blocks)
+            );
+            let result = Parser::new().parse_source(&source);
+            if accepted {
+                assert!(result.is_ok());
+            } else {
+                let errors = result.unwrap_err();
+                assert_eq!(errors.items.len(), 1);
+                assert_eq!(errors.items[0].code, "E2007");
+            }
+        }
+    }
+
+    #[test]
+    fn else_chains_cannot_bypass_structural_depth() {
+        for count in [127, 128, 129] {
+            let source = format!(
+                "fn main() {{ {}print(1); }}",
+                "if (false) {} else ".repeat(count)
+            );
+            let result = Parser::new().parse_source(&source);
+            if count == 127 {
+                let program = result.expect("boundary chain must parse");
+                assert!(crate::compiler::semantic::SemanticAnalyzer::new()
+                    .analyze(&program)
+                    .is_ok());
+            } else {
+                let errors = result.expect_err("else chains must respect the existing depth limit");
+                assert_eq!(errors.items.len(), 1);
+                assert_eq!(errors.items[0].code, "E2007");
+            }
+        }
     }
 
     #[test]

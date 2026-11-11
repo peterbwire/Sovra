@@ -191,6 +191,16 @@ pub fn decode(bytes: &[u8]) -> Result<IrProgram, String> {
     for function in &program.functions {
         for instruction in &function.instructions {
             match instruction {
+                Instruction::LoadLiteral(Literal::Integer(value))
+                    if value.parse::<i64>().is_err() =>
+                {
+                    return Err("invalid or out-of-range native IR integer literal".into());
+                }
+                Instruction::LoadLiteral(Literal::Float(value))
+                    if value.parse::<f64>().is_err() =>
+                {
+                    return Err("invalid native IR float literal".into());
+                }
                 Instruction::Call { name, arguments } => {
                     let expected = super::stdlib::lookup(name)
                         .map(|builtin| builtin.parameters.len())
@@ -381,6 +391,47 @@ mod tests {
             }],
         };
         assert!(encode(&oversized_depth).is_err());
+    }
+
+    #[test]
+    fn decoder_preserves_valid_runtime_numeric_forms() {
+        let mut instructions = Vec::new();
+        for value in ["-9223372036854775808", "9223372036854775807", "+42"] {
+            instructions.push(LoadLiteral(Literal::Integer(value.into())));
+        }
+        for value in ["-0.0", "1e1000", "NaN", "inf", "-inf"] {
+            instructions.push(LoadLiteral(Literal::Float(value.into())));
+        }
+        let program = IrProgram {
+            functions: vec![IrFunction {
+                name: "main".into(),
+                parameters: vec![],
+                instructions,
+            }],
+        };
+        assert_eq!(decode(&encode(&program).unwrap()).unwrap(), program);
+    }
+
+    #[test]
+    fn decoder_rejects_invalid_numeric_literals_including_unreachable_code() {
+        for literal in [
+            Literal::Integer("9223372036854775808".into()),
+            Literal::Integer("not_an_integer".into()),
+            Literal::Float("not_a_float".into()),
+            Literal::Float("0); throw new Error(\"injected\"); (0".into()),
+        ] {
+            let program = IrProgram {
+                functions: vec![IrFunction {
+                    name: "main".into(),
+                    parameters: vec![],
+                    instructions: vec![Return, LoadLiteral(literal)],
+                }],
+            };
+            assert!(
+                decode(&encode(&program).unwrap()).is_err(),
+                "invalid numeric image accepted"
+            );
+        }
     }
 
     #[test]

@@ -4,6 +4,95 @@ use std::io;
 use std::process::{Command, Output};
 
 #[test]
+fn package_commands_enforce_approved_interface_default() {
+    let root = std::env::temp_dir().join(format!(
+        "svr-package-interface-default-{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(root.join("lib")).unwrap();
+    std::fs::create_dir_all(root.join("app")).unwrap();
+    std::fs::write(
+        root.join("app/sovra.toml"),
+        "[project]\nname = \"app\"\nentry = \"main.svr\"\n[dependencies.a]\npath = \"../lib\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("lib/sovra.toml"),
+        "[project]\nname = \"lib\"\nentry = \"main.svr\"\n",
+    )
+    .unwrap();
+    let parameters = (0..99)
+        .map(|index| format!("p{index}: Int"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    std::fs::write(
+        root.join("lib/main.svr"),
+        format!("mod api {{ export fn f({parameters}) {{}} }}"),
+    )
+    .unwrap();
+    // Export validation plus 2,500 copies of a 100-node signature exceeds 250,000.
+    std::fs::write(
+        root.join("app/main.svr"),
+        format!(
+            "{} fn main() {{ print(42); }}",
+            "use a::api;\n".repeat(2500)
+        ),
+    )
+    .unwrap();
+    for args in [
+        vec!["check"],
+        vec!["check", "--format", "json"],
+        vec!["run"],
+        vec!["build"],
+        vec!["test"],
+    ] {
+        let Some(output) = output_or_skip(svr().args(&args).arg(root.join("app"))) else {
+            std::fs::remove_dir_all(root).unwrap();
+            return;
+        };
+        assert_eq!(output.status.code(), Some(1), "{args:?}: {output:?}");
+        let combined = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(combined.contains("E3023"), "{args:?}: {combined}");
+        assert!(!String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .any(|line| line == "42"));
+    }
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn standalone_commands_reject_ast_overflow_before_execution_or_emission() {
+    let root = std::env::temp_dir().join(format!("svr-ast-budget-cli-{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    let path = root.join("oversized.svr");
+    std::fs::write(&path, format!("fn main() {{ {} }}", "1;".repeat(125_000))).unwrap();
+    for args in [
+        vec!["check"],
+        vec!["check", "--format", "json"],
+        vec!["run"],
+        vec!["build"],
+        vec!["test"],
+    ] {
+        let Some(output) = output_or_skip(svr().args(&args).arg(&path)) else {
+            std::fs::remove_dir_all(root).unwrap();
+            return;
+        };
+        assert_eq!(output.status.code(), Some(1), "{args:?}: {output:?}");
+        let combined = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(combined.contains("E3020"), "{args:?}: {combined}");
+    }
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn formatter_command_preserves_source_and_validates_modes() {
     let root = std::env::temp_dir().join(format!("svr-format-cli-{}", std::process::id()));
     std::fs::create_dir_all(&root).unwrap();
@@ -316,6 +405,748 @@ fn scoped_type_example_checks_runs_and_builds() {
         String::from_utf8_lossy(&js.stdout).replace("\r\n", "\n"),
         "1.5\n1.5\n1\nroot\n"
     );
+}
+
+#[test]
+fn bounded_messages_keep_codes_ranges_and_valid_long_names() {
+    let directory =
+        std::env::temp_dir().join(format!("svr-message-budget-cli-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let file = directory.join("main.svr");
+    let name = "x".repeat(10000);
+    let source = format!("fn main() {{ print({name}); }} fn test_one() {{}}");
+    std::fs::write(&file, &source).unwrap();
+    let start = source.find(&name).unwrap();
+    for command in ["check", "test"] {
+        let Some(output) = output_or_skip(svr().args([command, "--format", "json"]).arg(&file))
+        else {
+            std::fs::remove_dir_all(directory).unwrap();
+            return;
+        };
+        assert_eq!(output.status.code(), Some(1));
+        assert!(output.stdout.len() < 8192);
+        let report = String::from_utf8(output.stdout).unwrap();
+        assert!(report.contains("E3001") && report.contains("[message truncated]"));
+        assert!(report.contains(&format!("\"start\":{start},\"end\":{}", start + name.len())));
+    }
+    for args in [vec!["run"], vec!["build"], vec!["build", "--emit", "js"]] {
+        let output = svr().args(args).arg(&file).output().unwrap();
+        assert_eq!(output.status.code(), Some(1));
+        assert!(output.stdout.is_empty() && output.stderr.len() < 8192);
+        assert!(String::from_utf8_lossy(&output.stderr).contains("[message truncated]"));
+    }
+    std::fs::write(
+        &file,
+        format!("fn main() {{ let {name} = 42; print({name}); }}"),
+    )
+    .unwrap();
+    let output = svr().arg("run").arg(&file).output().unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "42");
+    let manifest = format!("[{}]\n", "λ".repeat(5000));
+    std::fs::write(directory.join("sovra.toml"), &manifest).unwrap();
+    let output = svr()
+        .args(["check", "--format", "json"])
+        .arg(&directory)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.len() < 8192);
+    let report = String::from_utf8(output.stdout).unwrap();
+    assert!(report.contains("E4010") && report.contains("[message truncated]"));
+    assert!(report.contains("\"start\":0,\"end\":10002"));
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn manifest_and_semantic_floods_preserve_bounded_json_and_prevent_execution() {
+    let directory =
+        std::env::temp_dir().join(format!("svr-stage-flood-cli-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let file = directory.join("main.svr");
+    let manifest = directory.join("sovra.toml");
+    let source = format!(
+        "fn main() {{ {} }} fn test_one() {{}}",
+        "print(missing);".repeat(1000)
+    );
+    std::fs::write(&file, &source).unwrap();
+    for command in ["check", "test"] {
+        let Some(output) = output_or_skip(svr().args([command, "--format", "json"]).arg(&file))
+        else {
+            std::fs::remove_dir_all(directory).unwrap();
+            return;
+        };
+        assert_eq!(output.status.code(), Some(1));
+        let report = String::from_utf8(output.stdout).unwrap();
+        assert_eq!(report.matches("\"code\":").count(), 256);
+        assert!(report.contains("E3019"));
+        let start = source.match_indices("missing").nth(255).unwrap().0;
+        assert!(report.contains(&format!("\"start\":{start},\"end\":{}", start + 7)));
+    }
+    // Keep a valid root but put the same semantic flood in an unused dependency.
+    let lib = directory.join("lib");
+    std::fs::create_dir_all(&lib).unwrap();
+    std::fs::write(
+        lib.join("sovra.toml"),
+        "[project]\nname = \"lib\"\nentry = \"lib.svr\"\n",
+    )
+    .unwrap();
+    std::fs::write(lib.join("lib.svr"), &source).unwrap();
+    std::fs::write(&file, "fn main() { print(42); } fn test_one() {}").unwrap();
+    std::fs::write(
+        &manifest,
+        "[project]\nname = \"app\"\nentry = \"main.svr\"\n[dependencies.lib]\npath = \"lib\"\n",
+    )
+    .unwrap();
+    let output = svr()
+        .args(["check", "--format", "json"])
+        .arg(&directory)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    let report = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(report.matches("\"code\":").count(), 256);
+    assert!(report.contains("E3019") && report.contains("lib.svr"));
+    std::fs::write(&manifest, "bad\n".repeat(1000)).unwrap();
+    for command in ["check", "test"] {
+        let output = svr()
+            .args([command, "--format", "json"])
+            .arg(&directory)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(1));
+        let report = String::from_utf8(output.stdout).unwrap();
+        assert_eq!(report.matches("\"code\":").count(), 256);
+        assert!(report.contains("E4018") && report.contains("sovra.toml"));
+        assert!(report.contains("\"start\":1020,\"end\":1023"));
+    }
+    let binary = directory.join("never-created.exe");
+    for args in [
+        vec!["run"],
+        vec!["build"],
+        vec!["build", "--emit", "js"],
+        vec![
+            "build",
+            "--emit",
+            "exe",
+            "--output",
+            binary.to_str().unwrap(),
+        ],
+    ] {
+        let output = svr().args(&args).arg(&directory).output().unwrap();
+        assert_eq!(output.status.code(), Some(1));
+        assert!(output.stdout.is_empty());
+        assert!(!binary.exists());
+    }
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn approved_manifest_file_default_guards_initial_classification_and_commands() {
+    let directory =
+        std::env::temp_dir().join(format!("svr-manifest-default-cli-{}", std::process::id()));
+    let app = directory.join("app");
+    let lib = directory.join("lib");
+    std::fs::create_dir_all(&app).unwrap();
+    std::fs::create_dir_all(&lib).unwrap();
+    std::fs::write(
+        app.join("main.svr"),
+        "fn main() { print(42); } fn test_one() {}",
+    )
+    .unwrap();
+    std::fs::write(lib.join("main.svr"), "").unwrap();
+    std::fs::write(
+        lib.join("sovra.toml"),
+        "[project]\nname = \"lib\"\nentry = \"main.svr\"\n",
+    )
+    .unwrap();
+    let path = app.join("sovra.toml");
+    let mut manifest =
+        b"[project]\nname = \"app\"\nentry = \"main.svr\"\n[dependencies.lib]\npath = \"../lib\"\n"
+            .to_vec();
+    manifest.resize(1024 * 1024, b' ');
+    std::fs::write(&path, &manifest).unwrap();
+    let Some(output) = output_or_skip(svr().args(["check", "--format", "json"]).arg(&app)) else {
+        std::fs::remove_dir_all(directory).unwrap();
+        return;
+    };
+    assert!(output.status.success(), "{output:?}");
+    manifest.push(b' ');
+    std::fs::write(&path, &manifest).unwrap();
+    let binary = directory.join("never-created.exe");
+    for args in [
+        vec!["check", "--format", "json"],
+        vec!["run"],
+        vec!["build", "--emit", "js"],
+        vec![
+            "build",
+            "--emit",
+            "exe",
+            "--output",
+            binary.to_str().unwrap(),
+        ],
+        vec!["test", "--format", "json"],
+    ] {
+        let output = svr().args(&args).arg(&app).output().unwrap();
+        assert_eq!(output.status.code(), Some(1));
+        let report = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            report.contains("E4112") && report.contains("1048576") && report.contains("sovra.toml"),
+            "{args:?}: {report}"
+        );
+        if !args.contains(&"json") {
+            assert!(output.stdout.is_empty());
+        }
+        assert!(!binary.exists());
+    }
+    // The root classifier must also reject oversized manifests without dependencies.
+    let mut plain = b"[project]\nname = \"app\"\nentry = \"main.svr\"\n".to_vec();
+    plain.resize(1024 * 1024 + 1, b' ');
+    std::fs::write(&path, plain).unwrap();
+    let output = svr()
+        .args(["check", "--format", "json"])
+        .arg(&app)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("E4112"));
+    let errors = sovra::compiler::project::check_project(&app).unwrap_err();
+    assert_eq!(errors.items.len(), 1);
+    assert_eq!(errors.items[0].code, "E4112");
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn approved_aggregate_manifest_default_counts_canonical_packages_once() {
+    let directory =
+        std::env::temp_dir().join(format!("svr-manifest-total-cli-{}", std::process::id()));
+    let app = directory.join("app");
+    let names = ["app", "a", "b", "c", "d", "e", "f", "g", "h"];
+    let tail = b"[project]\nname = \"h\"\nentry = \"main.svr\"\n";
+    for name in names {
+        let root = directory.join(name);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("main.svr"),
+            if name == "app" {
+                "fn main() { print(42); } fn test_one() {}"
+            } else {
+                ""
+            },
+        )
+        .unwrap();
+        let mut manifest = format!("[project]\nname = \"{name}\"\nentry = \"main.svr\"\n");
+        if name == "app" {
+            for dependency in &names[1..] {
+                manifest.push_str(&format!(
+                    "[dependencies.{dependency}]\npath = \"../{dependency}\"\n"
+                ));
+            }
+            manifest.push_str("[dependencies.alias]\npath = \"../a\"\n");
+        }
+        let mut bytes = manifest.into_bytes();
+        let size = match name {
+            "h" => tail.len(),
+            "g" => 1024 * 1024 - tail.len(),
+            _ => 1024 * 1024,
+        };
+        bytes.resize(size, b' ');
+        std::fs::write(root.join("sovra.toml"), bytes).unwrap();
+    }
+    let Some(output) = output_or_skip(svr().args(["check", "--format", "json"]).arg(&app)) else {
+        std::fs::remove_dir_all(directory).unwrap();
+        return;
+    };
+    assert!(output.status.success(), "{output:?}");
+    let path = directory.join("h/sovra.toml");
+    let mut bytes = tail.to_vec();
+    bytes.push(b' ');
+    std::fs::write(&path, bytes).unwrap();
+    for args in [
+        vec!["check", "--format", "json"],
+        vec!["run"],
+        vec!["build"],
+        vec!["test", "--format", "json"],
+    ] {
+        let output = svr().args(&args).arg(&app).output().unwrap();
+        assert_eq!(output.status.code(), Some(1));
+        let report = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            report.contains("E4112")
+                && report.contains("aggregate manifest")
+                && report.contains("8388608"),
+            "{report}"
+        );
+        if !args.contains(&"json") {
+            assert!(output.stdout.is_empty());
+        }
+    }
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn approved_dependency_edge_default_stops_before_excess_target_resolution() {
+    let directory =
+        std::env::temp_dir().join(format!("svr-edge-default-cli-{}", std::process::id()));
+    let app = directory.join("app");
+    let lib = directory.join("lib");
+    std::fs::create_dir_all(&app).unwrap();
+    std::fs::create_dir_all(&lib).unwrap();
+    std::fs::write(
+        app.join("main.svr"),
+        "fn main() { print(42); } fn test_one() {}",
+    )
+    .unwrap();
+    std::fs::write(lib.join("main.svr"), "").unwrap();
+    std::fs::write(
+        lib.join("sovra.toml"),
+        "[project]\nname = \"lib\"\nentry = \"main.svr\"\n",
+    )
+    .unwrap();
+    let mut manifest = "[project]\nname = \"app\"\nentry = \"main.svr\"\n".to_owned();
+    for index in 0..8192 {
+        manifest.push_str(&format!("[dependencies.d{index:05}]\npath = \"../lib\"\n"));
+    }
+    let path = app.join("sovra.toml");
+    std::fs::write(&path, &manifest).unwrap();
+    let Some(output) = output_or_skip(svr().args(["check", "--format", "json"]).arg(&app)) else {
+        std::fs::remove_dir_all(directory).unwrap();
+        return;
+    };
+    assert!(output.status.success(), "{output:?}");
+    manifest.push_str("[dependencies.excess]\npath = \"../does-not-exist\"\n");
+    std::fs::write(&path, manifest).unwrap();
+    for args in [
+        vec!["check", "--format", "json"],
+        vec!["run"],
+        vec!["test", "--format", "json"],
+    ] {
+        let output = svr().args(&args).arg(&app).output().unwrap();
+        assert_eq!(output.status.code(), Some(1));
+        let report = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            report.contains("E4112") && report.contains("edge limit of 8192"),
+            "{report}"
+        );
+        assert!(!report.contains("E4110"));
+        if !args.contains(&"json") {
+            assert!(output.stdout.is_empty());
+        }
+    }
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn approved_aggregate_package_source_boundary_and_overflow_apply_to_commands() {
+    use std::io::Write;
+    let directory =
+        std::env::temp_dir().join(format!("svr-aggregate-default-cli-{}", std::process::id()));
+    let app = directory.join("app");
+    let bytes = 16 * 1024 * 1024;
+    let padding = vec![b' '; bytes];
+    for name in ["app", "a", "b", "c", "z"] {
+        let root = directory.join(name);
+        std::fs::create_dir_all(&root).unwrap();
+        let dependencies = if name == "app" {
+            "[dependencies.a]\npath = \"../a\"\n[dependencies.alias]\npath = \"../a\"\n[dependencies.b]\npath = \"../b\"\n[dependencies.c]\npath = \"../c\"\n[dependencies.z]\npath = \"../z\"\n"
+        } else {
+            ""
+        };
+        std::fs::write(
+            root.join("sovra.toml"),
+            format!("[project]\nname = \"{name}\"\nentry = \"main.svr\"\n{dependencies}"),
+        )
+        .unwrap();
+        let mut file = std::fs::File::create(root.join("main.svr")).unwrap();
+        if name == "app" {
+            let prefix = b"fn main() { print(42); } fn test_one() { print(7); }";
+            file.write_all(prefix).unwrap();
+            file.write_all(&padding[prefix.len()..]).unwrap();
+        } else if name != "z" {
+            file.write_all(&padding).unwrap();
+        }
+    }
+    drop(padding);
+    // Exactly 64 MiB across four canonical packages; the alias and empty fifth
+    // package must not consume extra allowance.
+    let Some(output) = output_or_skip(svr().args(["check", "--format", "json"]).arg(&app)) else {
+        std::fs::remove_dir_all(directory).unwrap();
+        return;
+    };
+    assert!(output.status.success(), "{:?}", output);
+    assert!(String::from_utf8_lossy(&output.stdout).contains("\"success\":true"));
+    let excess = directory.join("z/main.svr");
+    std::fs::write(&excess, " ").unwrap();
+    let binary = directory.join("never-created.exe");
+    for args in [
+        vec!["check", "--format", "json"],
+        vec!["run"],
+        vec!["build"],
+        vec!["build", "--emit", "js"],
+        vec![
+            "build",
+            "--emit",
+            "exe",
+            "--output",
+            binary.to_str().unwrap(),
+        ],
+        vec!["test", "--format", "json"],
+    ] {
+        let output = svr().args(&args).arg(&app).output().unwrap();
+        assert_eq!(output.status.code(), Some(1), "{args:?}: {output:?}");
+        let message = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            message.contains("E1003")
+                && message.contains("aggregate package")
+                && message.contains("67108864"),
+            "{args:?}: {message}"
+        );
+        assert!(message.contains("z") && message.contains("main.svr"));
+        if !args.contains(&"json") {
+            assert!(output.stdout.is_empty());
+        }
+        assert!(!binary.exists());
+    }
+    assert_eq!(std::fs::read(&excess).unwrap(), b" ");
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn default_token_and_diagnostic_limits_apply_to_commands() {
+    let directory =
+        std::env::temp_dir().join(format!("svr-token-budget-cli-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let file = directory.join("flood.svr");
+    for (source, expected, count) in [
+        (";".repeat(1_000_001), "E1003", 1),
+        ("@".repeat(1000), "E1003", 256),
+        ("fn broken() { let x = ; } ".repeat(1000), "E2008", 256),
+    ] {
+        std::fs::write(&file, source).unwrap();
+        for command in ["check", "test"] {
+            let Some(output) = output_or_skip(svr().args([command, "--format", "json"]).arg(&file))
+            else {
+                std::fs::remove_dir_all(directory).unwrap();
+                return;
+            };
+            assert_eq!(output.status.code(), Some(1));
+            let report = String::from_utf8(output.stdout).unwrap();
+            assert!(
+                report.contains(&format!("\"code\":\"{expected}\"")),
+                "{report}"
+            );
+            assert_eq!(report.matches("\"code\":").count(), count);
+        }
+        let output = svr().args(["fmt", "--check"]).arg(&file).output().unwrap();
+        assert_eq!(output.status.code(), Some(1));
+        assert!(String::from_utf8_lossy(&output.stderr).contains(expected));
+    }
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn approved_source_byte_limits_reject_before_execution_or_native_publication() {
+    use std::io::Write;
+    let directory =
+        std::env::temp_dir().join(format!("svr-source-budget-cli-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let file = directory.join("large.svr");
+    let binary = directory.join("never-created.exe");
+    let mut source = std::fs::File::create(&file).unwrap();
+    source
+        .write_all(b"fn main() { print(42); } fn test_one() {} ")
+        .unwrap();
+    source.set_len(16 * 1024 * 1024 + 1).unwrap();
+    drop(source);
+    for args in [
+        vec!["check", "--format", "json"],
+        vec!["run"],
+        vec!["build"],
+        vec!["build", "--emit", "js"],
+        vec![
+            "build",
+            "--emit",
+            "exe",
+            "--output",
+            binary.to_str().unwrap(),
+        ],
+        vec!["test", "--format", "json"],
+    ] {
+        let Some(output) = output_or_skip(svr().args(&args).arg(&file)) else {
+            std::fs::remove_dir_all(directory).unwrap();
+            return;
+        };
+        assert_eq!(output.status.code(), Some(1), "{args:?}: {output:?}");
+        let message = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(message.contains("E1003"), "{args:?}: {message}");
+        if !args.contains(&"json") {
+            assert!(output.stdout.is_empty());
+        }
+        assert!(!binary.exists());
+    }
+    let output = svr().args(["fmt", "--check"]).arg(&file).output().unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("1 MiB"));
+    assert_eq!(
+        std::fs::metadata(&file).unwrap().len(),
+        16 * 1024 * 1024 + 1
+    );
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn approved_source_byte_boundary_still_checks_and_runs() {
+    let directory =
+        std::env::temp_dir().join(format!("svr-source-boundary-cli-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let file = directory.join("boundary.svr");
+    let mut bytes = b"fn main() { print(42); }".to_vec();
+    bytes.resize(16 * 1024 * 1024, b' ');
+    std::fs::write(&file, &bytes).unwrap();
+    drop(bytes);
+    for command in ["check", "run"] {
+        let Some(output) = output_or_skip(svr().arg(command).arg(&file)) else {
+            std::fs::remove_dir_all(directory).unwrap();
+            return;
+        };
+        assert!(output.status.success(), "{command}: {output:?}");
+        if command == "run" {
+            assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "42");
+        }
+    }
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn dependency_entry_source_uses_approved_byte_limits_and_file_identity() {
+    let directory = std::env::temp_dir().join(format!(
+        "svr-package-source-budget-cli-{}",
+        std::process::id()
+    ));
+    let app = directory.join("app");
+    let lib = directory.join("lib");
+    std::fs::create_dir_all(&app).unwrap();
+    std::fs::create_dir_all(&lib).unwrap();
+    std::fs::write(
+        app.join("sovra.toml"),
+        "[project]\nname = \"app\"\nentry = \"main.svr\"\n[dependencies.util]\npath = \"../lib\"\n",
+    )
+    .unwrap();
+    std::fs::write(app.join("main.svr"), "fn main() { print(42); }").unwrap();
+    std::fs::write(
+        lib.join("sovra.toml"),
+        "[project]\nname = \"lib\"\nentry = \"lib.svr\"\n",
+    )
+    .unwrap();
+    let entry = lib.join("lib.svr");
+    std::fs::File::create(&entry)
+        .unwrap()
+        .set_len(16 * 1024 * 1024 + 1)
+        .unwrap();
+    for args in [
+        vec!["check", "--format", "json"],
+        vec!["run"],
+        vec!["build"],
+        vec!["test", "--format", "json"],
+    ] {
+        let Some(output) = output_or_skip(svr().args(&args).arg(&app)) else {
+            std::fs::remove_dir_all(directory).unwrap();
+            return;
+        };
+        assert_eq!(output.status.code(), Some(1), "{args:?}: {output:?}");
+        let message = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            message.contains("E1003") && message.contains("lib.svr"),
+            "{message}"
+        );
+        if !args.contains(&"json") {
+            assert!(output.stdout.is_empty());
+        }
+    }
+    std::fs::write(
+        &entry,
+        "mod math { export fn value() -> Int { return 1; } }",
+    )
+    .unwrap();
+    std::fs::write(
+        app.join("main.svr"),
+        format!("{}fn main() {{}}", "use util::math;\n".repeat(200_001)),
+    )
+    .unwrap();
+    let output = svr()
+        .args(["check", "--format", "json"])
+        .arg(&app)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    let report = String::from_utf8(output.stdout).unwrap();
+    assert!(report.contains("E1003") && report.contains("main.svr"));
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn invalid_record_literals_retain_json_value_errors_and_stable_missing_fields() {
+    let directory =
+        std::env::temp_dir().join(format!("svr-invalid-record-cli-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let file = directory.join("main.svr");
+    let source = "struct Point { z: Int, a: Int, m: Int } fn main() { Missing { x: missing_unknown }; Point { z: 1, z: missing_duplicate }; print(later); }";
+    std::fs::write(&file, source).unwrap();
+    let Some(output) = output_or_skip(svr().args(["check", "--format", "json"]).arg(&file)) else {
+        std::fs::remove_dir_all(directory).unwrap();
+        return;
+    };
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stderr.is_empty());
+    let report = String::from_utf8(output.stdout).unwrap();
+    assert!(report.contains("\"code\":\"E3004\""));
+    assert!(report.contains("\"code\":\"E3008\""));
+    for name in ["missing_unknown", "missing_duplicate", "later"] {
+        assert_eq!(
+            report
+                .matches(&format!("undefined variable `{name}`"))
+                .count(),
+            1,
+            "{report}"
+        );
+        let start = source.find(name).unwrap();
+        assert!(
+            report.contains(&format!("\"start\":{start},\"end\":{}", start + name.len())),
+            "{report}"
+        );
+    }
+    assert!(report.find("missing field `a`").unwrap() < report.find("missing field `m`").unwrap());
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn invalid_targets_retain_independent_errors_in_json() {
+    let directory =
+        std::env::temp_dir().join(format!("svr-invalid-target-cli-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let file = directory.join("main.svr");
+    let source = "fn main() { missing_target = missing_value; let mut scalar = 1; scalar[0] = missing_rhs; 42(missing_argument); print(later); }";
+    std::fs::write(&file, source).unwrap();
+    let Some(output) = output_or_skip(svr().args(["check", "--format", "json"]).arg(&file)) else {
+        std::fs::remove_dir_all(directory).unwrap();
+        return;
+    };
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stderr.is_empty());
+    let report = String::from_utf8(output.stdout).unwrap();
+    assert!(report.contains("\"success\":false"));
+    for name in [
+        "missing_target",
+        "missing_value",
+        "missing_rhs",
+        "missing_argument",
+        "later",
+    ] {
+        assert_eq!(
+            report
+                .matches(&format!("undefined variable `{name}`"))
+                .count(),
+            1,
+            "{report}"
+        );
+        let start = source.find(name).unwrap();
+        assert!(
+            report.contains(&format!("\"start\":{start},\"end\":{}", start + name.len())),
+            "{report}"
+        );
+    }
+    for args in [vec!["run"], vec!["build"], vec!["build", "--emit", "js"]] {
+        let output = svr().args(args).arg(&file).output().unwrap();
+        assert_eq!(output.status.code(), Some(1));
+        assert!(
+            output.stdout.is_empty(),
+            "invalid source must not execute or emit code"
+        );
+    }
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn entry_return_aliases_are_validated_before_execution_or_emission() {
+    let directory =
+        std::env::temp_dir().join(format!("svr-entry-return-cli-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let file = directory.join("main.svr");
+    for (source, valid) in [
+        (
+            "type Base = Unit; type Result = Base; fn main() -> Result { print(42); }",
+            true,
+        ),
+        (
+            "type Base = Int; type Result = Base; fn main() -> Result { print(42); return 1; }",
+            false,
+        ),
+        (
+            "struct Result { value: Int } fn main() -> Result { return Result { value: 1 }; }",
+            false,
+        ),
+    ] {
+        std::fs::write(&file, source).unwrap();
+        let path = file.to_str().unwrap();
+        for args in [
+            vec!["check", path],
+            vec!["check", "--format", "json", path],
+            vec!["run", path],
+            vec!["build", path],
+            vec!["build", "--emit", "js", path],
+        ] {
+            let Some(output) = output_or_skip(svr().args(&args)) else {
+                std::fs::remove_dir_all(&directory).unwrap();
+                return;
+            };
+            assert_eq!(
+                output.status.code(),
+                Some(if valid { 0 } else { 1 }),
+                "{args:?}: {output:?}"
+            );
+            if !valid {
+                let diagnostic = format!(
+                    "{}{}",
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                assert!(diagnostic.contains("E3010"), "{args:?}: {diagnostic}");
+                if !args.contains(&"json") {
+                    assert!(
+                        output.stdout.is_empty(),
+                        "invalid main must not execute or emit code"
+                    );
+                }
+            } else if args[0] == "run" {
+                assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "42");
+            }
+        }
+    }
+    std::fs::remove_dir_all(directory).unwrap();
 }
 
 #[test]

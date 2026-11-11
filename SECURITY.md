@@ -1,5 +1,9 @@
 # Security policy
 
+Compiler safeguards, trust boundaries and remaining work are documented in
+[Compiler security](docs/COMPILER_SECURITY.md). Sovra is not currently security
+certified and executing Sovra programs is not a sandbox.
+
 Do not disclose vulnerabilities in public issues. Report them privately to the
 repository maintainers with a description, reproduction steps, impact, and a
 suggested mitigation. Remove credentials and personal data from reports.

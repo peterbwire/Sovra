@@ -4,6 +4,12 @@ Status: **Accepted option A; implemented for source parsing and application
 inspection.** The user explicitly directed “do the 128 then.” Cross-platform
 boundary evidence and public-AST/resource work remain outstanding.
 
+Security follow-up (2026-11-10): executable parsing now counts active statement
+depth before recursive descent. Unbraced `else`/`else if` bodies cannot bypass
+the existing 128-level structural contract by keeping few delimiters open.
+Mixed blocks and chains share the budget; rejection retains one E2007. See
+[compiler security](../COMPILER_SECURITY.md) for the threat model and open work.
+
 ## Reproduced failure
 
 The isolated `scripts/probe-compiler-depth.mjs` probe generates grouping, nested

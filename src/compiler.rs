@@ -13,6 +13,7 @@ mod limits;
 pub mod native_image;
 pub mod parser;
 pub mod project;
+pub mod resources;
 pub mod semantic;
 pub mod stdlib;
 pub mod testing;

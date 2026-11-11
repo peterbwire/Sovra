@@ -1,5 +1,51 @@
 # JSON check reports
 
+Default and explicit Rust frontend budget APIs return E1003 for source/token/lexical
+diagnostic exhaustion and E2008 for parser diagnostic exhaustion. These are error
+diagnostics using the existing schema. Pre-tokenization size rejection has no
+token location; other limits retain the stopping position. Approved executable
+source defaults are 16 MiB, 1,000,000 tokens and 256 frontend diagnostics. Package
+errors retain the owning source file; scanner-only project validation has
+different coverage. See [ADR 0035](../adr/0035-frontend-resource-budgets.md).
+Executable package compilation additionally enforces a 64 MiB aggregate source
+ceiling across canonical packages. Aggregate exhaustion reports E1003 at the
+owning entry file, including unused dependencies; aliases count once. Package
+language-test reports contain no executed tests after compilation exhaustion.
+Manifest/graph exhaustion uses E4112: 1 MiB per manifest (including initial
+classification), 8 MiB total canonical manifest bytes and 8,192 alias edges.
+Byte overflow identifies the manifest; excess edges retain the declaration-header
+range. Ordinary scanner-only checks also enforce the per-manifest read cap.
+
+Malformed manifest inspection and executable semantic analysis return at most
+256 diagnostics per failing stage, including a terminal E4018 (manifest) or
+E3019 (semantic) when the capacity is reached. Original ranges and owning files
+are retained; earlier diagnostic codes remain unchanged. Remaining errors may
+be omitted and no partial checked program executes. This changes error-report
+presentation for invalid inputs, not acceptance of valid source. Schema version
+remains 1; diagnostic message sizes and total analysis/IR work are separate limits.
+
+Messages from guarded compiler emitters are capped at 4,096 UTF-8 bytes including
+`[message truncated]` when clipped. Codes, severity, source-file identity and full
+ranges are retained; clients should use those structured fields rather than
+parsing messages as complete identifiers/type descriptions. JSON escaping can
+expand serialized length beyond the decoded message limit. Schema version stays
+1 and public raw diagnostic/report construction does not automatically truncate.
+
+Explicit AST admission and IR emission APIs can return E3020 (syntax-node
+allowance), E3021 (emitted instructions) and E3022 (owned IR string payload bytes).
+These retain source context and use the existing diagnostic schema. Standalone
+source checking now rejects more than 250,000 AST nodes with E3020. Standalone
+run/build/test also limit retained IR to 1,000,000 instructions and 64 MiB of
+string payload (E3021/E3022); see accepted ADR 0037. Package linking remains separate.
+
+Caller-selected `packages::compile_with_compilation_limits` also uses E3020 for
+cumulative canonical-source AST admission and E3021/E3022 for final linked IR.
+E3023 reports cumulative interface metadata-node exhaustion, using source context
+from the declaration or consuming import statement. Schema version remains 1;
+package CLI compilation now enforces the approved ADR 0038 defaults: 1,000,000
+AST nodes, 250,000 interface nodes, 4,000,000 linked instructions and 256 MiB
+retained linked string payload. Partial application scanning remains separate.
+
 Parser declaration recovery reports one E2000 for a contiguous run of unexpected
 declaration tokens, then resumes at the next declaration (or module closing brace).
 Later independent syntax errors still appear with their original source ranges.
@@ -15,6 +61,16 @@ declaration errors. `run` and `build` still reject the complete source.
 Malformed indexed statements no longer duplicate errors during assignment-target
 probing. E2001 identifies an absent index expression; E2005 identifies a missing
 closing delimiter. Subsequent independent statements retain their own locations.
+
+Semantic target errors also preserve independent expression diagnostics. An
+undefined assignment target or non-array indexed target does not hide errors in
+its right-hand side. An unsupported computed call still checks its callee and
+arguments. Existing E3001/E3003/E3007 codes and schema version 1 remain unchanged;
+reports may contain additional errors at their original expression ranges.
+Record literals likewise retain value errors for unknown records and duplicate
+fields, alongside existing E3004/E3008 diagnostics. Missing-field errors are
+ordered alphabetically by field name within each literal, independent of the
+compiler's hash-map iteration order.
 
 ## Executable local packages
 

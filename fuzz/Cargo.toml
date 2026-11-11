@@ -1,0 +1,29 @@
+[package]
+name = "sovra-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+sovra = { path = ".." }
+
+[[bin]]
+name = "source"
+path = "fuzz_targets/source.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "native_ir"
+path = "fuzz_targets/native_ir.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]
+members = ["."]

@@ -2,11 +2,15 @@
 
 use std::collections::{HashMap, HashSet};
 
+mod budget;
 mod type_facts;
+pub(crate) use budget::Budget;
+use budget::Instructions;
 use type_facts::{TypeFacts, ValueType};
 
 use crate::compiler::ast::{Expression, ExpressionKind, Program, Statement};
 use crate::compiler::semantic::TypedProgram;
+use crate::compiler::{diagnostics::Diagnostics, resources::LoweringLimits};
 
 /// Maximum simultaneously active user-function frames in either execution engine.
 pub(super) const MAX_CALL_DEPTH: usize = 256;
@@ -135,6 +139,35 @@ pub(crate) fn lower_with_imports(
     program: &TypedProgram,
     imports: &[(String, &crate::compiler::ast::Function)],
 ) -> IrProgram {
+    lower_internal(program, imports, None)
+        .expect("unbounded lowering cannot exhaust emission budgets")
+}
+
+/// Lower checked input with aggregate retained instruction/string budgets.
+/// Exhaustion returns E3021/E3022, never a partial successful program. Helpers
+/// and temporary payloads are not a process-memory quota. TypedProgram remains
+/// a trusted input; use lower_program_with_limits for semantic validation.
+pub fn lower_with_limits(
+    program: &TypedProgram,
+    limits: LoweringLimits,
+) -> Result<IrProgram, Diagnostics> {
+    lower_internal(program, &[], Some(limits))
+}
+
+fn lower_internal(
+    program: &TypedProgram,
+    imports: &[(String, &crate::compiler::ast::Function)],
+    limits: Option<LoweringLimits>,
+) -> Result<IrProgram, Diagnostics> {
+    let mut budget = Budget::new(limits);
+    lower_with_budget(program, imports, &mut budget)
+}
+
+pub(crate) fn lower_with_budget(
+    program: &TypedProgram,
+    imports: &[(String, &crate::compiler::ast::Function)],
+    budget: &mut Budget,
+) -> Result<IrProgram, Diagnostics> {
     let float_aliases = collect_float_aliases(&program.program);
     let type_facts = TypeFacts::new(&program.program, imports);
     let float_struct_fields = collect_float_struct_fields(&program.program, &float_aliases);
@@ -142,10 +175,12 @@ pub(crate) fn lower_with_imports(
     for function in &program.program.functions {
         functions.push(lower_function(
             function,
+            &function.name,
             &float_aliases,
             &type_facts,
             &float_struct_fields,
-        ));
+            budget,
+        )?);
     }
     for module in &program.program.modules {
         for function in &module.functions {
@@ -155,10 +190,11 @@ pub(crate) fn lower_with_imports(
                 &float_aliases,
                 &type_facts,
                 &float_struct_fields,
-            ));
+                budget,
+            )?);
         }
     }
-    IrProgram { functions }
+    Ok(IrProgram { functions })
 }
 
 fn collect_float_struct_fields(
@@ -266,18 +302,31 @@ fn lower_namespaced_function(
     float_aliases: &HashSet<String>,
     type_facts: &TypeFacts,
     float_struct_fields: &HashMap<String, HashSet<String>>,
-) -> IrFunction {
-    let mut lowered = lower_function(function, float_aliases, type_facts, float_struct_fields);
-    lowered.name = format!("{module_name}::{name}", name = lowered.name);
-    lowered
+    budget: &mut Budget,
+) -> Result<IrFunction, Diagnostics> {
+    let name = format!("{module_name}::{}", function.name);
+    lower_function(
+        function,
+        &name,
+        float_aliases,
+        type_facts,
+        float_struct_fields,
+        budget,
+    )
 }
 
 fn lower_function(
     function: &crate::compiler::ast::Function,
+    lowered_name: &str,
     float_aliases: &HashSet<String>,
     type_facts: &TypeFacts,
     float_struct_fields: &HashMap<String, HashSet<String>>,
-) -> IrFunction {
+    budget: &mut Budget,
+) -> Result<IrFunction, Diagnostics> {
+    let lowered_name = budget.function_name(lowered_name, function.span)?;
+    for parameter in &function.parameters {
+        budget.string(parameter.name.len(), parameter.span)?;
+    }
     let mut locals: HashMap<String, LoweredBinding> = function
         .parameters
         .iter()
@@ -292,16 +341,16 @@ fn lower_function(
         })
         .collect();
     let mut next_shadow_id = 0;
-    let mut instructions = Vec::new();
+    let mut instructions = Instructions::new(budget, function.span);
     for parameter in &function.parameters {
         if parameter
             .type_name
             .as_ref()
             .is_some_and(|name| name == "Float" || float_aliases.contains(name))
         {
-            instructions.push(Instruction::LoadName(parameter.name.clone()));
-            instructions.push(Instruction::WidenFloat);
-            instructions.push(Instruction::StoreName(parameter.name.clone()));
+            instructions.push(Instruction::LoadName(parameter.name.clone()))?;
+            instructions.push(Instruction::WidenFloat)?;
+            instructions.push(Instruction::StoreName(parameter.name.clone()))?;
         }
     }
     for statement in &function.body {
@@ -316,17 +365,17 @@ fn lower_function(
             &mut locals,
             &mut next_shadow_id,
             &mut instructions,
-        );
+        )?;
     }
-    IrFunction {
-        name: function.name.clone(),
+    Ok(IrFunction {
+        name: lowered_name,
         parameters: function
             .parameters
             .iter()
             .map(|parameter| parameter.name.clone())
             .collect(),
-        instructions,
-    }
+        instructions: instructions.finish(),
+    })
 }
 
 #[derive(Clone, Copy)]
@@ -342,8 +391,16 @@ fn lower_statement(
     types: StatementTypes<'_>,
     locals: &mut HashMap<String, LoweredBinding>,
     next_shadow_id: &mut usize,
-    instructions: &mut Vec<Instruction>,
-) {
+    instructions: &mut Instructions<'_>,
+) -> Result<(), Diagnostics> {
+    instructions.span = match statement {
+        Statement::Expression(value) => value.span,
+        Statement::Let { span, .. }
+        | Statement::Assign { span, .. }
+        | Statement::Return { span, .. }
+        | Statement::If { span, .. }
+        | Statement::While { span, .. } => *span,
+    };
     let StatementTypes {
         return_type,
         float_aliases,
@@ -357,14 +414,14 @@ fn lower_statement(
             value,
             ..
         } => {
-            lower_expression(value, locals, type_facts, float_struct_fields, instructions);
+            lower_expression(value, locals, type_facts, float_struct_fields, instructions)?;
             let is_declared_float = is_float_type(type_name.as_deref(), float_aliases);
             let value_type = type_name
                 .as_deref()
                 .map(|name| type_facts.annotation(name))
                 .unwrap_or_else(|| type_facts.expression(value, locals));
             if is_declared_float {
-                instructions.push(Instruction::WidenFloat);
+                instructions.push(Instruction::WidenFloat)?;
             }
             let lowered_name = if locals.contains_key(name) {
                 let lowered_name = format!("\0svr-local-{}", *next_shadow_id);
@@ -380,60 +437,60 @@ fn lower_statement(
                     value_type,
                 },
             );
-            instructions.push(Instruction::StoreName(lowered_name));
+            instructions.push(Instruction::StoreName(lowered_name))?;
         }
         Statement::Assign { target, value, .. } => match &target.kind {
             ExpressionKind::Identifier(name) => {
-                lower_expression(value, locals, type_facts, float_struct_fields, instructions);
+                lower_expression(value, locals, type_facts, float_struct_fields, instructions)?;
                 if let Some(instruction) = locals
                     .get(name)
                     .and_then(|binding| widening_instruction(&binding.value_type))
                 {
-                    instructions.push(instruction);
+                    instructions.push(instruction)?;
                 }
                 instructions.push(Instruction::StoreName(
                     locals
                         .get(name)
                         .map(|binding| binding.name.clone())
                         .unwrap_or_else(|| name.clone()),
-                ));
+                ))?;
             }
             ExpressionKind::Index {
                 target: base,
                 index,
             } => {
-                lower_expression(base, locals, type_facts, float_struct_fields, instructions);
-                lower_expression(index, locals, type_facts, float_struct_fields, instructions);
-                lower_expression(value, locals, type_facts, float_struct_fields, instructions);
+                lower_expression(base, locals, type_facts, float_struct_fields, instructions)?;
+                lower_expression(index, locals, type_facts, float_struct_fields, instructions)?;
+                lower_expression(value, locals, type_facts, float_struct_fields, instructions)?;
                 if let Some(instruction) =
                     widening_instruction(&type_facts.expression(target, locals))
                 {
-                    instructions.push(instruction);
+                    instructions.push(instruction)?;
                 }
-                instructions.push(Instruction::StoreIndex);
+                instructions.push(Instruction::StoreIndex)?;
                 if let ExpressionKind::Identifier(name) = &base.kind {
                     instructions.push(Instruction::StoreName(
                         locals
                             .get(name)
                             .map(|binding| binding.name.clone())
                             .unwrap_or_else(|| name.clone()),
-                    ));
+                    ))?;
                 } else {
-                    instructions.push(Instruction::Pop);
+                    instructions.push(Instruction::Pop)?;
                 }
             }
             _ => {
-                lower_expression(value, locals, type_facts, float_struct_fields, instructions);
+                lower_expression(value, locals, type_facts, float_struct_fields, instructions)?;
             }
         },
         Statement::Return { value, .. } => {
             if let Some(value) = value {
-                lower_expression(value, locals, type_facts, float_struct_fields, instructions);
+                lower_expression(value, locals, type_facts, float_struct_fields, instructions)?;
                 if is_float_type(return_type, float_aliases) {
-                    instructions.push(Instruction::WidenFloat);
+                    instructions.push(Instruction::WidenFloat)?;
                 }
             }
-            instructions.push(Instruction::Return);
+            instructions.push(Instruction::Return)?;
         }
         Statement::If {
             condition,
@@ -447,9 +504,9 @@ fn lower_statement(
                 type_facts,
                 float_struct_fields,
                 instructions,
-            );
+            )?;
             let false_jump = instructions.len();
-            instructions.push(Instruction::JumpIfFalse { target: 0 });
+            instructions.push(Instruction::JumpIfFalse { target: 0 })?;
             let mut then_locals = locals.clone();
             for statement in then_block {
                 lower_statement(
@@ -458,13 +515,13 @@ fn lower_statement(
                     &mut then_locals,
                     next_shadow_id,
                     instructions,
-                );
+                )?;
             }
             if let Some(else_block) = else_block {
                 let end_jump = instructions.len();
-                instructions.push(Instruction::Jump { target: 0 });
+                instructions.push(Instruction::Jump { target: 0 })?;
                 let else_start = instructions.len();
-                instructions[false_jump] = Instruction::JumpIfFalse { target: else_start };
+                instructions.patch_jump(false_jump, else_start);
                 let mut else_locals = locals.clone();
                 for statement in else_block {
                     lower_statement(
@@ -473,15 +530,11 @@ fn lower_statement(
                         &mut else_locals,
                         next_shadow_id,
                         instructions,
-                    );
+                    )?;
                 }
-                instructions[end_jump] = Instruction::Jump {
-                    target: instructions.len(),
-                };
+                instructions.patch_jump(end_jump, instructions.len());
             } else {
-                instructions[false_jump] = Instruction::JumpIfFalse {
-                    target: instructions.len(),
-                };
+                instructions.patch_jump(false_jump, instructions.len());
             }
         }
         Statement::While {
@@ -494,9 +547,9 @@ fn lower_statement(
                 type_facts,
                 float_struct_fields,
                 instructions,
-            );
+            )?;
             let exit_jump = instructions.len();
-            instructions.push(Instruction::JumpIfFalse { target: 0 });
+            instructions.push(Instruction::JumpIfFalse { target: 0 })?;
             let mut loop_locals = locals.clone();
             for statement in body {
                 lower_statement(
@@ -505,12 +558,10 @@ fn lower_statement(
                     &mut loop_locals,
                     next_shadow_id,
                     instructions,
-                );
+                )?;
             }
-            instructions.push(Instruction::Jump { target: loop_start });
-            instructions[exit_jump] = Instruction::JumpIfFalse {
-                target: instructions.len(),
-            };
+            instructions.push(Instruction::Jump { target: loop_start })?;
+            instructions.patch_jump(exit_jump, instructions.len());
         }
         Statement::Expression(expression) => {
             lower_expression(
@@ -519,10 +570,11 @@ fn lower_statement(
                 type_facts,
                 float_struct_fields,
                 instructions,
-            );
-            instructions.push(Instruction::Pop);
+            )?;
+            instructions.push(Instruction::Pop)?;
         }
     }
+    Ok(())
 }
 
 fn lower_expression(
@@ -530,8 +582,8 @@ fn lower_expression(
     locals: &HashMap<String, LoweredBinding>,
     type_facts: &TypeFacts,
     float_struct_fields: &HashMap<String, HashSet<String>>,
-    instructions: &mut Vec<Instruction>,
-) {
+    instructions: &mut Instructions<'_>,
+) -> Result<(), Diagnostics> {
     enum Work<'a> {
         Visit(&'a Expression),
         Emit(Instruction),
@@ -545,71 +597,64 @@ fn lower_expression(
         let expression = match work {
             Work::Visit(expression) => expression,
             Work::Emit(instruction) => {
-                instructions.push(instruction);
+                instructions.push(instruction)?;
                 continue;
             }
             Work::FinishAnd(right) => {
                 let false_jump = instructions.len();
-                instructions.push(Instruction::JumpIfFalse { target: 0 });
+                instructions.push(Instruction::JumpIfFalse { target: 0 })?;
                 pending.push(Work::FinishAndRight { false_jump });
                 pending.push(Work::Visit(right));
                 continue;
             }
             Work::FinishAndRight { false_jump } => {
                 let end_jump = instructions.len();
-                instructions.push(Instruction::Jump { target: 0 });
+                instructions.push(Instruction::Jump { target: 0 })?;
                 let false_target = instructions.len();
-                instructions[false_jump] = Instruction::JumpIfFalse {
-                    target: false_target,
-                };
-                instructions.push(Instruction::LoadLiteral(Literal::Boolean(false)));
-                instructions[end_jump] = Instruction::Jump {
-                    target: instructions.len(),
-                };
+                instructions.patch_jump(false_jump, false_target);
+                instructions.push(Instruction::LoadLiteral(Literal::Boolean(false)))?;
+                instructions.patch_jump(end_jump, instructions.len());
                 continue;
             }
             Work::FinishOr(right) => {
                 let right_target_jump = instructions.len();
-                instructions.push(Instruction::JumpIfFalse { target: 0 });
-                instructions.push(Instruction::LoadLiteral(Literal::Boolean(true)));
+                instructions.push(Instruction::JumpIfFalse { target: 0 })?;
+                instructions.push(Instruction::LoadLiteral(Literal::Boolean(true)))?;
                 let end_jump = instructions.len();
-                instructions.push(Instruction::Jump { target: 0 });
+                instructions.push(Instruction::Jump { target: 0 })?;
                 let right_target = instructions.len();
-                instructions[right_target_jump] = Instruction::JumpIfFalse {
-                    target: right_target,
-                };
+                instructions.patch_jump(right_target_jump, right_target);
                 pending.push(Work::FinishOrRight { end_jump });
                 pending.push(Work::Visit(right));
                 continue;
             }
             Work::FinishOrRight { end_jump } => {
-                instructions[end_jump] = Instruction::Jump {
-                    target: instructions.len(),
-                };
+                instructions.patch_jump(end_jump, instructions.len());
                 continue;
             }
         };
+        instructions.span = expression.span;
         match &expression.kind {
             ExpressionKind::String(value) => {
-                instructions.push(Instruction::LoadLiteral(Literal::String(value.clone())));
+                instructions.push(Instruction::LoadLiteral(Literal::String(value.clone())))?;
             }
             ExpressionKind::Integer(value) => {
-                instructions.push(Instruction::LoadLiteral(Literal::Integer(value.clone())));
+                instructions.push(Instruction::LoadLiteral(Literal::Integer(value.clone())))?;
             }
             ExpressionKind::Float(value) => {
-                instructions.push(Instruction::LoadLiteral(Literal::Float(value.clone())));
+                instructions.push(Instruction::LoadLiteral(Literal::Float(value.clone())))?;
             }
             ExpressionKind::Boolean(value) => {
-                instructions.push(Instruction::LoadLiteral(Literal::Boolean(*value)));
+                instructions.push(Instruction::LoadLiteral(Literal::Boolean(*value)))?;
             }
             ExpressionKind::Identifier(name) => instructions.push(Instruction::LoadName(
                 locals
                     .get(name)
                     .map(|binding| binding.name.clone())
                     .unwrap_or_else(|| name.clone()),
-            )),
+            ))?,
             ExpressionKind::QualifiedName { path } => {
-                instructions.push(Instruction::LoadName(path.join("::")));
+                instructions.push(Instruction::LoadName(path.join("::")))?;
             }
             ExpressionKind::Call { callee, arguments } => {
                 let name = match &callee.kind {
@@ -680,6 +725,7 @@ fn lower_expression(
             }
         }
     }
+    Ok(())
 }
 
 fn widening_instruction(value_type: &ValueType) -> Option<Instruction> {
@@ -696,13 +742,28 @@ fn widening_instruction(value_type: &ValueType) -> Option<Instruction> {
     }
 }
 
-/// Lower a program after semantic analysis.
+/// Check and lower one source unit with approved AST and retained IR ceilings.
 pub fn lower_program(
     program: &Program,
 ) -> Result<IrProgram, crate::compiler::diagnostics::Diagnostics> {
-    crate::compiler::semantic::SemanticAnalyzer::new()
-        .analyze(program)
-        .map(|typed| lower(&typed))
+    lower_program_with_limits(
+        program,
+        crate::compiler::resources::DEFAULT_AST_NODES,
+        LoweringLimits::DEFAULT,
+    )
+}
+
+/// Semantically check and lower one source AST with explicit admission/emission
+/// budgets. Package linking uses separate accounting. Admission happens
+/// after parsing but before semantic cloning; emission failure discards partial IR.
+pub fn lower_program_with_limits(
+    program: &Program,
+    max_ast_nodes: usize,
+    limits: LoweringLimits,
+) -> Result<IrProgram, Diagnostics> {
+    let typed = crate::compiler::semantic::SemanticAnalyzer::new()
+        .analyze_with_node_limit(program, max_ast_nodes)?;
+    lower_with_limits(&typed, limits)
 }
 
 #[cfg(test)]
