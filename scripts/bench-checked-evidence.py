@@ -74,7 +74,7 @@ with tempfile.TemporaryDirectory(prefix='sovra-evidence-bench-') as work:
     path = Path(work) / 'combined-nominal-contexts.svr'
     path.write_text(combined)
     cases.append(('combined-nominal-contexts-16384', 'source', path, sha(combined.encode())))
-    package = ROOT / 'examples/local-packages/app' 
+    package = ROOT / 'examples/local-packages/app'
     package_inputs = [fingerprint(p) for p in sorted((ROOT / 'examples/local-packages').rglob('*')) if p.is_file()]
     report['package_inputs'] = package_inputs
     cases.append(('local-packages', 'package', package, sha(json.dumps(package_inputs, sort_keys=True).encode())))
