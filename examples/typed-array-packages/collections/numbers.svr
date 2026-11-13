@@ -1,0 +1,28 @@
+mod numbers {
+    type Numbers = [Float];
+    export struct Samples { values: Numbers }
+
+    export fn total(values: [Int]) -> Int {
+        let mut index = 0;
+        let mut result = 0;
+        while (index < std::array_len(values)) {
+            result = result + values[index];
+            index = index + 1;
+        }
+        return result;
+    }
+
+    export fn samples(values: [Int]) -> Samples {
+        return Samples { values: values };
+    }
+
+    export fn empty() -> [[Int]] {
+        return [];
+    }
+
+    export fn changed(values: Numbers) -> Numbers {
+        let mut copy: Numbers = values;
+        copy[0] = 9;
+        return copy;
+    }
+}

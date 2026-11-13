@@ -1,0 +1,13 @@
+{
+    "name": "Sovra",
+    "scopeName": "source.sovra",
+    "patterns": [
+        { "name": "comment.line.double-slash.sovra", "match": "//.*$" },
+        { "name": "string.quoted.double.sovra", "begin": "\"", "end": "\"", "patterns": [{ "name": "constant.character.escape.sovra", "match": "\\\\." }] },
+        { "name": "keyword.control.sovra", "match": "\\b(fn|let|mut|return|if|else|while|mod|export|use|import|type|struct)\\b" },
+        { "name": "constant.language.sovra", "match": "\\b(true|false)\\b" },
+        { "name": "support.type.sovra", "match": "\\b(Int|Float|Bool|String|Unit)\\b" },
+        { "name": "constant.numeric.sovra", "match": "\\b[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\\b" },
+        { "name": "entity.name.function.sovra", "match": "\\b[A-Za-z_][A-Za-z0-9_]*(?=\\s*\\()" }
+    ]
+}

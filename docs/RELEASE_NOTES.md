@@ -1,5 +1,11 @@
 # Sovra release notes
 
+Status guide (2026-11-11): dated findings, artifacts and planned-feature lists
+below retain their original checkpoint context. Consult the
+[current maturity audit](LANGUAGE_MATURITY_AUDIT.md) and
+[Windows foundation review](WINDOWS_FOUNDATION_REVIEW.md) for present scope.
+Existing release gates still apply; this note does not approve publication.
+
 Draft for the intended 1.0.0 release; **not ready for publication**.
 The user-approved release scope requires Sovra to build a production-quality
 Task Manager CLI. The current variable-length dogfood application is useful

@@ -24,12 +24,26 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Documentation target checker regressions
+        run: node scripts/test-doc-links.mjs
+      - name: Repository documentation targets
+        run: node scripts/check-doc-links.mjs
       - name: Reject unsafe release archive members
         run: node scripts/test-archive-member-safety.mjs
       - name: Reject unsafe Windows ZIP members before extraction
         if: matrix.os == 'windows-latest'
         shell: powershell
         run: .\scripts\test-windows-archive-safety.ps1
+      - name: Windows installer transaction and rollback
+        if: matrix.os == 'windows-latest'
+        shell: powershell
+        run: .\scripts\test-install-transaction.ps1 -Report target\installer\transaction-verification.json
+      - name: Upload installer transaction evidence
+        if: always() && matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sovra-installer-transactions
+          path: target/installer/transaction-verification.json
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -42,8 +56,41 @@ jobs:
       - run: cargo test --locked --all-targets
       - run: cargo test --locked --doc
       - run: cargo build --locked
-      - name: Source formatter behavior and execution preservation
-        run: node scripts/test-formatter.mjs
+      - name: Documented examples and status classifications
+        run: node scripts/test-example-catalog.mjs
+      - name: Shared UI protocol and transport boundaries
+        run: node scripts/test-ui-protocol.mjs
+      - name: Native responsive component source parity
+        run: node scripts/test-ui-responsive-source.mjs
+      - name: Local editor through real compiler commands
+        run: node scripts/test-editor.mjs
+      - name: Editor workspace import boundaries
+        run: node scripts/test-editor-workspace.mjs
+      - name: Language server through real compiler checks
+        run: node scripts/test-lsp.mjs
+      - name: Package workspace LSP through real compiler overlays
+        run: node scripts/test-lsp-packages.mjs
+      - name: Package task preparation boundaries
+        run: node scripts/test-task-targets.mjs
+      - name: Checked cross-file package navigation
+        run: node scripts/test-lsp-navigation.mjs
+      - name: Opt-in compiler IDE symbol evidence
+        run: node scripts/test-ide-symbols.mjs
+      - name: Relocated developer tools and installed compiler pairing
+        run: node scripts/test-developer-tools.mjs
+      - name: VSIX source identity and archive admission
+        run: node scripts/test-ide-vsix.mjs
+      - name: Formatter evidence failure regressions
+        run: node scripts/test-formatter-qualification.mjs
+      - name: Formatter host qualification
+        run: node scripts/qualify-formatter.mjs
+      - name: Upload formatter host evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sovra-formatter-${{ matrix.os }}
+          path: target/formatter/
+          if-no-files-found: warn
       - name: Sovra language tests and report contract
         run: node scripts/test-language-tests.mjs
       - name: Relocated runtime payload offline native build
@@ -67,7 +114,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Release compiler build failed' }
           node scripts/test-native-build-cli.mjs --compiler target/release/svr.exe
           if ($LASTEXITCODE -ne 0) { throw 'Optimized installed native acceptance failed' }
-          .\scripts\build-windows-toolchain.ps1
+          New-Item -ItemType Directory -Path target\ide -Force | Out-Null
+          $vsix = Join-Path $PWD 'target\ide\sovra-language.vsix'
+          Push-Location toolchain\ide
+          try {
+            npx --yes @vscode/vsce@3.6.2 package --no-dependencies --out $vsix
+            if ($LASTEXITCODE -ne 0) { throw 'VS Code extension packaging failed' }
+          } finally { Pop-Location }
+          .\scripts\build-windows-toolchain.ps1 -IdeExtension $vsix
           .\scripts\test-windows-toolchain.ps1 -Package target\toolchain\sovra-windows.zip
           .\scripts\test-doctor-package.ps1 -Package target\toolchain\sovra-windows
       - name: Native Task Manager executable parity
@@ -192,6 +246,9 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - uses: actions/download-artifact@v4
         with:
           name: sovra-windows-toolchain

@@ -1,8 +1,12 @@
 //! Stable, minimal intermediate representation for M10 and later backends.
 
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 mod budget;
+mod checked_facts;
 mod type_facts;
 pub(crate) use budget::Budget;
 use budget::Instructions;
@@ -154,6 +158,65 @@ pub fn lower_with_limits(
     lower_internal(program, &[], Some(limits))
 }
 
+/// Checked lowering requires explicit complete lowering-ready metadata.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CheckedLoweringError {
+    /// Snapshot was built without the required types/uses/context records.
+    EvidenceUnavailable,
+    /// Existing E3021/E3022 emission diagnostics; no partial IR is returned.
+    Emission(Diagnostics),
+}
+
+impl std::fmt::Display for CheckedLoweringError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EvidenceUnavailable => {
+                formatter.write_str("checked lowering evidence unavailable")
+            }
+            Self::Emission(errors) => write!(
+                formatter,
+                "IR emission failed with {} diagnostics",
+                errors.items.len()
+            ),
+        }
+    }
+}
+
+impl std::error::Error for CheckedLoweringError {}
+
+/// Lower an immutable standalone snapshot using retained types, resolved targets
+/// and contextual facts. No rechecking, type reconstruction or partial fallback.
+/// Use CheckedUnit::from_source_for_lowering or from_program_for_lowering first.
+/// Legacy lowering APIs and normal CLI/package paths retain their current behavior.
+pub fn lower_checked(
+    unit: &crate::compiler::checked::CheckedUnit,
+    limits: LoweringLimits,
+) -> Result<IrProgram, CheckedLoweringError> {
+    let mut budget = Budget::new(Some(limits));
+    lower_checked_with_budget(unit, &mut budget)
+}
+
+pub(crate) fn lower_checked_with_budget(
+    unit: &crate::compiler::checked::CheckedUnit,
+    budget: &mut Budget,
+) -> Result<IrProgram, CheckedLoweringError> {
+    if !unit
+        .semantic_evidence()
+        .is_some_and(|evidence| evidence.flow().is_some() && evidence.lowering().is_some())
+    {
+        return Err(CheckedLoweringError::EvidenceUnavailable);
+    }
+    let facts = TypeFacts::from_checked(unit);
+    lower_unit(
+        unit.program(),
+        &HashSet::new(),
+        &facts,
+        &HashMap::new(),
+        budget,
+    )
+    .map_err(CheckedLoweringError::Emission)
+}
+
 fn lower_internal(
     program: &TypedProgram,
     imports: &[(String, &crate::compiler::ast::Function)],
@@ -168,28 +231,46 @@ pub(crate) fn lower_with_budget(
     imports: &[(String, &crate::compiler::ast::Function)],
     budget: &mut Budget,
 ) -> Result<IrProgram, Diagnostics> {
-    let float_aliases = collect_float_aliases(&program.program);
+    let aliases = reverse_aliases(&program.program);
+    let float_aliases = collect_float_aliases(&aliases);
     let type_facts = TypeFacts::new(&program.program, imports);
-    let float_struct_fields = collect_float_struct_fields(&program.program, &float_aliases);
+    let float_struct_fields =
+        collect_float_struct_fields(&program.program, &float_aliases, &aliases);
+    lower_unit(
+        &program.program,
+        &float_aliases,
+        &type_facts,
+        &float_struct_fields,
+        budget,
+    )
+}
+
+fn lower_unit(
+    program: &Program,
+    float_aliases: &HashSet<String>,
+    type_facts: &TypeFacts,
+    float_struct_fields: &HashMap<String, Arc<HashSet<String>>>,
+    budget: &mut Budget,
+) -> Result<IrProgram, Diagnostics> {
     let mut functions = Vec::new();
-    for function in &program.program.functions {
+    for function in &program.functions {
         functions.push(lower_function(
             function,
             &function.name,
-            &float_aliases,
-            &type_facts,
-            &float_struct_fields,
+            float_aliases,
+            type_facts,
+            float_struct_fields,
             budget,
         )?);
     }
-    for module in &program.program.modules {
+    for module in &program.modules {
         for function in &module.functions {
             functions.push(lower_namespaced_function(
                 &module.name,
                 function,
-                &float_aliases,
-                &type_facts,
-                &float_struct_fields,
+                float_aliases,
+                type_facts,
+                float_struct_fields,
                 budget,
             )?);
         }
@@ -200,7 +281,8 @@ pub(crate) fn lower_with_budget(
 fn collect_float_struct_fields(
     program: &Program,
     float_aliases: &HashSet<String>,
-) -> HashMap<String, HashSet<String>> {
+    aliases: &HashMap<String, Vec<String>>,
+) -> HashMap<String, Arc<HashSet<String>>> {
     let mut structs = HashMap::new();
     for declaration in &program.struct_declarations {
         let fields = declaration
@@ -209,7 +291,7 @@ fn collect_float_struct_fields(
             .filter(|field| is_float_type(Some(&field.type_name), float_aliases))
             .map(|field| field.name.clone())
             .collect();
-        structs.insert(declaration.name.clone(), fields);
+        structs.insert(declaration.name.clone(), Arc::new(fields));
     }
     for module in &program.modules {
         for declaration in &module.struct_declarations {
@@ -219,33 +301,24 @@ fn collect_float_struct_fields(
                 .filter(|field| is_float_type(Some(&field.type_name), float_aliases))
                 .map(|field| field.name.clone())
                 .collect();
-            structs.insert(format!("{}::{}", module.name, declaration.name), fields);
+            structs.insert(
+                format!("{}::{}", module.name, declaration.name),
+                Arc::new(fields),
+            );
         }
     }
-    // Imported record spellings are aliases to canonical declarations. Preserve
-    // field widening through those aliases as well as ordinary local aliases.
-    loop {
-        let mut changed = false;
-        for (name, target) in program
-            .type_declarations
-            .iter()
-            .map(|decl| (decl.name.clone(), &decl.target))
-            .chain(program.modules.iter().flat_map(|module| {
-                module
-                    .type_declarations
-                    .iter()
-                    .map(move |decl| (format!("{}::{}", module.name, decl.name), &decl.target))
-            }))
-        {
-            if !structs.contains_key(&name) {
-                if let Some(fields) = structs.get(target).cloned() {
-                    structs.insert(name, fields);
-                    changed = true;
+    // Propagate from declarations to their aliases once, sharing immutable
+    // metadata instead of repeatedly scanning chains and cloning every field.
+    let mut pending: Vec<_> = structs.keys().cloned().collect();
+    while let Some(target) = pending.pop() {
+        let fields = Arc::clone(&structs[&target]);
+        if let Some(dependents) = aliases.get(&target) {
+            for name in dependents {
+                if !structs.contains_key(name) {
+                    structs.insert(name.clone(), Arc::clone(&fields));
+                    pending.push(name.clone());
                 }
             }
-        }
-        if !changed {
-            break;
         }
     }
     structs
@@ -255,39 +328,39 @@ fn is_float_type(name: Option<&str>, float_aliases: &HashSet<String>) -> bool {
     name.is_some_and(|name| name == "Float" || float_aliases.contains(name))
 }
 
-fn collect_float_aliases(program: &Program) -> std::collections::HashSet<String> {
-    let mut aliases = std::collections::HashMap::new();
+fn reverse_aliases(program: &Program) -> HashMap<String, Vec<String>> {
+    let mut targets = HashMap::new();
     for declaration in &program.type_declarations {
-        aliases.insert(declaration.name.clone(), declaration.target.clone());
+        targets.insert(declaration.name.clone(), declaration.target.clone());
     }
     for module in &program.modules {
         for declaration in &module.type_declarations {
-            aliases.insert(
+            targets.insert(
                 format!("{}::{}", module.name, declaration.name),
                 declaration.target.clone(),
             );
         }
     }
+    let mut dependents: HashMap<String, Vec<String>> = HashMap::new();
+    for (name, target) in targets {
+        dependents.entry(target).or_default().push(name);
+    }
+    dependents
+}
 
-    let mut float_aliases = std::collections::HashSet::new();
-    for name in aliases.keys() {
-        let mut current = name.as_str();
-        let mut seen = std::collections::HashSet::new();
-        loop {
-            if !seen.insert(current) {
-                break;
-            }
-            match aliases.get(current).map(String::as_str) {
-                Some("Float") => {
-                    float_aliases.insert(name.clone());
-                    break;
+fn collect_float_aliases(aliases: &HashMap<String, Vec<String>>) -> HashSet<String> {
+    let mut result = HashSet::new();
+    let mut pending = vec!["Float".to_owned()];
+    while let Some(target) = pending.pop() {
+        if let Some(dependents) = aliases.get(&target) {
+            for name in dependents {
+                if result.insert(name.clone()) {
+                    pending.push(name.clone());
                 }
-                Some(target) => current = target,
-                None => break,
             }
         }
     }
-    float_aliases
+    result
 }
 
 #[derive(Clone)]
@@ -301,7 +374,7 @@ fn lower_namespaced_function(
     function: &crate::compiler::ast::Function,
     float_aliases: &HashSet<String>,
     type_facts: &TypeFacts,
-    float_struct_fields: &HashMap<String, HashSet<String>>,
+    float_struct_fields: &HashMap<String, Arc<HashSet<String>>>,
     budget: &mut Budget,
 ) -> Result<IrFunction, Diagnostics> {
     let name = format!("{module_name}::{}", function.name);
@@ -320,7 +393,7 @@ fn lower_function(
     lowered_name: &str,
     float_aliases: &HashSet<String>,
     type_facts: &TypeFacts,
-    float_struct_fields: &HashMap<String, HashSet<String>>,
+    float_struct_fields: &HashMap<String, Arc<HashSet<String>>>,
     budget: &mut Budget,
 ) -> Result<IrFunction, Diagnostics> {
     let lowered_name = budget.function_name(lowered_name, function.span)?;
@@ -331,11 +404,12 @@ fn lower_function(
         .parameters
         .iter()
         .map(|parameter| {
+            type_facts.register_parameter(parameter);
             (
                 parameter.name.clone(),
                 LoweredBinding {
                     name: parameter.name.clone(),
-                    value_type: type_facts.annotation(parameter.type_name.as_deref().unwrap_or("")),
+                    value_type: type_facts.parameter_type(parameter),
                 },
             )
         })
@@ -343,22 +417,22 @@ fn lower_function(
     let mut next_shadow_id = 0;
     let mut instructions = Instructions::new(budget, function.span);
     for parameter in &function.parameters {
-        if parameter
-            .type_name
-            .as_ref()
-            .is_some_and(|name| name == "Float" || float_aliases.contains(name))
-        {
+        if let Some(widening) = if type_facts.parameter_is_float(parameter, float_aliases) {
+            Some(Instruction::WidenFloat)
+        } else {
+            widening_instruction(&type_facts.parameter_type(parameter))
+        } {
             instructions.push(Instruction::LoadName(parameter.name.clone()))?;
-            instructions.push(Instruction::WidenFloat)?;
+            instructions.push(widening)?;
             instructions.push(Instruction::StoreName(parameter.name.clone()))?;
         }
     }
+    let return_type = type_facts.function_type(function, float_aliases);
     for statement in &function.body {
         lower_statement(
             statement,
             StatementTypes {
-                return_type: function.return_type.as_deref(),
-                float_aliases,
+                return_type: &return_type,
                 type_facts,
                 float_struct_fields,
             },
@@ -380,10 +454,9 @@ fn lower_function(
 
 #[derive(Clone, Copy)]
 struct StatementTypes<'a> {
-    return_type: Option<&'a str>,
-    float_aliases: &'a HashSet<String>,
+    return_type: &'a ValueType,
     type_facts: &'a TypeFacts,
-    float_struct_fields: &'a HashMap<String, HashSet<String>>,
+    float_struct_fields: &'a HashMap<String, Arc<HashSet<String>>>,
 }
 
 fn lower_statement(
@@ -403,7 +476,6 @@ fn lower_statement(
     };
     let StatementTypes {
         return_type,
-        float_aliases,
         type_facts,
         float_struct_fields,
     } = types;
@@ -415,13 +487,12 @@ fn lower_statement(
             ..
         } => {
             lower_expression(value, locals, type_facts, float_struct_fields, instructions)?;
-            let is_declared_float = is_float_type(type_name.as_deref(), float_aliases);
-            let value_type = type_name
-                .as_deref()
-                .map(|name| type_facts.annotation(name))
-                .unwrap_or_else(|| type_facts.expression(value, locals));
-            if is_declared_float {
-                instructions.push(Instruction::WidenFloat)?;
+            let value_type =
+                type_facts.binding_type(statement, type_name.as_deref(), value, locals);
+            if type_name.is_some() {
+                if let Some(widening) = widening_instruction(&value_type) {
+                    instructions.push(widening)?;
+                }
             }
             let lowered_name = if locals.contains_key(name) {
                 let lowered_name = format!("\0svr-local-{}", *next_shadow_id);
@@ -430,6 +501,7 @@ fn lower_statement(
             } else {
                 name.clone()
             };
+            type_facts.register_binding(statement, &lowered_name);
             locals.insert(
                 name.clone(),
                 LoweredBinding {
@@ -442,17 +514,15 @@ fn lower_statement(
         Statement::Assign { target, value, .. } => match &target.kind {
             ExpressionKind::Identifier(name) => {
                 lower_expression(value, locals, type_facts, float_struct_fields, instructions)?;
-                if let Some(instruction) = locals
-                    .get(name)
-                    .and_then(|binding| widening_instruction(&binding.value_type))
+                if let Some(instruction) = type_facts
+                    .assignment_type(target, name, locals)
+                    .as_ref()
+                    .and_then(widening_instruction)
                 {
                     instructions.push(instruction)?;
                 }
                 instructions.push(Instruction::StoreName(
-                    locals
-                        .get(name)
-                        .map(|binding| binding.name.clone())
-                        .unwrap_or_else(|| name.clone()),
+                    type_facts.value_name(target, name, locals),
                 ))?;
             }
             ExpressionKind::Index {
@@ -470,10 +540,7 @@ fn lower_statement(
                 instructions.push(Instruction::StoreIndex)?;
                 if let ExpressionKind::Identifier(name) = &base.kind {
                     instructions.push(Instruction::StoreName(
-                        locals
-                            .get(name)
-                            .map(|binding| binding.name.clone())
-                            .unwrap_or_else(|| name.clone()),
+                        type_facts.value_name(base, name, locals),
                     ))?;
                 } else {
                     instructions.push(Instruction::Pop)?;
@@ -486,8 +553,8 @@ fn lower_statement(
         Statement::Return { value, .. } => {
             if let Some(value) = value {
                 lower_expression(value, locals, type_facts, float_struct_fields, instructions)?;
-                if is_float_type(return_type, float_aliases) {
-                    instructions.push(Instruction::WidenFloat)?;
+                if let Some(widening) = widening_instruction(return_type) {
+                    instructions.push(widening)?;
                 }
             }
             instructions.push(Instruction::Return)?;
@@ -581,7 +648,7 @@ fn lower_expression(
     expression: &Expression,
     locals: &HashMap<String, LoweredBinding>,
     type_facts: &TypeFacts,
-    float_struct_fields: &HashMap<String, HashSet<String>>,
+    float_struct_fields: &HashMap<String, Arc<HashSet<String>>>,
     instructions: &mut Instructions<'_>,
 ) -> Result<(), Diagnostics> {
     enum Work<'a> {
@@ -648,28 +715,42 @@ fn lower_expression(
                 instructions.push(Instruction::LoadLiteral(Literal::Boolean(*value)))?;
             }
             ExpressionKind::Identifier(name) => instructions.push(Instruction::LoadName(
-                locals
-                    .get(name)
-                    .map(|binding| binding.name.clone())
-                    .unwrap_or_else(|| name.clone()),
+                type_facts.value_name(expression, name, locals),
             ))?,
             ExpressionKind::QualifiedName { path } => {
                 instructions.push(Instruction::LoadName(path.join("::")))?;
             }
             ExpressionKind::Call { callee, arguments } => {
-                let name = match &callee.kind {
-                    ExpressionKind::Identifier(name) => Some(name.clone()),
-                    ExpressionKind::QualifiedName { path } => Some(path.join("::")),
-                    _ => None,
-                };
+                let name = type_facts.call_name(callee);
+                let growth = matches!(
+                    name.as_deref(),
+                    Some("std::array_append" | "std::array_concat")
+                );
+                let append = name.as_deref() == Some("std::array_append");
                 if let Some(name) = name {
                     pending.push(Work::Emit(Instruction::Call {
                         name,
                         arguments: arguments.len(),
                     }));
                 }
-                // LIFO work preserves left-to-right argument evaluation.
-                pending.extend(arguments.iter().rev().map(Work::Visit));
+                // LIFO preserves evaluation order; dependent numeric coercion is
+                // emitted immediately after the second argument, before the call.
+                for (index, argument) in arguments.iter().enumerate().rev() {
+                    if growth && index == 1 {
+                        if let Some(widening) =
+                            widening_instruction(&type_facts.growth_argument_type(
+                                expression,
+                                argument,
+                                &arguments[0],
+                                append,
+                                locals,
+                            ))
+                        {
+                            pending.push(Work::Emit(widening));
+                        }
+                    }
+                    pending.push(Work::Visit(argument));
+                }
             }
             ExpressionKind::FieldAccess { receiver, field } => {
                 pending.push(Work::Emit(Instruction::LoadField(field.clone())));
@@ -677,13 +758,18 @@ fn lower_expression(
             }
             ExpressionKind::StructLiteral { type_name, fields } => {
                 pending.push(Work::Emit(Instruction::MakeStruct {
-                    type_name: type_facts.canonical_name(type_name).to_owned(),
+                    type_name: type_facts.record_name(expression, type_name),
                     fields: fields.iter().map(|(name, _)| name.clone()).collect(),
                 }));
-                let float_fields = float_struct_fields.get(type_name);
                 for (field_name, value) in fields.iter().rev() {
-                    if float_fields.is_some_and(|names| names.contains(field_name)) {
-                        pending.push(Work::Emit(Instruction::WidenFloat));
+                    if let Some(widening) = widening_instruction(&type_facts.field_type(
+                        expression,
+                        value,
+                        type_name,
+                        field_name,
+                        float_struct_fields,
+                    )) {
+                        pending.push(Work::Emit(widening));
                     }
                     pending.push(Work::Visit(value));
                 }
@@ -769,6 +855,47 @@ pub fn lower_program_with_limits(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn alias_worklists_share_record_metadata_and_ignore_unreachable_cycles() {
+        let mut source = String::from("struct Point { value: Float, other: Int }\n");
+        for index in 0..5000 {
+            let record_target = if index == 4999 {
+                "Point".to_owned()
+            } else {
+                format!("Record{}", index + 1)
+            };
+            let float_target = if index == 4999 {
+                "Float".to_owned()
+            } else {
+                format!("Scalar{}", index + 1)
+            };
+            source.push_str(&format!(
+                "type Record{index} = {record_target}; type Scalar{index} = {float_target};\n"
+            ));
+        }
+        // These helpers are also defensive when trusted-stage callers supply
+        // unvalidated alias metadata; disconnected cycles must terminate.
+        source.push_str("type CycleA = CycleB; type CycleB = CycleA; type Missing = Absent; mod area { type Scalar = Float; type Record = Point; }");
+        let parsed = crate::compiler::parser::Parser::new()
+            .parse_source(&source)
+            .unwrap();
+        let aliases = reverse_aliases(&parsed);
+        let floats = collect_float_aliases(&aliases);
+        assert_eq!(floats.len(), 5001);
+        assert!(floats.contains("Scalar0") && floats.contains("area::Scalar"));
+        assert!(!floats.contains("CycleA") && !floats.contains("Missing"));
+        let records = collect_float_struct_fields(&parsed, &floats, &aliases);
+        assert_eq!(records.len(), 5002);
+        let fields = &records["Point"];
+        assert_eq!(fields.len(), 1);
+        assert!(fields.contains("value"));
+        for index in 0..5000 {
+            assert!(Arc::ptr_eq(fields, &records[&format!("Record{index}")]));
+        }
+        assert!(Arc::ptr_eq(fields, &records["area::Record"]));
+        assert!(!records.contains_key("CycleA") && !records.contains_key("Missing"));
+    }
     use crate::compiler::{parser::Parser, semantic::SemanticAnalyzer};
 
     #[test]

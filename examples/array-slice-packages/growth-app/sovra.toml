@@ -1,0 +1,6 @@
+[project]
+name = "growth-consumer"
+entry = "main.svr"
+
+[dependencies.library]
+path = "../sequences"

@@ -1,0 +1,44 @@
+mod sequences {
+    type Ints = [Int];
+    export struct Sample {
+        value: Int
+    }
+
+    export fn tail(values: Ints) -> Ints {
+        if std::array_len(values) == 0 {
+            return [];
+        }
+        return std::array_slice(values, 1, std::array_len(values));
+    }
+
+    export fn last_sample() -> [Sample] {
+        return std::array_slice([Sample {
+            value: 7
+        }, Sample {
+            value: 9
+        }], 1, 2);
+    }
+
+    export fn keep_positive(values: Ints) -> Ints {
+        let mut output: Ints = [];
+        let mut index = 0;
+        while index < std::array_len(values) {
+            if values[index] > 0 {
+                output = std::array_append(output, values[index]);
+            }
+            index = index + 1;
+        }
+        return output;
+    }
+
+    export fn join_float(left: [Float], right: [Int]) -> [Float] {
+        return std::array_concat(left, right);
+    }
+
+    export fn appended_sample() -> [Sample] {
+        let empty: [Sample] = [];
+        return std::array_append(empty, Sample {
+            value: 7
+        });
+    }
+}

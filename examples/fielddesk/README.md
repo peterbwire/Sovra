@@ -1,5 +1,10 @@
 # Fielddesk
 
+Status: **Proposed application surface, not executable.** The current
+`svr check examples/fielddesk` command performs manifest/wiring checks. The
+`test`/`run` flow under “Idea to App” is future intent, not a verified command
+sequence. For runnable code use the [examples catalog](../README.md).
+
 Fielddesk is the flagship Sovra developer-experience example.
 
 It starts from a product idea and shows how Sovra should describe the complete

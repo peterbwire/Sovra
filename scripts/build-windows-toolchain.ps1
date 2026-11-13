@@ -1,6 +1,7 @@
 param(
     [string]$Binary = 'target\release\svr.exe',
-    [string]$Output = 'target\toolchain\sovra-windows'
+    [string]$Output = 'target\toolchain\sovra-windows',
+    [string]$IdeExtension = ''
 )
 $ErrorActionPreference = 'Stop'
 function Get-PackageSha256([string]$Path) {
@@ -26,7 +27,17 @@ if (Test-Path -LiteralPath $archive) { throw "Archive already exists: $archive" 
 New-Item -ItemType Directory -Path (Join-Path $stage 'bin') -Force | Out-Null
 Copy-Item -LiteralPath $compiler -Destination (Join-Path $stage 'bin\svr.exe')
 Copy-Item -LiteralPath 'toolchain\bin\svr-new.ps1' -Destination (Join-Path $stage 'bin')
+Copy-Item -LiteralPath 'toolchain\bin\svr-editor.ps1' -Destination (Join-Path $stage 'bin')
+$node = Get-Command node -CommandType Application -ErrorAction Stop
+$developerOutput = Join-Path $stage 'developer-tools'
+if ($IdeExtension) {
+    & $node.Source (Join-Path $PSScriptRoot 'build-developer-tools.mjs') $developerOutput ([IO.Path]::GetFullPath($IdeExtension))
+} else {
+    & $node.Source (Join-Path $PSScriptRoot 'build-developer-tools.mjs') $developerOutput
+}
+if ($LASTEXITCODE -ne 0) { throw 'Developer-tools package build failed.' }
 Copy-Item -LiteralPath 'toolchain\install.ps1' -Destination $stage
+Copy-Item -LiteralPath 'toolchain\install-core.ps1','toolchain\rollback.ps1' -Destination $stage
 Copy-Item -LiteralPath 'toolchain\verify-install.ps1' -Destination $stage
 Copy-Item -LiteralPath 'toolchain\templates' -Destination $stage -Recurse
 New-Item -ItemType Directory -Path (Join-Path $stage 'samples\task-manager') -Force | Out-Null

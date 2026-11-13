@@ -7,8 +7,17 @@ use std::process::ExitCode;
 
 use crate::compiler;
 use crate::compiler::check_report::{self, CheckKind};
+use crate::compiler::diagnostics::diagnostic_message;
 use crate::compiler::diagnostics::{Diagnostic, Diagnostics, Severity, Span};
 use crate::project_new;
+
+// Keep CLI-generated error lines printable without changing program output or
+// machine-readable reports. Formatting arguments stream through the escape layer.
+macro_rules! cli_error {
+    ($($arguments:tt)*) => {
+        eprintln!("{}", $crate::compiler::diagnostics::terminal_message(format_args!($($arguments)*)))
+    };
+}
 
 /// The version of the Sovra toolchain exposed by the CLI.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -31,6 +40,7 @@ Commands:
   build            Compile a Sovra source file
   test             Run checked Sovra test functions
   check            Check a Sovra source file or project
+  lock             Generate or verify a local source lock
   doctor           Diagnose toolchain prerequisites without repairs
   fmt              Format a standalone Sovra source file
   repl             Start the Sovra REPL (planned)
@@ -74,21 +84,24 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
             println!("{USAGE}");
             return ExitCode::SUCCESS;
         }
-        eprintln!("svr: unexpected arguments after {command}");
+        cli_error!("svr: unexpected arguments after {command}");
         return ExitCode::from(2);
     }
 
     if matches!(command, "--version" | "-V") {
-        eprintln!("svr: unexpected arguments after {command}");
+        cli_error!("svr: unexpected arguments after {command}");
         return ExitCode::from(2);
     }
 
     if !compiler::is_known_command(command) {
-        eprintln!("svr: unknown command '{command}'");
-        eprintln!("Try 'svr --help' for available commands.");
+        cli_error!("svr: unknown command '{command}'");
+        cli_error!("Try 'svr --help' for available commands.");
         return ExitCode::from(2);
     }
 
+    if command == "lock" {
+        return lock_command(args);
+    }
     if command == "doctor" {
         return crate::doctor::command(args);
     }
@@ -108,17 +121,27 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
             println!("Usage: svr new <path>");
             println!("  Create a console project; the destination must not exist.");
         } else if command == "test" {
-            println!("Usage: svr test [--format human|json] <source.svr|package-directory>");
+            println!(
+                "Usage: svr test [--locked] [--format human|json] <source.svr|package-directory>"
+            );
             println!("  Run root-level parameterless Unit test_ functions; stdin is unavailable.");
         } else if command == "build" {
-            println!("Usage: svr build [--emit ir|js] <source.svr|package-directory>");
+            println!("Usage: svr build [--locked] [--emit ir|js] <source.svr|package-directory>");
             println!("       svr build --emit exe --output PATH <source.svr|package-directory>");
             println!("  exe: host-native output; Rust/Cargo and a host linker are build-time requirements.");
         } else if command == "check" {
-            println!("Usage: svr check [--format human|json] [--service-calls] <source.svr|project-directory>");
+            println!("Usage: svr check [--format human|json] [--service-calls] [--symbols] <source.svr|project-directory>");
+            println!("       svr check --format json --overlays-stdin <package-directory>");
             println!("  --service-calls  Experimental project-only contract checks; incomplete coverage fails.");
+            println!("  --symbols        Opt-in checked symbol/type evidence for successful standalone JSON checks.");
+            println!("  --overlays-stdin Framed unsaved package buffers; requires JSON, never executes or writes source.");
+            println!("  --package-context Resolve canonical entry paths only; JSON, no source validation.");
+            println!("  --locked         Verify sovra.lock; requires --executable-package.");
+            println!("  --executable-package Compile all package sources and linked IR; never execute them.");
         } else {
-            println!("Usage: svr run <source.svr|package-directory> [-- <program-arg>...]");
+            println!(
+                "Usage: svr run [--locked] <source.svr|package-directory> [-- <program-arg>...]"
+            );
         }
         return ExitCode::SUCCESS;
     }
@@ -160,20 +183,40 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
         } else {
             (args, &[][..])
         };
-        let (emit, source_args) = match parse_emit(command, compiler_args) {
+        let locked = compiler_args
+            .iter()
+            .filter(|arg| arg.as_str() == "--locked")
+            .count();
+        if locked > 1 {
+            cli_error!("svr: --locked may appear only once");
+            return ExitCode::from(2);
+        }
+        let compiler_args: Vec<_> = compiler_args
+            .iter()
+            .filter(|arg| arg.as_str() != "--locked")
+            .cloned()
+            .collect();
+        let (emit, source_args) = match parse_emit(command, &compiler_args) {
             Ok(parsed) => parsed,
             Err(message) => {
-                eprintln!("{message}");
+                cli_error!("{message}");
                 return ExitCode::from(2);
             }
         };
         if source_args.len() != 1 {
-            eprintln!("svr: {command} expects exactly one .svr source path");
+            cli_error!("svr: {command} expects exactly one .svr source path");
             return ExitCode::from(2);
         }
         let path = match source_args.first() {
             Some(path) if std::path::Path::new(path).is_dir() => {
-                return match compiler::project::packages::compile(path) {
+                let compiled = if locked == 1 {
+                    compiler::project::packages::compile_locked(Path::new(path))
+                        .map(|package| package.into_ir())
+                        .map_err(|error| error.into_diagnostics())
+                } else {
+                    compiler::project::packages::compile_cli(Path::new(path))
+                };
+                return match compiled {
                     Ok(ir) => execute_ir(command, emit, &ir, program_args),
                     Err(diagnostics) => {
                         print_diagnostics(diagnostics);
@@ -181,9 +224,9 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
                     }
                 };
             }
-            Some(path) if path.ends_with(".svr") => path,
+            Some(path) if path.ends_with(".svr") && locked == 0 => path,
             Some(path) => {
-                eprintln!("svr: source path `{path}` must have a .svr extension");
+                cli_error!("svr: source path `{path}` must have a .svr extension");
                 return ExitCode::from(2);
             }
             None => unreachable!("argument count is validated above"),
@@ -195,7 +238,7 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
                 return ExitCode::from(1);
             }
             Err(compiler::resources::SourceReadError::Io(error)) => {
-                eprintln!("svr: cannot read `{path}`: {error}");
+                cli_error!("svr: cannot read `{path}`: {error}");
                 return ExitCode::from(1);
             }
         };
@@ -203,25 +246,13 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
             Ok(program) => program,
             Err(diagnostics) => {
                 for diagnostic in diagnostics.items {
-                    eprintln!("error[{}]: {}", diagnostic.code, diagnostic.message);
+                    cli_error!("error[{}]: {}", diagnostic.code, diagnostic.message);
                 }
                 return ExitCode::from(1);
             }
         };
-        let typed = match compiler::semantic::SemanticAnalyzer::new().analyze(&program) {
-            Ok(typed) => typed,
-            Err(diagnostics) => {
-                for diagnostic in diagnostics.items {
-                    eprintln!("error[{}]: {}", diagnostic.code, diagnostic.message);
-                }
-                return ExitCode::from(1);
-            }
-        };
-        let ir = match compiler::ir::lower_with_limits(
-            &typed,
-            compiler::resources::LoweringLimits::DEFAULT,
-        ) {
-            Ok(ir) => ir,
+        let (ir, _) = match compiler::compile_program(&program) {
+            Ok(compiled) => compiled,
             Err(diagnostics) => {
                 print_diagnostics(diagnostics);
                 return ExitCode::from(1);
@@ -229,21 +260,22 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
         };
         execute_ir(command, emit, &ir, program_args)
     }
-    eprintln!("{message}.");
-    eprintln!("See docs/roadmap.md for planned functionality.");
+    cli_error!("{message}.");
+    cli_error!("See docs/roadmap.md for planned functionality.");
     ExitCode::from(1)
 }
 
 fn test_command(args: &[String]) -> ExitCode {
     let mut format = "human";
     let mut seen_format = false;
+    let mut locked = false;
     let mut path = None;
     let mut index = 0;
     while index < args.len() {
         let argument = &args[index];
         if argument == "--format" || argument.starts_with("--format=") {
             if seen_format {
-                eprintln!("svr: --format may appear only once");
+                cli_error!("svr: --format may appear only once");
                 return ExitCode::from(2);
             }
             seen_format = true;
@@ -256,28 +288,38 @@ fn test_command(args: &[String]) -> ExitCode {
             match value {
                 Some(value @ ("human" | "json")) => format = value,
                 _ => {
-                    eprintln!("svr: --format expects human or json");
+                    cli_error!("svr: --format expects human or json");
                     return ExitCode::from(2);
                 }
             }
+        } else if argument == "--locked" && !locked {
+            locked = true;
         } else if argument.starts_with('-') {
-            eprintln!("svr: unknown test option `{argument}`");
+            cli_error!("svr: unknown test option `{argument}`");
             return ExitCode::from(2);
         } else if path.replace(argument.as_str()).is_some() {
-            eprintln!("svr: test expects exactly one source or package");
+            cli_error!("svr: test expects exactly one source or package");
             return ExitCode::from(2);
         }
         index += 1;
     }
     let Some(path) = path else {
-        eprintln!("svr: test expects exactly one source or package");
+        cli_error!("svr: test expects exactly one source or package");
         return ExitCode::from(2);
     };
     if !Path::new(path).is_dir() && !path.ends_with(".svr") {
-        eprintln!("svr: test source path must end in .svr");
+        cli_error!("svr: test source path must end in .svr");
         return ExitCode::from(2);
     }
-    let report = compiler::testing::run(path);
+    if locked && !Path::new(path).is_dir() {
+        cli_error!("svr: --locked requires a package directory");
+        return ExitCode::from(2);
+    }
+    let report = if locked {
+        compiler::testing::run_locked(path)
+    } else {
+        compiler::testing::run(path)
+    };
     if format == "json" {
         println!("{}", compiler::testing::render_json(&report));
     } else if report.diagnostics.is_empty() {
@@ -294,18 +336,18 @@ fn test_command(args: &[String]) -> ExitCode {
 
 fn new_command(args: &[String]) -> ExitCode {
     let [argument] = args else {
-        eprintln!("svr: new expects exactly one project path");
+        cli_error!("svr: new expects exactly one project path");
         return ExitCode::from(2);
     };
     if argument.starts_with('-') {
-        eprintln!("svr: new does not accept options; use `svr new <path>`");
+        cli_error!("svr: new does not accept options; use `svr new <path>`");
         return ExitCode::from(2);
     }
     let path = Path::new(argument);
     let name = match project_new::project_name(path) {
         Ok(name) => name,
         Err(message) => {
-            eprintln!("svr: invalid project path `{argument}`: {message}");
+            cli_error!("svr: invalid project path `{argument}`: {message}");
             return ExitCode::from(2);
         }
     };
@@ -315,7 +357,7 @@ fn new_command(args: &[String]) -> ExitCode {
             ExitCode::SUCCESS
         }
         Err(error) => {
-            eprintln!("svr: cannot create project `{}`: {error}", path.display());
+            cli_error!("svr: cannot create project `{}`: {error}", path.display());
             ExitCode::from(1)
         }
     }
@@ -334,7 +376,7 @@ fn execute_ir(
             Emit::Exe(output) => match crate::native_build::build(ir, Path::new(&output)) {
                 Ok(path) => println!("{}", path.display()),
                 Err(error) => {
-                    eprintln!("svr: native build error: {error}");
+                    cli_error!("svr: native build error: {error}");
                     return ExitCode::from(1);
                 }
             },
@@ -345,20 +387,270 @@ fn execute_ir(
     match compiler::interpreter::run_with_host_status(ir, &mut host) {
         Ok(outcome) => ExitCode::from(outcome.exit_code),
         Err(error) => {
-            eprintln!("svr: runtime error: {error}");
+            cli_error!("svr: runtime error: {error}");
             ExitCode::from(1)
         }
     }
 }
 
+fn check_overlays(path: &str) -> ExitCode {
+    use compiler::project::packages;
+    let mut navigation = None;
+    let (request_id, diagnostics) =
+        match packages::read_source_overlay_request(std::io::stdin().lock()) {
+            Err(errors) => (None, errors),
+            Ok(request) => {
+                let result = packages::compile_with_source_navigation(
+                    path,
+                    &request.sources,
+                    packages::SOURCE_OVERLAY_REQUEST_LIMITS,
+                );
+                (
+                    Some(request.request_id),
+                    result
+                        .map(|result| {
+                            navigation = Some(result.navigation);
+                            Diagnostics::new()
+                        })
+                        .unwrap_or_else(|error| error.into_diagnostics()),
+                )
+            }
+        };
+    let (mut report, mut success) = overlay_report(path, request_id, &diagnostics);
+    if success {
+        if let Some(navigation) = navigation {
+            report.pop();
+            report.push_str(",\"package_symbols\":");
+            report.push_str(navigation.as_json());
+            report.push('}');
+        }
+    }
+    if report.len() >= 1024 * 1024 {
+        let errors = overlay_report_limit();
+        (report, success) = overlay_report(path, request_id, &errors);
+    }
+    println!("{report}");
+    if success {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
+}
+
+fn overlay_report_limit() -> Diagnostics {
+    Diagnostics {
+        items: vec![Diagnostic {
+            severity: Severity::Error,
+            code: "E4120",
+            message: "source-overlay report byte allowance exceeded".to_owned(),
+            span: Span {
+                start: 0,
+                end: 0,
+                line: 0,
+                column: 0,
+            },
+            source_file: None,
+        }],
+    }
+}
+
+fn overlay_report(
+    path: &str,
+    request_id: Option<u32>,
+    diagnostics: &Diagnostics,
+) -> (String, bool) {
+    let mut success = diagnostics.is_empty();
+    let mut report = check_report::render(path, Some(CheckKind::Project), diagnostics);
+    // Limit published report bytes independently of input/compiler record quotas.
+    if report.len() > 1024 * 1024 - 128 {
+        success = false;
+        report = check_report::render(path, Some(CheckKind::Project), &overlay_report_limit());
+    }
+    report.pop();
+    let _ = write!(
+        report,
+        ",\"overlay_request\":{{\"schema_version\":1,\"request_id\":{}}}}}",
+        request_id.map_or_else(|| "null".into(), |id| id.to_string())
+    );
+    (report, success)
+}
+
+fn package_context(path: &str) -> ExitCode {
+    let graph = compiler::project::packages::resolve(path);
+    let mut diagnostics = graph.as_ref().err().cloned().unwrap_or_default();
+    let mut context = String::from("null");
+    if let Ok(graph) = graph {
+        let manifests: Vec<_> = graph
+            .packages
+            .keys()
+            .map(|root| root.join("sovra.toml"))
+            .collect();
+        let paths = std::iter::once(graph.root.as_path())
+            .chain(graph.packages.values().map(|p| p.entry.as_path()))
+            .chain(manifests.iter().map(|p| p.as_path()));
+        if paths
+            .clone()
+            .any(|p| p.to_str().map_or(true, |s| s.len() > 4096))
+        {
+            diagnostics = Diagnostics {
+                items: vec![Diagnostic {
+                    severity: Severity::Error,
+                    code: "E4117",
+                    message: "package context paths require bounded UTF-8".to_owned(),
+                    span: Span {
+                        start: 0,
+                        end: 0,
+                        line: 0,
+                        column: 0,
+                    },
+                    source_file: None,
+                }],
+            };
+        } else {
+            context = String::from("{\"schema_version\":1,\"root\":");
+            check_report::push_string(&mut context, graph.root.to_str().unwrap());
+            context.push_str(",\"entries\":[");
+            for (index, package) in graph.packages.values().enumerate() {
+                if index > 0 {
+                    context.push(',');
+                }
+                check_report::push_string(&mut context, package.entry.to_str().unwrap());
+            }
+            context.push_str("],\"manifests\":[");
+            for (index, manifest) in manifests.iter().enumerate() {
+                if index > 0 {
+                    context.push(',');
+                }
+                check_report::push_string(&mut context, manifest.to_str().unwrap());
+            }
+            context.push_str("]}");
+        }
+    }
+    let mut success = diagnostics.is_empty();
+    let mut report = check_report::render(path, Some(CheckKind::Project), &diagnostics);
+    report.pop();
+    report.push_str(",\"scope\":\"package_graph\",\"source_check\":false,\"package_context\":");
+    report.push_str(&context);
+    report.push('}');
+    if report.len() >= 1024 * 1024 {
+        success = false;
+        let errors = Diagnostics {
+            items: vec![Diagnostic {
+                severity: Severity::Error,
+                code: "E4120",
+                message: "package context report byte allowance exceeded".to_owned(),
+                span: Span {
+                    start: 0,
+                    end: 0,
+                    line: 0,
+                    column: 0,
+                },
+                source_file: None,
+            }],
+        };
+        report = check_report::render(path, Some(CheckKind::Project), &errors);
+        report.pop();
+        report.push_str(
+            ",\"scope\":\"package_graph\",\"source_check\":false,\"package_context\":null}",
+        );
+    }
+    println!("{report}");
+    if success {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
+}
+
 fn check_command(args: &[String]) -> ExitCode {
-    let (format, path, service_calls) = match parse_check_args(args) {
+    let CheckArguments {
+        format,
+        path,
+        service_calls,
+        symbols,
+        overlays,
+        context,
+        executable,
+        locked,
+    } = match parse_check_args(args) {
         Ok(parsed) => parsed,
         Err(message) => {
-            eprintln!("{message}");
+            cli_error!("{message}");
             return ExitCode::from(2);
         }
     };
+    if locked && !executable {
+        cli_error!("svr: --locked requires --executable-package");
+        return ExitCode::from(2);
+    }
+    if executable {
+        if context || overlays || symbols || service_calls || Path::new(path).is_file() {
+            cli_error!(
+                "svr: --executable-package requires a package directory without other check modes"
+            );
+            return ExitCode::from(2);
+        }
+        let compiled = if locked {
+            compiler::project::packages::compile_locked(Path::new(path))
+                .map(|_| ())
+                .map_err(|error| error.into_diagnostics())
+        } else {
+            compiler::project::packages::compile_cli(Path::new(path)).map(|_| ())
+        };
+        let diagnostics = compiled
+            .map(|_| Diagnostics::new())
+            .unwrap_or_else(|errors| errors);
+        let success = diagnostics.is_empty();
+        if format == CheckFormat::Json {
+            println!(
+                "{}",
+                check_report::render(path, Some(CheckKind::Project), &diagnostics)
+            );
+        } else if success {
+            println!(
+                "{}",
+                compiler::diagnostics::terminal_message(format_args!(
+                    "checked executable package `{path}`"
+                ))
+            );
+        } else {
+            print_diagnostics(diagnostics);
+        }
+        return if success {
+            ExitCode::SUCCESS
+        } else {
+            ExitCode::from(1)
+        };
+    }
+    if context {
+        if format != CheckFormat::Json
+            || service_calls
+            || symbols
+            || overlays
+            || path.len() > compiler::project::packages::MAX_OVERLAY_PATH_BYTES
+            || Path::new(path).is_file()
+        {
+            cli_error!("svr: --package-context requires JSON and a package directory without other check modes");
+            return ExitCode::from(2);
+        }
+        return package_context(path);
+    }
+    if overlays {
+        if format != CheckFormat::Json
+            || service_calls
+            || symbols
+            || path.len() > compiler::project::packages::MAX_OVERLAY_PATH_BYTES
+            || Path::new(path).is_file()
+        {
+            cli_error!("svr: --overlays-stdin requires --format json and a package directory; it cannot combine with --symbols or --service-calls");
+            return ExitCode::from(2);
+        }
+        return check_overlays(path);
+    }
+    if symbols && (format != CheckFormat::Json || service_calls) {
+        cli_error!("svr: --symbols requires --format json and a standalone source file");
+        return ExitCode::from(2);
+    }
     let metadata = match fs::metadata(path) {
         Ok(metadata) => metadata,
         Err(error) => {
@@ -366,22 +658,30 @@ fn check_command(args: &[String]) -> ExitCode {
                 path,
                 None,
                 format,
-                format!("svr: cannot inspect `{path}`: {error}"),
+                diagnostic_message!("svr: cannot inspect `{path}`: {error}"),
             );
             return ExitCode::from(1);
         }
     };
+    if symbols && metadata.is_dir() {
+        cli_error!("svr: --symbols requires --format json and a standalone source file");
+        return ExitCode::from(2);
+    }
     if metadata.is_dir() {
-        match compiler::project::packages::declares_dependencies(std::path::Path::new(path)) {
-            Ok(true) => {
+        match compiler::project::packages::classify_cli(std::path::Path::new(path)) {
+            Ok(
+                mode @ (compiler::project::packages::CliPackageMode::EntryGraph
+                | compiler::project::packages::CliPackageMode::Registered),
+            ) => {
                 if service_calls {
-                    eprintln!("svr: --service-calls applies to application projects, not executable dependency packages");
+                    cli_error!("svr: --service-calls applies to application projects, not executable packages");
                     return ExitCode::from(2);
                 }
-                let diagnostics = match compiler::project::packages::compile(path) {
-                    Ok(_) => Diagnostics::new(),
-                    Err(diagnostics) => diagnostics,
-                };
+                let diagnostics =
+                    match compiler::project::packages::compile_cli_mode(Path::new(path), mode) {
+                        Ok(_) => Diagnostics::new(),
+                        Err(diagnostics) => diagnostics,
+                    };
                 let success = diagnostics.is_empty();
                 if format == CheckFormat::Json {
                     println!(
@@ -403,7 +703,7 @@ fn check_command(args: &[String]) -> ExitCode {
                 print_check_diagnostics(path, CheckKind::Project, format, diagnostics);
                 return ExitCode::from(1);
             }
-            Ok(false) => {}
+            Ok(compiler::project::packages::CliPackageMode::Application) => {}
         }
         match compiler::project::check_project(path) {
             Ok(project) => {
@@ -456,16 +756,16 @@ fn check_command(args: &[String]) -> ExitCode {
         }
     } else {
         if service_calls {
-            eprintln!("svr: --service-calls requires a project directory");
+            cli_error!("svr: --service-calls requires a project directory");
             return ExitCode::from(2);
         }
-        check_source_file(path, format)
+        check_source_file(path, format, symbols)
     }
 }
 
-fn check_source_file(path: &str, format: CheckFormat) -> ExitCode {
+fn check_source_file(path: &str, format: CheckFormat, symbols: bool) -> ExitCode {
     if !path.ends_with(".svr") {
-        eprintln!("svr: source path `{path}` must have a .svr extension");
+        cli_error!("svr: source path `{path}` must have a .svr extension");
         return ExitCode::from(2);
     }
     let source = match compiler::resources::read_source(std::path::Path::new(path)) {
@@ -479,11 +779,23 @@ fn check_source_file(path: &str, format: CheckFormat) -> ExitCode {
                 path,
                 Some(CheckKind::Source),
                 format,
-                format!("svr: cannot read `{path}`: {error}"),
+                diagnostic_message!("svr: cannot read `{path}`: {error}"),
             );
             return ExitCode::from(1);
         }
     };
+    if symbols {
+        return match compiler::ide_symbols::check(path, &source) {
+            Ok(report) => {
+                println!("{report}");
+                ExitCode::SUCCESS
+            }
+            Err(diagnostics) => {
+                print_check_diagnostics(path, CheckKind::Source, format, diagnostics);
+                ExitCode::from(1)
+            }
+        };
+    }
     let program = match compiler::parser::Parser::new().parse_source(&source) {
         Ok(program) => program,
         Err(diagnostics) => {
@@ -512,8 +824,23 @@ enum CheckFormat {
     Json,
 }
 
-fn parse_check_args(args: &[String]) -> Result<(CheckFormat, &str, bool), String> {
+struct CheckArguments<'a> {
+    format: CheckFormat,
+    path: &'a str,
+    service_calls: bool,
+    symbols: bool,
+    overlays: bool,
+    context: bool,
+    executable: bool,
+    locked: bool,
+}
+fn parse_check_args(args: &[String]) -> Result<CheckArguments<'_>, String> {
     let mut service_calls = false;
+    let mut overlays = false;
+    let mut context = false;
+    let mut executable = false;
+    let mut locked = false;
+    let mut symbols = false;
     let mut format = None;
     let mut path = None;
     let mut positional_only = false;
@@ -521,6 +848,41 @@ fn parse_check_args(args: &[String]) -> Result<(CheckFormat, &str, bool), String
     while let Some(argument) = arguments.next() {
         if !positional_only && argument == "--" {
             positional_only = true;
+            continue;
+        }
+        if !positional_only && argument == "--locked" {
+            if locked {
+                return Err("svr: --locked may appear only once".into());
+            }
+            locked = true;
+            continue;
+        }
+        if !positional_only && argument == "--executable-package" {
+            if executable {
+                return Err("svr: --executable-package may only be specified once".into());
+            }
+            executable = true;
+            continue;
+        }
+        if !positional_only && argument == "--package-context" {
+            if context {
+                return Err("svr: --package-context may only be specified once".into());
+            }
+            context = true;
+            continue;
+        }
+        if !positional_only && argument == "--overlays-stdin" {
+            if overlays {
+                return Err("svr: --overlays-stdin may only be specified once".into());
+            }
+            overlays = true;
+            continue;
+        }
+        if !positional_only && argument == "--symbols" {
+            if symbols {
+                return Err("svr: --symbols may only be specified once".into());
+            }
+            symbols = true;
             continue;
         }
         if !positional_only && argument == "--service-calls" {
@@ -567,7 +929,16 @@ fn parse_check_args(args: &[String]) -> Result<(CheckFormat, &str, bool), String
         }
     }
     let path = path.ok_or("svr: check expects exactly one source path or project directory")?;
-    Ok((format.unwrap_or(CheckFormat::Human), path, service_calls))
+    Ok(CheckArguments {
+        format: format.unwrap_or(CheckFormat::Human),
+        path,
+        service_calls,
+        symbols,
+        overlays,
+        context,
+        executable,
+        locked,
+    })
 }
 
 fn print_check_diagnostics(
@@ -598,7 +969,7 @@ fn print_check_io_error(path: &str, kind: Option<CheckKind>, format: CheckFormat
     }
     .bounded();
     if format == CheckFormat::Human {
-        eprintln!("{}", diagnostic.message);
+        cli_error!("{}", diagnostic.message);
         return;
     }
     let diagnostics = Diagnostics {
@@ -609,19 +980,24 @@ fn print_check_io_error(path: &str, kind: Option<CheckKind>, format: CheckFormat
 
 fn print_diagnostics(diagnostics: compiler::diagnostics::Diagnostics) {
     for diagnostic in diagnostics.items {
-        let file_prefix = diagnostic
-            .source_file
-            .as_deref()
-            .map(|file| format!("{file}:"))
-            .unwrap_or_default();
-        eprintln!(
-            "error[{}] at {}{}:{}: {}",
-            diagnostic.code,
-            file_prefix,
-            diagnostic.span.line + 1,
-            diagnostic.span.column + 1,
-            diagnostic.message
-        );
+        if let Some(file) = diagnostic.source_file.as_deref() {
+            cli_error!(
+                "error[{}] at {}:{}:{}: {}",
+                diagnostic.code,
+                file,
+                diagnostic.span.line + 1,
+                diagnostic.span.column + 1,
+                diagnostic.message
+            );
+        } else {
+            cli_error!(
+                "error[{}] at {}:{}: {}",
+                diagnostic.code,
+                diagnostic.span.line + 1,
+                diagnostic.span.column + 1,
+                diagnostic.message
+            );
+        }
     }
 }
 
@@ -691,5 +1067,79 @@ fn parse_emit_value(value: &str) -> Result<Emit, String> {
         "js" => Ok(Emit::Js),
         "exe" => Ok(Emit::Exe(String::new())),
         _ => Err(format!("svr: unsupported emit target `{value}`")),
+    }
+}
+
+fn lock_command(args: &[String]) -> ExitCode {
+    use compiler::project::packages;
+    if matches!(args, [arg] if arg == "--help" || arg == "-h") {
+        println!("Usage: svr lock [--check] <package-directory>");
+        return ExitCode::SUCCESS;
+    }
+    let mut check = false;
+    let mut path = None;
+    for arg in args {
+        if arg == "--check" && !check {
+            check = true;
+        } else if arg.starts_with('-') || path.replace(arg).is_some() {
+            cli_error!("svr: lock expects [--check] and one package directory");
+            return ExitCode::from(2);
+        }
+    }
+    let Some(path) = path.filter(|path| Path::new(path).is_dir()) else {
+        cli_error!("svr: lock requires a package directory");
+        return ExitCode::from(2);
+    };
+    let result = if check {
+        packages::check_source_lock(Path::new(path))
+    } else {
+        packages::write_source_lock(Path::new(path))
+    };
+    match result {
+        Ok(()) => {
+            println!(
+                "{}",
+                if check {
+                    "source lock verified"
+                } else {
+                    "source lock generated"
+                }
+            );
+            ExitCode::SUCCESS
+        }
+        Err(errors) => {
+            print_diagnostics(errors);
+            ExitCode::from(1)
+        }
+    }
+}
+
+#[cfg(test)]
+mod overlay_report_tests {
+    use super::*;
+    #[test]
+    fn oversized_report_becomes_one_failure_with_correlation_and_null_location() {
+        let diagnostic = Diagnostic {
+            severity: Severity::Error,
+            code: "E3004",
+            message: "x".repeat(4096),
+            span: Span {
+                start: 1,
+                end: 2,
+                line: 0,
+                column: 1,
+            },
+            source_file: Some("p".repeat(4096)),
+        };
+        let errors = Diagnostics {
+            items: vec![diagnostic; 256],
+        };
+        let (report, success) = overlay_report("package", Some(u32::MAX), &errors);
+        assert!(!success);
+        assert!(report.len() < 1024 * 1024);
+        assert!(report.contains("E4120"));
+        assert!(!report.contains("E3004"));
+        assert!(report.contains("\"location\":null"));
+        assert!(report.contains("\"request_id\":4294967295"));
     }
 }

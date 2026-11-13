@@ -30,8 +30,19 @@ try {
         Expect-UiError { ConvertFrom-SovraUiView $bad }
     }
     $valid = @(ConvertFrom-SovraUiView "SVR-UI-1`nheading|Hello <literal>`ninput|save|Text|Save`nbutton|reset|Reset`n")
+    foreach ($invalidUnicode in @([string][char]0xd800, [string][char]0xdc00)) {
+        Expect-UiError { ConvertFrom-SovraUiView ("SVR-UI-1`nheading|" + $invalidUnicode + "`n") }
+    }
     Assert-Ui ($valid.Count -eq 3) 'Valid UI view was rejected.'
     $compilerPath = [IO.Path]::GetFullPath($Compiler)
+    if (Test-Path -LiteralPath $compilerPath -PathType Leaf) {
+        $versionSource = Join-Path $scratch 'wrong-version.svr'
+        $versionState = Join-Path $scratch 'wrong-version-marker.txt'
+        [IO.File]::WriteAllText($versionSource, 'fn main() { if std::arg(0) == "ui-event" { let saved = std::write_text(std::arg(1), "unexpected"); } else { print("SVR-UI-2"); print("heading|Wrong version"); print("button|save|Save"); } }', [Text.UTF8Encoding]::new($false))
+        $wrongVersion = New-SovraUiSession -Program $compilerPath -Source $versionSource -State $versionState -ViewCommand ui-view
+        Expect-UiError { Invoke-SovraUiEvent $wrongVersion 'save' }
+        Assert-Ui (-not (Test-Path -LiteralPath $versionState)) 'Wrong view version permitted an event.'
+    }
     $state = Join-Path $scratch 'task state !.txt'
     if ($TaskProgram) { $session = New-SovraUiSession -Program $TaskProgram -State $state }
     else { $session = New-SovraUiSession -Program $compilerPath -State $state -Source (Join-Path $repository 'dogfood\01-task-manager\main.svr') }

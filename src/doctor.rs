@@ -4,10 +4,11 @@ mod integrity;
 mod probe;
 
 use crate::compiler::{
-    check_report::push_string, interpreter, ir, parser::Parser, semantic::SemanticAnalyzer,
-    stdlib::escape_terminal,
+    check_report::push_string, diagnostics::terminal_message, interpreter, ir, parser::Parser,
+    semantic::SemanticAnalyzer,
 };
 use std::ffi::OsStr;
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
@@ -132,19 +133,20 @@ impl Report {
             env!("CARGO_PKG_VERSION")
         );
         for check in &self.checks {
-            output.push_str(&format!(
-                "{} {}{}: {}\n",
+            let _ = writeln!(
+                output,
+                "{} {}{}: {}",
                 check.status.to_uppercase(),
                 check.id,
                 if check.required { " [required]" } else { "" },
-                escape_terminal(&check.message)
-            ));
+                terminal_message(format_args!("{}", check.message))
+            );
             for value in [check.evidence.as_ref(), check.remediation.as_ref()]
                 .into_iter()
                 .flatten()
             {
                 output.push_str("  ");
-                output.push_str(&escape_terminal(value));
+                let _ = write!(output, "{}", terminal_message(format_args!("{value}")));
                 output.push('\n');
             }
         }
@@ -209,7 +211,7 @@ pub(crate) fn command(args: &[String]) -> ExitCode {
     let (target, json) = match options(args) {
         Ok(options) => options,
         Err(error) => {
-            eprintln!("svr: {}\n{HELP}", escape_terminal(&error));
+            eprintln!("svr: {}\n{HELP}", terminal_message(format_args!("{error}")));
             return ExitCode::from(2);
         }
     };
@@ -487,5 +489,36 @@ mod tests {
         let report = assemble(Target::Interpreter, findings);
         assert!(!report.human().contains('\u{1b}'));
         assert!(report.json().contains("\\u001b"));
+    }
+
+    #[test]
+    fn streamed_report_fields_preserve_human_policy_and_escape_json_controls() {
+        let message: String = (0..=0x1f)
+            .chain(0x7f..=0x9f)
+            .filter_map(char::from_u32)
+            .collect();
+        let evidence = format!("λ{}\\path", "x".repeat(20000));
+        let remediation = "fix\r\n\u{001b}[31m\u{009b}";
+        let report = Report {
+            target: Target::Interpreter,
+            executable: None,
+            checks: vec![Check {
+                id: "sample",
+                required: false,
+                status: "warning",
+                message: message.clone(),
+                evidence: Some(evidence.clone()),
+                remediation: Some(remediation.into()),
+            }],
+        };
+        let escaped = crate::compiler::stdlib::escape_terminal;
+        let expected = format!("Sovra doctor: interpreter (svr {})\nWARNING sample: {}\n  {}\n  {}\nRequired checks passed.\nPrerequisite checks do not certify a build or deployment.\n", env!("CARGO_PKG_VERSION"), escaped(&message), escaped(&evidence), escaped(remediation));
+        assert_eq!(report.human(), expected);
+        let json = report.json();
+        assert!(!json
+            .chars()
+            .any(|character| character <= '\u{001f}'
+                || ('\u{007f}'..='\u{009f}').contains(&character)));
+        assert!(json.contains("\\u009b"));
     }
 }

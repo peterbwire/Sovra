@@ -16,7 +16,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
 
 The default installation is `$env:LOCALAPPDATA\Programs\Sovra`. Installation
 checks package integrity, refuses an existing destination and adds `bin` to your
-user PATH. Open a new PowerShell window afterward:
+user PATH. Explicit `-Upgrade` and receipt-checked rollback are now available;
+see [the toolchain instructions](../../toolchain/README.md) for their scope and
+remaining Windows qualification. Open a new PowerShell window afterward:
 
 ```powershell
 svr --version

@@ -16,9 +16,21 @@ pub(super) struct Records {
     >,
 }
 
+#[derive(Debug)]
+pub(super) struct SnapshotInspection {
+    pub files: Vec<FileInspection>,
+    pub signatures: service_types::ServiceSignatures,
+    pub sources: BTreeMap<PathBuf, Result<String, String>>,
+}
+
 pub(super) fn inspect(
     project: &ProjectCheck,
 ) -> (Vec<FileInspection>, service_types::ServiceSignatures) {
+    let inspected = inspect_snapshot(project);
+    (inspected.files, inspected.signatures)
+}
+
+pub(super) fn inspect_snapshot(project: &ProjectCheck) -> SnapshotInspection {
     let sources: BTreeMap<_, _> = project
         .source_files
         .iter()
@@ -149,5 +161,9 @@ pub(super) fn inspect(
             file
         })
         .collect();
-    (files, signatures)
+    SnapshotInspection {
+        files,
+        signatures,
+        sources,
+    }
 }

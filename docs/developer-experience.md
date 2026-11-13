@@ -1,5 +1,11 @@
 # Sovra Developer Experience
 
+**Product direction, not a runnable tutorial.** The integrated Fielddesk workflow
+and application features below are aspirational; checking its wiring does not
+make it executable. Use [getting started](course/getting-started.md) and the
+[contribution quickstart](../CONTRIBUTING.md) for implemented commands, and the
+[maturity audit](LANGUAGE_MATURITY_AUDIT.md) for actual capability boundaries.
+
 Sovra is designed for building full applications in one coherent language.
 It should feel simple to read, safe to change, fast to run, and structured
 enough that AI agents can inspect a project without guessing where behavior

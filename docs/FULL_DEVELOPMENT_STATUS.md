@@ -1,5 +1,33 @@
 # Full development status
 
+Current status index (2026-11-11): use the
+[repository maturity audit](LANGUAGE_MATURITY_AUDIT.md) for the present capability
+map and prioritized remaining steps. This document retains dated implementation
+history; older “pending/planned” statements are not all current limitations.
+
+Local IDE follow-up (2026-11-11): checked `--symbols` reports additionally expose
+parameter/local identities and variable references. LSP/VS Code 0.3.0 supports
+their hover and same-file definitions through nested scopes and shadowing.
+Hover preserves explicit annotations; unannotated locals state that inferred
+types are unavailable. Type/field navigation, semantic completion and package
+root loading remain planned. Existing function outlines stay function-only.
+
+Function IDE follow-up (2026-11-11): checked standalone source now provides
+opt-in bounded function declarations/call references through `check --symbols`
+JSON. LSP/VS Code use it for function hover, same-file navigation and outlines,
+with registry signatures for builtin calls. No evidence is returned for invalid
+source or stale versions. Local-variable/type/field navigation and semantic
+completion remain planned. This adds no source syntax or package-root checking.
+
+IDE checkpoint (2026-11-11): an experimental stdio LSP adapter and VS Code
+extension under `toolchain/ide/` reuse Rust compiler JSON checks for unsaved
+standalone buffers. Implemented diagnostics, UTF-16 ranges, basic keyword/type
+suggestions, syntax highlighting and explicit check/build/run tasks. Standard
+LSP connection guidance covers Neovim/Eglot; those hosts and dedicated JetBrains/
+Visual Studio integrations remain unverified/unimplemented. Semantic completion,
+hover, definition/references, package-root loading and browser-editor LSP wiring
+remain planned. See the IDE README for limits and verification.
+
 Record aliases (2026-10-24): constructors now retain the canonical declaration's
 runtime identity instead of the alias spelling. Direct, chained and module-local
 aliases compare equal to the same underlying record, including inside arrays.

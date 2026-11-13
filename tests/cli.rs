@@ -4,6 +4,63 @@ use std::io;
 use std::process::{Command, Output};
 
 #[test]
+fn package_commands_enforce_interface_string_default() {
+    let root = std::env::temp_dir().join(format!(
+        "svr-interface-strings-default-{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(root.join("app")).unwrap();
+    std::fs::create_dir_all(root.join("lib")).unwrap();
+    std::fs::write(
+        root.join("app/sovra.toml"),
+        "[project]\nname = \"app\"\nentry = \"main.svr\"\n[dependencies.a]\npath = \"../lib\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("lib/sovra.toml"),
+        "[project]\nname = \"lib\"\nentry = \"main.svr\"\n",
+    )
+    .unwrap();
+    let name = format!("f{}", "x".repeat(1019));
+    std::fs::write(
+        root.join("lib/main.svr"),
+        format!("mod api {{ export fn {name}() {{}} }}"),
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("app/main.svr"),
+        format!(
+            "{} fn main() {{ print(42); }}",
+            "use a::api;\n".repeat(65536)
+        ),
+    )
+    .unwrap();
+    for args in [
+        vec!["check"],
+        vec!["check", "--format", "json"],
+        vec!["run"],
+        vec!["build"],
+        vec!["test"],
+    ] {
+        let Some(output) = output_or_skip(svr().args(&args).arg(root.join("app"))) else {
+            std::fs::remove_dir_all(root).unwrap();
+            return;
+        };
+        assert_eq!(output.status.code(), Some(1), "{args:?}: {output:?}");
+        let combined = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(combined.contains("E3024"), "{args:?}: {combined}");
+        assert!(!String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .any(|line| line == "42"));
+    }
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn package_commands_enforce_approved_interface_default() {
     let root = std::env::temp_dir().join(format!(
         "svr-package-interface-default-{}",
@@ -112,7 +169,7 @@ fn formatter_command_preserves_source_and_validates_modes() {
     assert_eq!(checked.status.code(), Some(1));
     assert!(checked.stdout.is_empty());
     let written = svr().args(["fmt", "--write"]).arg(&path).output().unwrap();
-    if cfg!(windows) {
+    if cfg!(any(windows, target_os = "linux")) {
         assert!(written.status.success(), "{:?}", written);
         assert_eq!(std::fs::read(&path).unwrap(), expected.as_bytes());
         let modified = std::fs::metadata(&path).unwrap().modified().unwrap();
@@ -137,7 +194,7 @@ fn formatter_command_preserves_source_and_validates_modes() {
         .status()
         .unwrap()
         .success());
-    for invalid in ["fn main(){let x=;}", "use library::api; fn main(){}"] {
+    for invalid in ["fn main(){let x=;}", "use library::api fn main(){}"] {
         std::fs::write(&path, invalid).unwrap();
         let result = svr().arg("fmt").arg(&path).output().unwrap();
         assert_eq!(result.status.code(), Some(1));
@@ -1734,6 +1791,93 @@ fn check_json_reports_parameter_diagnostic_location() {
 }
 
 #[test]
+fn unicode_crlf_diagnostics_keep_source_bytes_scalar_columns_and_human_locations() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let directory = std::env::temp_dir().join(format!(
+        "svr-unicode-diagnostic-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&directory).unwrap();
+    let path = directory.join("source-λ-😀.svr");
+    // Keep source CRLF and escapes independent of checkout newline conversion.
+    let source = "// 😀 preface\r\nfn main() {\r\n\tprint(\"e\u{301}😀\\n\"); std::len(42);\r\n\tprint(missing);\r\n}\r\n";
+    std::fs::write(&path, source).unwrap();
+    (|| {
+        let Some(json) = output_or_skip(svr().args(["check", "--format", "json"]).arg(&path))
+        else {
+            return;
+        };
+        assert_eq!(json.status.code(), Some(1));
+        assert_json_report(
+            &json,
+            r#"
+            assert.equal(report.kind, 'source');
+            assert.equal(report.success, false);
+            assert.equal(report.diagnostics.length, 2);
+            const fs = require('node:fs');
+            const bytes = fs.readFileSync(report.target);
+            const source = bytes.toString('utf8');
+            assert.ok(report.target.endsWith('source-λ-😀.svr'));
+            assert.ok(source.includes('\r\n'));
+            const expected = [['E3007', '42', 2], ['E3001', 'missing', 3]];
+            for (const [code, spelling, line] of expected) {
+                const d = report.diagnostics.find(value => value.code === code);
+                const start = bytes.indexOf(Buffer.from(spelling));
+                const sourceLine = source.split('\r\n')[line];
+                const prefix = sourceLine.slice(0, sourceLine.indexOf(spelling));
+                const column = Array.from(prefix).length;
+                assert.deepEqual(d.location, { file: report.target, start,
+                    end: start + Buffer.byteLength(spelling), line, column });
+                assert.equal(bytes.subarray(d.location.start, d.location.end).toString(), spelling);
+                if (code === 'E3007') {
+                    assert.notEqual(column, prefix.length); // UTF-16 differs.
+                    assert.notEqual(column, Buffer.byteLength(prefix)); // UTF-8 differs.
+                    assert.ok(prefix.includes('e\u0301😀\\n'));
+                } else {
+                    assert.equal(column, 7); // A tab is one scalar, not a tab stop.
+                }
+            }
+        "#,
+        );
+        let Some(human) = output_or_skip(svr().arg("check").arg(&path)) else {
+            return;
+        };
+        assert_eq!(human.status.code(), Some(1));
+        assert!(human.stdout.is_empty());
+        let stderr = String::from_utf8(human.stderr).unwrap();
+        for (code, spelling, line) in [("E3007", "42", 2), ("E3001", "missing", 3)] {
+            let source_line = source.split("\r\n").nth(line).unwrap();
+            let column = source_line[..source_line.find(spelling).unwrap()]
+                .chars()
+                .count();
+            assert!(
+                stderr.contains(&format!("error[{code}] at {}:{}:", line + 1, column + 1)),
+                "{stderr}"
+            );
+        }
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), source);
+        let valid = source
+            .replace("std::len(42)", "std::len(\"valid\")")
+            .replace("print(missing)", "print(42)");
+        std::fs::write(&path, &valid).unwrap();
+        let Some(checked) = output_or_skip(svr().args(["check", "--format", "json"]).arg(&path))
+        else {
+            return;
+        };
+        assert_eq!(checked.status.code(), Some(0));
+        assert_json_report(
+            &checked,
+            "assert.equal(report.success, true); assert.deepEqual(report.diagnostics, []);",
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), valid);
+    })();
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
 fn check_json_distinguishes_project_validation() {
     let project = format!("{}/examples/fielddesk", env!("CARGO_MANIFEST_DIR"));
     let Some(output) = output_or_skip(svr().args(["check", "--format", "json", &project])) else {
@@ -1762,6 +1906,157 @@ fn check_json_reports_io_errors() {
     };
     assert_eq!(output.status.code(), Some(1));
     assert_json_report(&output, "assert.equal(report.kind, null); assert.equal(report.success, false); assert.equal(report.diagnostics[0].code, 'E0001'); assert.equal(report.diagnostics[0].location, null);");
+}
+
+#[test]
+fn oversized_io_path_messages_keep_json_path_identity_and_previous_clipping() {
+    let path = format!("{}.svr", "x".repeat(20000));
+    let suffix = " [message truncated]";
+    let mut expected = format!("svr: cannot inspect `{path}`");
+    expected.truncate(4096 - suffix.len());
+    expected.push_str(suffix);
+    let Some(human) = output_or_skip(svr().args(["check", &path])) else {
+        return;
+    };
+    assert_eq!(human.status.code(), Some(1));
+    assert!(human.stdout.is_empty());
+    assert_eq!(
+        String::from_utf8(human.stderr).unwrap().trim_end(),
+        expected
+    );
+    let json = svr()
+        .args(["check", "--format", "json", &path])
+        .output()
+        .unwrap();
+    assert_eq!(json.status.code(), Some(1));
+    assert_json_report(&json, &format!("assert.equal(report.target, {path:?}); assert.equal(report.kind, null); assert.equal(report.success, false); assert.equal(report.diagnostics.length, 1); assert.equal(report.diagnostics[0].code, 'E0001'); assert.equal(report.diagnostics[0].location, null); assert.equal(report.diagnostics[0].message, {expected:?});"));
+}
+
+#[test]
+fn human_io_and_argument_diagnostics_escape_terminal_controls_but_json_keeps_target() {
+    let path = "missing-λ-\u{001b}[31mred\r\nFORGED-\u{009b}x\u{007f}.svr";
+    for args in [
+        vec!["check", path],
+        vec!["check", "--format", path],
+        vec![path],
+    ] {
+        let Some(output) = output_or_skip(svr().args(&args)) else {
+            return;
+        };
+        assert!(!output.status.success());
+        let message = String::from_utf8(output.stderr).unwrap();
+        assert!(!message.contains('\u{001b}'), "raw ESC in human diagnostic");
+        assert!(
+            !message.contains('\r')
+                && !message.contains('\u{009b}')
+                && !message.contains('\u{007f}')
+        );
+        assert_eq!(message.lines().count(), if args.len() == 1 { 2 } else { 1 });
+        assert!(
+            message.contains("\\u{001B}")
+                && message.contains("\\u{000D}")
+                && message.contains("\\u{000A}")
+        );
+        assert!(message.contains('λ'));
+    }
+    let json = svr()
+        .args(["check", "--format", "json", path])
+        .output()
+        .unwrap();
+    assert_eq!(json.status.code(), Some(1));
+    assert!(!String::from_utf8_lossy(&json.stdout)
+        .chars()
+        .any(|character| ('\u{007f}'..='\u{009f}').contains(&character)));
+    assert_json_report(&json, &format!("assert.equal(report.target, {path:?}); assert.equal(report.diagnostics[0].code, 'E0001'); assert.equal(report.diagnostics[0].location, null); assert.ok(report.diagnostics[0].message.includes({path:?}));"));
+}
+
+#[test]
+fn delegated_formatter_and_doctor_errors_preserve_help_and_escape_controls() {
+    let argument = "--bad-λ-\u{001b}[31m\r\nFORGED-\u{009b}\u{007f}";
+    for command in ["fmt", "doctor"] {
+        let Some(output) = output_or_skip(svr().args([command, argument])) else {
+            return;
+        };
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
+        let error = String::from_utf8(output.stderr).unwrap();
+        assert!(!error
+            .chars()
+            .any(|character| (character <= '\u{001f}' && character != '\n')
+                || ('\u{007f}'..='\u{009f}').contains(&character)));
+        assert!(error.contains(&format!("Usage: svr {command}")));
+        let first = error.lines().next().unwrap();
+        assert!(
+            first.contains("\\u{001B}")
+                && first.contains("\\u{000D}")
+                && first.contains("\\u{000A}")
+        );
+        assert!(first.contains('λ') && first.contains("FORGED"));
+        assert_eq!(
+            error.lines().filter(|line| line.contains("FORGED")).count(),
+            1
+        );
+    }
+}
+
+#[test]
+fn primary_project_cli_enforces_approved_source_byte_limit() {
+    let root = std::env::temp_dir().join(format!("svr-primary-default-cli-{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(
+        root.join("sovra.toml"),
+        "[project]\nname = \"scan\"\nentry = \"main.svr\"\n",
+    )
+    .unwrap();
+    std::fs::write(root.join("main.svr"), vec![b' '; 16 * 1024 * 1024 + 1]).unwrap();
+    for args in [
+        vec!["check"],
+        vec!["check", "--format", "json"],
+        vec!["check", "--service-calls"],
+    ] {
+        let Some(output) = output_or_skip(svr().args(&args).arg(&root)) else {
+            std::fs::remove_dir_all(root).unwrap();
+            return;
+        };
+        assert_eq!(output.status.code(), Some(1));
+        if args.contains(&"json") {
+            assert_json_report(&output, "assert.equal(report.kind, 'project'); assert.equal(report.success, false); assert.equal(report.diagnostics.length, 1); assert.equal(report.diagnostics[0].code, 'E4150'); assert.equal(report.diagnostics[0].location, null);");
+        } else {
+            assert!(output.stdout.is_empty());
+            assert!(String::from_utf8_lossy(&output.stderr).contains("E4150"));
+        }
+    }
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn compiler_human_diagnostics_escape_source_controls_on_check_run_and_build() {
+    let root = std::env::temp_dir().join(format!("svr-terminal-diagnostic-{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    let source = root.join("main.svr");
+    std::fs::write(&source, "fn main() { \u{001b} }").unwrap();
+    for command in ["check", "run", "build"] {
+        let Some(output) = output_or_skip(svr().arg(command).arg(&source)) else {
+            std::fs::remove_dir_all(root).unwrap();
+            return;
+        };
+        assert_eq!(output.status.code(), Some(1));
+        let message = String::from_utf8(output.stderr).unwrap();
+        assert!(message.contains("E1000"));
+        assert!(
+            !message.contains('\u{001b}'),
+            "raw source control in {command} diagnostic"
+        );
+        assert!(message.contains("\\u{001B}"));
+    }
+    // Program output remains under program control; this policy applies only
+    // to diagnostic lines generated by the CLI.
+    std::fs::write(&source, "fn main() { print(\"\u{001b}[31mλ\"); }").unwrap();
+    let output = svr().arg("run").arg(&source).output().unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(String::from_utf8(output.stdout).unwrap(), "\u{001b}[31mλ\n");
+    assert!(output.stderr.is_empty());
+    std::fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
@@ -2438,7 +2733,7 @@ fn build_help_describes_current_usage() {
     assert!(output.status.success());
     assert_eq!(
         String::from_utf8_lossy(&output.stdout).trim(),
-        "Usage: svr build [--emit ir|js] <source.svr|package-directory>\n       svr build --emit exe --output PATH <source.svr|package-directory>\n  exe: host-native output; Rust/Cargo and a host linker are build-time requirements."
+        "Usage: svr build [--locked] [--emit ir|js] <source.svr|package-directory>\n       svr build --emit exe --output PATH <source.svr|package-directory>\n  exe: host-native output; Rust/Cargo and a host linker are build-time requirements."
     );
 }
 
@@ -2450,7 +2745,7 @@ fn check_help_describes_current_usage() {
     assert!(output.status.success());
     assert_eq!(
         String::from_utf8_lossy(&output.stdout).trim(),
-        "Usage: svr check [--format human|json] [--service-calls] <source.svr|project-directory>\n  --service-calls  Experimental project-only contract checks; incomplete coverage fails."
+        "Usage: svr check [--format human|json] [--service-calls] [--symbols] <source.svr|project-directory>\n       svr check --format json --overlays-stdin <package-directory>\n  --service-calls  Experimental project-only contract checks; incomplete coverage fails.\n  --symbols        Opt-in checked symbol/type evidence for successful standalone JSON checks.\n  --overlays-stdin Framed unsaved package buffers; requires JSON, never executes or writes source.\n  --package-context Resolve canonical entry paths only; JSON, no source validation.\n  --locked         Verify sovra.lock; requires --executable-package.\n  --executable-package Compile all package sources and linked IR; never execute them."
     );
 }
 

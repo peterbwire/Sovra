@@ -1,0 +1,6 @@
+[project]
+name = "multi-file-utilities"
+entry = "main.svr"
+
+[modules]
+arithmetic = "arithmetic.svr"

@@ -1,9 +1,40 @@
 # Sovra
 
+Sovra's long-term goal is to power **mobile, desktop, web, server and other
+applications** through a general-purpose language and ecosystem. Android/iOS,
+Windows/macOS/Linux and browser environments are intended targets; support must
+be implemented and verified for each. See the [platform vision](docs/PLATFORM_VISION.md).
+Mobile runtime, UI and packaging support remains planned.
+
+For the current capability map, remaining steps and bounded contributor tasks,
+read the [language maturity audit](docs/LANGUAGE_MATURITY_AUDIT.md). Developers can
+start with the [contribution quickstart](CONTRIBUTING.md); experimental contribution
+readiness and production/platform release readiness are separate gates.
+
 Sovra is a programming language and toolchain for `.svr` applications. Its
 current Rust implementation provides a compiler, interpreter, built-in standard
 library, local package linking, and a Node-targeted JavaScript backend. The
 canonical command is `svr` (`svr.exe` on Windows).
+
+Current work prioritizes compiler/runtime, shared UI and tooling readiness for
+Windows software before further Task Manager enhancements. See the
+[foundation review and remaining gates](docs/WINDOWS_FOUNDATION_REVIEW.md).
+
+An [experimental local editor](toolchain/editor/README.md) now supports source
+editing, clickable compiler diagnostics, IR/JavaScript builds and Run/Stop.
+From a checkout, run `cargo build --locked`, then
+`node toolchain/editor/server.mjs` and open the printed URL. It requires Node.js
+22 or newer. Multi-file drafts and workspace import/export are supported;
+check/build/run target the selected independent source. It executes trusted
+source with your account's permissions. Package linking in the editor and
+language-server integration in this browser editor remain planned.
+
+[IDE integration](toolchain/ide/README.md) now includes an experimental stdio
+language server and VS Code extension: live compiler diagnostics, syntax
+highlighting, basic keyword/type suggestions, checked function hover/navigation/
+outline, parameter/local navigation, and check/build/run commands.
+The server also accepts standard LSP clients such as Neovim and Emacs/Eglot.
+Semantic completion, inferred-type hover and type/field navigation remain planned.
 
 Use `svr doctor` to check installation health and optional tools, or
 `svr doctor --target exe --format json` for native-build prerequisite diagnostics.
@@ -14,7 +45,7 @@ error floods while retaining later independent errors and original source ranges
 Invalid source still fails compilation; the accepted language grammar is unchanged.
 Nested block recovery also retains `else` branches and later statement diagnostics.
 
-**Active focus: Sovra UI powering the Task Manager in a desktop window.**
+**Desktop implementation checkpoint: Sovra UI powering the Task Manager.**
 The private Windows renderer maps Sovra views and events to WPF native controls.
 Task rules and persistence stay in `.svr`; an unrelated component uses the same
 renderer. A compiled C#/WPF adapter now provides a PowerShell-free application
@@ -71,19 +102,24 @@ See [native builds](docs/course/native-builds.md). For automation,
 `svr new <path>` creates a console project with a runnable test.
 `svr test [--format human|json] <source-or-package>` runs root-level Unit test
 functions; see [testing](docs/course/testing.md). `svr fmt [--check | --write] file.svr`
-formats standalone source; write mode is currently enabled on Windows only.
+formats standalone source; write mode is enabled on Windows and Linux.
+Use `svr fmt --package --check DIRECTORY` for graph entries/registered sources and explicit
+`--package --write` to apply changes, including selected dependency sources outside the root.
 See [formatting](docs/reference/formatter.md). `svr install` and `svr update`
-remain reserved. Local packages work without a registry; lockfiles,
-third-party publishing and a language server remain planned.
+remain reserved. Local packages work without a registry; explicit
+[source locks](docs/reference/package-source-locks.md) now support guarded Linux
+locked workflows. Registry downloads,
+third-party publishing and package-registry commands remain planned. Experimental
+LSP/editor integration is available within the scope documented above.
 The [developer tooling plan](docs/DEVELOPER_TOOLS.md) tracks reusable execution
-support and the proposed language test command.
+support and the implemented language test command.
 
 ## Windows developer toolchain
 
 The first toolchain slice packages `svr.exe`, a project template, Task Manager
 CLI source, documentation
 and a PowerShell installer into a ZIP with a SHA-256 checksum. To build and
-smoke-test that package on Windows:
+smoke-test that package on Windows, with Node 22+ available for the package builder:
 
 ```powershell
 cargo build --release
@@ -130,6 +166,8 @@ Start with the [language specification](docs/spec.md),
 [course](docs/course/README.md). Contributors should read
 [CONTRIBUTING.md](CONTRIBUTING.md) and
 [production upgrade flow](docs/production-upgrade-flow.md).
+Use the [example catalog](examples/README.md) to distinguish runnable programs,
+host components, checker-only samples and proposed application syntax.
 
 ## License
 

@@ -42,7 +42,7 @@ pub(super) fn resolve(program: &Program) -> Result<Program, Diagnostics> {
             if Type::from_name_with_known(name, None) != Type::Unknown {
                 diagnostics.push_semantic(diagnostic(
                     "E3008",
-                    format!("duplicate type `{name}`"),
+                    format_args!("duplicate type `{name}`"),
                     span,
                 ));
             }
@@ -51,8 +51,15 @@ pub(super) fn resolve(program: &Program) -> Result<Program, Diagnostics> {
             return Err(diagnostics);
         }
         let qualify = |name: &mut String| {
-            if local_names.contains(name) {
-                *name = format!("{}::{name}", module.name);
+            if let Some((arrays, leaf)) = super::array_parts(name) {
+                if local_names.contains(leaf) {
+                    *name = format!(
+                        "{}{}::{leaf}{}",
+                        "[".repeat(arrays),
+                        module.name,
+                        "]".repeat(arrays)
+                    );
+                }
             }
         };
         for declaration in &mut module.type_declarations {

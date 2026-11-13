@@ -11,8 +11,10 @@ publish reusable Sovra libraries for other projects to consume.
 A library must be an ordinary Sovra package, without needing changes to the
 compiler or Rust-owned builtin registry. Applications and libraries declare
 their dependencies and public API in package metadata and source exports.
-The exact manifest and import spellings require a future design decision;
-examples of proposed syntax must not be presented as accepted syntax today.
+ADR 0010 selects current local path dependency and executable import spelling.
+The user approved the [G12 design](G12_MODULES_AND_LOCKS.md). Opt-in source
+inventory now admits explicit multi-file registrations; compilation and local
+source locks remain planned. Label approved but unimplemented examples clearly.
 
 Resolution proceeds through three separate responsibilities:
 

@@ -1,0 +1,9 @@
+mod geometry {
+    type Scalar = Float;
+    export struct Point { x: Scalar, y: Scalar }
+    type Located = Point;
+    export fn origin() -> Located { return Located { x: 3, y: 4 }; }
+    export fn length_squared(point: Point) -> Scalar {
+        return point.x * point.x + point.y * point.y;
+    }
+}

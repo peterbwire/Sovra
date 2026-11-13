@@ -1,5 +1,63 @@
 # JSON check reports
 
+`check --format json --symbols <source.svr>` opts into checked symbol/type evidence on
+successful standalone checks. Default reports remain unchanged. Failed checks
+omit evidence; absence does not mean the source has no declarations. The option
+requires JSON, rejects directories and cannot combine with `--service-calls`.
+
+The additive `symbols` object contains `declarations`, `references`, and a
+`truncated` boolean. Declarations have qualified `name`, bounded source `signature`
+excerpt, declaration byte `start`/`end` and identifier `name_start`/`name_end`.
+References describe actual AST call targets with byte `start`/`end` and nullable
+`definition` (an index into declarations). Standard-library calls instead have
+null definition and a registry `signature`. They have no invented source file.
+No evidence is inferred from strings/comments or unresolved/invalid source.
+
+Additive `locals` and `local_references` arrays supply checked parameter/local
+identities. Local declarations use the same range/signature fields as functions,
+plus `kind` (`parameter` or `local`). Their references use byte start/end and
+`definition` indices into `locals`, independently of function indices. Branch and
+loop scopes restore outer identities; initializer references precede insertion of
+a shadowing binding. Variable/function namespaces are distinct. Field receivers,
+array targets/indices and assignment targets are visited; field names are omitted.
+Explicit annotations retain their source spelling. Unannotated locals add
+`inferred_type`: a bounded concrete type label or null when inference contains a
+hole or the display budget is exceeded. Concrete signatures read, for example,
+`let count: Int (inferred)` or `let values: Array<Array<Int>> (inferred)`.
+Nominal labels use checked standalone qualification. A null label retains
+`inferred type unavailable` in the signature; it does not invent Any/Unknown as
+a concrete type. Annotated locals and parameters omit `inferred_type`.
+Declarations and reference targets now project the immutable checked snapshot;
+the IDE collector does not repeat name resolution or type inference.
+
+This is partial evidence, not a complete semantic symbol graph: aliases, fields
+and records are omitted. Raw annotation spellings
+remain in source signatures, and module function names retain qualification.
+Each projected declaration/reference table is capped at 8,192 entries and shares
+a 512 KiB report allowance. Source signatures, type labels and local signatures
+are at most 4 KiB, including any ellipsis. `truncated: true` marks omitted records,
+unavailable type display or signature clipping. References to omitted declarations
+are omitted, never redirected to same-spelled outer bindings; included indices
+remain valid. Nested array labels use `Array<T>` and remain subject to the label
+byte allowance, not an extra syntax-depth restriction.
+
+The opt-in collection request uses the existing 250,000-node admission allowance
+for structural/fact/declaration/use/coercion counts, 8,192 interned types and
+512 KiB each for retained nominal names and declaration names. Source admission
+still uses the ordinary frontend limit. If evidence collection exhausts a budget,
+ordinary checking is retried without evidence: source errors still fail normally;
+valid source returns success with empty symbol arrays and both `unavailable: true`
+and `truncated: true`. No partial checked snapshot is projected. These are IDE
+request/projection allowances, not new language acceptance limits or total
+memory/CPU quotas. Default JSON reports and ordinary check/run/build remain
+unchanged. The LSP strictly validates bounded tables, strings, UTF-8 byte ranges,
+definition indices and inferred metadata before using it.
+
+IDE consumer (2026-11-11): `toolchain/ide/language-server/` checks temporary
+standalone snapshots through this existing schema. It maps snapshot diagnostics
+back to the open document URI and converts UTF-8 byte offsets to LSP UTF-16
+positions. This does not change report offsets or add project/package validation.
+
 Default and explicit Rust frontend budget APIs return E1003 for source/token/lexical
 diagnostic exhaustion and E2008 for parser diagnostic exhaustion. These are error
 diagnostics using the existing schema. Pre-tokenization size rejection has no
@@ -31,6 +89,30 @@ parsing messages as complete identifiers/type descriptions. JSON escaping can
 expand serialized length beyond the decoded message limit. Schema version stays
 1 and public raw diagnostic/report construction does not automatically truncate.
 
+Main project/manifest and executable package diagnostics stream formatted text
+into the existing message allowance. Cycle path order, route/page error prefixes,
+Unicode clipping, error codes and source provenance are preserved; the version-one
+schema and decoded message ceiling are unchanged. This does not bound source-file
+identity or JSON escaping.
+CLI I/O failures also use bounded message production while preserving the full
+requested path and null diagnostic location. Language-test configuration messages
+retain their full declaration ranges and existing codes.
+Human CLI error rendering now escapes terminal controls. JSON reports continue
+to preserve original decoded message/target/file values and the version-one
+schema; human escape sequences are not substituted into those structured fields.
+The JSON encoder additionally escapes DEL/C1 (U+007F–009F) with standard JSON
+`\uXXXX` sequences, so those controls are absent as raw scalars from serialized
+string fields. Decoding recovers the original values exactly; only representation
+changes, with schema version 1 retained. Existing C0 short escapes are preserved.
+
+The caller-selected primary-project scan API can report E4150 for discovery/read
+allowance exhaustion. Its message identifies the resource/path; filesystem
+admission errors have a null location instead of invented source offsets. Limited
+scan read failures retain E4009 and stop further reads. Primary project checks
+now enforce the approved ADR 0040 defaults: 16 MiB/source, 64 MiB total, 4,096
+source paths, 4,096 directories and 100,000 yielded entries. Optional body/service
+inspection remains separate; schema version stays 1.
+
 Explicit AST admission and IR emission APIs can return E3020 (syntax-node
 allowance), E3021 (emitted instructions) and E3022 (owned IR string payload bytes).
 These retain source context and use the existing diagnostic schema. Standalone
@@ -45,6 +127,13 @@ from the declaration or consuming import statement. Schema version remains 1;
 package CLI compilation now enforces the approved ADR 0038 defaults: 1,000,000
 AST nodes, 250,000 interface nodes, 4,000,000 linked instructions and 256 MiB
 retained linked string payload. Partial application scanning remains separate.
+
+`packages::compile_with_interface_string_limit` can report E3024 when cumulative
+interface string materialization exceeds a caller-selected byte allowance.
+Imported copies point to the consuming import; local metadata uses declaration
+context. Schema version remains 1. Ordinary executable package compilation and
+its check/run/build/test CLI paths now enforce the approved 128 MiB cumulative
+allowance; the explicit API remains caller-selected (accepted ADR 0039).
 
 Parser declaration recovery reports one E2000 for a contiguous run of unexpected
 declaration tokens, then resumes at the next declaration (or module closing brace).
@@ -299,8 +388,14 @@ assuming stdout contains a report.
 | `message` | Description, JSON-escaped without discarding Unicode or control characters. |
 | `location` | Source location object or null where provenance is unavailable. |
 
-Source locations use byte offsets `[start, end)` and zero-based line and
-Unicode-character column indices. Columns are not UTF-16/LSP offsets.
+Source locations use UTF-8 byte offsets `[start, end)` and zero-based line and
+Unicode-scalar column indices. A supplementary character counts as one scalar,
+a combining mark counts separately, and a tab counts as one rather than an
+expanded terminal tab stop. Positions describe the original source spelling,
+including escape sequences, rather than decoded string contents. CRLF starts
+the next line once. Human diagnostics display one-based line/scalar columns;
+LSP converts byte ranges to UTF-16 code-unit positions. These coordinate systems
+must not be interchanged.
 Source structural-depth rejection reports a single E2007 with the 128-level
 limit and the offending delimiter/operator/call-token location. Excessive
 application depth instead yields E4096 with incomplete per-file coverage when
@@ -385,3 +480,67 @@ Rust diagnostics carry optional `source_file` provenance; stage function
 signatures and the version-one JSON envelope remain unchanged. Serialization
 lives in `src/compiler/check_report.rs`. Related-location notes and richer
 diagnostic rendering remain separate work.
+
+### Explicit checked-evidence exhaustion
+
+Opt-in `EvidenceError::into_diagnostics` and
+`CheckedPackageError::into_diagnostics` use E3025 for structural, retained-source
+or semantic evidence allowance exhaustion. Existing parse, semantic, interface
+and emission diagnostics pass through unchanged. E3025 carries severity `error`
+and a null location: no source byte range or file is invented. The report target
+still identifies the invocation. Inspect a structured package error before
+conversion if its canonical failing entry is needed. Standalone run/build/native emission and language-test compilation now use
+active bounded checked evidence and may return E3025. Plain semantic check and
+the separate IDE evidence unavailability/fallback policy remain unchanged.
+A successful plain check does not guarantee later compilation-budget admission. See [the evidence policy](checked-evidence-policy.md).
+
+Ordinary package compilation (including package check/run/build/test and
+caller-selected source/graph/interface/IR limits) now uses cumulative checked
+metadata defaults and may report E3025 with null location. Explicit legacy package
+lowering is available to compatibility/parity consumers and is not an automatic
+fallback. Structured explicit checked compilation still retains the failing entry
+before diagnostic conversion. Plain standalone semantic check remains separate.
+
+The compiler-only package overlay API can return E4117 for invalid/duplicate
+canonical targets and E4118 for overlay admission limits. These diagnostics have
+null locations. Parse/semantic diagnostics retain canonical entry identity and
+byte offsets into the supplied unsaved buffer. The CLI now supports `--overlays-stdin` with JSON-only package checking;
+[the versioned wire contract](source-overlay-wire.md) defines request IDs, E4119
+framing/admission and E4120 report-size failures. LSP package integration remains
+pending; see [ADR 0042](../adr/0042-unsaved-package-sources.md).
+
+## Package task qualification update
+
+G09 existing-entry package tasks and real VS Code workspace acceptance are now
+Linux-qualified. See [editor package tasks](editor-package-tasks.md) for save
+policy, cancellation and platform limits. `check --executable-package` performs
+full package entry compilation without execution; ordinary directory checks keep
+the partial application scanner. This flag cannot combine with overlay, symbols
+or package-context service modes.
+
+
+The additive Rust [package source-inventory API](package-source-inventory.md)
+uses E4160 for registration/path/identity errors or unavailable host identity
+checks, with manifest-owned locations where available. This API has no new CLI
+mode or JSON schema extension; current CLI compilation still rejects `[modules]`.
+
+The source-unit Rust API additionally uses E4161 for capture/UTF-8/unavailable-host
+errors and E4162 for registered module header/shape mismatches. Existing lexical,
+parser and E3008 duplicate-module errors retain source-owned locations. These
+library outcomes do not add a CLI mode or change the JSON schema.
+
+The additive registered primitive-function compiler uses E4163 for unavailable
+user record interfaces in its scoped mode. Core body/call and existing interface/
+metadata/emission codes retain source ownership. This is a Rust compiler API,
+not a new CLI JSON mode; older executable record behavior is unchanged.
+
+E4164 identifies unavailable nonregistered field contexts in the separate
+registered record Rust API; visible declared record-valued fields are implemented. E3008/E3017 field failures and E4116 private
+interface/field leaks retain provider ownership; construction/call errors retain caller
+locations. No new CLI JSON mode is implied.
+
+Executable CLI checks now route registered graphs through source-owned compilation
+using this same version-one report. Module source errors retain module filenames
+and zero-based locations. Partial scanner success cannot mask registered source
+errors. Context/overlay modes remain explicitly unavailable for registered graphs;
+see the [CLI contract](registered-package-cli.md).
