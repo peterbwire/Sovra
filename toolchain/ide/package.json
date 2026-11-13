@@ -1,0 +1,32 @@
+{
+    "name": "sovra-language",
+    "displayName": "Sovra Language",
+    "description": "Experimental Sovra diagnostics, checked symbol/type hover, navigation, syntax highlighting and basic suggestions",
+    "version": "0.3.0",
+    "publisher": "sovra-local",
+    "license": "MIT OR Apache-2.0",
+    "repository": { "type": "git", "url": "https://github.com/peterbwire/Sovra.git" },
+    "engines": { "vscode": "^1.90.0" },
+    "categories": ["Programming Languages"],
+    "main": "./extension.cjs",
+    "activationEvents": ["onLanguage:sovra", "onCommand:sovra.restartServer"],
+    "capabilities": { "untrustedWorkspaces": { "supported": "limited", "description": "Only syntax highlighting is available until the workspace is trusted." }, "virtualWorkspaces": false },
+    "contributes": {
+        "languages": [{ "id": "sovra", "aliases": ["Sovra", "sovra"], "extensions": [".svr"], "configuration": "./language-configuration.json" }],
+        "grammars": [{ "language": "sovra", "scopeName": "source.sovra", "path": "./syntaxes/sovra.tmLanguage.json" }],
+        "commands": [
+            { "command": "sovra.restartServer", "title": "Sovra: Restart Language Server" },
+            { "command": "sovra.check", "title": "Sovra: Check Current File" },
+            { "command": "sovra.buildIR", "title": "Sovra: Build Current File as IR" },
+            { "command": "sovra.buildJS", "title": "Sovra: Build Current File as JavaScript" },
+            { "command": "sovra.run", "title": "Sovra: Run Current File" }
+        ],
+        "configuration": {
+            "title": "Sovra",
+            "properties": {
+                "sovra.compilerPath": { "type": "string", "default": "svr", "description": "Compiler on PATH or an absolute executable path. Changes require restarting the language server.", "restricted": true },
+                "sovra.nodePath": { "type": "string", "default": "node", "description": "Node.js 22+ on PATH or an absolute executable path for the language server.", "restricted": true }
+            }
+        }
+    }
+}

@@ -1,9 +1,12 @@
 //! Project-level validation for `svr check`.
 
+use crate::compiler::diagnostics::diagnostic_message;
+
 pub mod application;
 mod application_types;
 mod imports;
 pub mod packages;
+mod scan_limits;
 pub mod scope;
 mod service_contract;
 pub mod service_types;
@@ -150,9 +153,29 @@ pub struct AuthPolicy {
     pub models: Vec<String>,
 }
 
-/// Validate a Sovra project directory.
+/// Validate a Sovra project directory with approved primary discovery/read quotas.
 pub fn check_project(path: impl AsRef<Path>) -> Result<ProjectCheck, Diagnostics> {
-    let root = path.as_ref();
+    check_project_internal(
+        path.as_ref(),
+        Some(crate::compiler::resources::ProjectScanLimits::DEFAULT),
+    )
+}
+
+/// Validate primary application-project wiring with explicit discovery/read
+/// quotas. Exhaustion returns E4150 without a successful partial project.
+/// This does not bound optional service/body inspection, metadata or all errors.
+pub fn check_project_with_scan_limits(
+    path: impl AsRef<Path>,
+    limits: crate::compiler::resources::ProjectScanLimits,
+) -> Result<ProjectCheck, Diagnostics> {
+    check_project_internal(path.as_ref(), Some(limits))
+}
+
+fn check_project_internal(
+    root: &Path,
+    limits: Option<crate::compiler::resources::ProjectScanLimits>,
+) -> Result<ProjectCheck, Diagnostics> {
+    let mut budget = scan_limits::Budget::new(limits);
     let manifest_path = root.join(MANIFEST_FILE);
     let manifest = read_manifest(&manifest_path)?;
     let mut parsed = Manifest::parse(&manifest);
@@ -188,7 +211,10 @@ pub fn check_project(path: impl AsRef<Path>) -> Result<ProjectCheck, Diagnostics
     }
     parsed.attach("project", "entry", &mut diagnostics.items[first..]);
 
-    let source_files = collect_source_files(root, &mut diagnostics);
+    let source_files = collect_source_files_with_budget(root, &mut diagnostics, &mut budget);
+    if budget.stopped {
+        return Err(diagnostics);
+    }
     if source_files.is_empty() {
         push_error(
             &mut diagnostics,
@@ -196,7 +222,11 @@ pub fn check_project(path: impl AsRef<Path>) -> Result<ProjectCheck, Diagnostics
             "project does not contain any .svr source files",
         );
     }
-    let source_index = scan_project_sources(&source_files, &entry_path, &mut diagnostics);
+    let source_index =
+        scan_project_sources(&source_files, &entry_path, &mut diagnostics, &mut budget);
+    if budget.stopped {
+        return Err(diagnostics);
+    }
     let imports = validate_imports(root, &source_index.imports, &mut diagnostics);
     validate_services(&parsed, &source_index, &mut diagnostics);
 
@@ -269,7 +299,7 @@ fn read_manifest(path: &Path) -> Result<String, Diagnostics> {
                 diagnostics.push_bounded(Diagnostic {
                     severity: Severity::Error,
                     code: "E4112",
-                    message: format!(
+                    message: diagnostic_message!(
                         "manifest byte limit of {} exceeded",
                         PackageGraphLimits::DEFAULT.max_manifest_bytes
                     ),
@@ -288,7 +318,7 @@ fn read_manifest(path: &Path) -> Result<String, Diagnostics> {
         push_error(
             &mut diagnostics,
             "E4000",
-            format!("cannot read project manifest `{}`: {error}", path.display()),
+            diagnostic_message!("cannot read project manifest `{}`: {error}", path.display()),
         );
         diagnostics
     })
@@ -307,7 +337,7 @@ fn require_manifest_value(
             push_error(
                 diagnostics,
                 "E4001",
-                format!("project manifest requires `{section}.{key}`"),
+                diagnostic_message!("project manifest requires `{section}.{key}`"),
             );
             manifest.attach(section, key, &mut diagnostics.items[first..]);
             None
@@ -336,7 +366,7 @@ fn validate_runtime_target(target: &str, diagnostics: &mut Diagnostics) {
         push_error(
             diagnostics,
             "E4003",
-            format!(
+            diagnostic_message!(
                 "unsupported runtime target `{target}`; expected one of: {}",
                 SUPPORTED_RUNTIME_TARGETS.join(", ")
             ),
@@ -357,7 +387,7 @@ fn validate_entry_path(path: &Path, diagnostics: &mut Diagnostics) {
         push_error(
             diagnostics,
             "E4005",
-            format!("project entry `{}` does not exist", path.display()),
+            diagnostic_message!("project entry `{}` does not exist", path.display()),
         );
     }
 }
@@ -383,11 +413,26 @@ fn resolve_project_path(
     Some(root.join(path))
 }
 
+#[cfg(test)]
 fn collect_source_files(root: &Path, diagnostics: &mut Diagnostics) -> Vec<PathBuf> {
+    collect_source_files_with_budget(root, diagnostics, &mut scan_limits::Budget::new(None))
+}
+
+fn collect_source_files_with_budget(
+    root: &Path,
+    diagnostics: &mut Diagnostics,
+    budget: &mut scan_limits::Budget,
+) -> Vec<PathBuf> {
     let mut files = Vec::new();
+    if !budget.admit(scan_limits::Item::Directory, root, diagnostics) {
+        return files;
+    }
     let mut pending = vec![root.to_path_buf()];
     while let Some(directory) = pending.pop() {
-        collect_source_directory(&directory, &mut pending, &mut files, diagnostics);
+        collect_source_directory(&directory, &mut pending, &mut files, diagnostics, budget);
+        if budget.stopped {
+            break;
+        }
     }
     files.sort();
     files
@@ -398,6 +443,7 @@ fn collect_source_directory(
     pending: &mut Vec<PathBuf>,
     files: &mut Vec<PathBuf>,
     diagnostics: &mut Diagnostics,
+    budget: &mut scan_limits::Budget,
 ) {
     let entries = match fs::read_dir(root) {
         Ok(entries) => entries,
@@ -405,7 +451,7 @@ fn collect_source_directory(
             push_error(
                 diagnostics,
                 "E4006",
-                format!(
+                diagnostic_message!(
                     "cannot read project directory `{}`: {error}",
                     root.display()
                 ),
@@ -415,13 +461,16 @@ fn collect_source_directory(
     };
 
     for entry in entries {
+        if !budget.admit(scan_limits::Item::Entry, root, diagnostics) {
+            return;
+        }
         let entry = match entry {
             Ok(entry) => entry,
             Err(error) => {
                 push_error(
                     diagnostics,
                     "E4006",
-                    format!("cannot read directory entry: {error}"),
+                    diagnostic_message!("cannot read directory entry: {error}"),
                 );
                 continue;
             }
@@ -433,14 +482,20 @@ fn collect_source_directory(
                 push_error(
                     diagnostics,
                     "E4006",
-                    format!("cannot inspect `{}`: {error}", path.display()),
+                    diagnostic_message!("cannot inspect `{}`: {error}", path.display()),
                 );
                 continue;
             }
         };
         if file_type.is_dir() {
+            if !budget.admit(scan_limits::Item::Directory, &path, diagnostics) {
+                return;
+            }
             pending.push(path);
         } else if path.extension().and_then(|extension| extension.to_str()) == Some("svr") {
+            if !budget.admit(scan_limits::Item::File, &path, diagnostics) {
+                return;
+            }
             files.push(path);
         }
     }
@@ -504,22 +559,15 @@ fn scan_project_sources(
     source_files: &[PathBuf],
     entry_path: &Path,
     diagnostics: &mut Diagnostics,
+    budget: &mut scan_limits::Budget,
 ) -> ProjectSourceIndex {
     let mut index = ProjectSourceIndex::default();
     for source_file in source_files {
-        let source = match fs::read_to_string(source_file) {
-            Ok(source) => source,
-            Err(error) => {
-                push_error(
-                    diagnostics,
-                    "E4009",
-                    format!(
-                        "cannot read source file `{}`: {error}",
-                        source_file.display()
-                    ),
-                );
-                continue;
+        let Some(source) = budget.read(source_file, diagnostics) else {
+            if budget.stopped {
+                return index;
             }
+            continue;
         };
         let module_name = source_file
             .file_stem()
@@ -610,7 +658,7 @@ fn scan_source_file(
                     service_contract = Some((name, BTreeSet::new(), declaration_line));
                 } else {
                     push_manifest_error(diagnostics, declaration_line, "E4026",
-                        format!("service `{name}` requires an opening brace before the next declaration"));
+                        diagnostic_message!("service `{name}` requires an opening brace before the next declaration"));
                 }
             }
         }
@@ -632,7 +680,7 @@ fn scan_source_file(
                                     diagnostics,
                                     line_index,
                                     "E4097",
-                                    format!("parameter `{}` in service operation `{service}.{}` requires an explicit type annotation", parameter.name, operation.name),
+                                    diagnostic_message!("parameter `{}` in service operation `{service}.{}` requires an explicit type annotation", parameter.name, operation.name),
                                 );
                             }
                         }
@@ -663,7 +711,7 @@ fn scan_source_file(
                                 diagnostics,
                                 line_index,
                                 "E4025",
-                                format!(
+                                diagnostic_message!(
                                     "duplicate operation `{}` in service `{service}`",
                                     operation.name
                                 ),
@@ -716,7 +764,7 @@ fn scan_source_file(
                     diagnostics,
                     line_index,
                     "E4020",
-                    format!("duplicate service declaration `{name}`"),
+                    diagnostic_message!("duplicate service declaration `{name}`"),
                 );
             }
             index.declared_services.push(location.locate(name));
@@ -789,7 +837,7 @@ fn scan_source_file(
                             diagnostics,
                             line_index,
                             code,
-                            format!("malformed {key} list; expected `{key}: [name, ...]` with identifier items"),
+                            diagnostic_message!("malformed {key} list; expected `{key}: [name, ...]` with identifier items"),
                         ),
                     }
                 }
@@ -858,7 +906,7 @@ fn scan_source_file(
             diagnostics,
             declaration_line,
             "E4026",
-            format!("service `{name}` is missing its opening brace"),
+            diagnostic_message!("service `{name}` is missing its opening brace"),
         );
     }
     if let Some((name, _, declaration_line)) = service_contract {
@@ -866,7 +914,7 @@ fn scan_source_file(
             diagnostics,
             declaration_line,
             "E4026",
-            format!("service `{name}` is missing its closing brace"),
+            diagnostic_message!("service `{name}` is missing its closing brace"),
         );
     }
 }
@@ -950,7 +998,7 @@ fn check_application_parameters(line: &str, line_index: usize, diagnostics: &mut
             Ok(Some(operation)) => {
                 for parameter in operation.declarations {
                     if parameter.annotation.is_none() {
-                        push_manifest_error(diagnostics, line_index, "E4097", format!(
+                        push_manifest_error(diagnostics, line_index, "E4097", diagnostic_message!(
                             "parameter `{}` in {kind} `{name}` requires an explicit type annotation", parameter.name
                         ));
                     }
@@ -960,7 +1008,7 @@ fn check_application_parameters(line: &str, line_index: usize, diagnostics: &mut
                 diagnostics,
                 line_index,
                 "E4098",
-                format!("invalid {kind} signature: {message}"),
+                diagnostic_message!("invalid {kind} signature: {message}"),
             ),
             Ok(None) => {}
         }
@@ -1237,7 +1285,7 @@ fn validate_imports(
                 push_error(
                     diagnostics,
                     "E4092",
-                    format!("import `{module}` resolves outside the project root"),
+                    diagnostic_message!("import `{module}` resolves outside the project root"),
                 );
             }
             (Ok(_), Ok(target)) if target.is_file() => {
@@ -1255,7 +1303,9 @@ fn validate_imports(
             _ => push_error(
                 diagnostics,
                 "E4091",
-                format!("import `{module}` does not resolve to an accessible project source file"),
+                diagnostic_message!(
+                    "import `{module}` does not resolve to an accessible project source file"
+                ),
             ),
         }
         declaration.location.attach(&mut diagnostics.items[first..]);
@@ -1278,7 +1328,7 @@ fn validate_services(
             push_error(
                 diagnostics,
                 "E4017",
-                format!("service binding `{service}` must be a valid identifier"),
+                diagnostic_message!("service binding `{service}` must be a valid identifier"),
             );
         }
         if !source_index
@@ -1289,7 +1339,9 @@ fn validate_services(
             push_error(
                 diagnostics,
                 "E4021",
-                format!("service binding `{service}` has no matching source declaration"),
+                diagnostic_message!(
+                    "service binding `{service}` has no matching source declaration"
+                ),
             );
         }
         manifest.attach("services", service, &mut diagnostics.items[first..]);
@@ -1304,7 +1356,7 @@ fn validate_services(
             push_error(
                 diagnostics,
                 "E4022",
-                format!("service declaration `{service}` has no manifest binding"),
+                diagnostic_message!("service declaration `{service}` has no manifest binding"),
             );
         }
         item.location.attach(&mut diagnostics.items[first..]);
@@ -1323,7 +1375,9 @@ fn validate_services(
             push_error(
                 diagnostics,
                 "E4023",
-                format!("app service `{service}` must be declared and bound in the manifest"),
+                diagnostic_message!(
+                    "app service `{service}` must be declared and bound in the manifest"
+                ),
             );
         }
         item.location.attach(&mut diagnostics.items[first..]);
@@ -1336,43 +1390,89 @@ fn validate_services(
     validate_auth_policies(source_index, diagnostics);
 }
 
+fn validate_route_shape(
+    route: &AppRoute,
+    seen: &mut BTreeSet<(String, String)>,
+    diagnostics: &mut Diagnostics,
+) {
+    if !is_http_method(&route.method) {
+        push_error(
+            diagnostics,
+            "E4030",
+            diagnostic_message!("route method `{}` is not supported", route.method),
+        );
+    }
+    if !route.path.starts_with('/') {
+        push_error(
+            diagnostics,
+            "E4031",
+            diagnostic_message!("route path `{}` must start with `/`", route.path),
+        );
+    }
+    if let Err(message) = validate_public_path(&route.path) {
+        push_error(
+            diagnostics,
+            "E4034",
+            diagnostic_message!("route path {message}"),
+        );
+    }
+    if !seen.insert((route.method.clone(), route.path.clone())) {
+        push_error(
+            diagnostics,
+            "E4032",
+            diagnostic_message!("duplicate route `{} {}`", route.method, route.path),
+        );
+    }
+}
+
+fn validate_page_shape(page: &AppPage, seen: &mut BTreeSet<String>, diagnostics: &mut Diagnostics) {
+    if !page.path.starts_with('/') {
+        push_error(
+            diagnostics,
+            "E4040",
+            diagnostic_message!("page path `{}` must start with `/`", page.path),
+        );
+    }
+    if let Err(message) = validate_public_path(&page.path) {
+        push_error(
+            diagnostics,
+            "E4043",
+            diagnostic_message!("page path {message}"),
+        );
+    }
+    if !seen.insert(page.path.clone()) {
+        push_error(
+            diagnostics,
+            "E4041",
+            diagnostic_message!("duplicate page path `{}`", page.path),
+        );
+    }
+}
+
 fn validate_routes(source_index: &ProjectSourceIndex, diagnostics: &mut Diagnostics) {
     let mut seen = BTreeSet::new();
     for item in &source_index.routes {
         let route = &item.value;
         let first = diagnostics.items.len();
-        if !is_http_method(&route.method) {
-            push_error(
-                diagnostics,
-                "E4030",
-                format!("route method `{}` is not supported", route.method),
-            );
-        }
-        if !route.path.starts_with('/') {
-            push_error(
-                diagnostics,
-                "E4031",
-                format!("route path `{}` must start with `/`", route.path),
-            );
-        }
-        if let Err(message) = validate_public_path(&route.path) {
-            push_error(diagnostics, "E4034", format!("route path {message}"));
-        }
-        if !seen.insert((route.method.clone(), route.path.clone())) {
-            push_error(
-                diagnostics,
-                "E4032",
-                format!("duplicate route `{} {}`", route.method, route.path),
-            );
-        }
+        validate_route_shape(route, &mut seen, diagnostics);
         if !source_index.callable_symbols.contains(&route.target) {
             push_error(
                 diagnostics,
                 "E4033",
-                format!("route target `{}` was not found", route.target),
+                diagnostic_message!("route target `{}` was not found", route.target),
             );
         }
         item.location.attach(&mut diagnostics.items[first..]);
+    }
+}
+
+fn validate_page_target(page: &AppPage, found: bool, diagnostics: &mut Diagnostics) {
+    if !found {
+        push_error(
+            diagnostics,
+            "E4042",
+            diagnostic_message!("page target `{}` was not found", page.target),
+        );
     }
 }
 
@@ -1381,30 +1481,12 @@ fn validate_pages(source_index: &ProjectSourceIndex, diagnostics: &mut Diagnosti
     for item in &source_index.pages {
         let page = &item.value;
         let first = diagnostics.items.len();
-        if !page.path.starts_with('/') {
-            push_error(
-                diagnostics,
-                "E4040",
-                format!("page path `{}` must start with `/`", page.path),
-            );
-        }
-        if let Err(message) = validate_public_path(&page.path) {
-            push_error(diagnostics, "E4043", format!("page path {message}"));
-        }
-        if !seen.insert(page.path.clone()) {
-            push_error(
-                diagnostics,
-                "E4041",
-                format!("duplicate page path `{}`", page.path),
-            );
-        }
-        if !source_index.page_symbols.contains(&page.target) {
-            push_error(
-                diagnostics,
-                "E4042",
-                format!("page target `{}` was not found", page.target),
-            );
-        }
+        validate_page_shape(page, &mut seen, diagnostics);
+        validate_page_target(
+            page,
+            source_index.page_symbols.contains(&page.target),
+            diagnostics,
+        );
         item.location.attach(&mut diagnostics.items[first..]);
     }
 }
@@ -1417,7 +1499,7 @@ fn validate_auth(source_index: &ProjectSourceIndex, diagnostics: &mut Diagnostic
             push_error(
                 diagnostics,
                 "E4052",
-                format!("auth target `{target}` was not found"),
+                diagnostic_message!("auth target `{target}` was not found"),
             );
         }
         item.location.attach(&mut diagnostics.items[first..]);
@@ -1433,17 +1515,47 @@ fn validate_data_models(source_index: &ProjectSourceIndex, diagnostics: &mut Dia
             push_error(
                 diagnostics,
                 "E4061",
-                format!("duplicate app data model `{model}`"),
+                diagnostic_message!("duplicate app data model `{model}`"),
             );
         }
         if !source_index.model_symbols.contains(model) {
             push_error(
                 diagnostics,
                 "E4060",
-                format!("app data model `{model}` was not found"),
+                diagnostic_message!("app data model `{model}` was not found"),
             );
         }
         item.location.attach(&mut diagnostics.items[first..]);
+    }
+}
+
+fn validate_schedule_shape(
+    task: &AppTask,
+    seen: &mut BTreeSet<(String, String)>,
+    diagnostics: &mut Diagnostics,
+) -> bool {
+    let unique = seen.insert((task.schedule.clone(), task.target.clone()));
+    if !unique {
+        push_error(
+            diagnostics,
+            "E4071",
+            diagnostic_message!(
+                "duplicate scheduled task `{}` -> `{}`",
+                task.schedule,
+                task.target
+            ),
+        );
+    }
+    unique
+}
+
+fn validate_schedule_target(task: &AppTask, found: bool, diagnostics: &mut Diagnostics) {
+    if !found {
+        push_error(
+            diagnostics,
+            "E4072",
+            diagnostic_message!("scheduled task target `{}` was not found", task.target),
+        );
     }
 }
 
@@ -1452,24 +1564,23 @@ fn validate_scheduled_tasks(source_index: &ProjectSourceIndex, diagnostics: &mut
     for item in &source_index.scheduled_tasks {
         let task = &item.value;
         let first = diagnostics.items.len();
-        if !seen.insert((task.schedule.clone(), task.target.clone())) {
-            push_error(
-                diagnostics,
-                "E4071",
-                format!(
-                    "duplicate scheduled task `{}` -> `{}`",
-                    task.schedule, task.target
-                ),
-            );
-        }
-        if !source_index.callable_symbols.contains(&task.target) {
-            push_error(
-                diagnostics,
-                "E4072",
-                format!("scheduled task target `{}` was not found", task.target),
-            );
-        }
+        validate_schedule_shape(task, &mut seen, diagnostics);
+        validate_schedule_target(
+            task,
+            source_index.callable_symbols.contains(&task.target),
+            diagnostics,
+        );
         item.location.attach(&mut diagnostics.items[first..]);
+    }
+}
+
+fn validate_policy_model_target(model: &str, found: bool, diagnostics: &mut Diagnostics) {
+    if !found {
+        push_error(
+            diagnostics,
+            "E4081",
+            diagnostic_message!("auth policy model `{model}` was not found"),
+        );
     }
 }
 
@@ -1486,41 +1597,82 @@ fn validate_auth_policies(source_index: &ProjectSourceIndex, diagnostics: &mut D
             push_error(
                 diagnostics,
                 "E4082",
-                format!("duplicate auth policy for role `{}`", policy.role),
+                diagnostic_message!("duplicate auth policy for role `{}`", policy.role),
             );
         }
         for model in &policy.models {
-            if !source_index.model_symbols.contains(model) {
-                push_error(
-                    diagnostics,
-                    "E4081",
-                    format!("auth policy model `{model}` was not found"),
-                );
-            }
+            validate_policy_model_target(
+                model,
+                source_index.model_symbols.contains(model),
+                diagnostics,
+            );
         }
         item.location.attach(&mut diagnostics.items[first..]);
     }
 }
 
-fn validate_public_path(path: &str) -> Result<(), String> {
+#[derive(Debug)]
+enum PathIssue<'a> {
+    Whitespace,
+    TrailingSlash,
+    EmptySegment,
+    Parameter(&'a str),
+}
+
+#[derive(Debug)]
+struct PathProblem<'a> {
+    path: &'a str,
+    issue: PathIssue<'a>,
+}
+
+impl std::fmt::Display for PathProblem<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.issue {
+            PathIssue::Whitespace => write!(formatter, "`{}` cannot contain whitespace", self.path),
+            PathIssue::TrailingSlash => write!(formatter, "`{}` cannot end with `/`", self.path),
+            PathIssue::EmptySegment => write!(
+                formatter,
+                "`{}` cannot contain empty path segments",
+                self.path
+            ),
+            PathIssue::Parameter(parameter) => write!(
+                formatter,
+                "`{}` contains invalid route parameter `:{parameter}`",
+                self.path
+            ),
+        }
+    }
+}
+
+fn validate_public_path(path: &str) -> Result<(), PathProblem<'_>> {
     if path.chars().any(char::is_whitespace) {
-        return Err(format!("`{path}` cannot contain whitespace"));
+        return Err(PathProblem {
+            path,
+            issue: PathIssue::Whitespace,
+        });
     }
     if path == "/" {
         return Ok(());
     }
     if path != "/" && path.ends_with('/') {
-        return Err(format!("`{path}` cannot end with `/`"));
+        return Err(PathProblem {
+            path,
+            issue: PathIssue::TrailingSlash,
+        });
     }
     for segment in path.split('/').skip(1) {
         if segment.is_empty() {
-            return Err(format!("`{path}` cannot contain empty path segments"));
+            return Err(PathProblem {
+                path,
+                issue: PathIssue::EmptySegment,
+            });
         }
         if let Some(parameter) = segment.strip_prefix(':') {
             if !is_identifier(parameter) {
-                return Err(format!(
-                    "`{path}` contains invalid route parameter `:{parameter}`"
-                ));
+                return Err(PathProblem {
+                    path,
+                    issue: PathIssue::Parameter(parameter),
+                });
             }
         }
     }
@@ -1561,6 +1713,14 @@ impl Manifest {
     }
 
     fn parse_mode(source: &str, dependencies: bool) -> Self {
+        Self::parse_options(source, dependencies, false)
+    }
+
+    fn parse_modules(source: &str) -> Self {
+        Self::parse_options(source, true, true)
+    }
+
+    fn parse_options(source: &str, dependencies: bool, modules: bool) -> Self {
         let mut manifest = Self::default();
         let mut current_section: Option<String> = None;
         let mut seen_sections = BTreeSet::new();
@@ -1589,6 +1749,7 @@ impl Manifest {
                     continue;
                 }
                 if !SUPPORTED_SECTIONS.contains(&section)
+                    && !(modules && section == "modules")
                     && !(dependencies
                         && section
                             .strip_prefix("dependencies.")
@@ -1598,7 +1759,7 @@ impl Manifest {
                         &mut manifest.diagnostics,
                         line_index,
                         "E4010",
-                        format!("unknown manifest section `{section}`"),
+                        diagnostic_message!("unknown manifest section `{section}`"),
                     );
                 }
                 if !seen_sections.insert(section.to_owned()) {
@@ -1606,7 +1767,7 @@ impl Manifest {
                         &mut manifest.diagnostics,
                         line_index,
                         "E4011",
-                        format!("duplicate manifest section `{section}`"),
+                        diagnostic_message!("duplicate manifest section `{section}`"),
                     );
                 }
                 current_section = Some(section.to_owned());
@@ -1644,13 +1805,21 @@ impl Manifest {
                 );
                 continue;
             }
+            if modules && section == "modules" && !is_identifier(key) {
+                push_manifest_error(
+                    &mut manifest.diagnostics,
+                    line_index,
+                    "E4016",
+                    "module mapping key must be a module identifier",
+                );
+            }
             validate_manifest_key(section, key, line_index, &mut manifest.diagnostics);
             if !seen_keys.insert((section.to_owned(), key.to_owned())) {
                 push_manifest_error(
                     &mut manifest.diagnostics,
                     line_index,
                     "E4014",
-                    format!("duplicate manifest key `{section}.{key}`"),
+                    diagnostic_message!("duplicate manifest key `{section}.{key}`"),
                 );
             }
             let Some(value) = parse_quoted_value(value.trim()) else {
@@ -1658,7 +1827,9 @@ impl Manifest {
                     &mut manifest.diagnostics,
                     line_index,
                     "E4015",
-                    format!("manifest key `{section}.{key}` expects a quoted string value"),
+                    diagnostic_message!(
+                        "manifest key `{section}.{key}` expects a quoted string value"
+                    ),
                 );
                 continue;
             };
@@ -1731,7 +1902,7 @@ fn validate_manifest_key(
             diagnostics,
             line_index,
             "E4016",
-            format!("unknown manifest key `{section}.{key}`"),
+            diagnostic_message!("unknown manifest key `{section}.{key}`"),
         );
     }
 }
@@ -1885,6 +2056,53 @@ mod tests {
         assert!(error.message.len() <= 4096);
         assert!(error.message.capacity() <= 4096);
         assert!(error.message.ends_with("[message truncated]"));
+        let mut previous = error.clone();
+        previous.message = format!("unknown manifest section `{}`", "λ".repeat(5000));
+        assert_eq!(previous.bounded(), *error);
+    }
+
+    #[test]
+    fn long_manifest_keys_keep_clipped_text_and_line_context() {
+        let key = "x".repeat(20000);
+        let source = format!("# λ\n[project]\n{key} = \"value\"\n");
+        let manifest = Manifest::parse_mode(&source, true);
+        let error = &manifest.diagnostics.items[0];
+        assert_eq!(error.code, "E4016");
+        assert_eq!(error.span.line, 2);
+        let mut previous = error.clone();
+        previous.message = format!("unknown manifest key `project.{key}`");
+        assert_eq!(previous.bounded(), *error);
+        assert!(error.message.capacity() <= 4096);
+    }
+
+    #[test]
+    fn borrowed_path_errors_preserve_outer_prefixes_and_unicode_clipping() {
+        for size in [2, 5000] {
+            let segment = "λ".repeat(size);
+            for (path, description) in [
+                (format!("/{segment} "), "cannot contain whitespace"),
+                (format!("/{segment}/"), "cannot end with `/`"),
+                (
+                    format!("/{segment}//next"),
+                    "cannot contain empty path segments",
+                ),
+                (
+                    format!("/{segment}/:bad-name"),
+                    "contains invalid route parameter `:bad-name`",
+                ),
+            ] {
+                let problem = validate_public_path(&path).unwrap_err();
+                let actual = diagnostic_message!("route path {problem}");
+                let mut expected = Diagnostics::new();
+                push_error(
+                    &mut expected,
+                    "E4034",
+                    format!("route path `{path}` {description}"),
+                );
+                assert_eq!(actual, expected.items[0].message);
+                assert!(actual.capacity() <= 4096);
+            }
+        }
     }
 
     #[test]
@@ -1899,6 +2117,21 @@ mod tests {
                 assert_eq!(last.span.line, count.min(256) - 1);
             }
         }
+    }
+
+    #[test]
+    fn module_manifest_admission_is_opt_in_and_diagnostics_remain_bounded() {
+        let source = "[project]\nname=\"demo\"\nentry=\"main.svr\"\n[modules]\nmath=\"math.svr\"\n";
+        assert!(Manifest::parse_modules(source).diagnostics.is_empty());
+        for dependencies in [false, true] {
+            assert_eq!(
+                Manifest::parse_mode(source, dependencies).diagnostics.items[0].code,
+                "E4010"
+            );
+        }
+        let manifest = Manifest::parse_modules(&"bad\n".repeat(1000));
+        assert_eq!(manifest.diagnostics.items.len(), 256);
+        assert_eq!(manifest.diagnostics.items.last().unwrap().code, "E4018");
     }
 
     #[test]

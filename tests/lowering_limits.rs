@@ -229,3 +229,72 @@ fn approved_defaults_admit_exact_ast_boundary_and_reject_overflow() {
         .analyze_with_node_limit(&parsed, DEFAULT_AST_NODES + 2)
         .is_ok());
 }
+
+#[test]
+fn long_record_alias_chains_preserve_field_widening() {
+    let mut source = String::from("struct Point { value: Float }\n");
+    for index in 0..1200 {
+        let target = if index == 1199 {
+            "Point".to_owned()
+        } else {
+            format!("Alias{}", index + 1)
+        };
+        source.push_str(&format!("type Alias{index} = {target};\n"));
+    }
+    source.push_str("fn main() { let p: Alias0 = Alias0 { value: 3 }; print(p.value / 2); }");
+    let parsed = Parser::new().parse_source(&source).unwrap();
+    let ir = ir::lower_program(&parsed).unwrap();
+    assert_eq!(sovra::compiler::interpreter::run(&ir).unwrap(), ["1.5"]);
+}
+
+#[test]
+fn repeated_alias_return_lookups_preserve_runtime_record_identity() {
+    let mut source = String::from("struct Point { value: Float }\n");
+    for index in 0..1000 {
+        let target = if index == 999 {
+            "Point".to_owned()
+        } else {
+            format!("Alias{}", index + 1)
+        };
+        source.push_str(&format!("type Alias{index} = {target};\n"));
+    }
+    source.push_str("fn make() -> Alias0 { return Alias0 { value: 3 }; } fn main() {");
+    for index in 0..100 {
+        source.push_str(&format!(
+            "let p{index} = make(); print(p{index}.value / 2);\n"
+        ));
+    }
+    source.push('}');
+    let parsed = Parser::new().parse_source(&source).unwrap();
+    let program = ir::lower_program(&parsed).unwrap();
+    for instruction in program
+        .functions
+        .iter()
+        .flat_map(|function| &function.instructions)
+    {
+        if let Instruction::MakeStruct { type_name, .. } = instruction {
+            assert_eq!(type_name, "Point");
+        }
+    }
+    assert_eq!(
+        sovra::compiler::interpreter::run(&program).unwrap(),
+        vec!["1.5"; 100]
+    );
+}
+
+#[test]
+fn long_record_identities_survive_local_fact_copies_and_nested_arrays() {
+    let name = format!("Record{}", "x".repeat(4096));
+    let mut source = format!("struct {name} {{ value: Float }} type Alias = {name}; fn make() -> Alias {{ return Alias {{ value: 3 }}; }} fn main() {{ let p0 = make();");
+    for index in 1..200 {
+        source.push_str(&format!("let p{index} = p{};\n", index - 1));
+    }
+    source.push_str("let mut rows = [[p199]]; rows[0] = [p199]; print(rows[0][0].value / 2); }");
+    let parsed = Parser::new().parse_source(&source).unwrap();
+    let program = ir::lower_program(&parsed).unwrap();
+    assert!(program.functions.iter().flat_map(|function| &function.instructions).any(|instruction| matches!(instruction, Instruction::MakeStruct { type_name, .. } if type_name == &name)));
+    assert_eq!(
+        sovra::compiler::interpreter::run(&program).unwrap(),
+        ["1.5"]
+    );
+}

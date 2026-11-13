@@ -1,0 +1,7 @@
+mod arithmetic {
+    type Count = Int;
+    fn product(left: Count, right: Count) -> Count { return left * right; }
+    export fn square(value: Count) -> Count {
+        return arithmetic::product(value, value);
+    }
+}

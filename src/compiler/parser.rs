@@ -182,7 +182,12 @@ impl<'a> TokenParser<'a> {
             let field_start = self.peek().span;
             let field_name = self.expect_identifier("field name")?;
             self.expect_punctuation(':');
+            let type_start = self.peek().span;
             let type_name = self.expect_type_name()?;
+            let type_span = Span {
+                end: self.previous().span.end,
+                ..type_start
+            };
             let field_span = Span {
                 end: self.previous().span.end,
                 ..field_start
@@ -190,7 +195,7 @@ impl<'a> TokenParser<'a> {
             fields.push(crate::compiler::ast::StructField {
                 name: field_name,
                 type_name,
-                type_span: Some(field_span),
+                type_span: Some(type_span),
                 span: field_span,
             });
             if !self.consume_punctuation(',') {
@@ -267,8 +272,11 @@ impl<'a> TokenParser<'a> {
             let parameter_name = self.expect_identifier("parameter name")?;
             let mut type_span = None;
             let type_name = if self.consume_punctuation(':') {
-                type_span = Some(self.peek().span);
-                self.expect_type_name()
+                let mut span = self.peek().span;
+                let name = self.expect_type_name();
+                span.end = self.previous().span.end;
+                type_span = Some(span);
+                name
             } else {
                 // Preserve the missing annotation for a semantic diagnostic
                 // at the parameter's name rather than discarding the function.
@@ -287,8 +295,11 @@ impl<'a> TokenParser<'a> {
         self.expect_punctuation(')');
         let mut return_type_span = None;
         let return_type = if self.consume_operator("->") {
-            return_type_span = Some(self.peek().span);
-            self.expect_type_name()
+            let mut span = self.peek().span;
+            let name = self.expect_type_name();
+            span.end = self.previous().span.end;
+            return_type_span = Some(span);
+            name
         } else {
             None
         };
@@ -341,8 +352,11 @@ impl<'a> TokenParser<'a> {
             let name = self.expect_identifier("binding name")?;
             let mut type_span = None;
             let type_name = if self.consume_punctuation(':') {
-                type_span = Some(self.peek().span);
-                Some(self.expect_type_name()?)
+                let mut span = self.peek().span;
+                let name = self.expect_type_name()?;
+                span.end = self.previous().span.end;
+                type_span = Some(span);
+                Some(name)
             } else {
                 None
             };
@@ -811,11 +825,27 @@ impl<'a> TokenParser<'a> {
     }
 
     fn expect_type_name(&mut self) -> Option<String> {
+        let mut arrays = 0;
+        while self.consume_punctuation('[') {
+            arrays += 1;
+            if arrays >= super::limits::MAX_STRUCTURAL_DEPTH {
+                self.depth_error(self.previous().span);
+                return None;
+            }
+        }
         let mut parts = vec![self.expect_identifier("type name")?];
         while self.consume_operator("::") {
             parts.push(self.expect_identifier("type member name")?);
         }
-        Some(parts.join("::"))
+        for _ in 0..arrays {
+            self.expect_punctuation(']')?;
+        }
+        Some(format!(
+            "{}{}{}",
+            "[".repeat(arrays),
+            parts.join("::"),
+            "]".repeat(arrays)
+        ))
     }
 
     fn expect_keyword(&mut self, keyword: &'static str) -> Option<Token> {
@@ -1352,6 +1382,19 @@ mod tests {
             Statement::Assign { target, .. }
                 if matches!(&target.kind, ExpressionKind::Identifier(name) if name == "items")
         ));
+    }
+
+    #[test]
+    fn record_annotation_spans_exclude_field_names_and_include_qualified_types() {
+        let source = "// λ\r\nstruct Record { first: Int, second: lib::module::Record }";
+        let program = Parser::new().parse_source(source).unwrap();
+        let fields = &program.struct_declarations[0].fields;
+        for (field, annotation) in fields.iter().zip(["Int", "lib::module::Record"]) {
+            let span = field.type_span.unwrap();
+            assert_eq!(&source[span.start..span.end], annotation);
+            assert!(source[field.span.start..field.span.end].starts_with(&field.name));
+            assert_eq!(span.line, 1);
+        }
     }
 
     #[test]

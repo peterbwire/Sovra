@@ -1,5 +1,12 @@
 # Production Upgrade Flow
 
+Current sequencing (2026-11-11): the user has paused further Task Manager feature
+work until the compiler/runtime, shared UI, tooling and Windows distribution
+foundations are ready. Follow the prioritized
+[Windows foundation review](WINDOWS_FOUNDATION_REVIEW.md). Existing application
+regressions remain useful qualification; this does not change milestone numbers,
+release gates or the broader platform goal.
+
 Tooling checkpoint (2026-10-21): ADR 0032 is approved and its standalone formatter
 is implemented. Keep token/comment/AST/idempotence gates in every mode; Windows
 writes are qualified separately from deferred non-Windows writes. Preserve the
@@ -7,6 +14,12 @@ real-program corpus test and installed formatter smoke test when extending it.
 
 This is the handoff flow for continuing the production-grade Sovra upgrade.
 Use it when picking up M12 and later project/runtime work.
+
+Carry forward the [platform vision](PLATFORM_VISION.md): mobile, desktop, web,
+servers and other environments are Sovra's intended reach. The focused release
+target below is one qualification slice, not a restriction on the language's
+purpose. Keep portable semantics and explicit target/host boundaries as that
+work progresses, and label unimplemented target support as planned.
 
 The current release target is production readiness for the Task Manager CLI,
 not a developer preview. The broader application-platform sequence below remains

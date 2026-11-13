@@ -243,7 +243,7 @@ pub(crate) fn push_string(output: &mut String, value: &str) {
             '\t' => output.push_str("\\t"),
             '\u{0008}' => output.push_str("\\b"),
             '\u{000c}' => output.push_str("\\f"),
-            '\u{0000}'..='\u{001f}' => {
+            '\u{0000}'..='\u{001f}' | '\u{007f}'..='\u{009f}' => {
                 let _ = write!(output, "\\u{:04x}", character as u32);
             }
             _ => output.push(character),
@@ -259,6 +259,22 @@ mod tests {
 
     use super::*;
     use crate::compiler::diagnostics::Diagnostic;
+
+    #[test]
+    fn json_report_strings_escape_all_terminal_controls_without_changing_decoded_data() {
+        let value: String = (0..=0x1f)
+            .chain(0x7f..=0x9f)
+            .filter_map(char::from_u32)
+            .chain("λ\\quoted\"".chars())
+            .collect();
+        let report = render(&value, None, &Diagnostics::new());
+        assert!(
+            !report.chars().any(|character| character <= '\u{001f}'
+                || ('\u{007f}'..='\u{009f}').contains(&character)),
+            "raw terminal controls in serialized JSON"
+        );
+        assert_report(&report, "const expected = [...Array(32).keys(), ...Array.from({length: 33}, (_, i) => i + 127)].map(n => String.fromCodePoint(n)).join('') + 'λ\\\\quoted\"'; assert.equal(report.target, expected);");
+    }
 
     #[test]
     fn nominal_json_distinguishes_records_scalars_and_unresolved_types() {

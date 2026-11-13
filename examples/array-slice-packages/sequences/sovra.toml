@@ -1,0 +1,6 @@
+[project]
+name = "slice-sequences"
+entry = "main.svr"
+
+[modules]
+sequences = "sequences.svr"

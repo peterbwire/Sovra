@@ -2,9 +2,11 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Globalization;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -13,6 +15,25 @@ namespace Sovra.Desktop
 {
     public sealed class DesktopWindow : Window
     {
+        private sealed class AvailableWidth : IValueConverter
+        {
+            public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+            {
+                var limits = (double[])parameter;
+                double width = value is double ? (double)value : 0;
+                return Math.Min(limits[1], Math.Max(0, width - limits[0]));
+            }
+            public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+            { throw new NotSupportedException(); }
+        }
+        private static readonly AvailableWidth availableWidth = new AvailableWidth();
+        private static void BindWidth(FrameworkElement element, DependencyProperty property, Panel parent, double margin, double maximum)
+        {
+            element.SetBinding(property, new Binding("ActualWidth") {
+                Source = parent, Mode = BindingMode.OneWay, Converter = availableWidth,
+                ConverterParameter = new double[] { margin, maximum }
+            });
+        }
         private sealed class Row
         {
             public string Kind;
@@ -51,7 +72,10 @@ namespace Sovra.Desktop
             bridge = application;
             fixedTheme = presentation;
             theme = fixedTheme ?? DesktopTheme.Create(SystemParameters.HighContrast);
-            Width = 780; Height = 640; MinWidth = 420; MinHeight = 320;
+            Rect work = SystemParameters.WorkArea;
+            double availableX = Math.Max(1, work.Width - 32), availableY = Math.Max(1, work.Height - 32);
+            MinWidth = Math.Min(420, availableX); MinHeight = Math.Min(320, availableY);
+            Width = Math.Min(780, availableX); Height = Math.Min(640, availableY);
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
             UseLayoutRounding = true; SnapsToDevicePixels = true;
             KeyboardNavigation.SetTabNavigation(this, KeyboardNavigationMode.Cycle);
@@ -185,7 +209,10 @@ namespace Sovra.Desktop
                 {
                     context = node.Text;
                     var text = new TextBlock { Text = node.Text, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12) };
-                    if (current.Panel is WrapPanel) { text.MaxWidth = 420; text.Margin = new Thickness(0, 10, 16, 8); }
+                    if (current.Panel is WrapPanel) {
+                        text.Margin = new Thickness(0, 10, 16, 8);
+                        BindWidth(text, MaxWidthProperty, current.Panel, 16, 420);
+                    }
                     if (node.Kind == "heading") { text.FontSize = 28; text.FontWeight = FontWeights.Bold; }
                     current.Children.Add(text); continue;
                 }
@@ -204,6 +231,16 @@ namespace Sovra.Desktop
                     AutomationProperties.SetName(row.Input, node.Label);
                 }
                 row.Element.Margin = current.Panel is WrapPanel ? new Thickness(0, 0, 8, 0) : new Thickness(0, 0, 0, 12);
+                if (current.Panel is WrapPanel)
+                {
+                    BindWidth(row.Element, MaxWidthProperty, current.Panel, 8, Double.PositiveInfinity);
+                    if (row.Input != null) BindWidth(row.Input, WidthProperty, current.Panel, 8, 280);
+                }
+                else
+                {
+                    row.Element.ClearValue(MaxWidthProperty);
+                    if (row.Input != null) row.Input.ClearValue(WidthProperty);
+                }
                 desiredRows.Add(node.Action, row); current.Children.Add(row.Element);
             }
             // Detach removed/moved controls before attaching them to another group.
@@ -235,7 +272,7 @@ namespace Sovra.Desktop
             if (hasValue)
             {
                 row.Input = new TextBox { MinHeight = 32, FontSize = 16, Padding = new Thickness(8, 4, 8, 4), MaxLength = 65536 };
-                row.Label = new Label { Content = new TextBlock(), Target = row.Input, IsTabStop = false };
+                row.Label = new Label { Content = new TextBlock { TextWrapping = TextWrapping.Wrap }, Target = row.Input, IsTabStop = false };
                 AutomationProperties.SetAutomationId(row.Input, "input-" + action);
                 row.Input.PreviewKeyDown += delegate(object sender, KeyEventArgs args) {
                     if (Keyboard.Modifiers != ModifierKeys.None) return;
@@ -244,7 +281,7 @@ namespace Sovra.Desktop
                 };
                 row.Element.Children.Add(row.Label); row.Element.Children.Add(row.Input);
             }
-            row.Button = new Button { Content = new TextBlock(), HorizontalAlignment = HorizontalAlignment.Left,
+            row.Button = new Button { Content = new TextBlock { TextWrapping = TextWrapping.Wrap }, HorizontalAlignment = HorizontalAlignment.Left,
                 Margin = new Thickness(0, 6, 0, 0), Padding = new Thickness(16, 7, 16, 7),
                 Background = theme.Action, Foreground = theme.ActionText };
             AutomationProperties.SetAutomationId(row.Button, action);

@@ -1,5 +1,7 @@
 //! Checked language test discovery and sequential execution under ADR 0028.
 
+use super::diagnostics::diagnostic_message;
+
 use super::{
     ast::Program,
     check_report::push_string,
@@ -8,7 +10,7 @@ use super::{
     ir,
     parser::Parser,
     project::packages,
-    semantic::{self, SemanticAnalyzer, Type},
+    semantic::{self, Type},
     stdlib, text_files,
 };
 #[cfg(test)]
@@ -66,15 +68,37 @@ impl TestReport {
 /// rolled back or sandboxed. Arguments are empty; stdin is unavailable. Every
 /// test has fresh frames, host output and application exit status.
 pub fn run(path: impl AsRef<Path>) -> TestReport {
-    let path = path.as_ref();
+    run_mode(path.as_ref(), false)
+}
+
+/// Run root tests after verifying the package lock against the compiled snapshots.
+pub fn run_locked(path: impl AsRef<Path>) -> TestReport {
+    run_mode(path.as_ref(), true)
+}
+
+fn run_mode(path: &Path, locked: bool) -> TestReport {
     let mut report = TestReport {
         target: path.to_string_lossy().into_owned(),
         package: path.is_dir(),
         diagnostics: Diagnostics::new(),
         tests: Vec::new(),
     };
+    if locked && !report.package {
+        report.diagnostics = configuration(
+            "E4165",
+            "locked testing requires a package directory".into(),
+            None,
+        );
+        return report;
+    }
     let compiled = if report.package {
-        packages::compile_with_root(path)
+        if locked {
+            packages::compile_locked(path)
+                .map(|package| package.into_test_parts())
+                .map_err(|error| error.into_diagnostics())
+        } else {
+            packages::compile_cli_tests(path)
+        }
     } else {
         compile_source(path)
     };
@@ -117,19 +141,18 @@ fn compile_source(
 ) -> Result<(ir::IrProgram, Program, std::path::PathBuf), Diagnostics> {
     let text = super::resources::read_source(path).map_err(|error| match error {
         super::resources::SourceReadError::Limit(errors) => locate(errors, path),
-        super::resources::SourceReadError::Io(error) => {
-            configuration("E0001", format!("cannot read source: {error}"), None)
-        }
+        super::resources::SourceReadError::Io(error) => configuration(
+            "E0001",
+            diagnostic_message!("cannot read source: {error}"),
+            None,
+        ),
     })?;
     let parsed = Parser::new()
         .parse_source(&text)
         .map_err(|errors| locate(errors, path))?;
-    let typed = SemanticAnalyzer::new()
-        .analyze(&parsed)
-        .map_err(|errors| locate(errors, path))?;
-    let lowered = ir::lower_with_limits(&typed, super::resources::LoweringLimits::DEFAULT)
-        .map_err(|errors| locate(errors, path))?;
-    Ok((lowered, typed.program, path.to_owned()))
+    let (lowered, checked) =
+        super::compile_program(&parsed).map_err(|errors| locate(errors, path))?;
+    Ok((lowered, checked.program().clone(), path.to_owned()))
 }
 
 fn discover(program: &Program, entry: &Path, diagnostics: &mut Diagnostics) -> Vec<String> {
@@ -149,7 +172,7 @@ fn discover(program: &Program, entry: &Path, diagnostics: &mut Diagnostics) -> V
             diagnostics.push_bounded(Diagnostic {
                 severity: Severity::Error,
                 code: "E5001",
-                message: format!(
+                message: diagnostic_message!(
                     "test function `{}` must have no parameters and return Unit",
                     function.name
                 ),
@@ -191,7 +214,9 @@ fn configuration(code: &'static str, message: String, source_file: Option<String
 }
 fn locate(mut errors: Diagnostics, path: &Path) -> Diagnostics {
     for error in &mut errors.items {
-        error.source_file = Some(path.to_string_lossy().into_owned());
+        if error.code != "E3025" {
+            error.source_file = Some(path.to_string_lossy().into_owned());
+        }
     }
     errors
 }
@@ -407,6 +432,27 @@ mod tests {
         );
         assert_eq!(report.tests[0].output, ["main"]);
         assert_eq!(report.tests[1].output, ["alias"]);
+    }
+
+    #[test]
+    fn long_test_configuration_names_keep_message_text_and_full_source_context() {
+        let fixture = Fixture::new();
+        let name = format!("test_{}", "x".repeat(20000));
+        let source = format!("fn {name}(value: Int) {{ print(\"must not run\"); }}");
+        let path = fixture.source(&source);
+        let report = run(&path);
+        assert!(!report.success());
+        assert!(report.tests.is_empty());
+        assert_eq!(report.diagnostics.items.len(), 1);
+        let error = &report.diagnostics.items[0];
+        assert_eq!(error.code, "E5001");
+        assert!(source[error.span.start..error.span.end].contains(&name));
+        assert_eq!(error.source_file.as_deref(), path.to_str());
+        let mut previous = error.clone();
+        previous.message =
+            format!("test function `{name}` must have no parameters and return Unit");
+        assert_eq!(previous.bounded(), *error);
+        assert!(error.message.capacity() <= 4096);
     }
 
     #[test]

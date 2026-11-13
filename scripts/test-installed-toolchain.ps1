@@ -11,6 +11,9 @@ if (-not $command.Source.StartsWith($expectedBin, [StringComparison]::OrdinalIgn
 foreach ($name in @('node.exe','cargo.exe','rustc.exe')) {
     if (Get-Command $name -ErrorAction SilentlyContinue) { throw "Test PATH still exposes $name" }
 }
+$missingNodeRejected = $false
+try { & (Join-Path $Prefix 'bin\svr-editor.ps1') -Check | Out-Null } catch { $missingNodeRejected = $true }
+if (-not $missingNodeRejected) { throw 'Editor launcher accepted missing Node on restricted PATH.' }
 & (Join-Path $Prefix 'verify-install.ps1') -Prefix $Prefix | Out-Null
 foreach ($target in @('js','exe')) {
     $json = (& svr.exe doctor --target $target --format json) -join "`n"

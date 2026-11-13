@@ -40,7 +40,15 @@ fn same(left: &Metadata, right: &Metadata) -> bool {
             || left.mode() != right.mode()
             || left.uid() != right.uid()
             || left.gid() != right.gid()
+            || left.nlink() != right.nlink()
         {
+            return false;
+        }
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        if left.file_attributes() != right.file_attributes() {
             return false;
         }
     }
@@ -48,6 +56,43 @@ fn same(left: &Metadata, right: &Metadata) -> bool {
         && left.modified().ok() == right.modified().ok()
         && left.created().ok() == right.created().ok()
         && left.permissions() == right.permissions()
+}
+
+// Validate the opened handle before reading, rather than trusting pathname metadata.
+fn open_matching(path: &Path, expected: &Metadata) -> Result<File, String> {
+    let mut options = OpenOptions::new();
+    options.read(true);
+    // Linux UAPI values for the architectures used by the supported desktop/CI
+    // hosts. Other architectures retain metadata checks without these flags.
+    #[cfg(all(
+        target_os = "linux",
+        any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")
+    ))]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        const O_NONBLOCK: i32 = 0o4000;
+        const O_NOFOLLOW: i32 = 0o400000;
+        options.custom_flags(O_NONBLOCK | O_NOFOLLOW);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x00200000;
+        options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+    }
+    let file = options.open(path).map_err(|e| e.to_string())?;
+    let metadata = file.metadata().map_err(|e| e.to_string())?;
+    if !metadata.is_file() || !same(expected, &metadata) {
+        return Err("source changed before reading opened handle".into());
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        if metadata.file_attributes() & 0x400 != 0 {
+            return Err("formatter refuses opened reparse points".into());
+        }
+    }
+    Ok(file)
 }
 
 fn bounded(file: File) -> Result<String, String> {
@@ -76,7 +121,7 @@ impl Snapshot {
                 .unwrap_or(Path::new(".")),
         )
         .map_err(|e| e.to_string())?;
-        let file = File::open(path).map_err(|e| e.to_string())?;
+        let file = open_matching(path, &before)?;
         let metadata = file.metadata().map_err(|e| e.to_string())?;
         let text = bounded(file)?;
         if !same(&before, &metadata) || !same(&metadata, &regular(path)?) {
@@ -113,7 +158,7 @@ impl Snapshot {
         Ok(())
     }
 
-    fn unchanged(&self) -> Result<(), String> {
+    pub(super) fn unchanged(&self) -> Result<(), String> {
         let parent = fs::canonicalize(
             self.path
                 .parent()
@@ -123,7 +168,7 @@ impl Snapshot {
         .map_err(|e| e.to_string())?;
         if parent != self.parent
             || !same(&self.metadata, &regular(&self.path)?)
-            || bounded(File::open(&self.path).map_err(|e| e.to_string())?)? != self.text
+            || bounded(open_matching(&self.path, &self.metadata)?)? != self.text
         {
             return Err("source changed before replacement".into());
         }
@@ -139,9 +184,23 @@ impl Snapshot {
         formatted: &str,
         before_commit: impl FnOnce(&Path) -> Result<(), String>,
     ) -> Result<(), String> {
+        let staged = self.stage(formatted)?;
+        if let Some(temporary) = &staged.temporary {
+            before_commit(&temporary.path)?;
+        }
+        staged.commit()
+    }
+
+    pub(super) fn stage<'a>(&'a self, formatted: &'a str) -> Result<Staged<'a>, String> {
         self.writable()?;
         if formatted == self.text {
-            return self.unchanged();
+            return Ok(Staged {
+                snapshot: self,
+                temporary: None,
+                file: None,
+                metadata: None,
+                formatted,
+            });
         }
         let mut reserved = None;
         for _ in 0..128 {
@@ -151,7 +210,7 @@ impl Snapshot {
                 NEXT.fetch_add(1, Ordering::Relaxed)
             ));
             let mut options = OpenOptions::new();
-            options.write(true).create_new(true);
+            options.read(true).write(true).create_new(true);
             #[cfg(unix)]
             {
                 use std::os::unix::fs::OpenOptionsExt;
@@ -166,7 +225,7 @@ impl Snapshot {
                 Err(e) => return Err(e.to_string()),
             }
         }
-        let (mut temporary, mut file) = reserved.ok_or("cannot reserve formatter staging file")?;
+        let (temporary, mut file) = reserved.ok_or("cannot reserve formatter staging file")?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::MetadataExt;
@@ -182,17 +241,69 @@ impl Snapshot {
         file.flush()
             .and_then(|_| file.sync_all())
             .map_err(|e| e.to_string())?;
-        drop(file);
-        before_commit(&temporary.path)?;
-        self.unchanged()?;
-        let destination = self
-            .parent
-            .join(self.path.file_name().ok_or("source filename missing")?);
-        temporary.publish(&destination)?;
+
+        let metadata = file.metadata().map_err(|e| e.to_string())?;
+        Ok(Staged {
+            snapshot: self,
+            temporary: Some(temporary),
+            metadata: Some(metadata),
+            file: Some(file),
+            formatted,
+        })
+    }
+}
+
+/// Owns an unpublished replacement; dropping it cleans up its staging file.
+#[derive(Debug)]
+pub(super) struct Staged<'a> {
+    snapshot: &'a Snapshot,
+    temporary: Option<Temporary>,
+    file: Option<File>,
+    metadata: Option<Metadata>,
+    formatted: &'a str,
+}
+impl Staged<'_> {
+    pub(super) fn validate(&mut self) -> Result<(), String> {
+        use std::io::{Seek, SeekFrom};
+        self.snapshot.unchanged()?;
+        if let Some(temporary) = &self.temporary {
+            let file = self.file.as_mut().ok_or("missing staging handle")?;
+            let metadata = file.metadata().map_err(|e| e.to_string())?;
+            if !same(
+                self.metadata.as_ref().ok_or("missing staging metadata")?,
+                &metadata,
+            ) || !same(&metadata, &regular(&temporary.path)?)
+            {
+                return Err("formatter staging identity changed".into());
+            }
+            file.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
+            let mut bytes = Vec::new();
+            file.take(super::layout::OUTPUT_LIMIT as u64 + 1)
+                .read_to_end(&mut bytes)
+                .map_err(|e| e.to_string())?;
+            if bytes != self.formatted.as_bytes() {
+                return Err("formatter staging content changed".into());
+            }
+        }
+        Ok(())
+    }
+    pub(super) fn commit(mut self) -> Result<(), String> {
+        self.validate()?;
+        drop(self.file.take());
+        if let Some(mut temporary) = self.temporary.take() {
+            let destination = self.snapshot.parent.join(
+                self.snapshot
+                    .path
+                    .file_name()
+                    .ok_or("source filename missing")?,
+            );
+            temporary.publish(&destination)?;
+        }
         Ok(())
     }
 }
 
+#[derive(Debug)]
 struct Temporary {
     path: PathBuf,
     published: bool,
@@ -373,5 +484,116 @@ mod tests {
             unchanged.is_err(),
             "changed attributes must prevent replacement"
         );
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod linux_qualification {
+    use super::*;
+    use std::os::unix::fs::{symlink, PermissionsExt};
+
+    #[test]
+    fn changed_identity_mode_and_parent_prevent_publication() {
+        let root = std::env::temp_dir().join(format!(
+            "sovra-fmt-linux-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir(&root).unwrap();
+        let path = root.join("source.svr");
+        fs::write(&path, "original").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
+        let snapshot = Snapshot::read(&path).unwrap();
+        assert!(snapshot
+            .replace_with("formatted", |_| {
+                fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+                Ok(())
+            })
+            .is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "original");
+        let snapshot = Snapshot::read(&path).unwrap();
+        assert!(snapshot
+            .replace_with("formatted", |_| {
+                fs::rename(&path, root.join("old.svr")).unwrap();
+                fs::write(&path, "external").unwrap();
+                Ok(())
+            })
+            .is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "external");
+        let real = root.join("real");
+        fs::create_dir(&real).unwrap();
+        let other = root.join("other");
+        fs::create_dir(&other).unwrap();
+        fs::write(real.join("main.svr"), "original").unwrap();
+        fs::write(other.join("main.svr"), "external").unwrap();
+        let parent = root.join("parent");
+        symlink(&real, &parent).unwrap();
+        let snapshot = Snapshot::read(&parent.join("main.svr")).unwrap();
+        assert!(snapshot
+            .replace_with("formatted", |_| {
+                fs::remove_file(&parent).unwrap();
+                symlink(&other, &parent).unwrap();
+                Ok(())
+            })
+            .is_err());
+        assert_eq!(
+            fs::read_to_string(real.join("main.svr")).unwrap(),
+            "original"
+        );
+        assert_eq!(
+            fs::read_to_string(other.join("main.svr")).unwrap(),
+            "external"
+        );
+        for directory in [&root, &real, &other] {
+            assert!(!fs::read_dir(directory).unwrap().any(|entry| entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".svr-fmt-")));
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[cfg(all(
+    test,
+    target_os = "linux",
+    any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")
+))]
+mod linux_open_races {
+    use super::*;
+    use std::os::unix::fs::symlink;
+
+    #[test]
+    fn opened_handle_rejects_fifo_symlink_and_replaced_regular_file() {
+        let root = std::env::temp_dir().join(format!(
+            "sovra-fmt-open-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir(&root).unwrap();
+        let path = root.join("source.svr");
+        fs::write(&path, "original").unwrap();
+        let expected = regular(&path).unwrap();
+        fs::rename(&path, root.join("original.svr")).unwrap();
+        // A no-writer FIFO would block a plain File::open after the earlier stat.
+        assert!(std::process::Command::new("mkfifo")
+            .arg(&path)
+            .status()
+            .unwrap()
+            .success());
+        assert!(open_matching(&path, &expected).is_err());
+        fs::remove_file(&path).unwrap();
+        symlink(root.join("original.svr"), &path).unwrap();
+        assert!(open_matching(&path, &expected).is_err());
+        fs::remove_file(&path).unwrap();
+        fs::write(&path, "external").unwrap();
+        assert!(open_matching(&path, &expected).is_err());
+        assert_eq!(
+            fs::read_to_string(root.join("original.svr")).unwrap(),
+            "original"
+        );
+        assert_eq!(fs::read_to_string(&path).unwrap(), "external");
+        fs::remove_dir_all(root).unwrap();
     }
 }

@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "version": 1,
+  "cases": [
+    { "id": "startup", "source": "startup.svr", "stdout": "" },
+    { "id": "integer-loop", "source": "integer-loop.svr", "stdout": "12497500\n" },
+    { "id": "unicode-growth", "source": "unicode-growth.svr", "stdout": "1800\n" },
+    { "id": "declarations-32", "declarations": 32, "stdout": "32\n" },
+    { "id": "declarations-256", "declarations": 256, "stdout": "256\n" }
+  ]
+}

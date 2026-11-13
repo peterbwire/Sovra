@@ -1,10 +1,47 @@
 //! Local package graph resolution and executable entry-module linking.
 
+use crate::compiler::diagnostics::diagnostic_message;
+
+mod locks;
+pub use locks::{
+    check_source_lock, compile_locked, generate_source_lock, verify_source_lock, write_source_lock,
+    SourceLock, MAX_LOCK_BYTES,
+};
+mod registered_functions;
+pub use registered_functions::{
+    compile_registered_primitive_functions, compile_registered_records, RegisteredFunctionPackage,
+};
+mod source_units;
+pub use source_units::{
+    load_package_sources, LoadedPackageSources, PackageSourceImport, PackageSourceUnit,
+    MAX_PACKAGE_SOURCE_TOKENS,
+};
+mod inventory;
+pub use inventory::{
+    inspect_source_inventory, PackageManifestSnapshot, PackageSource, PackageSourceInventory,
+    PackageSourceKind, MAX_INVENTORY_SOURCES, MAX_PACKAGE_MODULES,
+};
+mod checked;
 mod executable;
+mod navigation;
+mod overlay_request;
+mod overlays;
+pub use checked::{CheckedPackage, CheckedPackageError, PackageEvidenceLimits};
+pub use executable::compile_with_interface_string_limit;
 pub use executable::{
     compile, compile_with_compilation_limits, compile_with_graph_limits, compile_with_source_limit,
 };
-pub(crate) use executable::{compile_with_root, root_symbol};
+pub use executable::{
+    compile_with_checked_evidence, compile_with_legacy_lowering, compile_with_source_navigation,
+    compile_with_source_overlays,
+};
+pub(crate) use executable::{compile_with_root, parse_import_tokens, root_symbol};
+pub use navigation::{NavigablePackage, PackageNavigation};
+pub use overlay_request::{
+    read_source_overlay_request, SourceOverlayRequest, MAX_OVERLAY_PATH_BYTES,
+    MAX_OVERLAY_REQUEST_BYTES, SOURCE_OVERLAY_MAGIC, SOURCE_OVERLAY_REQUEST_LIMITS,
+};
+pub use overlays::{SourceOverlay, SourceOverlayLimits};
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -15,18 +52,113 @@ use crate::compiler::resources::{PackageGraphLimits, SourceReadError};
 
 const MAX_PACKAGES: usize = 1024;
 
-pub(crate) fn declares_dependencies(root: &Path) -> Result<bool, Diagnostics> {
+struct CyclePaths<'a> {
+    active: &'a [PathBuf],
+    repeated: &'a Path,
+}
+
+impl std::fmt::Display for CyclePaths<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (index, path) in self
+            .active
+            .iter()
+            .map(PathBuf::as_path)
+            .chain(std::iter::once(self.repeated))
+            .enumerate()
+        {
+            if index != 0 {
+                formatter.write_str(" -> ")?;
+            }
+            write!(formatter, "{}", path.display())?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CliPackageMode {
+    Application,
+    EntryGraph,
+    Registered,
+}
+
+pub(crate) fn classify_cli(root: &Path) -> Result<CliPackageMode, Diagnostics> {
+    let root = canonical_root(root)?;
     let path = root.join(MANIFEST_FILE);
+    let manifest_path = path.canonicalize().map_err(|cause| {
+        error(
+            "E4000",
+            diagnostic_message!("cannot read project manifest `{}`: {cause}", path.display()),
+            None,
+        )
+    })?;
+    if !manifest_path.starts_with(&root) {
+        return Err(error(
+            "E4113",
+            "package manifest escapes its root".into(),
+            None,
+        ));
+    }
     let source = super::read_manifest(&path)?;
-    let mut manifest = Manifest::parse_mode(&source, true);
+    let mut manifest = Manifest::parse_modules(&source);
     if !manifest.diagnostics.is_empty() {
         super::attach_line_locations(&path, &source, &mut manifest.diagnostics.items);
         return Err(manifest.diagnostics);
     }
-    Ok(manifest
+    if manifest
         .sections
         .iter()
-        .any(|(section, _)| section.starts_with("dependencies.")))
+        .any(|(section, _)| section == "modules")
+    {
+        return Ok(CliPackageMode::Registered);
+    }
+    if !manifest
+        .sections
+        .iter()
+        .any(|(section, _)| section.starts_with("dependencies."))
+    {
+        return Ok(CliPackageMode::Application);
+    }
+    let (_, registered) = resolve_mode(&root, PackageGraphLimits::DEFAULT, None, true)?;
+    Ok(if registered {
+        CliPackageMode::Registered
+    } else {
+        CliPackageMode::EntryGraph
+    })
+}
+
+pub(crate) fn compile_cli(root: &Path) -> Result<crate::compiler::ir::IrProgram, Diagnostics> {
+    compile_cli_mode(root, classify_cli(root)?)
+}
+
+pub(crate) fn compile_cli_mode(
+    root: &Path,
+    mode: CliPackageMode,
+) -> Result<crate::compiler::ir::IrProgram, Diagnostics> {
+    match mode {
+        CliPackageMode::Registered => compile_registered_records(root)
+            .map(|compiled| compiled.into_ir())
+            .map_err(CheckedPackageError::into_diagnostics),
+        _ => compile(root),
+    }
+}
+
+pub(crate) fn compile_cli_tests(
+    root: &Path,
+) -> Result<
+    (
+        crate::compiler::ir::IrProgram,
+        crate::compiler::ast::Program,
+        PathBuf,
+    ),
+    Diagnostics,
+> {
+    match classify_cli(root)? {
+        CliPackageMode::Registered => compile_registered_records(root)
+            .map(|compiled| compiled.into_test_parts())
+            .map_err(CheckedPackageError::into_diagnostics),
+        _ => compile_with_root(root),
+    }
 }
 
 /// One local package; its canonical root is its local graph identity.
@@ -69,7 +201,25 @@ pub fn resolve_with_limits(
     root: impl AsRef<Path>,
     limits: PackageGraphLimits,
 ) -> Result<LocalGraph, Diagnostics> {
-    let root = canonical_root(root.as_ref())?;
+    resolve_internal(root.as_ref(), limits, None)
+}
+
+fn resolve_internal(
+    root: &Path,
+    limits: PackageGraphLimits,
+    inventory: Option<&mut inventory::Builder>,
+) -> Result<LocalGraph, Diagnostics> {
+    let allow_modules = inventory.is_some();
+    resolve_mode(root, limits, inventory, allow_modules).map(|(graph, _)| graph)
+}
+
+fn resolve_mode(
+    root: &Path,
+    limits: PackageGraphLimits,
+    mut inventory: Option<&mut inventory::Builder>,
+    allow_modules: bool,
+) -> Result<(LocalGraph, bool), Diagnostics> {
+    let root = canonical_root(root)?;
     let mut graph = LocalGraph {
         root: root.clone(),
         packages: BTreeMap::new(),
@@ -79,6 +229,7 @@ pub fn resolve_with_limits(
     let mut done = BTreeSet::new();
     let mut remaining_manifest_bytes = limits.max_total_manifest_bytes;
     let mut remaining_edges = limits.max_dependency_edges;
+    let mut has_modules = false;
     while let Some((root, exiting)) = pending.pop() {
         if exiting {
             active.pop();
@@ -86,15 +237,13 @@ pub fn resolve_with_limits(
             continue;
         }
         if let Some(start) = active.iter().position(|path| path == &root) {
-            let chain = active[start..]
-                .iter()
-                .chain(std::iter::once(&root))
-                .map(|path: &PathBuf| path.display().to_string())
-                .collect::<Vec<_>>()
-                .join(" -> ");
+            let chain = CyclePaths {
+                active: &active[start..],
+                repeated: &root,
+            };
             return Err(error(
                 "E4111",
-                format!("local dependency cycle: {chain}"),
+                diagnostic_message!("local dependency cycle: {chain}"),
                 None,
             ));
         }
@@ -113,6 +262,9 @@ pub fn resolve_with_limits(
             limits,
             &mut remaining_manifest_bytes,
             &mut remaining_edges,
+            inventory.as_deref_mut(),
+            allow_modules,
+            &mut has_modules,
         )?;
         active.push(root.clone());
         pending.push((root.clone(), true));
@@ -121,21 +273,21 @@ pub fn resolve_with_limits(
         }
         graph.packages.insert(root, package);
     }
-    Ok(graph)
+    Ok((graph, has_modules))
 }
 
 fn canonical_root(path: &Path) -> Result<PathBuf, Diagnostics> {
     let canonical = path.canonicalize().map_err(|cause| {
         error(
             "E4110",
-            format!("cannot resolve package root `{}`: {cause}", path.display()),
+            diagnostic_message!("cannot resolve package root `{}`: {cause}", path.display()),
             None,
         )
     })?;
     if !canonical.is_dir() {
         return Err(error(
             "E4110",
-            format!("package root `{}` is not a directory", path.display()),
+            diagnostic_message!("package root `{}` is not a directory", path.display()),
             None,
         ));
     }
@@ -147,13 +299,16 @@ fn load(
     limits: PackageGraphLimits,
     remaining_manifest_bytes: &mut usize,
     remaining_edges: &mut usize,
+    mut inventory: Option<&mut inventory::Builder>,
+    allow_modules: bool,
+    has_modules: &mut bool,
 ) -> Result<LocalPackage, Diagnostics> {
     let manifest_path = root.join(MANIFEST_FILE);
     // A symlinked manifest must not silently change the package's authority root.
     let canonical_manifest = manifest_path.canonicalize().map_err(|cause| {
         error(
             "E4110",
-            format!(
+            diagnostic_message!(
                 "cannot read package manifest `{}`: {cause}",
                 manifest_path.display()
             ),
@@ -168,50 +323,74 @@ fn load(
         ));
     }
     let allowance = limits.max_manifest_bytes.min(*remaining_manifest_bytes);
-    let source = crate::compiler::resources::read_utf8_with_limit(&manifest_path, allowance)
-        .map_err(|cause| match cause {
-            SourceReadError::Limit(_) => {
-                let message = if *remaining_manifest_bytes < limits.max_manifest_bytes {
-                    format!(
-                        "aggregate manifest byte limit of {} exceeded",
-                        limits.max_total_manifest_bytes
-                    )
-                } else {
-                    format!(
-                        "manifest byte limit of {} exceeded",
-                        limits.max_manifest_bytes
-                    )
-                };
-                error(
-                    "E4112",
-                    message,
-                    Some((
-                        &manifest_path,
-                        Span {
-                            start: 0,
-                            end: 0,
-                            line: 0,
-                            column: 0,
-                        },
-                    )),
-                )
+    let capture = inventory
+        .as_ref()
+        .is_some_and(|builder| builder.captures_manifests());
+    let source = if capture {
+        source_units::read_guarded(&canonical_manifest, root, allowance).map_err(|mut errors| {
+            for diagnostic in &mut errors.items {
+                if diagnostic.code == "E1003" {
+                    diagnostic.code = "E4112";
+                    diagnostic.message = "manifest byte allowance exceeded".into();
+                }
             }
-            SourceReadError::Io(cause) => error(
-                "E4000",
-                format!(
-                    "cannot read project manifest `{}`: {cause}",
-                    manifest_path.display()
+            errors
+        })?
+    } else {
+        crate::compiler::resources::read_utf8_with_limit(&manifest_path, allowance).map_err(
+            |cause| match cause {
+                SourceReadError::Limit(_) => {
+                    let message = if *remaining_manifest_bytes < limits.max_manifest_bytes {
+                        format!(
+                            "aggregate manifest byte limit of {} exceeded",
+                            limits.max_total_manifest_bytes
+                        )
+                    } else {
+                        format!(
+                            "manifest byte limit of {} exceeded",
+                            limits.max_manifest_bytes
+                        )
+                    };
+                    error(
+                        "E4112",
+                        message,
+                        Some((
+                            &manifest_path,
+                            Span {
+                                start: 0,
+                                end: 0,
+                                line: 0,
+                                column: 0,
+                            },
+                        )),
+                    )
+                }
+                SourceReadError::Io(cause) => error(
+                    "E4000",
+                    diagnostic_message!(
+                        "cannot read project manifest `{}`: {cause}",
+                        manifest_path.display()
+                    ),
+                    None,
                 ),
-                None,
-            ),
-        })?;
+            },
+        )?
+    };
     *remaining_manifest_bytes -= source.len();
-    let mut manifest = Manifest::parse_mode(&source, true);
+    let mut manifest = if allow_modules {
+        Manifest::parse_modules(&source)
+    } else {
+        Manifest::parse_mode(&source, true)
+    };
     manifest.source_file = Some(manifest_path.to_string_lossy().into_owned());
     super::attach_line_locations(&manifest_path, &source, &mut manifest.diagnostics.items);
     if !manifest.diagnostics.is_empty() {
         return Err(manifest.diagnostics);
     }
+    *has_modules |= manifest
+        .sections
+        .iter()
+        .any(|(section, _)| section == "modules");
     let mut diagnostics = Diagnostics::new();
     let name = super::require_manifest_value(&manifest, "project", "name", &mut diagnostics);
     let entry = super::require_manifest_value(&manifest, "project", "entry", &mut diagnostics);
@@ -228,6 +407,9 @@ fn load(
     if !diagnostics.is_empty() {
         return Err(diagnostics);
     }
+    if let Some(builder) = inventory.as_deref_mut() {
+        builder.reserve(&manifest)?;
+    }
     let first = diagnostics.items.len();
     let entry = super::resolve_project_path(root, entry.as_deref().unwrap(), &mut diagnostics);
     if let Some(entry) = &entry {
@@ -240,7 +422,7 @@ fn load(
     let entry = entry.unwrap().canonicalize().map_err(|cause| {
         error(
             "E4110",
-            format!("cannot resolve package entry: {cause}"),
+            diagnostic_message!("cannot resolve package entry: {cause}"),
             None,
         )
     })?;
@@ -257,7 +439,7 @@ fn load(
         if *remaining_edges == 0 {
             return Err(error(
                 "E4112",
-                format!(
+                diagnostic_message!(
                     "dependency edge limit of {} exceeded",
                     limits.max_dependency_edges
                 ),
@@ -271,7 +453,7 @@ fn load(
         else {
             return Err(error(
                 "E4110",
-                format!("dependency `{alias}` requires a nonempty path"),
+                diagnostic_message!("dependency `{alias}` requires a nonempty path"),
                 Some((&manifest_path, *span)),
             ));
         };
@@ -281,13 +463,18 @@ fn load(
         })?;
         dependencies.insert(alias.to_owned(), target);
     }
-    Ok(LocalPackage {
+    let package = LocalPackage {
         root: root.to_owned(),
         name: name.unwrap(),
         entry,
         version: manifest.value("project", "version").map(str::to_owned),
         dependencies,
-    })
+    };
+    if let Some(builder) = inventory {
+        builder.capture(&package, &manifest)?;
+        builder.retain_manifest(root, &manifest, source);
+    }
+    Ok(package)
 }
 
 fn error(code: &'static str, message: String, location: Option<(&Path, Span)>) -> Diagnostics {
@@ -313,6 +500,34 @@ fn error(code: &'static str, message: String, location: Option<(&Path, Span)>) -
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn streamed_cycle_paths_preserve_order_and_previous_clipped_text() {
+        for count in [0, 2, 128] {
+            let active: Vec<_> = (0..count)
+                .map(|index| PathBuf::from(format!("package{index}-{}", "λ".repeat(100))))
+                .collect();
+            let repeated = Path::new("repeated-λ");
+            let previous = active
+                .iter()
+                .map(|path| path.display().to_string())
+                .chain(std::iter::once(repeated.display().to_string()))
+                .collect::<Vec<_>>()
+                .join(" -> ");
+            let previous = error("E4111", format!("local dependency cycle: {previous}"), None);
+            let chain = CyclePaths {
+                active: &active,
+                repeated,
+            };
+            let actual = error(
+                "E4111",
+                diagnostic_message!("local dependency cycle: {chain}"),
+                None,
+            );
+            assert_eq!(actual, previous);
+            assert!(actual.items[0].message.capacity() <= 4096);
+        }
+    }
     use std::sync::atomic::{AtomicUsize, Ordering};
     static NEXT: AtomicUsize = AtomicUsize::new(0);
 

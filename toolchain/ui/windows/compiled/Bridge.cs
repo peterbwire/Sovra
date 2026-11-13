@@ -197,6 +197,9 @@ namespace Sovra.Desktop
         {
             ProgramResult result = Invoke(ViewCommand, State);
             if (result.Status != 0) throw new IOException("Cannot load Sovra view: " + result.Output + result.Error);
+            string expected = ViewCommand == "ui-layout-view" ? "SVR-UI-2\n" : "SVR-UI-1\n";
+            if (!result.Output.StartsWith(expected, StringComparison.Ordinal))
+                throw new InvalidDataException("Unexpected UI view version.");
             Nodes = View.Parse(result.Output);
         }
 

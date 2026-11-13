@@ -1,5 +1,27 @@
 # Sovra UI architecture
 
+Platform direction: Sovra UI should support the broader
+[mobile, desktop, web and other application goal](../PLATFORM_VISION.md).
+Keep application logic and reusable UI concepts separate from target rendering,
+device services, lifecycle and packaging. Existing Windows/browser hosts are
+implementation slices. Android/iOS hosts, mobile lifecycle and store packaging
+remain planned; no cross-platform UI ABI is established by this statement.
+
+Workspace follow-up (2026-11-11): the editor now retains multiple independent
+source drafts, active file/cursor state and versioned JSON workspace import/export.
+Compiler actions target the selected file. This does not load package manifests
+or dependency roots. Workspace identity survives export/import; browser draft
+storage remains tied to the ephemeral local origin. Validation limits source
+bytes, file counts and identities without accepting host filesystem paths.
+
+Editor checkpoint (2026-11-11): an experimental single-document browser editor
+now lives in `toolchain/editor/`. It invokes the existing Rust compiler for JSON
+checks, IR/JavaScript builds and interpreter execution. Its source editing surface
+is separate from the shared v1/v2 application view protocol. No source-widget
+protocol or public editor CLI command is introduced. See
+[the editor README](../../toolchain/editor/README.md) for the local trust boundary,
+verified capabilities and planned workspace/language-server work.
+
 Compiled profile-ownership checkpoint (2026-10-23): a retained exclusive file
 handle prevents two cooperating compiled hosts from opening the same profile.
 It is acquired before any Sovra child starts and held through the window lifetime.

@@ -243,6 +243,9 @@ internal static class CompiledDesktopTests
     private static void FailureAndResponsiveness(string scratch)
     {
         string state = Path.Combine(scratch, "transport-state.txt");
+        var wrongVersion = new Bridge(Path.Combine(scratch, "ui-process-fixture.exe"), state + ".wrong-version", "", "ui-view");
+        Reject(delegate { wrongVersion.Dispatch("slow", "", false); });
+        Check(!File.Exists(state + ".wrong-version.events"), "Wrong view version permitted an event.");
         var bridge = new Bridge(Path.Combine(scratch, "ui-process-fixture.exe"), state, "", "ui-layout-view");
         var window = new DesktopWindow(bridge);
         var heartbeat = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(20) };
@@ -293,6 +296,37 @@ internal static class CompiledDesktopTests
             Click(window, "page-previous");
             Check(Control<TextBox>(window, "input-rename-1").Text == "", "Returning to a page resurrected a discarded task draft.");
             Check(File.ReadAllText(state) == stored.ToString(), "Native navigation mutated task data.");
+        }
+        finally { window.Close(); }
+    }
+    private static void ResponsiveLayout(string compiler, string source, string state)
+    {
+        var bridge = new Bridge(compiler, state, source, "ui-layout-view");
+        var window = new DesktopWindow(bridge);
+        try
+        {
+            window.Show(); window.Activate(); window.UpdateLayout();
+            TextBox input = Control<TextBox>(window, "input-draft");
+            Check(input != null, "Responsive component input missing.");
+            input.Text = new string('D', 4096); input.Focus(); input.Select(20, 10);
+            foreach (double width in new double[] { window.MinWidth, 980, window.MinWidth })
+            {
+                window.Width = width; window.UpdateLayout();
+                var frame = new DispatcherFrame();
+                window.Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(delegate { frame.Continue = false; }));
+                Dispatcher.PushFrame(frame); window.UpdateLayout();
+                var wrap = (WrapPanel)Control<Border>(window, "group-actions").Child;
+                foreach (UIElement child in wrap.Children)
+                {
+                    var element = (FrameworkElement)child;
+                    Point point = element.TranslatePoint(new Point(0, 0), wrap);
+                    Check(point.X >= -1 && point.X + element.ActualWidth <= wrap.ActualWidth + 1, "Native horizontal child overflowed its available row.");
+                }
+                Check(input.ActualWidth > 0 && input.ActualWidth <= wrap.ActualWidth + 1, "Native input exceeds available group width.");
+                Check(Object.ReferenceEquals(input, Control<TextBox>(window, "input-draft")) && input.Text.Length == 4096 && input.SelectionStart == 20 && input.SelectionLength == 10, "Resize replaced a draft or selection.");
+                Check(input.IsKeyboardFocused, "Resize lost native input focus.");
+            }
+            Check(!File.Exists(state), "Native resizing invoked an application event.");
         }
         finally { window.Close(); }
     }
@@ -604,6 +638,7 @@ internal static class CompiledDesktopTests
             KeyboardAndWorkflow(compiler, task, Path.Combine(scratch, "workflow.txt"));
             MovingLayout(compiler, Path.Combine(root, "scripts", "fixtures", "ui-moving.svr"), Path.Combine(scratch, "moving.txt"));
             FailureAndResponsiveness(scratch);
+            ResponsiveLayout(compiler, Path.Combine(root, "scripts", "fixtures", "ui-responsive.svr"), Path.Combine(scratch, "responsive.txt"));
             PaginationWindow(compiler, task, Path.Combine(scratch, "large-window.txt"));
             if (args.Length == 4) Package(args[2], args[3]);
             Console.WriteLine("PASS compiled desktop: " + checks + " checks; bounded transport, invalid views, real Sovra events, flat/grouped WPF and reusable component.");

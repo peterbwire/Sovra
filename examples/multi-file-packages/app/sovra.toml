@@ -1,0 +1,9 @@
+[project]
+name = "multi-file-consumer"
+entry = "main.svr"
+
+[modules]
+application = "application.svr"
+
+[dependencies.utilities]
+path = "../utilities"

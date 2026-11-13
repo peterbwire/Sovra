@@ -1,0 +1,23 @@
+{
+    "schema_version": 1,
+    "examples": [
+        { "directory": "hello-world", "kind": "executable", "entry": "main.svr" },
+        { "directory": "functions", "kind": "executable", "entry": "main.svr" },
+        { "directory": "numbers", "kind": "executable", "entry": "main.svr" },
+        { "directory": "strings", "kind": "executable", "entry": "main.svr" },
+        { "directory": "records", "kind": "executable", "entry": "main.svr" },
+        { "directory": "modules", "kind": "executable", "entry": "main.svr" },
+        { "directory": "scoped-types", "kind": "executable", "entry": "main.svr" },
+        { "directory": "library-foundations", "kind": "executable", "entry": "main.svr" },
+        { "directory": "local-packages", "kind": "executable-package", "entry": "app" },
+        { "directory": "ui-desktop", "kind": "host-component", "entry": "component.svr" },
+        { "directory": "application-aliases", "kind": "checker-only" },
+        { "directory": "application-functions", "kind": "checker-only" },
+        { "directory": "application-imports", "kind": "checker-only" },
+        { "directory": "application-record-contracts", "kind": "checker-only" },
+        { "directory": "application-record-imports", "kind": "checker-only" },
+        { "directory": "service-contracts", "kind": "checker-only" },
+        { "directory": "fielddesk", "kind": "proposal" }
+    ],
+    "internal_tools": ["function_probe.rs", "native_builder.rs"]
+}

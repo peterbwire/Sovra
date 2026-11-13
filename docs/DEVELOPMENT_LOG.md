@@ -1,5 +1,1342 @@
 # Development log
 
+## 2026-11-12: G09 checked cross-file function navigation
+
+- Added optional bounded navigation projected from the same successful checked
+  graph and exact raw source reads/overlays. Structural/import IDs and existing
+  canonical IR targets link calls; declarations use their own source tokens.
+  No foreign signature spans or client spelling search creates definitions.
+- Added source size/SHA fingerprints, strict table/index/UTF-8 validation and
+  bounded readonly closed-file verification. Missing/changed source or projection
+  exhaustion exposes no partial links; ordinary compilation/IR stays unchanged.
+- LSP definition/hover/outlines now support imported functions, aliases, distinct
+  same-named providers, closed targets and unsaved edits. Existing generation
+  invalidation clears facts after failure/rename/close; plaintext UI remains safe.
+- Regression coverage includes source/file-count/serialized navigation quotas,
+  metadata mutations, Unicode coordinates, alias identity, distinct providers,
+  privacy and fresh rename/close targets. All 624 Rust tests pass, along with
+  strict Clippy, standalone/workspace/navigation LSP and relocated installed-tool
+  suites. VSIX source identity remains strict; disabled VSCE relative-link rewriting
+  after its README transform was correctly rejected. Formatting/docs/diff checks
+  pass. Local hashes: target/checked-evidence/g09-navigation-verification.json.
+  G09 remains partial: package task
+  targeting and real package-specific editor-host acceptance are next.
+
+## 2026-11-12: G09 package workspace diagnostics
+
+- Added bounded JSON-only --package-context preflight, explicitly graph-only and
+  source_check:false. LSP membership comes from the compiler, not a second manifest
+  parser. Existing entry buffers then use the correlated overlay transport.
+- Wired workspace folders, bounded ancestor discovery, conservative workspace-wide
+  invalidation, child/pending-request cancellation, rejected-buffer blocking and
+  file/version-correct Unicode diagnostics. Closed dependency failures are explicit
+  operational summaries, never foreign offsets applied to consumer buffers.
+- Preserved standalone behavior and optional single-entry local hover. Imported
+  navigation remains unavailable until checked provenance is projected. VS Code
+  sends workspace roots/watch events and restarts on folder changes.
+- Added real package LSP and metadata decoder regressions, pure POSIX/Windows path
+  containment tests, CI coverage and relocated installed-tool workspace acceptance.
+  New package module is source-verified in the local unpublished G09 VSIX.
+- Validation: all 620 Rust tests pass, strict Clippy/formatting/docs/diff checks
+  pass. Source and relocated installed package/standalone LSP suites pass; final
+  local VSIX is source-verified and real VS Code 1.106 Linux basic regressions pass.
+  Package-specific editor-host acceptance remains distinct. Local hashes:
+  target/checked-evidence/g09-workspace-verification.json.
+- G09 remains partial. Next: checked cross-file navigation and package task
+  targeting/real editor-host workspace acceptance. Task Manager remains unchanged.
+
+## 2026-11-12: G09 bounded CLI overlay transport
+
+- Added version-one SVROVL1 stdin framing and JSON-only package check transport
+  with request-ID correlation. Paths/source UTF-8, counts, declared lengths,
+  per-buffer/aggregate input and trailing data are strictly admitted before graph
+  work. No JSON parser dependency, source writes or input execution is introduced.
+- Added E4119 malformed/oversized request failures and E4120 replacement for
+  oversized reports. Rejected framing has null request ID; valid requests preserve
+  IDs through compiler/report failures. Ordinary check/symbol modes are unchanged.
+- Regression coverage includes all truncations, hostile lengths/counts, malformed
+  Unicode/paths, exact/overflow payloads, bounded reads from non-EOF input, actual
+  stdin/stdout Unicode checks, no disk writes/execution, incompatible flags and
+  complete capped-report replacement. Wire contract records EOF/deadline scope.
+- Validation: all 619 Rust tests pass; focused transport tests also pass after
+  pinning wire constants independently of library defaults. Strict Clippy,
+  formatting, documentation targets and diff checks pass. Updated CLI help
+  snapshot documents the new mode. Local hashes are recorded under
+  target/checked-evidence/g09-transport-verification.json.
+- Next: LSP workspace/dependency generations and cross-file diagnostics, then
+  checked navigation. G09 remains partial; Task Manager is unchanged.
+
+## 2026-11-12: G09 compiler unsaved-source overlay foundation
+
+- Added compile_with_source_overlays using borrowed UTF-8 buffers for existing
+  canonical package entries. Disk manifests/resolver remain authoritative; no
+  source is written, no input executes and no new/missing/manifest file overlay
+  is accepted. Existing checked evidence/source/AST/interface/IR budgets apply.
+- Added explicit overlay admission (32 files/512 KiB each/4 MiB total by default),
+  E4117 invalid/duplicate target errors and E4118 quota errors without fabricated
+  locations. Parser/semantic diagnostics use actual unsaved text and canonical
+  source identity. Returned output retains no caller buffer references.
+- Four focused tests cover simultaneous dependency/consumer edits, aliases,
+  unchanged disk text, retry/no stale facts, UTF-8/CRLF diagnostics, exact/one-below
+  quotas and unrelated/missing/duplicate targets. All 613 Rust tests, strict
+  Clippy, formatting, documentation links and diff checks pass. Local hashes:
+  target/checked-evidence/g09-overlays-verification.json.
+- G09 remains partial. Next: bounded CLI overlay transport, then workspace/dependency
+  generations, cross-file diagnostics/navigation and installed LSP acceptance.
+  Task Manager remains on hold; G08 evidence is retained separately as a dated record.
+
+## 2026-11-12: G08 final portable/Linux qualification complete
+
+- Extended the source fuzz harness to compare active compilation and legacy IR,
+  including Unicode trivia, complete lowering evidence and AST-only ownership.
+  Sanitizers remain enabled; final formatted-harness campaign completes 30,839
+  runs in 21 seconds with seed 42/reused corpus and no finding. No fuzz input
+  programs execute.
+- Current compiler passes source-verified local VSIX/relocated developer-tool
+  acceptance, full installed LSP, strict symbol regressions and real VS Code
+  1.106 Linux host activation/diagnostics/inferred hover/shadowing/edit/restart/
+  check/IR/JS/run tasks. Official downloader required inherited proxy settings;
+  no extension was published.
+- Fresh release versioned corpora pass: five-case compiler/runtime corpus with
+  21 observations, and 16 checked-evidence cases preserving exact IR, three
+  samples each. Existing 13-process aggregate boundary results and 609-test Rust
+  suite qualify current ordinary standalone/package consumers. One compile-fail
+  doctest, Clippy and formatting pass. Local hashed evidence is recorded in
+  target/checked-evidence/g08-final-verification.json.
+- Marked G08 complete for its portable behavior/Linux qualification scope.
+  Next is G09 package-aware LSP/unsaved-workspace navigation. Windows G04/G05,
+  MSRV, other-target and clean-machine release gates remain separate; this is
+  not security certification or whole-language maturity. Task Manager stays on hold.
+
+## 2026-11-12: G08 ordinary package caller migration
+
+- Activated cumulative PackageEvidenceLimits::DEFAULT and migrated all ordinary
+  package compile entry points, including explicit source/graph/interface/IR
+  limits, CLI package checks/builds/runs and package language tests. Existing
+  normalized import identities and shared emission counters remain intact.
+- Added explicit compile_with_legacy_lowering for compatibility/parity consumers;
+  migrated reference probes/tests to it. It is never used as quota fallback.
+- Added ordinary/default/explicit API parity regression. Updated aggregate corpus
+  version 2 passes 13 isolated processes, including exact graph/IR and one-below
+  rejection plus a four-provider nominal-type graph that legacy accepts and active
+  cumulative metadata rejects with E3025. No input programs execute in the probe.
+- Compatibility impact and active profile are documented; ordinary metadata
+  exhaustion keeps null diagnostic location. Task Manager is unchanged.
+- Validation: all 609 Rust tests pass, strict all-target Clippy, formatting,
+  documentation links and diff checks pass. Rebuilt compiler passes full LSP and
+  22-case interpreter/JavaScript parity including the 131-value Float corpus.
+  Aggregate corpus passes all 13 isolated boundary processes.
+- Next: final G08 qualification and status reconciliation, without claiming
+  security certification or unverified platform support.
+
+## 2026-11-12: G08 standalone executable caller migration
+
+- Activated the documented standalone metadata profile through shared
+  compiler::compile_program; CLI run/build/native emission and language tests now
+  consume retained evidence. Existing AST/IR budgets, legacy public stage APIs,
+  package compilation, plain check and IDE evidence fallback remain separate.
+- Documented compatibility impact: previously semantically valid programs beyond
+  active metadata limits can fail compilation with E3025. No fallback inference
+  or unlimited retry; no syntax/type/runtime behavior change for admitted input.
+- Added ordinary-helper IR/error parity, AST E3020, active type-budget rejection
+  and real language-test JSON regression coverage. Corrected language-test error
+  attribution so E3025 keeps null location rather than a fabricated file range.
+- Validation: all 608 Rust tests pass, including real CLI/native and active-limit
+  regressions; strict all-target Clippy, formatting, documentation links and diff
+  checks pass. Rebuilt compiler passes full LSP regressions and the 22-case
+  interpreter/JavaScript matrix including 131 finite Float values.
+- Next: package caller migration and final G08 qualification. Task Manager stays
+  on hold; no security or cross-platform certification is implied.
+
+## 2026-11-12: G08 aggregate graph and actual-IR boundaries
+
+- Added manual Rust/Python aggregate boundary corpus: four 249,999-node providers
+  plus a four-node root reach the existing one-million-node graph admission limit.
+  No package programs execute and no compiler defaults are changed.
+- Exact legacy/checked linked IR is 999,994 instructions/500,078 owned string bytes.
+  Exact output allowances pass; one-below IR allowances preserve E3021/E3022
+  diagnostics; one additional AST node preserves E3020. A checked-only evidence
+  allowance of 999,999 nodes rejects cumulatively with E3025.
+- Initial successful process peaks are roughly 408 MB checked/366 MB legacy,
+  including lowering/output, not allocator bounds or simultaneous table maxima.
+  Local report: target/benchmarks/checked-package-boundary.json.
+- Validation: release probe passes all 11 isolated boundary processes; strict
+  all-target Clippy, formatting, Python syntax, documentation links and diff
+  checks pass. The prior 605-test result was not rerun for this manual
+  probe/corpus/documentation slice; compiler implementation is unchanged.
+- Next: active-limit and compatibility decision, standalone caller migration,
+  then package callers. Existing shared emission/input quotas and IDE fallback
+  remain separate. Task Manager is unchanged; G08 remains partial.
+
+## 2026-11-12: G08 combined metadata/lowering and package peaks
+
+- Added candidate-profile selection to the opt-in benchmark probe/runner and
+  version 3 cases combining 16,384 nominal factories and a five-unit graph with
+  four 8,192-function providers. All 16 cases preserve exact legacy IR for every
+  warmup and three measured samples per mode under candidate profiles.
+- Combined case peaks around 136 MB (legacy 112 MB); large graph around 206 MB
+  (legacy 188 MB). Exact standalone node/type saturation can now include lowering:
+  roughly 132/109 MB respectively. No input programs execute in these probes.
+- Reports: target/benchmarks/checked-evidence-v3-candidate.json and
+  target/benchmarks/checked-evidence-lowering-peaks.json. These are process
+  observations, not allocator accounting, hard bounds or graph-limit saturation.
+- Strict all-target Clippy passes. Compiler implementation/defaults and Task
+  Manager behavior are unchanged; the prior 605-test result was not rerun for
+  this probe/corpus/documentation slice.
+- Next: larger aggregate graph/IR boundary qualification, then active-limit
+  selection and normal caller migration. Candidate profiles remain proposed.
+
+## 2026-11-12: G08 candidate boundaries and metadata diagnostics
+
+- Added explicit evidence/package error-to-diagnostic conversions: metadata
+  exhaustion becomes E3025 with null location; original source/interface/emission
+  diagnostics remain unchanged. Normal commands and IDE fallback are unchanged.
+- Added regression coverage for real exhaustion, semantic-error precedence,
+  preserved source identity/spans, JSON failure/null location and no accidental
+  path disclosure from converted package metadata errors.
+- Added manual release saturation probe for exact 250,000-node and 65,536-type
+  candidates and the next reachable overflow shapes. All four processes assert
+  expected results. Initial process RSS is roughly 105/109 MB at exact boundaries,
+  including generation/parsing/checking but excluding lowering. Raw local artifact:
+  target/benchmarks/checked-evidence-saturation.json.
+- Validation: all 605 Rust tests pass; strict all-target Clippy, formatting,
+  documentation links and diff checks pass. Release probe passes all four
+  boundary cases. No runtime/IDE code was changed in this slice.
+- Candidates remain proposed. Next qualify combined table/graph and lowering peaks
+  before choosing active defaults and migrating normal callers. Task Manager
+  remains on hold; no hard memory bound or platform certification is claimed.
+
+## 2026-11-12: G08 adversarial evidence shapes and candidate policy
+
+- Expanded checked-evidence corpus to version 2: 14 cases include shallow syntax
+  with 192 inferred array layers, many nominal types, long names, wide calls and
+  an eight-branch shared-provider graph. Five samples per mode plus warmups pass
+  exact legacy/checked IR parity. Raw local report:
+  target/benchmarks/checked-evidence-v2.json.
+- Added exact/one-below metadata-quota and fresh-retry regression coverage for
+  deep inferred types, long names and nominal/coercion pressure. This checks typed
+  exhaustion, not just timing; input programs are not executed.
+- Documented concrete standalone/graph candidate limits, independent accounting,
+  lifetime and fail-closed exhaustion policy. Candidates remain proposed; ordinary
+  compiler defaults and Task Manager behavior are unchanged.
+- Validation: 22 focused checked shape/type/flow/lowering/package tests, strict
+  all-target Clippy, formatting, documentation links and diff checks pass. The
+  prior full-suite result was not rerun for this test/corpus/documentation slice.
+- Next: candidate saturation, stable normal-command metadata diagnostics, then
+  caller migration. G08 remains partial; local evidence is not cross-platform or
+  security certification.
+
+## 2026-11-12: G08 initial checked-evidence overhead qualification
+
+- Added a release Rust probe plus versioned Python comparison corpus, using
+  fresh alternating legacy/checked children, exact debug IR equality on every
+  warmup/sample and deterministic evidence counters. Input programs are compiled
+  only. No compiler defaults or Task Manager behavior changed.
+- Nine cases include existing versioned runtime inputs, 1,024/4,096-context
+  functions, local packages and 16 aliases over 128 exports. Five samples per
+  mode passed exact IR parity. The largest source case showed meaningful checked
+  overhead; small-case peak RSS hits the process-launch floor. Details and limits
+  are in benchmarks/checked-evidence/README.md; raw local report is
+  target/benchmarks/checked-evidence.json.
+- Release build, probe compilation, strict all-target Clippy, formatting and
+  Python syntax checks pass. Existing compiler behavior was not changed; the
+  previous 602-test result is historical, not a new full-suite run this slice.
+- G08 remains partial. Next qualify more adversarial metadata shapes/graphs and
+  review production-limit policy before normal caller migration. No Windows,
+  mobile, MSRV, hard memory bound or security certification is claimed.
+
+## 2026-11-12: G08 opt-in import-aware checked packages
+
+- Added resolver-owned import/call evidence with canonical linked targets and
+  original provider record identities. Imported signatures remain separate from
+  local declarations; augmented snapshots make no local source-navigation claim.
+- Added `compile_with_checked_evidence` with explicit cumulative metadata limits
+  and the existing shared package emission budget. Default compiler entry points
+  remain compatible on the legacy path; G08 is still partial.
+- Covered aliases, transitive records, private exports, provider refresh,
+  relocation, exact IR/diagnostic parity, metadata boundaries and actual checked
+  JavaScript execution. Validation: 602 Rust tests pass, strict Clippy, one
+  compile-fail doctest, full LSP regressions and the 22-case interpreter/JavaScript
+  matrix pass. Production defaults, overhead qualification and normal caller
+  promotion remain next; no Windows qualification is claimed.
+
+## 2026-11-11: G08 slice 4 started — explicit standalone checked lowering
+
+- Added lowering-ready source/AST constructors with explicit LoweringEvidenceLimits
+  for function results and contextual expected types, including identity contexts.
+  Non-identity coercion edges alone cannot reproduce existing identity WidenFloat
+  instructions. Retain default Unit results and charge all new type records to
+  existing explicit semantic limits; old evidence APIs do not collect this data.
+- Added ir::lower_checked with explicit emission limits and a distinct missing-
+  evidence error. It consumes immutable retained types/targets/contexts without
+  semantic rechecking, legacy alias/return/field inference tables or partial
+  fallback. Reuse the existing emitter and budget logic. Exact legacy spelling,
+  shadow-name policy and redundant identity widening remain compatible.
+- Use declaration IDs for emitted reads/writes/calls and canonical retained
+  record identities. Temporary borrowed-address lookup only locates structural
+  IDs in this snapshot. Per-emission binding-name state is separate from the
+  immutable/Send/Sync snapshot, so clones/retries do not share mutable emitter
+  state. Private lowering array facts now share immutable Arc-backed children
+  instead of repeatedly cloning owned nested trees.
+- Four focused tests cover exact IR/interpreter parity for all eight runnable
+  standalone examples plus three numeric/array/record/scope/control-flow programs;
+  every smaller IR instruction/string budget versus legacy diagnostics; exact/
+  zero context/result allowances and shared type budgets; missing metadata,
+  diagnostic precedence, clone/retry and equal synthetic spans. A caller-AST
+  one-part qualified print alias reproduced an IR-spelling difference; corrected
+  it without changing the source grammar or canonical builtin identity.
+- Extended the 4,096 ordinary source mutations to lowering-ready analysis and
+  exact checked/legacy IR comparison for accepted inputs. Mutated programs are
+  never executed. Context/helper limits do not claim total memory/CPU accounting.
+- Validation: locked all-target Rust suite passes 595 tests, none ignored;
+  targeted checked-lowering/security tests, one compile-fail doctest, strict
+  Clippy and formatting pass. Rebuilt compiler passes full LSP regressions and
+  the interpreter/JavaScript matrix (22 PASS cases including 131 finite Float
+  values). Documentation/diff checks pass. Logs retained at
+  /tmp/sovra-g08-lowering-tests.log and /tmp/sovra-g08-lowering-runtime.log.
+- This is the standalone API part of slice 4, not full G08 completion or default
+  caller promotion. Normal CLI/test/native/package lowering still uses legacy
+  entry points. Next add import-aware checked snapshots and package shared-budget
+  integration, preserving imported alias/record provenance and ADR 0038 limits;
+  production evidence defaults and overhead qualification remain pending.
+  No Task Manager features, Windows qualification or external push changed.
+
+## 2026-11-11: G08 slice 3 — compiler-owned IDE projection and inferred hover
+
+- Opt-in standalone `check --format json --symbols` now constructs a source-backed
+  immutable checked snapshot. Function/local declarations, calls and reads/writes
+  project stored identities; removed the independent local-scope resolver and AST
+  call-target reconstruction. Lexer tokens supply source name ranges, annotation
+  spelling and signature excerpts only. Default JSON/check/build/run stay on the
+  existing paths; updated check help to describe checked symbol/type evidence.
+- Unannotated locals add nullable inferred_type and concrete checked signatures
+  for scalar, nominal and nested-array types. Preserve explicit source annotations;
+  inference holes/oversized labels remain unavailable rather than invented types.
+  References to omitted declarations are omitted, including shadowing cases.
+- IDE requests explicitly select existing 250,000-node admission for record counts,
+  8,192 types and 512 KiB nominal/declaration-name payload allowances. Projection
+  retains 8,192-entry tables, 512 KiB reports and 4 KiB strings. Collection failure
+  retries ordinary checking: valid source returns empty unavailable/truncated
+  metadata, while actual source errors fail normally. These do not bound total
+  compiler memory/CPU or change ordinary language acceptance limits.
+- Added strict LSP metadata decoder: bounded tables/strings/envelopes, valid
+  definition indices, inferred label/signature consistency, UTF-8 boundaries and
+  UTF-16 conversion. Malformed metadata cannot become hover/navigation. Legacy
+  reports without inferred_type remain accepted. Decoder source is explicitly
+  included in developer-tools packaging and the real VSIX source checks.
+- Regressions cover inferred scalars/records/arrays, holes, annotations, output
+  caps, skipped shadow declarations, long labels, small-buffer qualified-name
+  metadata exhaustion and edit/failure/close clearing. A 129-level inferred array
+  across shallow bindings reproduced an initially incorrect decoder depth guard;
+  fixed it to follow the label byte budget instead of AST syntax depth. Null
+  tables are rejected. VS Code's hover assertion now expects escaped Markdown
+  plaintext; no product escaping was weakened to make it pass.
+- Validation: locked all-target Rust suite passes 591 tests, none ignored; one
+  compile-fail doctest, strict Clippy, formatting, compiler symbol tests and full
+  LSP tests pass. Real Linux VS Code 1.106 passes inferred hover, scoped definitions,
+  invalid-buffer refresh and existing check/IR/JS/run tasks. Real VSIX packaging,
+  source identity/archive admission and relocated tools with supplied VSIX pass.
+  Documentation targets/diff checks pass. No Windows or fresh sanitizer/overhead
+  qualification claimed. Logs: /tmp/sovra-g08-ide-tests.log and
+  /tmp/sovra-g08-ide-host-current.log; hashed source/compiler/package/host evidence
+  retained in target/ide/g08/verification.json with the unpublished VSIX.
+- Standalone slices 1–3 implemented; G08 remains partial. Next slice 4 migrates
+  checked lowering and package consumers, followed by parity/resource/performance
+  qualification. Package roots, type/field navigation, semantic completion and
+  browser-editor LSP remain planned. No Task Manager features or external push.
+
+## 2026-11-11: G08 slice 2 finished — scoped uses and numeric conversion edges
+
+- Added explicitly flow-enabled source/AST checked constructors with separate
+  FlowEvidenceLimits. Structural-only/type-only APIs, limit structs, errors and
+  ordinary compiler behavior remain compatible. Flow evidence is immutable and
+  optional; no CLI/IDE/lowering/package consumer uses it yet.
+- Record source function/parameter/local declaration identities, resolved value
+  reads/direct writes/indexed writes and function-call heads. Use structural IDs,
+  not spans or name spelling, including equal-span/module functions. Mirror
+  existing lexical scope boundaries; initializer resolution precedes shadowing
+  installation. Call targets use the checker's selected function object, separate
+  from same-spelled local values. Builtins retain canonical static registry names.
+- Record non-identity numeric requirements at initialization, assignment, indexed
+  assignment, return, argument, record field, array element and mixed numeric
+  binary contexts. Edges preserve intrinsic/from and contextual/to TypeIds plus
+  owner/value nodes and array depth. Unknown holes, identity and nonnumeric
+  conversions are omitted. Array edges use previously checked item types and the
+  final inferred element type; no second inference walk or backend change.
+- Bound declaration/use/coercion counts and retained declaration-name bytes
+  before retention. Scope maps share retained name strings; builtin names use
+  static storage. Contextual types share semantic type/name limits. Exhaustion
+  returns no partial snapshot; source diagnostics take precedence. These limits
+  exclude helper/container capacity and process-wide memory/CPU accounting.
+- Six focused tests verify scope restoration, initializer shadowing, namespaces,
+  builtin/module/equal-span identities, all eight conversion contexts and exact
+  source expressions/depths, atomic/exact/zero limits, shared type limits,
+  diagnostic parity and leading-Unicode-trivia invariance. Extended the ordinary
+  4,096-source mutation comparison to legacy/type-only/full evidence paths.
+- Validation: locked all-target Rust suite passes 590 tests, zero ignored; all
+  six flow tests also pass after stronger exact-edge/accounting assertions. One
+  immutability compile-fail doctest, strict all-target/all-feature Clippy,
+  formatting, existing compiler symbol export, full LSP integration and local
+  documentation/diff checks pass. Full Rust log: /tmp/sovra-g08-flow-tests.log.
+  No fresh sanitizer campaign, performance-overhead or Windows claim made.
+- Standalone slices 1–2 complete; G08 remains partial until consumer migration
+  and qualification. Next is slice 3: bounded IDE projection/inferred-local hover.
+  Type/field annotation navigation, package provenance and checked lowering still
+  need implementation. No new language semantics, Task Manager features or push.
+
+## 2026-11-11: G08 slice 2, type recording during semantic checking
+
+- Added opt-in CheckedUnit source/AST constructors taking separate explicit
+  SemanticEvidenceLimits. Existing structural-only constructors/CheckError and
+  TypedProgram/analyzer/lowering APIs remain compatible. New EvidenceError wraps
+  existing check failures or reports recording exhaustion; no new CLI default,
+  diagnostic code, JSON field or language behavior introduced.
+- Existing semantic checks now record value-expression results, parameter types
+  and local binding types at the points they are established. Existing scope
+  handling determines shadowed types. Legacy calls use a disabled recorder with
+  no evidence/index allocation; there is no parallel inference implementation.
+  Initializer and binding types remain distinct, preserving widening information
+  for the later explicit coercion-edge work.
+- Immutable evidence uses snapshot-local NodeId/TypeId tables with interned
+  scalars, canonical standalone nominal names and array layers; explicit Unknown
+  holes remain for nested/empty-array inference. Original alias spelling remains
+  in AST/source. Borrow array types during interning instead of repeatedly
+  cloning nested structures. Temporary normalized-AST addresses only locate
+  structural IDs during checking and are discarded before returning a snapshot.
+- Charge fact/type counts and unique retained nominal-name bytes before retention.
+  Exhaustion yields no partial snapshot; existing source diagnostics take
+  precedence when checking fails. These counters exclude map/Vec capacity and
+  transient/existing semantic work and are not total memory/CPU quotas.
+- Six new tests cover scoped inferred/annotated types, initializer-vs-binding
+  types, module alias/nominal identity, record fields, builtin results, nested
+  holes, interning, exact/zero/overflow allowances, equal spans and failure
+  diagnostic parity. Extended all 4,096 ordinary source mutations to compare
+  recorded/legacy normalized ASTs and full diagnostics. An initial test selected
+  a field receiver by start offset alone; corrected it to select the full field
+  node, preserving the distinct receiver/field facts rather than changing code.
+- Validation: locked all-target Rust suite passes 584 tests, zero ignored; one
+  immutability compile-fail doctest, strict all-target/all-feature Clippy,
+  formatting, existing compiler symbol export and full LSP integration pass.
+  Documentation targets/diff checks pass. Full Rust log is retained at
+  /tmp/sovra-g08-types-tests.log. No new sanitizer campaign or Windows run claimed.
+- G08 remains partial. This completes the type-recording part of slice 2;
+  resolved declaration uses/coercion edges, package evidence provenance and
+  CLI/IDE/lowering consumers are not implemented. Unchecked call heads/assignment
+  targets have absent facts rather than fabricated Unknown/Any values. Next:
+  finish slice 2 with scoped use identities and explicit coercion edges. No Task
+  Manager features or external push changed; G04/G05 Windows status unchanged.
+
+## 2026-11-11: G08 slice 1 — immutable checked ownership and structural IDs
+
+- Added public additive compiler::checked foundation: CheckedUnit privately owns
+  a successful normalized AST, optional exact original source and a deterministic
+  structural node index. Clones share immutable Arc ownership; AST borrowing is
+  read-only. Detached AST clones and legacy TypedProgram construction remain
+  supported without modifying snapshots. No existing stage/CLI caller migrated.
+- Source-backed construction parses/checks the exact text retained; AST-only
+  construction reports source unavailable. Structural IDs use snapshot-local
+  ordinals and parent links, independent of equal/synthetic byte ranges. Index
+  coverage includes all current declarations, statements and expression forms;
+  Program/collection containers remain excluded as in AST admission.
+- EvidenceLimits requires explicit index-node and retained-source allowances.
+  Borrowed counting precedes semantic cloning/index storage; source bytes are
+  checked before parse/retention and each index record before insertion. Existing
+  frontend/AST/depth admission remains independent. No production default or new
+  diagnostic code selected. Exhaustion returns no partial snapshot through the
+  new error type, distinct from unchanged parse/semantic diagnostics. These are
+  record/source counters, not AST-string, allocation-capacity or process quotas.
+- Five focused regressions verify ownership/cloning, normalization compatibility,
+  deterministic parent/ID traversal, all AST forms, Unicode byte ranges, equal
+  synthetic spans, exact/zero/overflow limits and ordinary parse/semantic/depth
+  failures. Compile-fail doctest verifies snapshot AST mutation is rejected.
+- Validation: current-source locked all-target Rust suite passes 578 tests,
+  zero failures/ignored; one compile-fail doctest passes. Strict locked Clippy
+  across all targets/features, formatting, documentation targets (148 files/311
+  links) and diff checks pass. Full-suite log: /tmp/sovra-g08-snapshot-tests.log.
+- ADR 0041/architecture/task board now mark slice 1 implemented, G08 partial.
+  Inferred type/use/coercion records and IDE/lowering/package consumer migration
+  remain pending. Next slice records semantic facts during existing checking;
+  no new language semantics, Task Manager behavior or external push introduced.
+
+## 2026-11-11: G08 design — retained checked type/symbol evidence
+
+- Reviewed semantic checking, TypeFacts reconstruction, lowering boundaries,
+  standalone CLI symbol rendering and lexical IDE collection. Current
+  TypedProgram publicly owns a mutable AST; adding authoritative cached facts
+  directly to that wrapper would permit stale evidence after caller mutation.
+- Added proposed ADR 0041 recommending an additive private immutable CheckedUnit,
+  snapshot-local structural node/declaration identities, interned checked types,
+  resolved uses and explicit coercion edges. Preserve public legacy APIs and
+  existing semantic outcomes; do not declare a full typed AST/HIR implemented.
+- Specified shadowing/initializer order, alias/nominal package identity, explicit
+  inference holes, source-backed range provenance, failure/no-partial-artifact
+  behavior, pre-allocation resource accounting and separate bounded IDE export.
+  New production limit values/diagnostic codes are not silently selected.
+- Defined five migration slices with verification gates: immutable/indexed
+  ownership; semantic recording; IDE projection; checked lowering/package callers;
+  parity/resource/fuzz/performance qualification. Existing compiler and LSP
+  behavior remains unchanged. No fundamental syntax/type/memory semantics or
+  compatibility change is authorized or introduced by this design document.
+- Validation: source inspection and documentation review; local documentation
+  targets pass (148 files/309 links), diff checks pass. This documentation-only
+  change does not warrant a fresh compiler test run or new execution claims.
+- G08 design ready, implementation pending; do not mark its IDE/lowering gate
+  complete. Next is slice 1, immutable/indexed checked ownership. G04 remains
+  deferred and G05 partial pending Windows execution. No Task Manager or push.
+
+## 2026-11-11: Contributor task G07 — frontend/native-image properties and campaigns
+
+- Added ordinary regressions for Unicode/comment/CRLF prefix invariance of
+  checked IR/native encoding and exact diagnostic byte-offset shifts. Added
+  systematic byte insertion/deletion/replacement across three native images,
+  canonical re-encoding, canonical truncation and trailing-byte rejection.
+  These are compilation/decoder properties; mutated programs are never executed.
+- Extended both libFuzzer targets with matching properties and added a reviewed
+  Unicode/local-shadowing source seed. No normal-package dependency was added;
+  ordinary tests do not depend on excluded fuzz files and remain in existing CI.
+- Validation: all four compiler_security tests pass (none ignored); root/fuzz
+  formatting, strict locked/all-target/all-feature Clippy and documentation/diff
+  checks pass. Both updated cargo-fuzz sanitizer targets build successfully.
+- Initial 30-second runs completed their inputs but exited 1 when LeakSanitizer
+  failed under the sandbox ptrace restriction. Retained logs and empty artifacts
+  as infrastructure failures, not compiler findings. Reran outside that sandbox
+  restriction with ASan/LSan enabled and no machine-wide policy changes: source
+  passed 52,615 executions and native_ir passed 2,596,561, each reporting 31
+  seconds. No compiler failure was found; no minimization/fix is claimed.
+- Campaign settings: cargo-fuzz 0.13.2; rustc 1.102.0-nightly
+  (ac8310ba6 2026-11-09), seed 20261111, max_total_time 30 seconds, per-input
+  timeout 5 seconds, RSS 1024 MiB, mutation max_len 4096, source dictionary.
+  Reused/evolving corpora include source initialization inputs above 4096 bytes
+  (within the 16 KiB harness cap); fixed random seed does not alone reproduce
+  the sequence. Logs/toolchain/binary/seed hashes and initial corpus sizes are
+  retained locally in target/fuzz-g07/verification.json and four hashed logs.
+- G07 complete for this bounded contribution. Short Linux campaigns are not
+  sustained fuzzing, Windows qualification or security certification. Findings
+  remain private until reviewed under SECURITY.md. Next G08 is design work for
+  retained checked type/symbol evidence. G04 deferred/G05 partial remain as before;
+  no Task Manager features or external push changed.
+
+## 2026-11-11: Contributor task G06 — compiler/runtime performance corpus
+
+- Added version-1 independent corpus: empty startup, 5,000 integer iterations,
+  300 Unicode string concatenations and generated 32/256 typed-function inputs.
+  Manifest fixes expected output, including UTF-8 byte-length semantics.
+- Added Node runner and isolated Python process measurement helper. Measure
+  compiler version startup and check/JS build/interpreter/Node execution for all
+  five cases. Check output/status on warmups and every sample. Record exact
+  input/compiler/corpus/runner/helper hashes, generated JS size/hash, host/tool
+  versions, Git revision/dirty status and min/median/max plus raw observations.
+  POSIX memory is per-child peak RSS in bytes; unsupported hosts use null.
+- Documented repeat commands, optional compiler/Python/sample/report paths and
+  limits: warm environment, startup included, whole CLI phases, interpreter
+  compilation included, no isolated stage/native/browser/mobile performance claim
+  and no fabricated CI speed gates. Future larger graphs/invalid inputs remain.
+- Validation: `cargo build --release --locked` passes. Full benchmark succeeds:
+  21 measurements, 105 retained samples plus 21 checked warmups. Independent
+  report checks verify executable/corpus/runner/helper hashes, sample counts,
+  ordered timing summaries and positive POSIX memory measurements. JavaScript
+  syntax, documentation links and diff checks pass. No compiler behavior changed.
+- Local machine: Linux x64, AMD EPYC 9V74, 3 visible logical CPUs; Rust/Cargo
+  1.99.1, Node 24.22.1, Python 3.12.14. Warm median compiler version startup
+  1.21 ms; 256-declaration check 2.25 ms, JS build 3.90 ms. Sampled process peak
+  RSS across all operations ranges 8,781,824–37,842,944 bytes. These values are
+  observations of this shared host/corpus, not universal limits or benchmarks
+  against another language. Full raw report: target/benchmarks/compiler-runtime.json.
+- G06 complete; next G07 property/fuzz regressions. G04 stays deferred and G05
+  partial pending Windows execution. No Task Manager changes or external push.
+
+## 2026-11-11: G04 deferred; G05 portable installer qualification preparation
+
+- User requested skipping G04 because Windows is unavailable and moving to G05.
+  G04 remains deferred, not passed. G05 also requires Windows; completed its
+  portable evidence/reporting preparation without claiming platform execution.
+- Added optional JSON evidence to installer transaction fixtures: host and
+  PowerShell versions, test/helper SHA-256 hashes, completed checks, failures and
+  explicit false flags for real compiler/clean Windows qualification. Windows
+  CI now requests and uploads the report even when the suite fails.
+- Added INSTALLER_QUALIFICATION.md with distinct old/new package, recovery,
+  foreign-file, PATH/profile preservation and clean-machine procedures. Existing
+  packaged acceptance replaces a candidate with itself; documented that this
+  cannot establish distinct-version compatibility or clean-machine readiness.
+- Validation: actual PowerShell 7 on Linux passes all 12 fixture checkpoints;
+  target/installer/transaction-verification.json hashes and qualification flags
+  were independently checked. A temporary isolated test copy with an injected
+  failure exits nonzero and saves a failed report containing only completed
+  checks. Documentation targets (146 files/301 links) and diff checks pass.
+- No installer production behavior, Task Manager features or external publishing
+  changed. G05 is partial pending actual Windows evidence; next independent
+  contributor task is G06, the performance corpus.
+
+## 2026-11-11: Contributor task G03 — LSP document lifecycle regressions
+
+- Added batched protocol regressions without sleeps: cancelling one pending
+  hover leaves its sibling outline and compiler diagnostics working; closing an
+  edited document cancels its pending outline with ContentModified and clears
+  diagnostics. Queries while closed return null. Reopening the same URI with
+  version reset to 1 returns only the fresh function declaration.
+- Replacing checked source with rejected Unicode produces an operational
+  diagnostic and empty/null symbol results. Assert lifecycle requests receive
+  exactly one response and no leftover stale diagnostics after server exit.
+  Existing rapid-edit and invalid-source regressions remain in the same suite.
+- These focused pending/debounce lifecycle cases passed existing server code;
+  no compiler/server behavior change was required. They do not simulate an
+  arbitrarily delayed compiler or prove all possible concurrent schedules.
+- Validation: full LSP integration and developer-tools relocation suite pass,
+  including the full LSP suite through installed launchers, unrelated working
+  directories/spaced paths and installed editor check. Documentation links,
+  JavaScript syntax and diff checks pass. No Task Manager changes or push.
+- G03 complete. Next: G04, execute the existing responsive native fixture on
+  actual Windows and retain source/compiler hashes and layout/focus evidence;
+  Linux compilation cannot satisfy that platform gate.
+
+## 2026-11-11: Contributor task G02 — combined Unicode diagnostic coordinates
+
+- Added a focused CLI regression with an astral character in a preceding comment,
+  combining/astral characters and a source escape before an invalid argument,
+  a leading tab, CRLF line endings and a Unicode filename. Generate exact bytes
+  in the test to avoid checkout newline conversion changing the fixture.
+- Assert E3007/E3001, original UTF-8 byte slices, zero-based Unicode-scalar
+  columns, one-based human locations and JSON file identity. Explicitly show
+  scalar columns differ from both UTF-16 length and UTF-8 byte length. A tab
+  remains one scalar; the decoded string newline does not change source lines.
+  Check commands leave the source unchanged. Corrected source succeeds cleanly.
+- Added matching LSP edits asserting UTF-16 positions and clearing both errors
+  on the newer valid version, then closing the document. Clarified the existing
+  JSON coordinate contract. This exposed a coverage gap, not a compiler bug;
+  diagnostic codes, formatting and runtime/language behavior are unchanged.
+- Validation: focused CLI regression passes (one test; 76 others filtered), full
+  LSP integration passes, strict locked/all-target/all-feature Clippy and Rust
+  formatting pass. Existing total Rust-suite results remain historical; no new
+  full-suite total or Windows execution is claimed. Documentation links and diff
+  checks pass. G02 recorded complete; next is G03. No Task Manager changes/push.
+
+## 2026-11-11: Contributor task G01 — documentation/example baseline
+
+- Started the contributor board in order. Added examples/catalog.json and a
+  readable index classifying every example directory: eight executable programs,
+  one local-package consumer, one host component, six checker-only samples and
+  one proposal (Fielddesk). Internal Rust helpers are labeled separately.
+- Real compiler smoke coverage checks all 17 directories. Runnable entries are
+  executed through the interpreter and generated Node JavaScript with matching
+  output; the host component only generates a view using fresh test state.
+  Checker examples use --service-calls; the proposal receives wiring checks only.
+  No proposal/service/native UI execution is implied. Evidence is written to
+  target/docs/examples-verification.json.
+- Added dependency-free local Markdown target checks with regression coverage
+  for encoded/angle paths, reference definitions, code fences/generated folders,
+  missing files/images, malformed escapes and machine-local/escaping targets.
+  External URL availability and heading fragments are explicitly not checked.
+  Both checker regression and real-repository/example checks are now in CI.
+- Corrected README/course stale language-server/native-host/test status and
+  working-directory guidance; made Fielddesk's proposed command flow explicit.
+  Marked older assessment/handoff/release checkpoints as historical and linked
+  current maturity/Windows status without rewriting historical validation claims.
+  Updated contributor validation instructions and marked G01 complete in the
+  maturity task board. Next contributor task: G02 diagnostic/Unicode regression.
+- Validation: 145 Markdown files and 298 local targets pass; checker regressions
+  pass; all 17 classified example checks and executable two-engine comparisons
+  pass. Node syntax and diff checks pass. No compiler/runtime/native UI/Task
+  Manager behavior changed, so the previous 570-test compiler run was not
+  repeated. Platform-only commands retain their qualification limits. No push,
+  external issue creation or release performed.
+
+## 2026-11-11: Repository-wide maturity and contributor audit
+
+- User requested a whole-repository assessment and recorded steps toward a
+  serious general-purpose language that outside developers can help grow.
+  Added docs/LANGUAGE_MATURITY_AUDIT.md with component/capability boundaries,
+  prioritized development dependencies, per-track completion gates, a source map
+  and 18 scoped contributor tasks. This is an engineering assessment of the dirty
+  local tree, not a line-by-line security audit or remote release verification.
+- Covered language/typing/IR/backends, partial application checking, local package
+  lifecycle, stdlib/runtime/networking, UI/platforms, editor/LSP, installation,
+  CI/releases, examples/course, contributor/security/conduct/licensing materials.
+  Distinguish experimental contribution readiness from production/all-platform
+  support. Windows foundations remain first and Task Manager enhancements paused.
+- Main remaining sequence: review/share accumulated changes and qualify exact
+  artifacts; truthful docs/version/support/maintainer policy; retained compiler
+  type/symbol facts and structured project/multi-file compilation; useful data/
+  error/resource APIs and reproducible packages; real server/browser/mobile and
+  other desktop hosts; measured performance, sustained quality and stable releases.
+  Existing milestones/semantics/ADRs and release approval rules are unchanged.
+- Improved CONTRIBUTING with a reproducible checkout/smoke path, targeted test
+  guidance and task-board links; added a concise local PR template. Corrected
+  stale reserved-command/CI guidance, editor/native-UI status and package roadmap
+  wording; labeled aspirational Fielddesk developer-experience material. Linked
+  the current audit prominently from README/AGENTS/roadmap/status docs. No issues,
+  maintainer assignments, new legal obligations or private contacts were invented.
+- Fresh Linux validation: all 570 Rust all-target tests passed, no failures or
+  ignored tests; formatting and strict locked/all-target/all-feature Clippy pass.
+  Doc-test command succeeds with zero doctests. Nine dogfood applications pass;
+  runtime differential matrix including 131 Float values passes. Formatter
+  exercises eight real programs/both engines and 261 comment placements; language
+  test integration passes. Relocated developer tools/full LSP/editor, VSIX
+  admission, compiler symbol metadata, 115 UI admission checks and responsive
+  source parity pass. Actual PowerShell installer-core transactions pass on Linux.
+  Contribution greeting/JSON check/new project/generated test were exercised.
+- Rust 1.74 is not installed locally; its current execution remains a CI gate.
+  No new Windows/WPF, macOS, browser-language or mobile execution is claimed.
+  Earlier VS Code/browser/reference-compile evidence remains separate. No runtime
+  behavior changed in this audit, and no push/publication/Task Manager changes
+  were performed. Evidence summary: target/repo-audit/verification.json.
+
+## 2026-11-11: Native Windows UI responsive layout
+
+- User redirected work to native UI. Updated only the shared compiled WPF host:
+  bind horizontal text/row widths to actual available group space, wrap long
+  labels/button captions, give row inputs a bounded preferred width and clear
+  row-specific bindings when controls move into vertical groups. Native controls,
+  drafts, selection, accessible names and event protocol remain intact. Initial
+  size/minimums are capped to the primary Windows work area with a margin.
+- Added an unrelated real-Sovra responsive fixture and native acceptance checks
+  for narrow/wide/narrow overflow, retained control identity/draft/selection/focus
+  and no application events on resize. Included the source in native evidence
+  hashing. No Task Manager business changes or private UI protocol expansion.
+- Downloaded Microsoft .NET Framework 4.8 reference assemblies (official NuGet
+  package 1.0.3); PowerShell/Roslyn compiles the actual host and acceptance harness
+  as C# 5 on Linux. Optional reproducible script records source hashes and
+  native_windows_executed=false at target/native-ui-compile/verification.json.
+  This checks compilation only; no Linux WPF rendering or Windows runtime pass
+  is claimed. Windows CI runs the existing compiled-host suite with new cases.
+- Real-Sovra interpreter/JavaScript fixture parity passes with strict v2 decoding,
+  long labels and no view-generation state writes; added to CI. Native resize,
+  screen-reader, work-area/DPI and multi-monitor execution remain Windows gates.
+  No host default change, packaging release or push performed.
+
+## 2026-11-11: Opt-in Windows upgrade and explicit recovery
+
+- Added install-core.ps1 for manifest-owned tree verification and serialized
+  same-parent directory replacement. Existing install defaults still refuse
+  replacement; -Upgrade explicitly opts in. Source and copied candidate integrity
+  are checked, candidate compiler/version/template checks run before and after
+  activation, and previous files remain in an owned sibling backup.
+- Failed activation restores the prior snapshot when possible and retains the
+  failed candidate. No automatic backup deletion or application-data migration.
+  Reject changed/unmanaged files, reparse points, duplicate/unsafe manifest paths
+  and filesystem-root targets. Canonicalize trailing separators and Windows case
+  for exclusive installer lease identity; retain lease files to avoid name races.
+- Write/flush a bounded recovery receipt before moving the old directory, binding
+  backup path, target prefix and compiler hash. Explicit rollback verifies that
+  receipt and both package trees; it can restore a missing prefix after an
+  interrupted move, or retain the displaced current snapshot for reversal.
+  Preserve unrelated PATH text when adding bin; NoPersistPath remains available.
+- Downloaded official PowerShell 7.7.0 to /tmp and verified its published SHA-256
+  to execute real portable transaction tests on Linux. Tests pass for fresh and
+  upgrade activation failures, overwrite refusal, lease contention, modified/
+  unmanaged files, corrupt candidate, backup retention, rollback, target-bound
+  receipts, simulated missing-prefix recovery, links and prefix normalization.
+  PowerShell syntax checks pass. This does not execute Windows file-locking,
+  PowerShell 5.1 or the full Windows installer locally.
+- Windows CI now runs the transaction suite on PowerShell 5.1 and installed ZIP
+  tests exercise real compiler upgrade/rollback, preserved outside state and user
+  PATH. Packager includes the new helpers under integrity coverage. Native/clean-
+  machine qualification is still pending. Directory moves/receipt flushing do not
+  establish power-loss durability or registry atomicity; PATH errors occur after
+  activation and retained snapshots remain available for explicit recovery.
+- No compiler/UI/Task Manager behavior changes, no push or release. Updated
+  Windows foundation review and operational docs. Uninstall, publisher signing
+  and Windows qualification remain next foundation work.
+
+## 2026-11-11: Windows developer-tools distribution
+
+- Continued foundation work with a portable developer-tools bundle builder,
+  installed fixed-mode Node launcher and PowerShell editor wrapper. Windows
+  packager/installer now include editor, LSP and extension sources under
+  developer-tools and preserve them in the existing integrity file list.
+- Launcher checks Node 22+, manifest and adjacent installed compiler version,
+  uses fixed script paths, and never loads project scripts or a compiler from
+  project cwd. LSP uses direct Node binary stdio, avoiding PowerShell text-pipeline
+  encoding. Node remains optional for normal compiler/application execution.
+- Optional supplied VSIX is bounded and compared member-by-member with current
+  extension sources and identity using a ZIP reader that never extracts paths.
+  Reject unexpected/duplicate/missing members, stale code and unsupported layouts.
+  Record VSIX SHA-256. Windows CI uses official vsce and supplies its artifact.
+- Cross-platform relocation tests use a real compiler, full LSP from a spaced
+  installation path/unrelated cwd, editor startup/check, Node-version boundary,
+  version mismatch, missing compiler, invalid VSIX and existing-output refusal.
+  Existing VSIX 0.3.0 passed source verification and bundle creation locally.
+  Installed tests verify supplied VSIX bytes/identity. Windows tests exercise the
+  editor wrapper; restricted-PATH tests retain Node-free compiler acceptance and
+  now reject editor startup without Node.
+- Linux relocated acceptance passed. Node syntax/diff checks passed. No Rust,
+  Task Manager or WPF runtime behavior changed; prior compiler tests were not
+  repeated. PowerShell installation and downloaded Windows artifact execution
+  remain unverified locally and assigned to CI. Safe in-place upgrades and release
+  qualification remain open. Updated review and installed-tool documentation.
+  Version equality cannot distinguish every edited build sharing a version;
+  integrity checks and exact installed acceptance remain necessary. No push/release.
+
+## 2026-11-11: Review Windows foundations before application enhancements
+
+- User set the sequence: review/qualify compiler, UI and surrounding Windows
+  foundations first; update Task Manager afterward. Persisted in AGENTS.md,
+  README and production handoff, with docs/WINDOWS_FOUNDATION_REVIEW.md recording
+  findings, evidence boundaries and ordered readiness gates.
+- Reviewed shared protocol/transport, native bridge/profile/process boundaries,
+  Windows packaging/installer, CI and compiler/tooling qualification evidence.
+  Priorities: current exact Windows/MSVC/native artifacts and clean-machine
+  qualification, real accessibility/DPI/theme checks, safe installation lifecycle,
+  developer-tool distribution and browser-host execution scope. New editor/LSP/
+  VSIX tools are not copied by the Windows packager/installer. Existing install
+  prefixes are deliberately refused; safe upgrades remain a separate gap.
+- Reproduced browser acceptance failure: page-script fetch was denied by the
+  fixture CSP. Replaced only that probe with the test HTTP client; retained the
+  page policy and stale-action rejection assertion. Browser acceptance now passes.
+- This review's checks passed: 115 protocol admissions, grouped/flat layout and
+  persisted-event parity in both engines, actual Chromium component save/reset,
+  literal markup/Unicode, stale-action rejection and narrow layout. Desktop/narrow
+  screenshots inspected. Native WPF test was attempted and stopped explicitly
+  because the host is Linux; no Windows execution or release readiness is claimed.
+  Prior 570-test compiler and real VS Code evidence is recorded separately and
+  was not rerun for this review-only change.
+- No Task Manager source/business changes made in this review. Existing dirty
+  compiler/UI/editor changes preserved. No push, packaging default change or
+  release action performed. Next: Windows foundation qualification and highest
+  priority shared-host/distribution fixes before application feature work resumes.
+
+## 2026-11-11: Persist the cross-platform product goal
+
+- User reaffirmed that Sovra should power mobile, desktop, web and more, then
+  requested durable repository guidance. Added docs/PLATFORM_VISION.md and a
+  prominent AGENTS.md instruction for future development sessions.
+- Linked the direction from README, architecture, roadmap, UI architecture and
+  production handoff. Distinguish intended Android/iOS, Windows/macOS/Linux,
+  browser, server/CLI and other targets from actual support. Mobile runtime/UI/
+  packaging remains planned; current Task Manager and IDE/host work are slices.
+- Record portable compiler semantics and explicit target rendering/device/
+  lifecycle/packaging boundaries as implementation guidance. No mobile framework,
+  backend technology, ABI, syntax or memory-model decision is made here. Preserve
+  milestone numbering and release gates. Reword the README desktop focus as an
+  implementation checkpoint so it does not obscure the general-purpose goal.
+- Validation: documentation links and diff whitespace checked. Documentation and
+  agent guidance only; no executable behavior changed and no tests rerun.
+
+## 2026-11-11: Parameter and local IDE navigation
+
+- Extended opt-in successful standalone symbol reports with separate `locals`
+  and `local_references` arrays, preserving function declaration/reference indices
+  and default JSON/failed-source behavior. Parameters and let declarations have
+  exact identifier spans and bounded signature text. Explicit annotation spelling
+  is retained; inferred local types are explicitly unavailable, without guessing.
+- Compiler-owned AST traversal processes let initializers before inserting their
+  bindings, restores branch/loop scopes and keeps function/local namespaces
+  separate. Cover assignment targets, array indices/targets, record value fields
+  and field receivers without treating field names as variable references.
+  Independent function scopes prevent cross-function parameter identity leakage.
+- Local traversal is restricted to successfully checked/depth-bounded ASTs, with
+  an 8,192-node allowance and the remaining shared 512 KiB metadata budget. Stop
+  safely on exhausted or oversized metadata and preserve valid included indices.
+  No source syntax, semantic rules, stage APIs, Task Manager or package loading
+  changes. Existing function-only outlines remain unchanged.
+- LSP 0.3.0 includes local ranges in the existing forward UTF-16 conversion pass;
+  hover/definition select variable identities before function-call evidence.
+  Existing version invalidation, bounded pending requests, cancellation, strict
+  framing and Workspace Trust boundaries remain in force.
+- Validation on Linux: all 570 Rust all-target tests passed, none ignored;
+  strict all-target/all-feature Clippy and formatting passed. Real-compiler symbol
+  regressions cover parameter, branch/loop/same-scope shadowing, initializer order,
+  assignment, function/local namespaces, arrays/records, separate functions and
+  shared metadata exhaustion. LSP tests verify parameter hover and inner/outer
+  definition targets across CRLF sources. Actual VS Code 1.106.0 passed new
+  parameter/local hover and shadowing definitions plus existing IDE/task tests.
+- Package: target/ide/sovra-language-0.3.0.vsix; actual host evidence is in
+  target/ide/vscode-verification.json. Rebuild compiler before using the upgraded
+  extension. Other host platforms remain unverified locally. No push, PR update
+  or Marketplace publication performed.
+- Next: retain checked inferred types and type/field symbol evidence, then use
+  compiler scope information for semantic completion. References/rename, package
+  roots and browser-editor LSP wiring remain planned.
+
+## 2026-11-11: Checked function IDE navigation
+
+- Continued IDE work with opt-in standalone `check --format json --symbols`.
+  The compiler emits function declarations with exact name ranges, bounded source
+  signature excerpts and validated AST call targets, including module/private
+  functions within valid visibility contexts. Builtin signatures come from the
+  Rust registry. Plain JSON and failed-source reports retain their existing shape;
+  no source syntax/type semantics or stage APIs change. Reject non-JSON/project/
+  service-call combinations and repeated flags; update the exact CLI help test.
+- Bound evidence by 8,192 declarations, 8,192 visited body nodes, 512 KiB report
+  allowance and 4 KiB signature excerpts, marking truncation. Included reference
+  indices remain valid. Existing source/AST budgets continue to apply. Export is
+  compiler-owned and restricted to semantically valid whole-source ASTs, rather
+  than JavaScript regex name guessing. Local/type/field resolution is omitted.
+- LSP/VS Code 0.2.0 adds function hover, same-file definition navigation and
+  outlines. Convert symbol byte offsets together in a forward UTF-16 pass;
+  invalidate evidence on changes/failures/close. Hover uses plaintext and escaped
+  VS Code Markdown. Definition returns declaration identifier ranges; builtin
+  calls have signatures with no invented file definition.
+- Actual VS Code tests exposed cached empty outlines from requests arriving
+  before checks completed. Fixed by waiting for the checked document version:
+  at most 64 pending symbol queries, eleven-second deadline, cancellation and
+  ContentModified errors on version changes. Added focused protocol regressions.
+- Validation on Linux: all 570 Rust all-target tests passed, none ignored;
+  formatting and strict all-target/all-feature Clippy passed. Real-compiler
+  symbol suite verifies compatibility, Unicode ranges, visibility, actual calls
+  vs string contents, flag rejection and traversal/byte ceilings. LSP integration
+  verifies hover/definition/outline, CRLF/astral Unicode, waiting, cancellation and
+  stale evidence alongside existing lifecycle/admission tests. Added symbol suite
+  to CI. No changes to Task Manager or package-root checking.
+- Actual VS Code 1.106.0 passed function hover/navigation/outline plus existing
+  diagnostics, restart and check/IR/JS/run tasks. Restricted-mode host passed
+  again. Metadata-boundary tests also revealed the prior extension advertised
+  unsupported block comments; removed that setting/grammar pattern to match the
+  compiler's actual line-comment syntax. Local package is
+  target/ide/sovra-language-0.2.0.vsix; host evidence is in target/ide JSON files.
+  No Marketplace publication, push or PR update performed.
+- Next: compiler-resolved local/parameter/type evidence and semantic completion;
+  package roots, references/rename and browser-editor LSP connection remain planned.
+
+## 2026-11-11: Standard language server and VS Code integration
+
+- User requested popular-IDE integration. Added a dependency-free Node stdio
+  LSP adapter under toolchain/ide/language-server and an installable VS Code
+  extension in toolchain/ide. No Rust stage/CLI/diagnostic schema changes.
+- Live unsaved standalone source checks use the real compiler's JSON report.
+  Preserve diagnostic codes, map snapshot identity back to document URI, convert
+  UTF-8 byte offsets to UTF-16 positions including astral Unicode and CRLF.
+  Versioned changes debounce/serialize, cancel older checks and reject stale
+  output. Closing clears diagnostics. Basic keyword/type suggestions are explicit;
+  no semantic completion, hover, definitions or package-root support is advertised.
+- Bounded framing (2 MiB messages/4 KiB headers), strict UTF-8 JSON, document
+  limits (32 open, 512 KiB each, 4 MiB total), fixed compiler arguments with no
+  shell, closed stdin, private temporary snapshots, ten-second direct-child
+  timeout and 1 MiB output. Compiler failures become operational diagnostics.
+  Normal protocol shutdown waits for cleanup; forced termination is qualified.
+- VS Code adds syntax highlighting, comments/brackets, live diagnostics,
+  basic suggestions, restart and explicit check/IR/JS/run process tasks. Gate
+  compiler/server processes on Workspace Trust; executable settings restricted.
+  Commands handle single-file windows and paths containing spaces. Commands run
+  trusted source with normal user permissions; LSP itself never executes source.
+- Validation on Linux: real-compiler LSP integration passed framing/lifecycle,
+  source updates, UTF-16/CRLF, stale versions, malformed UTF-8, close, per-document/
+  open-count/aggregate limits and a valid file-writing source checked without
+  executing it. Added the dependency-free suite to cross-platform CI.
+- Actual VS Code 1.106.0 host passed activation, unsaved diagnostics, Unicode
+  ranges, basic suggestions, edit refresh, restart and check/IR/JS/run tasks with
+  spaces in paths. Separate restricted workspace passed diagnostics/restart
+  gating. The official test helper disables Workspace Trust unconditionally;
+  restricted tests launch the downloaded official host directly to exercise it.
+  Evidence: target/ide/vscode-verification.json and
+  vscode-untrusted-verification.json. Official vsce 3.6.2 packages the local
+  target/ide/sovra-language-0.1.0.vsix. No Marketplace publication or push.
+- Documented VS Code installation and standard Neovim/Eglot connection examples.
+  Other editors and Windows/macOS IDE hosts remain unverified locally. Dedicated
+  JetBrains/Visual Studio plugins, semantic LSP capabilities and browser-editor
+  LSP wiring remain planned. Compiler and prior UI/editor work are preserved.
+  Next: compiler-backed symbol information for semantic IDE capabilities.
+
+## 2026-11-11: Multi-document editor workspaces
+
+- Continued the requested editor work with new source files, a selectable list,
+  independent drafts, cursor retention and version-one JSON workspace export/
+  import. Export includes stable workspace identity and active source; existing
+  single-file local drafts migrate. Browser storage remains origin-specific.
+- Shared browser/Node validation rejects unsafe/duplicate case-insensitive names,
+  invalid Unicode, absent active files, unsupported schemas and invalid identities.
+  Enforce 64 files, 512 KiB aggregate UTF-8 source and 4 MiB imported JSON. Import
+  validates before replacing current state; no imported filename is a host path.
+- Compiler actions still pass only selected source through the existing bounded
+  temporary-file host. Display the selected identity in diagnostics and discard
+  results on file switches. Package manifests/dependency filesystem access need
+  separate containment work; these drafts do not establish linked-package support.
+- Validation: workspace roundtrip/admission tests pass at exact count/Unicode byte
+  limits; Chromium covers separate source drafts, selected-file execution, cursor
+  retention, reload, workspace export/import, invalid import recovery and stale
+  results after file switching. Existing check/run/Stop and diagnostic workflows
+  remain covered. Added dependency-free workspace tests to CI. Screenshots live
+  in target/editor/. No language/Task Manager changes or push performed.
+- Next: language-aware highlighting/search and contained package-root loading.
+
+## 2026-11-11: Experimental compiler editor
+
+- User explicitly requested a compiler editor after choosing shared UI work.
+  Added a dependency-free local Node host and responsive browser editing surface
+  under toolchain/editor, preserving existing compiler and application contracts.
+- Source editing/open/download and browser drafts; real JSON check with clickable
+  UTF-8-to-UTF-16 diagnostic navigation; real IR/JS builds and interpreter Run.
+  Source edits invalidate pending results. No arbitrary path/flag/shell interface.
+- Loopback-only host with exact Host/Origin/session-token checks, fixed assets,
+  CSP, strict UTF-8/scalar source admission, 1 MiB request/output caps, ten-second
+  direct-child limit, Stop and one active operation. Private temporary source is
+  cleaned before the next operation. Integration tests exposed and fixed a race
+  where a response arrived before cleanup released the compiler slot.
+- Linux validation: core editor integration and actual Chromium browser suites
+  passed, including real check/run/IR/JS, Unicode diagnostic selection, literal
+  markup output, file open/download, reload drafts, Stop/recovery, time/output
+  caps, invalid sessions/requests and narrow layout. Browser screenshots were
+  inspected at target/editor/desktop.png and narrow.png. Core suite added to CI.
+- Experimental single-file developer preview, not a complete IDE or runtime
+  sandbox. No multi-file/package editing, highlighting, completion, debugger,
+  native packaging or write-back saves yet. Run retains real OS file permissions.
+  Windows/macOS browser execution remains unverified locally. Prior compiler and
+  shared UI changes are preserved; no new push or PR update performed.
+  Next: multi-file workspace identity and language-aware editing capabilities.
+
+## 2026-11-11: Enable approved primary project scanner defaults
+
+- User approved ADR 0040 defaults. Ordinary check_project now enforces
+  16 MiB/source, 64 MiB cumulative source bytes, 4,096 source paths, 4,096
+  scheduled directories (including root) and 100,000 yielded directory entries.
+  Explicit check_project_with_scan_limits callers retain their own allowances.
+  Default primary scanning now shares limited mode's fail-fast read-error policy.
+- Added real exact-default regressions for 16 MiB source bytes, 4,096 source
+  files and 4,096 directories, with overflow rejection. A 16 MiB + 1 explicit
+  allowance still succeeds, proving there is no hidden second default check.
+  Human/JSON check and --service-calls CLI admission reject oversized primary
+  source with E4150 and null filesystem-error location before body inspection.
+- Validation on Linux: all 570 tests passed, none ignored (455 library, 76 CLI,
+  two mutation, seven frontend-limit, eight lowering-limit, twelve package-limit,
+  nine primary-scan-limit and one example). Cargo check/build, root/fuzz formatting,
+  strict root/fuzz all-target Clippy and diff checks passed.
+- Updated accepted ADR, specification, JSON/security references and changelog.
+  Work remains local on compiler/interface-string-budgets; PR #2 and Task
+  Manager/UI are unchanged. These are primary-scan input allowances, not optional
+  service/body-read quotas or complete diagnostic/metadata/CPU/memory bounds.
+  Next: remaining scanner error and metadata production with explicit API scope.
+
+## 2026-11-11: Add caller-selected primary project scan input quotas
+
+- Added ProjectScanLimits and check_project_with_scan_limits for primary
+  application-wiring discovery/read admission: per-source/aggregate UTF-8 bytes,
+  retained source paths, scheduled directories and yielded directory entries.
+  Non-source entries and root/empty directories count; source aliases consume
+  each read allowance. Existing ProjectCheck/public stage signatures remain.
+- Discovery stops before retaining an excess path; reads honor the smaller
+  per-file/remaining aggregate allowance plus one detection byte. E4150 reports
+  resource/path exhaustion with no invented source location or partial successful
+  ProjectCheck. Downstream wiring/import validation is skipped after stopping.
+- A failed read may consume bytes before erroring, so limited mode stops on
+  E4009 I/O/UTF-8 failure instead of reusing the uncharged allowance. Legacy
+  check_project retains its prior policy and error-collection behavior; optional
+  service/body inspection still rereads sources through separate APIs.
+- Six integration tests cover exact/overflow dimensions, zero/empty input,
+  UTF-8 bytes, ignored-file fan-out, failure stopping, invocation independence,
+  valid-project parity and Unix symlink read duplication.
+- Validation on Linux: all 566 tests passed, none ignored (455 library, 75 CLI,
+  two mutation, seven frontend-limit, eight lowering-limit, twelve package-limit,
+  six primary-scan-limit and one example). Cargo check/build, root/fuzz formatting,
+  strict root/fuzz all-target Clippy and diff checks passed.
+- ADR 0040 proposes primary-scan defaults of 16 MiB/source, 64 MiB total source,
+  4,096 source paths, 4,096 scheduled directories and 100,000 yielded entries.
+  Default activation awaits the compatibility decision required by AGENTS.md.
+  Updated specification, JSON/security notes and changelog. Work remains local
+  on compiler/interface-string-budgets; PR #2 and Task Manager/UI are unchanged.
+- These are input quotas, not aggregate diagnostic/metadata/CPU/memory bounds;
+  source-line copies, filesystem races/containment and optional body/contract
+  inspection remain separate work. Next: decide the primary-scan default policy,
+  then address remaining scanner error/metadata production.
+
+## 2026-11-11: Stream delegated tool diagnostics and escape JSON DEL/C1
+
+- Audit confirmed formatter/doctor human fields already used the established
+  terminal policy. Replaced temporary escaped-string copies with the shared
+  streaming adapter, and append doctor report fields directly to their existing
+  output buffer. Help/report layout, ordinary Unicode and full field text remain.
+- Reproduced a failing serialization regression: shared check/test/doctor JSON
+  string encoding emitted DEL/C1 as raw scalars. Encode U+007F–009F with standard
+  JSON Unicode escapes alongside existing C0 handling. Parsed targets, messages,
+  file identities and other values are unchanged; schema version remains 1.
+- Added all-control-character JSON round-trip coverage, exact doctor human
+  report comparison with 20 KiB evidence, delegated fmt/doctor argument-error
+  checks retaining static help, and raw DEL/C1 absence checks on CLI JSON output.
+  Decoder assertions preserve original control scalars rather than human-display
+  escape text. Before-fix evidence: target/terminal-diagnostics/json-before.log.
+- Validation: all 560 tests passed, none ignored (455 library, 75 CLI, two
+  mutation, seven frontend-limit, eight lowering-limit, twelve package-limit and
+  one example). Cargo check/build, root/fuzz formatting, strict root/fuzz
+  all-target Clippy and diff checks passed.
+- Updated specification, JSON/security notes and changelog. Work remains local
+  on compiler/interface-string-budgets; PR #2 and Task Manager/UI are unchanged.
+  No new acceptance limits, output quota or runtime/formatter value semantics
+  were introduced. Raw scanner resource contracts and aggregate report-memory
+  accounting remain open. Next: source/error resource accounting for scanner
+  paths with explicit compatibility boundaries.
+
+## 2026-11-11: Prevent terminal control injection in main CLI error lines
+
+- Reproduced failing subprocess regressions: main CLI human I/O/argument errors
+  and check/run/build source diagnostics emitted raw ESC, carriage-return,
+  newline, DEL or C1 controls from supplied text. Added a streaming formatting
+  adapter using the existing std::escape_terminal C0/DEL/C1 policy and routed
+  main CLI-generated stderr error lines through it.
+- Control scalars render as uppercase printable Unicode escapes; ordinary
+  Unicode and backslashes remain unchanged. Source-file prefixes now format
+  directly instead of constructing an owned prefix. The adapter allocates no
+  complete escaped message and propagates downstream formatting exhaustion.
+- Human presentation changes only: decoded JSON messages/targets/locations,
+  raw Diagnostic data, emitted code, exit status and intentional program output
+  retain existing behavior. Retained message caps still apply before escaping;
+  escaped display length can grow and is not a new output byte quota.
+- Unit tests cover every C0/DEL/C1 scalar, printable Unicode/backslashes, Debug
+  formatting and early exhaustion. Subprocess tests cover I/O paths, arguments,
+  check/run/build source controls, unchanged JSON target/message data and raw
+  intentional program output. Both source/control regressions failed before
+  the fix. Before-fix evidence: target/terminal-diagnostics/before.log.
+- Validation: all 557 tests passed, none ignored (453 library, 74 CLI, two
+  mutation, seven frontend-limit, eight lowering-limit, twelve package-limit and
+  one example); the expanded program-output assertion also passed separately.
+  Cargo check/build, root/fuzz formatting, strict root/fuzz all-target Clippy,
+  24 isolated security checks, depth-probe assertions and diff checks passed.
+- Updated specification, JSON/security notes and changelog. Work remains local
+  on compiler/interface-string-budgets; PR #2 and Task Manager/UI are unchanged.
+  Delegated tooling/report renderers, raw scanner contracts and complete
+  memory/CPU bounds remain separate work. Next: audit delegated diagnostic
+  renderers and machine-readable control escaping without changing decoded data.
+
+## 2026-11-11: Stream guarded CLI I/O and language-test diagnostics
+
+- Migrated four already-guarded emitters to diagnostic_message!: CLI check
+  metadata/source-read failures, language-test source-read failures and invalid
+  test signature discovery. They no longer eagerly format full source-derived
+  names/paths before the existing retained-message guard.
+- Scanner audit found that public application inspection/error-string APIs and
+  some service reports still expose raw results. Their contracts were preserved;
+  imposing scanner-wide caps requires separate resource-policy work. This slice
+  does not alter command-line option errors, runtime output or raw inspection.
+- Added a 20 KiB invalid test-name regression preserving E5001, the full function
+  range and source-file identity, with no test execution. A subprocess regression
+  verifies identical human clipping and JSON E0001/null location while preserving
+  the entire 20 KiB requested path in the version-one target field.
+- Validation: all 553 tests passed, none ignored (451 library, 72 CLI, two
+  mutation, seven frontend-limit, eight lowering-limit, twelve package-limit and
+  one example). Cargo check/build, root/fuzz formatting, strict root/fuzz
+  all-target Clippy and diff checks passed.
+- Updated specification, JSON/security references and changelog. Work remains
+  local on compiler/interface-string-budgets; PR #2 and Task Manager/UI are
+  unchanged. Raw scanner results, eager metadata, formatter internals, full target
+  identity and JSON escaping remain outside complete memory/CPU bounds.
+  Next: audit terminal diagnostic rendering and raw scanner resource contracts.
+
+## 2026-11-11: Stream project, manifest and package diagnostic production
+
+- Added an internal diagnostic_message! wrapper around the verified bounded
+  formatter and migrated 57 direct formatting sites in the main project,
+  manifest and executable package emitters. Private/public compiler stage
+  signatures and the existing 4 KiB retained-message policy are unchanged.
+- Package cycle diagnostics now format borrowed active paths in their original
+  order, without collecting displayed path strings and joining a full chain.
+  Route/page path validation returns a borrowed structured problem rather than
+  building a full intermediate error string before the outer diagnostic.
+- Added exact old/new clipping comparisons for long Unicode manifest sections,
+  long manifest keys, short/large cycle chains, all four path-problem forms and
+  long undeclared dependency/missing module names. Regressions retain consuming
+  source ranges, file identity, line context, error codes and message capacities.
+- Validation: all 551 tests passed, none ignored (450 library, 71 CLI, two
+  mutation, seven frontend-limit, eight lowering-limit, twelve package-limit and
+  one example). Cargo check/build, root/fuzz formatting, strict root/fuzz
+  all-target Clippy and diff checks passed. Existing deterministic compiler
+  mutations remain part of the full suite; focused project/package formatting
+  regressions directly exercise the changed emitters.
+- Updated specification, JSON/security references and changelog. Work remains
+  local on compiler/interface-string-budgets; PR #2 and Task Manager/UI are
+  unchanged. Other emitters, eager lookup/metadata construction, formatter
+  internals, source-file strings and JSON escaping remain outside complete
+  memory/CPU bounds. Next: audit remaining scanner, CLI and test-configuration
+  diagnostic producers.
+
+## 2026-11-10: Bound semantic diagnostic formatting during production
+
+- Semantic diagnostics previously built full format! strings before applying
+  the approved 4 KiB retained-message guard. Added a fmt::Write sink with a
+  4 KiB text buffer that stops standard Display/Debug production on exhaustion,
+  preserves UTF-8 boundaries and emits the existing prefix/truncation suffix.
+  Small results release spare capacity; public raw diagnostics remain unchanged.
+- Converted 52 direct semantic diagnostic formatting sites (including scoped
+  types and imported interfaces) to lazy format_args! through the guarded
+  constructor. Qualified lookup keys and other eager argument construction are
+  explicitly outside this text-buffer guarantee. Codes, ranges, owning files,
+  clipped text and valid-source acceptance are unchanged.
+- New tests compare streaming output byte-for-byte with existing clipping for
+  exact/overflow boundaries, UTF-8, escaped Debug output and nested named-type
+  diagnostics. A counted Display producer proves production stops early rather
+  than constructing its entire oversized output. Existing long-name and report
+  flood/CLI regressions continue passing.
+- Validation: all 547 tests passed, none ignored (447 library, 71 CLI, two
+  mutation, seven frontend-limit, eight lowering-limit, eleven package-limit and
+  one example). Cargo check/build, root/fuzz formatting, strict root/fuzz
+  all-target Clippy, 24 isolated security checks, depth-probe assertions and diff
+  checks passed. AddressSanitizer source fuzzing completed 34,081 runs in
+  16 seconds without a reported failure; retained log/hash:
+  target/fuzz-evidence/streamed-diagnostics-source.*.
+- Updated specification/security notes/changelog. Work remains local on
+  compiler/interface-string-budgets; PR #2 and Task Manager/UI are unchanged.
+  Formatter internals, eager values, nonsemantic emitters, source-file strings
+  and JSON escaping still lack complete memory/CPU bounds. Next: extend bounded
+  production to remaining source-controlled diagnostic emitters.
+
+## 2026-11-10: Share inferred record identities across lowering facts
+
+- Found repeated full-name copies in ValueType::Record: annotation lookup owned
+  a fresh record name and local/array fact cloning duplicated it again. Record
+  registry keys and inferred facts now share immutable Arc<str> identity storage
+  within the lowering invocation. Distinct record identities remain distinct;
+  fresh invocations create independent registries.
+- Runtime record copying, emitted owned IR identities, per-occurrence IR string
+  accounting, language rules, public APIs and resource defaults are unchanged.
+  This is trusted Rust compiler metadata sharing, not a Sovra memory-model change.
+- Added and passed a baseline end-to-end regression before the change: a record
+  with a 4 KiB name flows through 200 local bindings and nested array replacement,
+  emits the underlying identity and prints 1.5. A helper regression proves 10,000
+  inferred fact copies and aliases share the registry's identity allocation,
+  with distinct module records and fresh invocations remaining independent.
+- Validation: all 544 tests passed, none ignored (444 library, 71 CLI, two
+  mutation, seven frontend-limit, eight lowering-limit, eleven package-limit and
+  one example). Cargo check/build, root/fuzz formatting, strict root/fuzz
+  all-target Clippy and diff checks passed.
+- Updated spec/security/changelog. Work remains local on
+  compiler/interface-string-budgets; PR #2 and Task Manager/UI are unchanged.
+  Other helper maps, array-fact containers, semantic copies and transient
+  formatting still lack a complete process memory/CPU quota. Next: audit
+  declaration-backed helper copies and transient diagnostic formatting.
+
+## 2026-11-10: Precompute canonical alias names for lowering
+
+- Replaced TypeFacts' per-lookup chain walk and allocated cycle-detection set
+  with one iteratively resolved table per lowering invocation. Terminal Arc<str>
+  values are shared across chains and fan-out rather than copied into every
+  alias entry. The temporary source graph and terminal interner are dropped
+  after construction; no persistent/global cache was introduced.
+- Preserved the old walker's defensive behavior for trusted-stage cycles: cycle
+  members retain their own spelling and incoming paths retain their first cycle
+  entry. Unknown spellings remain unchanged; checked source still rejects cycles.
+  Canonical runtime record identities, widening, diagnostics and defaults remain.
+- Added differential comparison against the original walker over 32 generated
+  256-node graphs, explicit self/cycle/tail cases, 10,000-node chains plus 10,000
+  fan-out aliases sharing one 4 KiB terminal, fresh per-lowering contexts and an
+  end-to-end 1,000-alias fixture with repeated alias-returning calls/local binds.
+- Validation: all 542 tests passed, none ignored (443 library, 71 CLI, two
+  mutation, seven frontend-limit, seven lowering-limit, eleven package-limit and
+  one example); the expanded local-binding fixture also passed separately.
+  Cargo check/build, root/fuzz formatting, strict root/fuzz all-target Clippy,
+  24 isolated security checks, depth-probe assertions and diff checks passed.
+  AddressSanitizer source fuzzing completed 37,989 runs in 16 seconds without a
+  reported failure; log/hash retained in target/fuzz-evidence/canonical-table-source.*.
+- One isolated debug-build profile emitted byte-identical IR for 1,000 aliases
+  and 1,000 record constructions: pre-change binary 1.8849 s, current 0.0478 s.
+  This single synthetic measurement is not production-scale qualification.
+  Artifact: target/fuzz-evidence/canonical-table-profile.json; no source executed.
+- Updated spec/security/changelog. Changes remain local on
+  compiler/interface-string-budgets; PR #2 and Task Manager/UI are unchanged.
+  Table/graph construction and temporary/helper storage are still outside a
+  complete memory/CPU budget. Next: audit remaining helper storage amplification.
+
+## 2026-11-10: Replace repeated IR alias propagation and share field metadata
+
+- Confirmed that semantic alias resolution already memoizes chains. Lowering
+  still walked each Float alias chain independently and repeatedly scanned all
+  record aliases until propagation converged, cloning field sets per alias.
+  Replaced these operations with one reverse-dependency graph and worklists.
+  Each reachable alias is enqueued once per fact propagation; record aliases
+  share immutable Arc-owned Float-field sets instead of duplicating their names.
+- Checked source acceptance, widening, language value/alias semantics, diagnostics
+  and resource defaults are unchanged. This is trusted compiler metadata sharing,
+  not a change to Sovra's memory model. Disconnected cycles/unknown endpoints in
+  trusted-stage helper inputs terminate without gaining Float/record facts.
+- Added and passed a 1,200-record-alias execution regression before the change;
+  it still prints 1.5 afterward. A helper test covers 5,000 record and 5,000 Float
+  aliases, module-qualified aliases, shared metadata identity and defensive cycles.
+- Validation: all 538 tests passed, none ignored (440 library, 71 CLI, two
+  mutation, seven frontend-limit, six lowering-limit, eleven package-limit and
+  one example). Cargo check/build, root/fuzz formatting, strict root/fuzz
+  all-target Clippy, all 24 isolated security checks, depth-probe assertions and
+  diff checks passed. AddressSanitizer source fuzzing completed 38,178 runs in
+  16 seconds without a reported failure; retained log/hash:
+  target/fuzz-evidence/alias-worklist-source.*.
+- One isolated debug-build profile emitted byte-identical IR for 2,000 root-record
+  aliases: preserved pre-change binary 6.8591 s, current binary 0.0329 s. This is
+  one synthetic local measurement, not production-scale qualification. Artifact:
+  target/fuzz-evidence/alias-worklist-profile.json; source was not executed.
+- Updated specification/security notes/changelog. Changes remain local on
+  compiler/interface-string-budgets; PR #2 and Task Manager/UI are unchanged.
+  Helper name storage, per-expression canonical-name walks and other semantic
+  work remain outside complete memory/CPU bounds. Next: address repeated
+  canonical-name lookup without introducing persistent caches or changing types.
+
+## 2026-11-10: Reuse immutable package interface type registries
+
+- Package interface normalization previously rebuilt the owner's complete named
+  type registry for each import and independently for record/export validation.
+  Added one immutable InterfaceTypes context per prepared canonical package,
+  reused by those operations and retained only within that compilation.
+- Existing public APIs, accepted-source rules, diagnostics and node/string quota
+  definitions are unchanged. Every metadata copy is still charged. Contexts
+  retain owner types despite consumer aliases and are rebuilt for later graph
+  compilations; no process-global or filesystem-persistent cache was added.
+- New regressions check snapshot isolation for Int/Float aliases, per-copy E3024
+  exhaustion under reuse, duplicate aliases to one producer, imported widening
+  despite a consumer-owned alias, dependency changes between compilations and
+  rejection of newly invalid dependency types.
+- Validation: all 536 tests passed, none ignored (439 library, 71 CLI, two
+  mutation, seven frontend-limit, five lowering-limit, eleven package-limit and
+  one example). Cargo check/build, root/fuzz formatting, strict root/fuzz
+  all-target Clippy and diff checks passed.
+- One isolated debug-build profile searched exact interface-byte thresholds for
+  a 500-alias dependency with 100 imports and that dependency alone. Preserved
+  pre-change and current profiler binaries measured 4.2606 s and 0.2998 s with
+  identical resulting byte counts. This is a single synthetic local measurement,
+  not production-scale performance/security evidence. Artifact retained at
+  target/fuzz-evidence/interface-context-profile.json; no source was executed.
+- Updated specification, compiler security notes and changelog. Work remains
+  local on compiler/interface-string-budgets; PR #2 and Task Manager/UI are
+  unchanged. Registry storage and remaining per-annotation resolution are still
+  helper/semantic work outside complete memory/CPU bounds. Next: examine alias
+  resolution complexity and temporary registry growth.
+
+## 2026-11-10: Enable approved interface string materialization default
+
+- User approved ADR 0039's 128 MiB cumulative graph allowance. Ordinary package
+  compilation, source-limit, graph-limit and compilation-limit APIs now retain
+  this default; executable package check/run/build/test share it. The explicit
+  interface byte API continues honoring the caller's selected allowance.
+- Added a real exact-default regression: 65,535 repeated imports of a 1,020-byte
+  function name, plus export/reference metadata, materialize exactly 128 MiB.
+  One more import fails with E3024 through all ordinary package APIs; an explicit
+  allowance of 128 MiB + 2,048 bytes still compiles and executes correctly.
+  Five CLI paths (human/JSON check, run, build and test) reject overflow before
+  program execution, without hitting the separate source/AST/interface-node caps.
+- Validation: all 534 tests passed, none ignored (438 library, 71 CLI, two
+  mutation, seven frontend-limit, five lowering-limit, ten package-limit and
+  one example). Cargo check/build, root/fuzz formatting, strict root/fuzz
+  all-target Clippy and diff checks passed.
+- Updated accepted ADR, specification, JSON/security references, local-package
+  course and changelog. Task Manager/UI unchanged. This work remains local on
+  compiler/interface-string-budgets; PR #2 is unchanged. Component exclusions
+  remain documented. Next compiler hardening: repeated type-resolution work and
+  temporary/helper storage growth.
+
+## 2026-11-10: Add opt-in cumulative interface string materialization
+
+- Added compile_with_interface_string_limit with one byte allowance across the
+  canonical package compilation. Normalized signature names/parameters/types,
+  exported/attached records, generated alias ASTs and qualified visible/reference
+  labels are charged before retained copies. Repeated materializations count
+  again even when overwritten or discarded; E3024 returns no partial success.
+- Signature copying now constructs parameter metadata directly instead of
+  cloning annotations before canonical replacement. Exported record fields
+  normalize directly without intermediate synthetic function signatures.
+  Factored these related operations into semantic/interfaces.rs; public stage
+  signatures and PackageCompilationLimits remain compatible.
+- Import quota failures point to consumer import statements, while ordinary
+  semantic errors retain owner context. Cached attached-record copies use their
+  import ranges. Added independent exact payload counts and every-smaller-limit
+  checks, repeated imports, zero metadata, generated record identities, long
+  aliases normalizing to Int, UTF-8 bytes and usize overflow prevention.
+- Validation: all 532 tests passed, none ignored (438 library, 70 CLI, two
+  mutation, seven frontend-limit, five lowering-limit, nine package-limit and
+  one example). The expanded long-alias regression also passed separately.
+  Cargo check/build, root formatting, strict root/fuzz all-target Clippy and
+  diff checks passed. Profiles without execution measured 464 interface bytes
+  for the local-package app and 117 for its utilities package.
+- ADR 0039 proposes a 128 MiB graph default, pending the compatibility decision
+  required by AGENTS.md. Ordinary package byte acceptance remains unchanged.
+  Specification, JSON/security references and changelog describe the opt-in API
+  and exclusions: semantic AST copies, lookup/target maps, type-resolution and
+  formatting temporaries, allocator overhead and IR/backend/runtime storage.
+- Work is local on compiler/interface-string-budgets, based on PR #2; it has not
+  changed that published PR. Task Manager/UI untouched. Next: review the byte
+  default, then investigate repeated type-resolution work and temporary storage.
+
 ## 2026-11-10: Enable approved cumulative package compilation defaults
 
 - User approved ADR 0038 graph ceilings: 1,000,000 source AST nodes, 250,000
@@ -5506,3 +6843,1438 @@ structured application parser and named-type resolution under documented decisio
 - Next: stabilize component/layout/state/lifecycle contracts, preserve focus/input
   during updates, improve Task Manager grouping, qualify accessibility/VM behavior,
   then request approval before publishing a UI package/compatibility contract.
+
+## 2026-11-12: package task and real-host acceptance
+
+Compiler-owned task descriptors now select package roots/cwd, including nested
+entries. Bounded preparation saves related source buffers and refuses dirty
+manifests. Package Check explicitly compiles dependency-free entry graphs with
+`--executable-package`; ordinary scanner behavior remains. Real Linux VS Code
+1.106.0 accepts unsaved dependency diagnostics/navigation, manifest refusal,
+Check/IR/JS/Run tasks and restart. Its global task save policy remains user-owned;
+the unrelated-draft test selects `task.saveBeforeRun=never`. See
+[task contract](reference/editor-package-tasks.md)
+for bounds and limits. G09 bounded existing-entry scope is complete for portable
+behavior/Linux; G10 formatter qualification is next. Windows/macOS, MSRV, release
+and independent security qualification remain separate. Task Manager stays on hold.
+
+## 2026-11-12: G10 Linux write qualification
+
+`fmt --write` now enables the existing guarded replacement path on Linux as well
+as Windows. Tests cover permission preservation, unchanged inode/timestamp,
+read-only/link/special-mode refusal, staging cleanup and failure injection for
+source identity, mode and parent changes. A test fixture now sets its initial
+mode explicitly so restrictive process umasks cannot hide the injected change.
+Existing token/comment/AST/fixed-point and interpreter/JavaScript preservation
+checks remain active. Other hosts stay disabled. Imports and package-directory
+formatting remain deferred; this is a partial G10 checkpoint. No Task Manager
+features changed. Replacement remains a best-effort conflict check, without an
+atomic cross-process lock or ACL/xattr preservation guarantee.
+
+## 2026-11-12: G10 import-aware single-file formatting
+
+The package compiler and formatter now share the existing token-level import
+parser. No new grammar or resolver is introduced. Formatter output validates
+ordered import alias/module identities alongside token spelling, comments,
+normalized AST and fixed points. Unresolved imports require no manifest or
+dependency reads; nested/malformed imports still fail. Regression coverage uses
+comments inside import paths, duplicates, CRLF/Unicode, malformed syntax and
+formatting both entries in a copied real package graph with interpreter/JS
+behavior comparison. Guarded Windows/Linux writes remain available. Directory
+formatting and macOS write qualification remain G10 work. No Task Manager
+features changed. This supersedes the first-slice import rejection above.
+
+Import-slice validation: 627 all-target Rust tests, strict Clippy, rustfmt and
+documentation links passed on Linux. The real formatter suite passed eight
+programs, 261 existing comment placements, import trivia and copied-package
+guarded writes with interpreter/JavaScript parity. Local hashes and results are
+recorded in `target/checked-evidence/g10-import-formatter-verification.json`.
+Windows execution of this slice remains a separate platform gate.
+
+## 2026-11-12: G10 read-only package graph formatting checks
+
+Explicit `fmt --package --check DIR` now follows the existing compiler resolver
+and deduplicates canonical entry files. It includes local dependencies outside
+the root, without recursive scanning, execution or writes. A 128-package cap,
+16 MiB cumulative manifest/source input cap and 64 MiB cumulative output cap
+bound preparation. Manifest snapshots precede a second graph resolution; source
+and manifest snapshots are rechecked before reporting any formatting notices.
+Errors retain source ownership and emit no partial style report. This remains
+best-effort disk conflict detection. Package stdout/write modes are usage errors.
+Regression coverage includes shared aliases, nested entries, unrelated sources,
+clean/dirty states, malformed provider syntax, missing dependencies, link policy,
+no-write timestamps and graph/byte ceilings. CI runs the package formatter suite.
+Next is multi-file write qualification; macOS writes remain deferred. No Task
+Manager features changed.
+
+Package-check checkpoint validation: 628 all-target Rust tests, strict Clippy,
+rustfmt, doc links, the dedicated package formatter CLI suite and existing
+interpreter/JavaScript formatter preservation suite passed on Linux. Local
+evidence: `target/checked-evidence/g10-package-check-verification.json`.
+
+## 2026-11-12: G10 staged package writes
+
+Explicit `fmt --package --write DIR` now preflights and stages all canonical graph
+entry outputs before any original replacement. Local dependencies outside the
+root are included; manifests and unrelated sources stay unchanged. All snapshots
+and staging identities/metadata/bytes are validated before publication; manifests
+and the current source/staging are checked again per replacement. Staging reads
+use retained handles. Linux metadata comparisons now include link counts and
+Windows comparisons include file attributes. Existing single-file writes reuse
+the same staging primitive.
+
+Publication is atomic per file, not across the package: late failures stop,
+report the changed-file completion count, retain earlier replacements and clean
+unpublished staging files. No rollback or filesystem locking is claimed. The
+existing 128-entry, cumulative input/output and per-file limits remain active.
+Regression tests inject manifest/source/staging-content/staging-identity/link
+changes before publication and external edits after the first replacement.
+CLI tests cover valid writes, late-invalid-source preflight refusal, read-only
+and hard-link policies, unchanged inode/timestamps and unchanged manifests.
+Windows/Linux enable the command; new execution evidence is Linux-only. macOS
+writes and cross-platform qualification remain G10 gates. Task Manager remains
+on hold. This supersedes the earlier package-write deferral.
+
+Staged-write validation: 630 all-target Rust tests, strict Clippy, rustfmt,
+documentation links, package CLI write/no-op/failure tests and the existing
+formatter interpreter/JavaScript preservation suite passed on Linux. Local
+evidence: `target/checked-evidence/g10-package-write-verification.json`.
+
+## 2026-11-12: G10 exact-host qualification reports
+
+`scripts/qualify-formatter.mjs` now retains platform/architecture, compiler and
+selected checkout hashes, version logs, formatter-related Rust regressions and
+both real CLI formatter suites. It checks hashes again after execution and
+records command statuses, timeouts/signals and log hashes. Missing/wrong compiler
+regressions require failed reports and forbid qualification. Package tests accept
+an explicit compiler path; unsupported hosts now explicitly verify standalone
+write refusal as well as package write refusal.
+
+Three-OS CI invokes the report runner and uploads reports/logs with `always()`.
+Windows/Linux success means writes verified on that host. macOS success means
+its disabled-write policy was verified, not that writes were enabled or qualified.
+Only actual retained host reports can close execution gates; this change does
+not claim remote Windows/macOS runs. Task Manager remains unchanged.
+
+Host-report validation: all five recorded commands passed on Linux, including
+14 formatter-related Rust regressions and both real CLI suites. Missing/wrong
+compiler and malformed-option regressions, workflow YAML structure, rustfmt and
+doc links passed. Actual report: `target/formatter/linux-x64-verification.json`.
+No remote platform execution was performed in this checkpoint.
+
+## 2026-11-12: formatter open-race hardening
+
+Review before G11 found that pathname regular-file checks preceded a plain open:
+a replacement FIFO could block before bounded reads began. Snapshot and conflict
+reads now share an opened-handle check that rejects unexpected metadata before
+reading. Linux x86/x86_64/aarch64 add nonblocking/no-follow flags; Windows opens
+reparse points directly and rejects their handles. No dependency was added;
+Linux flag values are explicitly limited to the stated architectures. Other
+architectures retain regular-handle/metadata checks without those flags.
+
+A deterministic Linux test replaces the already-statted source with a no-writer
+FIFO, a link to the original and a different regular file. All are rejected and
+original/external bytes remain intact. Existing best-effort parent/final-rename
+race limitations remain. Windows execution and macOS write gates stay open.
+Next: G11 structured application work under accepted ADR 0009. Task Manager
+features remain unchanged.
+
+Open-race validation: 631 all-target Rust tests, strict Clippy, rustfmt and
+documentation links passed on Linux x86_64. The host qualification runner passed
+all five commands, including replacement regressions and both real formatter CLI
+suites. Local evidence: `target/checked-evidence/g10-open-race-verification.json`.
+
+## 2026-11-12: G11 retained application alias/record syntax
+
+Added `compiler::project::application::syntax::parse` as a library-only partial
+syntax API. The existing application collector retains executable alias/record
+AST nodes and source byte ranges with explicit unparsed token envelopes. Module
+clones share the metadata through Arc. Limits are 1 MiB source, 4096 declarations
+and 8192 fields; metadata exhaustion is explicit and does not disable existing
+application inspection. No grammar, default-check contract, execution or Task
+Manager behavior changed. Unresolved semantic names may still have syntax nodes;
+unknown application forms remain unparsed, never asserted as valid.
+
+Regression coverage includes Unicode/CRLF source ranges, exported records/field
+annotations, unresolved names, malformed declarations, lexical failures, nested
+unparsed declarations, exact/exceeded quotas and ordinary inspection continuing
+when optional metadata is unavailable. Next: structured callable/body coverage.
+Platform gates and full M12 acceptance remain separate.
+
+The public source-span integration test also exposed that executable record
+`type_span` included the field name/colon. Fixed the shared parser to retain the
+annotation-only range, including qualified names, with a Unicode/CRLF parser
+regression. Both application and executable consumers now use the corrected
+source-owned annotation range.
+
+G11 type-syntax validation: 637 all-target Rust tests, strict Clippy, rustfmt,
+doc links and formatter interpreter/JavaScript preservation checks passed on
+Linux. Evidence: `target/checked-evidence/g11-type-syntax-verification.json`.
+
+## 2026-11-12: G11 callable/body and service syntax
+
+Added `syntax::parse_callables` and `syntax::parse_services` as library-only APIs.
+Current application inspection admits file syntax, then shared executable parsing
+retains source-owned callable headers and actual nested body AST nodes. Task
+keyword adaptation retains original spans without making tasks executable.
+Service containers retain prototypes, signatures and optional bodies; prototype
+adapter braces are discarded. Aggregate token gaps remain explicit, and unknown
+or malformed syntax rejects the whole request. Ordinary functions/aliases named
+`service` are skipped through their retained declaration ranges, preventing false
+container recognition.
+
+Limits cover 1 MiB source, 65,536 tokens, 4096 body-bearing callables, 1024 services
+and 4096 operations, alongside existing type syntax quotas. Exact/exceeded limits,
+Unicode/CRLF spans, exports, nested bodies, signature-only services, unsupported
+forms, unresolved semantic names and no partial tables have regression coverage.
+No default checker, runtime, grammar or Task Manager changes were made. Next:
+application import nodes and checker coverage integration. Full M12 acceptance
+and platform qualification remain separate.
+
+Callable/service validation: 646 all-target Rust tests, strict Clippy, rustfmt
+and documentation links passed on Linux. Local source/test artifact hashes and
+results: `target/checked-evidence/g11-callable-service-syntax-verification.json`.
+
+## 2026-11-12: application import nodes and opt-in checker coverage
+
+`syntax::parse_file` now retains single-line dotted import nodes with source
+segments/order/duplicates/spans and aggregate coverage. It reuses existing
+application import grammar without resolving filesystem targets. Unsupported
+syntax fails rather than becoming covered; empty gaps never establish semantic
+validity.
+
+`check_service_calls_with_syntax` returns the existing service-check result plus
+separate optional coverage built from the exact same loaded source strings.
+A private snapshot-inspection result supports reuse without a second source read.
+Default APIs/CLI schemas stay unchanged. Coverage admits 128 files, 16 MiB source
+and 262,144 retained tokens, with existing per-file limits; cumulative exhaustion
+makes the projection unavailable while semantic diagnostics remain intact.
+Regression tests cover grammar/order/spans, exact/exceeded quotas, malformed and
+unavailable files, semantic errors despite full syntax coverage and equivalence
+to existing checker results. Coverage limits are not new blanket read budgets on
+the partial checker. Structured route/model/auth/page coverage and eventual
+default strict validation remain G11/M12 work. Task Manager remains unchanged.
+
+Import/coverage validation: 651 all-target Rust tests, strict Clippy, rustfmt
+and doc links passed on Linux. The strengthened cumulative token test also
+passed at and above 262,144 retained tokens. Evidence:
+`target/checked-evidence/g11-import-coverage-verification.json`.
+
+## 2026-11-12: structured entry containers and existing binding members
+
+Added `syntax::parse_entry_blocks` as an independent bounded library projection
+for source-line top-level app headers and existing route/page/schedule/services/
+data/auth members. It reuses current scanner grammar helpers and preserves
+source spans, list order/duplicates, decoded paths and target/schedule spellings.
+No binding/type/HTTP/policy resolution, parameter injection, new syntax or runtime
+behavior is introduced. Unknown fields and nested forms remain explicit gaps;
+malformed recognized members reject the whole request. Entry-only coverage never
+asserts full validation, and existing `parse_file`/checker/default APIs are unchanged.
+
+Limits admit 1 MiB source, 65,536 tokens, 128 app containers and 4096 cumulative
+member/unknown-line records. Regression tests include exact/exceeded limits,
+Unicode/CRLF spans, preserved grammar, malformed declarations, nested unknown
+forms and the real Fielddesk entry with its title explicitly unparsed. Next:
+combined entry/declaration coverage. Model/auth/page bodies, concrete unapproved
+binding/policy designs and full M12 acceptance remain open. Task Manager remains
+unchanged.
+
+Entry-node validation: 656 all-target Rust tests, strict Clippy, rustfmt and
+documentation links passed on Linux. Evidence:
+`target/checked-evidence/g11-entry-syntax-verification.json`.
+
+## 2026-11-12: combined entry/declaration coverage
+
+`syntax::parse_combined` now composes entry and declaration/import projections
+against original tokens. Only recognized entry envelopes are privately filtered
+from declaration admission; no source masking/rewriting changes byte or Unicode
+scalar positions. Full-token structural preflight and existing quotas apply
+before filtering, and EOF is retained. Source ranges unparsed by both projections
+remain gaps, including unknown entry fields/nested forms. Known entry coverage
+never promotes hidden imports/callables/services or authorizes runtime behavior.
+
+Regressions cover the real Fielddesk file, explicit unknown title retention,
+Unicode/CRLF and inline-after-entry positions, unknown nested content, EOF-only
+entries, strict existing APIs and identical ordinary declaration projections when
+no entries exist. Default checkers/CLI and existing opt-in checker projection stay
+unchanged. Next: project integration of combined coverage. Full M12 checking,
+model/auth/page bodies and platform gates remain open; Task Manager is unchanged.
+
+Combined-coverage validation: 661 all-target Rust tests, strict Clippy, rustfmt
+and documentation links passed on Linux. Evidence:
+`target/checked-evidence/g11-combined-syntax-verification.json`.
+
+## 2026-11-12: opt-in combined project coverage
+
+Added `check_service_calls_with_combined_syntax` with separate checker and combined
+syntax results from the same loaded source strings. Shared generic quota accounting
+serves both the unchanged declaration-only projection and the new projection.
+Limits remain 128 files, 16 MiB source and 262,144 retained tokens; original entry
+tokens, including unknown contents, count before filtering. Per-file failures
+remain explicit and cumulative exhaustion returns no partial projection.
+
+Project regressions confirm unchanged diagnostics/files, E4096 preserved despite
+empty combined gaps, Unicode unknown-field ranges and semantic errors preserved
+on metadata exhaustion. Exact/exceeded file/byte/token limits are exercised,
+including large unknown entry contents to prevent hidden-token quota bypass.
+No default checker, CLI, syntax grammar, runtime or Task Manager behavior changed.
+Further structured M12 validation, model/auth/page bodies and platform gates remain.
+
+Combined project validation: 665 all-target Rust tests, strict Clippy, rustfmt
+and documentation links passed on Linux. Evidence:
+`target/checked-evidence/g11-project-combined-coverage-verification.json`.
+
+## 2026-11-12: core semantic validation of self-contained local functions
+
+Added `check_local_functions(source)` as an additive source-only API. It builds
+an executable Program from retained ordinary function/alias/record ASTs and uses
+the core SemanticAnalyzer, preserving canonical primitive/type/name/call/field/
+condition/return-path rules and original diagnostic ranges. The result separates
+combined syntax, submitted function count and local semantic diagnostics.
+
+Application imports, service declarations and task/service callables explicitly
+make this limited request unavailable rather than being silently omitted or
+misclassified. Entry bindings/unknown fields remain unvalidated even with empty
+local diagnostics; entry-only input submits zero functions. Existing AST/depth/
+diagnostic and combined syntax limits remain active. No default checker, CLI,
+runtime, grammar or Task Manager behavior changed.
+
+Parity regressions compare standalone and entry-adjacent local functions across
+valid records/aliases/widening and invalid annotations, calls, fields, conditions,
+unknown names and return paths, including exact diagnostic codes/messages and
+Unicode/CRLF source ranges. Additional tests cover missing semantic contexts,
+invalid syntax and continued strict behavior of existing inspection. Imported/
+service/task contexts, model/auth/page bodies and full M12 validation remain open.
+
+Local semantic validation: 669 all-target Rust tests, strict Clippy, rustfmt
+and documentation links passed on Linux. Standalone/application parity covered
+ten valid/invalid cases. Evidence:
+`target/checked-evidence/g11-local-semantic-verification.json`.
+
+## 2026-11-12: structured route/page shape validation
+
+Added source-only `check_entry_paths` over retained app members. Extracted scanner
+route/page method/path/duplicate helpers so structured validation reuses existing
+rules/codes instead of creating a second dialect. Scanner target resolution,
+locations and ordering remain unchanged; the additive API emits exact member
+ranges in source order. Counts describe submitted declarations, not valid bindings.
+
+The limited scope deliberately excludes target resolution, placeholder arguments,
+import visibility, policies, schedules and body validation. Missing targets still
+fail ordinary project checks even when this API has empty path diagnostics.
+Existing entry quotas plus 1024 diagnostics/1 MiB cumulative message bytes bound
+results. Exhaustion rejects the whole request without partial success.
+
+Regressions compare scanner codes/messages across ten invalid cases, preserve
+Unicode/CRLF member spans, verify target-check separation and exercise exact/
+exceeded diagnostic counts and cumulative byte exhaustion. No syntax/default
+checker/runtime/CLI or Task Manager behavior changed. Further structured binding/
+context checks and full M12 acceptance remain open.
+
+Entry-path validation: 673 all-target Rust tests, strict Clippy, rustfmt and
+documentation links passed on Linux. Scanner parity covered ten invalid cases.
+Evidence: `target/checked-evidence/g11-entry-path-validation-verification.json`.
+
+## 2026-11-12: unqualified local route target resolution
+
+Added `check_local_route_targets` against retained ordinary function declarations
+in the same source. Resolution returns original route/identifier/declaration
+ranges and callable indices; it never selects comments/literals or file-order
+winners. Missing names retain E4033 scanner wording at exact identifier tokens.
+Ambiguous names, imports, services/tasks and qualified route targets explicitly
+make the limited context unavailable. Diagnostic count/message-byte exhaustion
+returns no partial result under existing quotas.
+
+Tests cover Unicode/CRLF spans, misleading literal/comment spellings, declaration
+indices, exact/exceeded diagnostic counts, byte exhaustion and scanner code/message
+parity. Separate tests prove resolved name identity does not establish body/type
+validity or placeholder/parameter compatibility. Existing source/checker/CLI and
+runtime behavior are unchanged. Cross-module/parameter context and model/auth/page
+bodies remain M12 work; Task Manager remains unchanged.
+
+Local route target validation: 677 all-target Rust tests, strict Clippy,
+rustfmt and documentation links passed on Linux. Final targeted regressions
+also passed after a lint-only comparison cleanup. Evidence:
+`target/checked-evidence/g11-local-route-target-verification.json`.
+
+## 2026-11-12: explicit local placeholder parameter names
+
+Added `check_route_placeholders` implementing the accepted requirement that each
+route placeholder match an explicit handler parameter name. Missing names use
+E4144 at the original path string token; missing target and shared route shape
+errors remain present. Parameters are indexed once per handler and diagnostics
+are source ordered. No implicit request/session injection, HTTP decoding/type
+rule, extra-parameter binding or task execution is introduced.
+
+Repeated placeholder names explicitly require unavailable binding context rather
+than choosing semantics. Duplicate parameters fail existing signature parsing or
+the ambiguity guard. Existing unsupported target contexts and diagnostic quotas
+remain active; exhaustion yields no partial result. Tests cover original Unicode/
+CRLF ranges, missing/matching names, retained missing-target/shape failures,
+unresolved types/extra parameters outside scope, duplicate/repeated ambiguity,
+exact/exceeded diagnostic counts and cumulative byte exhaustion. An initial test
+expected all duplicate parameter failures at the new guard; it now correctly
+asserts the existing parser's earlier duplicate rejection. Default checker/CLI,
+language grammar and Task Manager behavior stay unchanged. Full binding/type/
+context validation and M12 completion remain open.
+
+Placeholder-name validation: 681 all-target Rust tests, strict Clippy, rustfmt
+and documentation links passed on Linux. Evidence:
+`target/checked-evidence/g11-route-placeholder-verification.json`.
+
+## 2026-11-12: local scheduled-declaration target checks
+
+Added `check_local_schedule_targets` using retained ordinary/function task
+identities and exact identifier spans. Shared scanner helpers preserve duplicate
+schedule-text/target E4071 and missing-target E4072 rules/messages without changing
+default scanning. Only unique existing bindings return indices; ambiguous/import/
+service/qualified contexts remain explicitly unavailable. Existing source/entry
+and diagnostic quotas reject exhausted requests without partial bindings.
+
+Regressions cover source identity/kinds, Unicode/CRLF ranges, scanner parity,
+unsupported contexts, exact/exceeded diagnostic count and cumulative bytes.
+Separate return-contract tests demonstrate that a bound task may still fail
+E4131. Schedule text, argument/return/type validity, task invocation, scheduler
+execution and lifecycle are outside scope. Task Manager software is unchanged.
+Qualified route binding spelling and HTTP conversion still need focused design;
+further authorized structured M12 areas remain available without inventing those
+semantics. Full M12 acceptance and platform qualification remain open.
+
+Schedule target validation: 685 all-target Rust tests, strict Clippy, rustfmt
+and documentation links passed on Linux. Parity compares code/message sets while
+separately preserving structured source order and scanner target order. Evidence:
+`target/checked-evidence/g11-schedule-target-verification.json`.
+
+## 2026-11-12: auth containers and policy-header syntax
+
+Added independent `syntax::parse_auth_blocks`, reusing current scanner policy
+header grammar and retaining role/action/model lists, original spans and explicit
+condition coverage. Every where clause stays `Unparsed` and remains in aggregate
+gaps. Provider/user fields, nested forms and outside declarations remain gaps;
+malformed recognized policies and unclosed containers reject the request. No
+role/model/context/type checking or runtime authorization is established, even
+when a header matches scanner metadata or all syntax gaps are empty.
+
+Limits are 1 MiB source, 65,536 tokens, 128 containers, 4096 nontrivia body lines
+and 8192 cumulative action/model items. Tests exercise exact/exceeded metadata
+bounds, source/token refusal, malformed/nested syntax, Unicode/CRLF ranges,
+Fielddesk provider/user/guard gaps and scanner header parity without erasing an
+explicit false condition. Existing combined/checker APIs and CLI behavior are
+unchanged. Policy contexts/typing still need the focused designs required above;
+model/page bodies, broader structured integration and full M12 acceptance remain
+open. Task Manager and application runtime behavior are unchanged.
+
+Auth syntax validation: 690 all-target Rust tests, strict Clippy, rustfmt and
+documentation links passed on Linux. Strengthened targeted source/token quota
+regressions also passed. Evidence:
+`target/checked-evidence/g11-auth-header-syntax-verification.json`.
+
+## 2026-11-12: additive auth-aware source/project coverage
+
+Added `syntax::parse_with_auth` and `check_service_calls_with_auth_syntax` without
+relaxing earlier syntax/checker APIs. Recognized auth and entry envelopes are
+privately filtered from declaration admission using original tokens; overlapping
+container ranges are rejected. Shared token-gap intersection preserves every
+where clause, provider/user field and unknown nested form. No hidden function,
+service or import is promoted from unparsed auth content, and no policy validity
+or permission result is asserted. Unsupported outside model/page declarations
+still reject the source.
+
+The project report uses the same loaded sources and generic file/source/token
+quotas as existing projections, while semantic diagnostics remain unchanged,
+including E4096 with empty metadata gaps. Tests cover guard/context preservation,
+hidden nodes, Unicode/CRLF coordinates, EOF containers, strict older APIs,
+project diagnostic equivalence and original opaque guard-token accounting at and
+above cumulative limits. Policy typing/context design, model/page coverage and
+full M12 checking remain open. Task Manager and runtime behavior are unchanged.
+
+Composition review additionally found an interrupted-header hazard: excluding a
+container between a service/function/type header and later tokens could make a
+filtered stream appear valid. Original-token boundary checks now reject that
+case before declaration admission, including on the existing app-aware path.
+Regressions cover service/auth, function/auth, alias/auth and service/app cases.
+
+Auth-aware coverage validation: 695 all-target Rust tests, strict Clippy,
+rustfmt and documentation links passed on Linux, including actual opaque guard
+tokens at/exceeding project quota and interrupted-header regressions. Evidence:
+`target/checked-evidence/g11-auth-aware-coverage-verification.json`.
+
+## 2026-11-12: data declaration headers and local policy model references
+
+Added independent `parse_data_declarations` with model/enum category, name-token
+and envelope spans, keeping every nonempty field/variant body explicitly unparsed.
+No model-to-record translation, generic/optional/default grammar, enum runtime
+representation, nominal type assertion or generated model/query API is introduced.
+Limits admit 1 MiB source, 65,536 tokens and 4096 data headers; nested unknown
+forms are not promoted and unclosed recognized containers reject the request.
+
+`check_local_policy_models` resolves unqualified source-header model references
+only to unique explicit same-source Model declarations. Enums/records do not
+satisfy them; imports, qualified names and ambiguous data names remain unavailable
+contexts. A shared scanner helper preserves E4081 wording while the source API
+uses original header spans. Conditions/context fields and data bodies stay gaps,
+so name matching never validates or authorizes a policy. Existing diagnostic
+count/byte quotas return no partial result on exhaustion.
+
+Tests cover source categories/spans, opaque bodies, exact/exceeded declaration
+and diagnostic caps, lexical/source/token refusal, enum/model distinction,
+ambiguity/import boundaries, scanner parity and real Fielddesk model/enum headers.
+Default checking, aggregate coverage, CLI/runtime and Task Manager behavior are
+unchanged. Typed model/page bodies, policy context/type design and full M12
+acceptance remain open.
+
+Data/policy-model validation: 701 all-target Rust tests, strict Clippy, rustfmt
+and documentation links passed on Linux. Strengthened targeted regressions
+also reject ordinary records as model references. Evidence:
+`target/checked-evidence/g11-data-policy-model-verification.json`.
+
+## 2026-11-12: render headers and local page-route names
+
+Added independent `parse_render_declarations` using existing scanner signature
+structure for explicit page/view parameters. Names/header/envelope spans and raw
+annotations are retained; every nonempty render body remains unparsed. Absent
+return text is not converted to Unit, and pages/views are never fabricated as
+executable Function nodes. No render result, generic/optional type, UI component,
+binding or lifecycle semantics are introduced.
+
+`check_local_page_targets` resolves unqualified source-local page-route names only
+to unique Page/View declarations, not ordinary functions. Imports, qualified and
+ambiguous contexts remain unavailable. Shared scanner E4042 rules/messages use
+exact target spans in the additive API while default behavior remains unchanged.
+Source/token/declaration/parameter and diagnostic count/byte quotas bound results
+with no partial result on exhaustion.
+
+Tests cover explicit/unknown/missing annotations, no Unit defaults, opaque/nested
+UI bodies, exact/exceeded metadata/diagnostic limits, source spans, declaration
+kinds, scanner parity and real Fielddesk page/view headers. Placeholder/argument
+binding, result/type checking, typed bodies and full M12 integration remain open.
+Default checking/CLI/runtime and Task Manager behavior are unchanged.
+
+Render-header review additionally found that unresolved return text could extend
+into a following declaration and consume its body. Boundary checks now reject
+intervening declaration keywords/recognized line-start headers; regressions cover
+following functions and views. This does not select render/function-type results.
+
+Render/page target validation: 707 all-target Rust tests, strict Clippy,
+rustfmt and documentation links passed on Linux, including interrupted-header
+regressions. Evidence:
+`target/checked-evidence/g11-render-header-page-target-verification.json`.
+
+## 2026-11-12: explicit local page/view placeholder parameters
+
+Added `check_page_placeholders` for the accepted explicit-name requirement on
+page-route placeholders. Missing names use E4145 at original path literal spans;
+existing missing-target/page shape errors stay visible. Only resolved shape-valid
+Page/View targets submit placeholders. Signature name sets are cached per retained
+declaration; diagnostics are source ordered and bounded by existing count/byte
+quotas. Exhaustion returns no partial binding result.
+
+Unresolved parameter types, extra parameters, HTTP conversion, implicit context
+injection, render-result typing and UI bodies remain unvalidated. No default Unit
+is assigned. Repeated placeholder semantics remain an unavailable context, while
+duplicate parameters fail existing signature parsing or the guard. Tests cover
+Page/View kinds, Unicode/CRLF spans, missing/matching parameters, preserved target/
+shape errors, old inspection strictness and exact/exceeded diagnostic count/byte
+budgets. Default checker/CLI, runtime and Task Manager behavior are unchanged.
+Full binding/type/context and M12 validation remain open.
+
+Page placeholder validation: 711 all-target Rust tests, strict Clippy, rustfmt
+and documentation links passed on Linux. Evidence:
+`target/checked-evidence/g11-page-placeholder-verification.json`.
+
+## 2026-11-12: integrated partial source/project header coverage
+
+Added `parse_structured` and `check_service_calls_with_structured_syntax` as
+additive APIs composing entry/declaration, auth, data and render header projections.
+Recognized container envelopes must be nonoverlapping and begin/end at supported
+original-token declaration boundaries; the next excluded container is recognized
+by its compiler-owned range, not by globally weakening older parser categories.
+No source rewriting changes Unicode coordinates, and interrupted declarations
+still fail before ordinary admission.
+
+Every opaque field/variant/UI body, condition/context field and unknown entry
+form stays in aggregate gaps. Hidden declarations are not promoted. Unknown
+ordinary DSL bodies outside excluded containers still reject the request.
+Shared snapshots and file/source/original-token quotas serve the project report
+without suppressing semantic errors or E4096. Empty header-only gaps never assert
+type, permission or render validity; earlier APIs and default checking stay strict.
+Tests cover composition, exact source coordinates, boundary failures, real
+Fielddesk guard/data-body gaps, original opaque-token quota accounting, per-file
+failures and unchanged project diagnostics. Typed/context/render/policy designs
+and full M12 acceptance remain open. Task Manager/runtime behavior is unchanged.
+
+Integrated-header validation: 716 all-target Rust tests, strict Clippy,
+rustfmt and documentation links passed on Linux. Evidence:
+`target/checked-evidence/g11-integrated-header-coverage-verification.json`.
+
+## 2026-11-12: concrete typed-model-field proposal (approval pending)
+
+Prepared `docs/design/M12_MODEL_FIELDS.md` with proposed newline/comma grammar,
+primitive/file-local alias scope, original source diagnostics, resource bounds,
+valid/invalid examples and acceptance matrix. Existing model examples use newlines
+while executable records require commas, so selecting the implemented model field
+grammar crosses the AGENTS syntax/type decision boundary. No compiler behavior
+was changed and the proposal is not counted as implemented or approved. Runtime
+layout, defaults, generic/optional/model-valued fields, policy authorization and
+Task Manager behavior remain outside this proposal.
+
+
+## 2026-11-12: approved primitive model-field slice
+
+- User approved option A in the model-field design: newline/comma separators,
+  explicit primitive/local primitive-alias annotations and one trailing comma.
+- Added source-only `check_model_primitive_fields` with model-owned field nodes,
+  original byte/scalar spans and explicit declaration/field indices. Models never
+  become executable records or constructors. Core alias resolution/errors are
+  reused; duplicate fields and unknown annotations use exact E3008/E3017 spans.
+- Unsupported/default/generic/optional/qualified/nonprimitive/import contexts
+  refuse the whole optional projection. Diagnostic failures clear primitive facts;
+  source/token/depth/header/field/count/message-byte limits prevent truncation.
+- Tests cover separators/comments/LF/CRLF, alias parity, duplicate/unknown errors,
+  nominal ownership, empty bodies, malformed/interrupted headers and exact/exceeded
+  quotas, plus unchanged E4096 and policy name-only behavior. Existing header-only
+  gaps, default APIs and Task Manager runtime/features are unchanged.
+- Next: deliberate project integration of this bounded source projection. Full
+  model/enum semantics, contextual policy/render/application checking, platform
+  qualification and G11/M12 completion remain open.
+
+- Linux verification: all 724 all-target Rust tests passed (zero failures/ignored),
+  strict all-target/all-feature Clippy, rustfmt, documentation links and whitespace
+  checks passed. Local source/log hashes are retained in
+  `target/checked-evidence/g11-model-fields-verification.json`; this is local
+  evidence, not Windows/macOS/MSRV or release qualification.
+
+
+## 2026-11-12: optional project primitive model-field checks
+
+- Added `check_service_calls_with_model_fields`, returning the unchanged service
+  result alongside file-owned field outcomes from the same loaded source strings.
+  Unsupported syntax, source-read failures and semantic field diagnostics remain
+  independently inspectable; E4096 and all existing default APIs/CLI are intact.
+- Reused optional project file/source/token bounds. Added cumulative admission
+  for 8192 fields, 1024 diagnostics and 1 MiB message bytes before retaining each
+  file result. Exhaustion returns no partial project projection. This bounds
+  optional retention, not the existing checker source-reading pipeline.
+- Added original token counts to source results so opaque bodies still count.
+  No imports/cross-file field types, model runtime, policy grants or Task Manager
+  feature changes are introduced.
+- Regression coverage checks source ownership, read/unsupported failures,
+  unchanged project diagnostics and exact/exceeded field, diagnostic count/bytes,
+  file/source/original-token limits. Older projections use the same admission
+  helper with unchanged rules.
+- Next: contextual application validation beyond file-local primitive fields;
+  model values/enum variants, policy/render semantics and full G11/M12 remain open.
+
+- Linux verification: 728 all-target Rust tests passed, with zero failures/ignored;
+  strict all-target/all-feature Clippy, rustfmt, documentation links and whitespace
+  checks passed. Local source/log hashes are retained in
+  `target/checked-evidence/g11-project-model-fields-verification.json`.
+  Windows/macOS/MSRV/release qualification remains separate.
+
+
+## 2026-11-12: ordinary function semantics beside structured headers
+
+- Added `check_structured_local_functions` with structured coverage, submitted
+  function counts and core semantic diagnostics. Extracted shared semantic
+  submission while keeping the older checker on its original strict parser path.
+- Excluded auth/data/render bodies and bindings stay opaque/unvalidated. Imports,
+  services/tasks and executable uses of excluded declaration spellings explicitly
+  require context; conservative shadowed-name refusal selects no new namespace
+  semantics. Model constructors/fields, enum values, rendering and policy grants
+  are not introduced. No Task Manager behavior changes.
+- Tests compare eleven valid/invalid executable cases with core diagnostics,
+  adjusting only original Unicode/CRLF source coordinates. They cover hidden
+  declaration exclusion, independent bad model fields, guards/UI/entry gaps,
+  unavailable/ambiguous contexts, interrupted headers and original source/token/
+  depth limits. Existing local and project checks retain their behavior and E4096.
+- Next: contextual application checks beyond this self-contained executable scope;
+  full model/enum/policy/render semantics and G11/M12 acceptance remain open.
+
+- Linux verification: all 733 all-target Rust tests passed (zero failed/ignored),
+  strict all-target/all-feature Clippy, rustfmt, documentation links and whitespace
+  checks passed. Local source/log hashes are retained in
+  `target/checked-evidence/g11-structured-local-functions-verification.json`.
+  Windows/macOS/MSRV/release qualification remains separate.
+
+
+## 2026-11-12: optional project ordinary-function checks
+
+- Added `check_service_calls_with_local_functions`, retaining the original service
+  result alongside file-owned structured local-function outcomes from the same
+  loaded source strings. Core spans/diagnostics stay with their source; read,
+  syntax and contextual failures remain explicit. No implicit cross-file linking.
+- Reused project file/source/original-token admission and added cumulative bounds
+  of 4096 submitted functions, 1024 diagnostics and 1 MiB diagnostic-message bytes
+  before retaining each result. Cumulative exhaustion exposes no partial table;
+  original checking/E4096 still returns. Core per-source exhaustion stays an error.
+- Regression coverage includes independent scopes, unsupported/read failures,
+  core source-span parity, unchanged project diagnostics and exact/exceeded file,
+  source, token, function, diagnostic count/byte quotas. Diagnostic count fixtures
+  exercise cumulative admission below the per-file semantic error cap.
+- Next: contextual application validation beyond self-contained function scopes;
+  full model/enum/policy/render checking and G11/M12 remain open. Task Manager,
+  runtime behavior and default CLI/API contracts are unchanged.
+
+- Linux verification: all 737 all-target Rust tests passed (zero failures/ignored),
+  strict all-target/all-feature Clippy, rustfmt, documentation links and whitespace
+  checks passed. Local source/log hashes are retained in
+  `target/checked-evidence/g11-project-local-functions-verification.json`.
+  Windows/macOS/MSRV/release qualification remains separate.
+
+
+## 2026-11-12: structured-header local route checks
+
+- Added `check_structured_route_placeholders`, composing local ordinary target
+  identities, shared method/path/duplicate rules and explicit placeholder-name
+  checks beside opaque auth/data/render headers. Factored private helpers while
+  preserving both older public parser admission paths and all existing rules.
+- Moved combined syntax into the existing route result and retained remaining
+  header metadata/gaps separately, avoiding a second combined AST. Diagnostic
+  codes/messages/source ranges and target ownership remain original.
+- Excluded-header target collisions explicitly need context; no namespace or
+  model constructor semantics is selected. Hidden functions never become
+  handlers. Field/variant/UI/guard/handler body/type checking, HTTP decoding and
+  complete argument binding remain independent. Task Manager is unchanged.
+- Tests cover rule/diagnostic parity with Unicode/CRLF offsets, opaque gaps,
+  unsupported/ambiguous contexts, interrupted headers, exact/exceeded source/
+  token/diagnostic quotas and unchanged default project diagnostics/E4096.
+- Next: contextual application binding beyond this same-source ordinary route
+  scope. Full model/enum/policy/render semantics and G11/M12 remain open.
+
+- Linux verification: all 742 all-target Rust tests passed (zero failures/ignored),
+  strict all-target/all-feature Clippy, rustfmt, documentation links and whitespace
+  checks passed. Local source/log hashes are retained in
+  `target/checked-evidence/g11-structured-routes-verification.json`.
+  Windows/macOS/MSRV/release qualification remains separate.
+
+
+## 2026-11-12: optional project route checks
+
+- Added `check_service_calls_with_routes` and file-owned route outcomes using
+  existing service-inspection source snapshots. Original checker diagnostics and
+  E4096 remain unchanged; unsupported/read contexts stay explicit. No extra source
+  reads, implicit cross-file target fallback or new global path analysis.
+- Reused shared project file/source/token admission. Added cumulative bounds for
+  4096 submitted routes, 8192 checked placeholders, 1024 retained diagnostics and
+  1 MiB message bytes before retaining each result. Combined and nested target
+  diagnostic copies both count. Excess exposes no partial optional report.
+- Tests cover independent local scopes, file ownership, core source-span parity,
+  unavailable/read failures, unchanged E4096 and exact/exceeded route, placeholder,
+  diagnostic count/byte and shared file/token limits. Duplicate retained target
+  diagnostic records and messages have explicit quota regressions.
+- Next: contextual application validation beyond local bindings. Full model/enum/
+  policy/render semantics, HTTP argument typing and G11/M12 remain open. No Task
+  Manager, runtime or default CLI/API behavior changes.
+
+- Linux verification: all 747 all-target Rust tests passed (zero failures/ignored),
+  strict all-target/all-feature Clippy, rustfmt, documentation links and whitespace
+  checks passed. Local source/log hashes are retained in
+  `target/checked-evidence/g11-project-routes-verification.json`.
+  Windows/macOS/MSRV/release qualification remains separate.
+
+
+## 2026-11-12: G12 started alongside partial G11
+
+- User agreed to start G12 rather than require every remaining G11 application
+  semantic feature first. G11 remains explicitly partial; Task Manager is on hold.
+- Reviewed ADR 0010, package requirements, current canonical local graph,
+  executable entry loader, checked budgets, overlays/navigation and CLI modes.
+  Current packages compile one entry per canonical root; general module files
+  and Sovra source locks are absent.
+- Added a concrete proposed G12 contract: explicit manifest mappings to existing
+  inline module syntax, source-owned checking, per-file dependency imports,
+  deterministic graph-local lock IDs and raw-input SHA-256, explicit lock/locked
+  CLI workflow, verified snapshot use and bounded conflict-safe publication.
+- Included resource limits, compatibility alternatives, tooling refusal/integration
+  requirements and independent consumer/relocation/privacy/integrity/containment
+  acceptance cases. Proposed module/lock/CLI behavior is not implemented.
+- Next: obtain the required decision approval under AGENTS.md, then implement
+  bounded manifest/source inventory first. Docs-only work does not requalify Rust
+  or any host; the previous 747-test checkpoint remains historical evidence for
+  unchanged compiler code.
+
+- Validation: documentation target check passed (158 Markdown files, 371 local
+  links; external URLs/fragments not checked), and whitespace checks passed.
+  No Rust tests were rerun for this documentation-only decision proposal.
+
+
+## 2026-11-12: approved G12 registered source inventory
+
+- User approved recommended G12 A/C/D and limits. Added additive
+  `packages::inspect_source_inventory` with optional manifest `[modules]` parsing,
+  preserving existing LocalPackage/LocalGraph shapes and default API admission.
+- Reused canonical graph traversal/manifests rather than rereading them for the
+  inventory. Selected paths retain their package, kind, decoded manifest spelling,
+  canonical location, original assignment span and observed size in alias-DFS/
+  entry/module-name order. Canonical package aliases contribute sources once.
+- Enforced portable registration paths, case collisions, canonical containment,
+  regular-file selection, Unix device/inode alias rejection, 1024 mappings per
+  package, 4096 total selected files and 16/64 MiB observed-size bounds. Other
+  hosts explicitly report unavailable identity checks. Metadata is mutable and
+  provides no verified byte-snapshot or race-proof compilation authority.
+- Tests cover deterministic ownership/order and graph parity/cycles, manifest
+  failures, invalid UTF-8/header metadata-only admission, unregistered-file
+  exclusion, symlink escapes, hard links, FIFO/directory refusal and exact/exceeded
+  mapping/source-count/observed-size limits. The FIFO fixture avoids socket
+  creation, which this execution environment blocks. No tests skip the refusal.
+- Existing resolve/compile/classifier/tooling still reject module manifests,
+  preventing entry-only fallback. This is not external module compilation, header
+  matching, source/body validation, locks or locked CLI support. G11/Task Manager
+  behavior is unchanged. Next: implement source-owned multi-file compilation and
+  verified byte capture under the approved plan, then locks/tooling integration.
+
+- Linux verification: all 756 all-target Rust tests passed (zero failures/ignored),
+  strict all-target/all-feature Clippy, rustfmt, documentation links and whitespace
+  checks passed. Local source/log hashes are retained in
+  `target/checked-evidence/g12-source-inventory-verification.json`.
+  Unix metadata support is implemented; Windows identity support is unavailable.
+  Actual macOS/Windows/MSRV and release qualification remain separate.
+
+
+## 2026-11-12: G12 source-owned registered source units
+
+- Reviewed the existing package semantic/linker path: each package currently owns
+  one Program and entry-attributed diagnostics. Added source-owned parsed units
+  before semantic migration rather than concatenating files or mislabeling spans.
+- Added `load_package_sources` with read-only inventory/unit/source/AST/import
+  accessors. Original buffers and AST spans remain together; imports stay local.
+  Registered files require their single matching inline module and no unrelated
+  root declarations. Package-local duplicate module names use E3008; shape errors
+  use E4162 and capture/UTF-8/unavailable errors E4161.
+- Guarded Linux capture validates opened regular-file identity/change metadata
+  and procfs exact-path/containment before and after bounded reads. No-follow and
+  nonblocking opens reject tested link/FIFO/regular/parent-link substitutions;
+  repeated opened identities fail. Other reader hosts fail explicitly.
+- Actual source bytes, original tokens and parsed AST nodes have cumulative
+  admission alongside existing inventory/per-source limits. Tests cover exact/
+  exceeded two-file budgets, source mutation, UTF-8/parse ownership and independent
+  imports, headers and scope. Parsed bad types/undeclared imports remain visibly
+  outside this semantic scope. No partial successful unit collection is returned.
+- Next: checked source-aware semantic interfaces and linking using these units,
+  then retained manifest snapshots, locks and tooling. Existing APIs/CLI still
+  refuse module manifests. This is not module execution, locked verification or
+  atomic filesystem snapshotting. Task Manager and G11 behavior are unchanged.
+
+- Linux verification: all 763 all-target Rust tests passed (zero failures/ignored),
+  strict all-target/all-feature Clippy, rustfmt, documentation links and whitespace
+  checks passed. Local source/log hashes are retained in
+  `target/checked-evidence/g12-source-units-verification.json`.
+  Guarded capture is implemented for Linux x86/x86_64/aarch64 with procfs; actual
+  other-host/MSRV/release qualification remains separate.
+
+
+## 2026-11-12: G12 source-aware primitive callable compilation
+
+- Added an opt-in compiler/result retaining captured source units, per-file checked
+  units, linked IR and remaining evidence. Reused source type qualification,
+  canonical alias/interface normalization and checked lowering rather than merging
+  source programs or applying entry-file locations to foreign spans.
+- Registered primitive function interfaces before body checking, preserving
+  same-package recursion, package-root helpers and private module rules. Explicit
+  imports remain file-local/direct; package/module targets use canonical owning
+  identities and deterministic symbols. Every private/unused loaded body is checked.
+- Reused cumulative interface node/string, checked evidence and linked emission
+  budgets. Repeated imports count again; exhaustion returns no partial IR and no
+  legacy fallback. User record declarations are explicitly unavailable (E4163)
+  until source-aware type/record interfaces are integrated, without changing the
+  older executable record language.
+- Added an independent registered app/utilities fixture using a local alias and
+  private helper; interpreter/Node JS print 49. Regressions cover original provider/
+  caller diagnostics, wrong arguments, imported Float coercions, private access,
+  same-named roots/modules, alias identity, relocation, mutual recursion, direct
+  imports, record refusal and interface/evidence/emission exhaustion.
+- Next: source-owned nominal record/type interfaces and CLI integration, then
+  manifest snapshots, locks and complete tooling. Default APIs/CLI still refuse
+  module maps. G12/G11 remain partial and Task Manager is unchanged.
+
+- Linux verification: all 773 all-target Rust tests passed (zero failures/ignored),
+  strict all-target/all-feature Clippy, rustfmt, documentation links and whitespace
+  checks passed. Interpreter/Node JS fixtures verify 49 and Float coercion outputs;
+  dependency entry points are checked without automatic execution. Final focused
+  quota tests also passed after making temporary-directory cleanup ownership safe.
+  Local hashes are retained in
+  `target/checked-evidence/g12-registered-functions-verification.json`.
+  Other-host/MSRV/native/release qualification remains separate.
+
+
+## 2026-11-12: G12 source-aware nominal primitive-field records
+
+- Added a separate record-capable Rust entry point while preserving primitive-only
+  refusal/default CLI behavior. Shared canonical identities and core alias/field/
+  signature rules now support construction, returns, arguments and coercions.
+- Original ASTs remain source-owned; normalized checking shapes/aliases are
+  metadata with consumer contexts, never foreign spans attributed to a caller.
+  Direct file-local exports govern type spellings; private constructor names and
+  public private-type leaks fail. Every loaded body still uses checked lowering.
+- Charged registry/field/alias/attached-shape/string/runtime mapping copies against
+  existing cumulative budgets. Exact/exceeded interface nodes and zero metadata/
+  string/emission allowances reject without partial IR or legacy fallback.
+- Reproduced a canonical label collision between a root record and a record in a
+  module named root. Shared identity generation now escapes that module category;
+  entry-only and registered regressions verify distinct tags without reserving a
+  source name or changing ordinary module identities.
+- Independent shapes consumer prints 25 and 1.5 in interpreter/Node JS. Tests cover
+  alias identity, distinct equal-shaped packages, wrong fields/calls, provider/
+  caller coordinates, private leaks, duplicate/unknown fields and old API scope.
+- Record-valued/nonprimitive fields explicitly require later integration (E4164).
+  Next: remaining type contexts and CLI integration, then locks/tooling. G12/G11
+  remain partial, and Task Manager behavior is unchanged.
+
+- Linux verification: all 781 all-target Rust tests passed (zero failures/ignored),
+  strict all-target/all-feature Clippy, rustfmt, documentation links and whitespace
+  checks passed. Full logs reach the final native-builder example suite; local
+  hashes are retained in `target/checked-evidence/g12-record-interfaces-verification.json`.
+  Interpreter/Node examples verify 25 and 1.5; other-host/MSRV/native/release
+  qualification remains separate.
+
+
+## 2026-11-12: G12 visible record-valued fields
+
+- Extended registered record field normalization from primitives to visible
+  declared record identities through core alias resolution. Field edges reference
+  canonical IDs without recursively copying layouts or traversing type graphs.
+- Added exact provider-span E4116 checks when public fields expose private record
+  types. Unknown fields retain core diagnostics; unsupported nonregistered
+  contexts still return E4164. Primitive-only API/default CLI behavior is unchanged.
+- Reused checked semantic/lowering/type metadata for nested constructors, returns,
+  field access and coercions. Source/interface/evidence/emission budgets remain
+  active, including the newly materialized field-target lookup strings.
+- Tests exercise imported aliases and nested values in interpreter/Node JS,
+  nominal substitute rejection, public/private field boundaries and source
+  ownership. Inferred access to a returned public nested type does not grant a
+  transitive source import. Recursive record declarations match existing core
+  acceptance without new default/allocation/ownership semantics or layout expansion.
+- Next: executable CLI integration, remaining type contexts, manifest snapshots,
+  locks and complete tooling. G12/G11 remain partial; Task Manager is unchanged.
+
+- Added an early lower-bound admission check for unavoidable graph-wide canonical
+  shape copies, preventing impossible budgets from reaching repeated source/record
+  scans. Focused resource tests cover this early E3023 path and preserve the exact
+  25-node success/24-node failure behavior of the existing record fixture.
+
+- Final Linux verification after early graph admission: all 784 all-target Rust
+  tests passed (zero failures/ignored), strict Clippy, rustfmt, documentation links
+  and whitespace checks passed. Interpreter/Node nested-field fixtures verify 1.5
+  outputs, nominal mismatch refusal and no transitive import grant. Local hashes
+  are retained in `target/checked-evidence/g12-record-valued-fields-verification.json`.
+  Actual other-host/MSRV/native/release qualification remains separate.
+
+
+## 2026-11-12: G12 executable CLI routing
+
+- Added bounded CLI graph classification recognizing module sections in roots or
+  any declared dependency. Existing public resolver/compiler and context/overlay/
+  formatter APIs remain strict; CLI-only dispatch chooses the source-owned record
+  compiler. Application and entry-only paths retain previous behavior.
+- Wired check (automatic/explicit executable and JSON), run, IR/JS builds and
+  package tests. Root test discovery consumes the checked root program, without
+  running main, dependency tests or module-local tests. Native building consumes
+  the same fully checked linked IR; no new host qualification is inferred.
+- Canonical root-manifest containment is checked before classification reads.
+  Classification may perform additional bounded manifest reads; there is no
+  atomic/locked snapshot claim or compiler fallback on unsupported module inputs.
+- Focused CLI tests cover both examples and Node execution, module-only packages,
+  empty module sections, unused registered dependencies, actual module error
+  coordinates and no partial stdout/artifacts. Valid framed overlays, package
+  context and formatter explicitly refuse registered graphs. Existing 77 CLI
+  regressions pass. JSON remains version one with zero-based source positions.
+- Next: retained manifest snapshots and lock workflows, remaining type contexts,
+  then complete formatter/context/editor graph integration and host qualification.
+  G12/G11 remain partial and Task Manager behavior is unchanged.
+
+## 2026-11-13: G12 retained manifests, source locks and registered formatting
+
+- Retained exact guarded manifest snapshots alongside parsed sources, including
+  declared dependency locators and raw-byte SHA-256. Graph parsing and lock hashing
+  share those bytes; ordinary inventory metadata remains a separate API.
+- Added deterministic version-one local source locks and strict bounded JSON
+  generation/verification. Relative relocation, alias diamonds, shared canonical
+  identities, raw comment/line-ending mutations, forged/duplicate/unknown fields
+  and exact/exceeded JSON admission have regressions. No registry/network code.
+- Added `svr lock [--check] DIR` and explicit locked check/run/build/test. Executable
+  checks require `--executable-package`; incompatible modes and standalone inputs
+  are refused. Locked compilation verifies and consumes the same captured inputs,
+  with no manifest/source rereads, partial IR, unchecked fallback or lock rewrite.
+  A regression removes the entire graph after capture/verification and still
+  compiles the owned buffers. Lock generation does not bypass semantic checking.
+- Added guarded Linux root-directory-anchored staging/publication: no-clobber
+  creation, atomic replacement, preserved ownership/mode requirements and staging/
+  target/parent conflict checks. Tests preserve intervening bytes and reject
+  tampering, parent moves, links/hard links and read-only targets. This does not
+  exclude a writer racing final rename or guarantee directory crash durability.
+- Extended registered record interfaces to existing public standard result types
+  without new layouts, syntax or value semantics. Interpreter/JS tests cover
+  std::ParsedInt through aliases, calls, returns and nested record fields. Registry
+  identities consume interface budgets; exact node admission now includes them.
+- Package formatter now selects entries and registered sources through the compiler
+  inventory, preserving the 128-source/byte profiles and existing conflict checks.
+  A dependency-module conflict prevents all initial publication. Formatting leaves
+  lock bytes intact, so changed source correctly requires explicit regeneration.
+- A temporary relocated registered-record consumer built with `--locked --emit exe`
+  and executed on Linux, printing 25 then 1.5. This is exact-host smoke evidence,
+  not Windows/macOS, MSRV, all native APIs or release qualification.
+- Updated specification/reference/example/status/handoff contracts. G12 remains
+  partial: registered context/overlay/navigation/editor integration, remaining type
+  contexts and exact-host qualification remain. G11 remains partial; Task Manager
+  feature work stays on hold.
+- Began G13 design in `docs/design/G13_COLLECTIONS_AND_DATA.md`: proposed structural
+  array annotations and array length while preserving ADR 0012 value semantics.
+  Its new type/syntax contract awaits the requested decision under AGENTS.md;
+  general collections/errors/binary/JSON implementation is not claimed.
+- Final validation: **805 all-target Rust tests passed**, zero failures/ignored;
+  strict all-target/all-feature Clippy, rustfmt, documentation targets and diff
+  whitespace checks passed. Retained checkpoint/log hashes:
+  `target/checked-evidence/g12-source-locks-verification.json`. Linux locked native
+  smoke output was 25 then 1.5; new registered record interpreter/Node and formatter
+  conflict regressions passed. No other-host/release qualification is inferred.
+
+## 2026-11-13: G13 approved structural array interfaces
+
+- The user approved `[T]` annotations and `std::array_len` in
+  `docs/design/G13_COLLECTIONS_AND_DATA.md`; implemented that first contract without
+  introducing general generics, shared references or a new ownership model.
+- Parser retains bounded nested type spellings and complete annotation spans while
+  preserving AST/stage APIs. Alias resolution iteratively handles array edges,
+  cycles and expanded depth; 127 wrappers plus a leaf fit the 128-level bound.
+- Arrays now cross aliases, locals, parameters, returns and record fields, including
+  executable package interfaces. Public arrays preserve nominal record identity
+  and reject private element leaks. Empty literals use explicit expected types.
+- Checked and legacy lowering preserve recursive numeric array conversion at
+  parameter, initialization, return and record-field boundaries. Mutating returned/
+  copied arrays does not change the caller's logical value. The standard registry,
+  interpreter and JS implement array length with semantic/runtime array guards;
+  String length stays unchanged.
+- Written type wrappers consume AST admission; normalized interface wrappers count
+  per copied signature/record shape under existing quotas. An exact 10/9-node
+  registered primitive-array fixture verifies admission/exhaustion without fallback.
+- Added independent `examples/typed-array-packages`: consumer/library output is
+  9, 1.5, 0, 1, 4.5 in interpreter, Node and tested Linux native output. A relocated
+  copy also passes formatting, explicit lock generation and locked check/test/run/
+  JS/native builds. Native compiler/artifact hashes are retained with the smoke log.
+- Compiler-owned local IDE projection now understands explicit nested annotations;
+  strict decoder regressions pass. Existing inferred `Array<Int>` JSON labels stay
+  compatible and do not introduce source generic syntax. Formatter token/AST gates
+  accept the new annotations. Partial application alias/record inspection explicitly
+  refuses array declarations until its own privacy/identity contract is integrated.
+- Updated specification, course, references, audit and durable handoff. G13 remains
+  partial: general collections/resizing, generic/sum-type errors, binary/JSON APIs,
+  dynamic runtime value/allocation hardening and exact-platform qualification remain.
+  G11/G12 remain partial; Task Manager feature work remains on hold.
+- Final validation: **816 all-target Rust tests passed**, zero failures/ignored;
+  strict all-target/all-feature Clippy, rustfmt, documentation targets, diff checks,
+  compiler IDE symbols/strict decoder and real LSP regressions passed. Node child
+  spawning returned EPERM inside the sandbox even for /bin/true; symbol/LSP tests
+  passed through approved execution outside that restriction. Retained evidence:
+  `target/checked-evidence/g13-typed-arrays-verification.json`. Other-host/MSRV,
+  installed editor/desktop and full runtime resource qualification remain separate.
+
+## 2026-11-13: G13 deep runtime value traversal and cleanup
+
+- Reproduced a 16,000-level array clone stack overflow in an isolated test child;
+  the previous runtime aborted. Added isolated regressions so failures cannot abort
+  the entire Rust harness. Tests cover arrays and alternating arrays/records.
+- Replaced recursive Rust Value cloning and Rust/JavaScript compound display with
+  iterative work lists, preserving scalar text, ordering, separators, nominal
+  metadata and snapshot copies. Scalar clones keep a direct allocation-free path.
+- Added private runtime ownership guards and iterative frame/value/argument cleanup
+  for ordinary returns, discarded results, replaced names/array elements and tested
+  early-error paths (binary/field/widening/builtin/duplicate-field/host failures).
+  Existing iterative language equality and JavaScript copying remain in use.
+- Preserved public enum field moves: no Drop implementation was added to Value.
+  Added explicit Value::drop_iterative for caller-owned deep values. Ordinary
+  caller-owned Rust Drop/Debug/PartialEq retain their earlier contracts; arbitrary
+  Rust host code, allocator failures/panics and resource isolation are not covered.
+- Regression coverage includes 26 isolated deep cases, 16,000-level values,
+  reduced-stack Node helper display/copy, public enum destructuring/cleanup and a
+  source-level recursive record/array fixture with exact equality/display parity.
+  A 1,600-step source fixture produced true and 33621 in interpreter, Node with a
+  256 KiB stack setting and an actual Linux native executable. Compiler/native
+  hashes are retained with its smoke log; other hosts remain separate gates.
+- Final validation: **820 all-target Rust tests passed**, zero failures/ignored;
+  strict all-target/all-feature Clippy, rustfmt, documentation targets and diff
+  whitespace checks passed. Evidence:
+  `target/checked-evidence/g13-runtime-values-verification.json`.
+- Updated security/spec/course/reference/design/audit/handoff scope. Runtime total
+  allocation, output, execution-work/interruption policy and exact-host release
+  qualification remain open. G13 collections/errors/binary/JSON and remaining G12
+  editor integration stay partial/planned. Task Manager feature work is unchanged.
+
+## 2026-11-13: G13 optional instruction and printed-output allowances
+
+- Added additive `compiler::execution::ExecutionLimits` with independently optional
+  u64 instruction/output dimensions. Zero is an actual zero allowance; explicit
+  UNLIMITED preserves existing APIs/CLI/native policy and result shapes. This is
+  an opt-in component API, not a new default, source rule or ownership model.
+- Added `run_with_limits`, host/status and selected-function variants, and
+  `render_javascript_with_limits`. Counters are fresh per invocation/script and
+  shared by callees. JS BigInt preserves exact u64 values without Number rounding.
+- Charge executed IR instructions before dispatch, including calls/jumps/Return/Pop
+  and typed parameter-conversion instructions. Unreachable code/fallthrough are
+  not charged. A bounded loop stops without unchecked fallback or counter resets.
+- Printed-output accounting reserves LF and bounds iterative formatting before
+  host output. UTF-8, empty lines, nested records and earlier callee lines count
+  cumulatively. Refused lines publish no prefix; earlier host effects remain and
+  normal host failures are preserved. Heap/helper/file/blocked-I/O work is outside
+  these exact counters, and allocation/time/process isolation is not claimed.
+- Added 11 Rust/Node parity cases for zero/exact/exceeded/unlimited dimensions,
+  Unicode/LF, cross-frame counters, prior effects, large u64 values, typed conversion
+  prologues, declaration admission, host failures and an independent registered
+  package. Loop test harnesses have deadlines; those are not runtime preemption.
+- Expanded isolated deep-value regressions from 26 to 30 cases to cover 16,000-level
+  array/record cleanup after instruction/output exhaustion. Existing snapshot and
+  public value API contracts remain intact.
+- Default relocated registered formatting/locked check/test/run/JS/native smoke
+  still produces 9, 1.5, 0, 1, 4.5 on Linux. This verifies default compatibility,
+  not bounded native CLI artifacts or Windows/macOS/MSRV/release qualification.
+- Final validation: **831 all-target Rust tests passed**, zero failures/ignored;
+  strict all-target/all-feature Clippy, rustfmt, documentation targets and diff
+  whitespace checks passed. Evidence:
+  `target/checked-evidence/g13-execution-limits-verification.json`.
+- Documented the exact API/reference and next allocation-accounting alternatives
+  in `docs/design/G13_RUNTIME_BUDGETS.md`. Heap/materialization, total-work and
+  interruption contracts, CLI/native/default policy, broader G13 libraries and
+  remaining G12 editor integration stay open. Task Manager features are unchanged.
+
+## 2026-11-13: G13 logical footprints and concrete allocation-policy review
+
+- Added read-only Value::logical_footprint and checked ValueFootprint aggregation.
+  Independent u64 totals count value nodes, owned UTF-8 String/record-label bytes
+  and existing display bytes excluding printed LF. Overflow exposes no partial
+  result. This is not allocator capacity, peak live heap, RSS or enforced fuel.
+- Borrowed iterator frames use scratch proportional to depth, without copying
+  retained payloads or constructing full compound display text. Scalar numeric
+  formatting may allocate small temporaries. Existing execution paths do not call
+  this observer automatically; instruction/output/CLI/native policies stay intact.
+- Six regression tests cover checked aggregate boundaries, primitive/empty values,
+  Unicode payloads and raw Rust/IR labels, exact actual Rust/Node display agreement,
+  50,000-element width and isolated 16,000-level arrays/records. Packet data measures
+  five nodes, 19 owned-text bytes and 38 display bytes; Unicode metadata measures
+  two nodes, eight owned-text bytes and 15 display bytes in both engines.
+- Inspected actual checked IR for the proposed copy/print accounting example:
+  two String literals, MakeArray, two LoadName snapshots, stores, print and Pop.
+  Existing execution prints [λ, 😀]. The proposed 11-node/28-text-unit charge
+  includes the implicit root Unit and is explicitly a policy forecast, not an
+  implemented allocation limit or measured resident memory.
+- Prepared docs/design/G13_MATERIALIZATION_FUEL.md with recommended cumulative
+  logical accounting, complete operation costs, no release credits, exact UTF-8/
+  label/display treatment, conversion representation exclusions, host-I/O minimum
+  admission and effects, atomic counter order and compatible API/versioning gates.
+  Requested the required accounting choice; enforcement remains pending approval
+  under the durable AGENTS review boundary. Existing G13 array and instruction/
+  output contracts do not imply this separate allocation-model decision.
+- Final validation: **837 all-target Rust tests passed**, zero failures/ignored;
+  strict all-target/all-feature Clippy, rustfmt, documentation targets and diff
+  whitespace checks passed. Evidence:
+  `target/checked-evidence/g13-value-footprint-verification.json`.
+- G11/G12/G13 remain partial. Allocation enforcement, live/RSS/full-work/interruption
+  and default/native policy remain open; no new platform/native/release
+  qualification or Task Manager feature change is claimed.
+
+## 2026-11-13 — Approved G13 cumulative logical materialization fuel
+
+- Implemented user-approved option A and the complete model-v1 cost/effect table.
+  Additive MaterializationLimits/RuntimePolicy APIs compose node/text fuel with
+  existing instruction/output limits; earlier APIs and CLI/native defaults stay
+  compatible. Generated JavaScript uses exact BigInt counters and version 1.
+- Charge literals, full snapshots, parameters, containers/labels, binary results,
+  implicit Units and every supported standard producer. Numeric widening and
+  transfers cost zero; overwrites/drops never refund fuel. Premeasure concat,
+  escaping and display payloads before construction. Atomic node/text admission
+  preserves both counters on refusal; operation validation retains priority.
+- Host I/O preflights minimum result shape before calling the host, then admits
+  complete returned payload before VM publication. Tests retain prior effects
+  when unknown payload admission fails. Print composes output/text admission
+  before formatting/publication. There is no unlimited fallback or rollback.
+- Rust/Node exact-cost regressions verify the approved 11-node/28-text example,
+  table rows, Unicode/labels, snapshots, callee sharing, overwrite, malformed IR,
+  checked arithmetic, effects and independent registered-package consumption.
+  Expanded isolated deep cleanup to 38 cases, including 16,000-level failed
+  snapshot copies and partially initialized parameter frames.
+- Strict all-target/all-feature Clippy, formatting and documentation targets pass.
+  Locked package formatter/check/test/run/Node/native Linux compatibility smoke
+  passes with identical output. Logical fuel is not heap/RSS, scratch, host memory,
+  full work, cancellation or process isolation. Task Manager features unchanged.
+- Next: full-work/interruption and physical-memory/host policy need their own
+  contracts; bounded native serialization/default profiles, broader collections,
+  binary/JSON/error APIs and other platform qualification remain open. G13 and
+  G11/G12 are still partial.
+- Final regression result: **851 all-target Rust tests passed**, zero failures/ignored.
+  Evidence: `target/checked-evidence/g13-materialization-verification.json`.
+
+## 2026-11-13 — G13 deep admission and host-input qualification
+
+- Added generated-JavaScript 16,000-level array/alternating-record snapshot
+  admission under Node's 256 KiB stack. Exact node/text limits permit a distinct
+  complete copy; one-under limits publish no copy and leave both counters intact.
+- Added Rust/Node EOF, empty-line and host-error admission tests. Minimum node or
+  text refusal prevents the host call; valid minimum admits EOF/empty records,
+  while host errors preserve their own failure.
+- All **15 materialization integration tests passed**, zero failures/ignored;
+  strict all-target/all-feature Clippy, formatting, documentation targets and
+  diff whitespace checks passed. The preceding 851-test full-suite and Linux
+  native evidence remains a prior checkpoint; this test/documentation slice
+  does not claim a new full-suite/native run. Evidence:
+  `target/checked-evidence/g13-admission-followup-verification.json`.
+- Prepared docs/design/G13_COOPERATIVE_INTERRUPTION.md for the next review:
+  additive Rust cancellation tokens and elapsed control, explicit checkpoints,
+  no default/native changes, no blocked-I/O or hard-deadline claim. JavaScript
+  needs a separate synchronous control transport. No interruption code was added.
+  Paused implementation at AGENTS' explicit broader interruption-policy review
+  boundary. Existing fuel/array approvals remain in force.
+
+## 2026-11-13 — Approved Rust cooperative execution control
+
+- Implemented the explicitly approved G13 cooperative interruption contract.
+  Added shared permanent CancellationToken and separate ExecutionControl with
+  optional elapsed Duration. New policy-and-control run/host/named-function APIs
+  preserve earlier signatures, RuntimePolicy fields, defaults and JS generation.
+- Start monotonic elapsed accounting before declaration validation; retain initial
+  declaration/entry/arity error priority. Compare elapsed Duration directly,
+  including zero and Duration::MAX, without overflowing deadline construction.
+  Cancellation wins over elapsed, and checkpoints precede dispatch/fuel, parameter
+  snapshots, implicit returns, host entry and successful host-result publication.
+  Final success is checked after iterative result cleanup.
+- Preserve host Err failures even if the callback cancels. Text result records
+  remain ordinary values subject to post-host admission. Completed effects and
+  committed fuel remain after interruption; no fallback, refunds or rollback.
+- Deterministic private clocks verify exact deadline boundaries, dispatch/return
+  admission priority, unspent refused fuel, post-input ordering and committed
+  print charges. Supervisor/elapsed callee-loop child tests have a separate
+  20-second test-harness kill deadline. Expanded runtime child coverage from
+  38 to 40 cases; two additional isolated 16,000-level partial-frame cases verify
+  elapsed failure cleanup after the first parameter copy.
+- Validation: **866 all-target tests passed**, zero failed/ignored. After adding
+  the final dispatch-priority regression and elapsed-loop child scenario, all
+  **8 private control tests** and **6 control integration tests** passed again.
+  The 866-test full run precedes that test-only addition; no later production
+  behavior changed. Strict all-target/all-feature Clippy, rustfmt, documentation
+  targets and diff checks passed. Locked formatter/check/test/run/Node/native
+  Linux smoke produced identical output, preserving default compatibility.
+  Evidence: `target/checked-evidence/g13-cooperative-control-verification.json`.
+- Cooperative checks cannot preempt validation, helper work, cleanup or blocked
+  host I/O and supply no fixed stop latency/heap/RSS/process isolation guarantee.
+  JavaScript control transport, full-work metering, hard process interruption,
+  physical memory policy, bounded native serialization/default profiles and
+  other platform/MSRV/release qualification remain separate work. G13 remains
+  partial; Task Manager feature behavior remains unchanged.
+
+## 2026-11-13 — Node Worker interruption transport review
+
+- Reviewed current generated function dispatch/copy/return and host I/O paths.
+  Prepared docs/design/G13_JAVASCRIPT_WORKER_CONTROL.md: proposed additive
+  worker-only generator, explicit version-1 shared atomic cancellation flag,
+  monotonic exact BigInt elapsed accounting, checkpoint/error/effect ordering,
+  disabled/invalid transport behavior and concrete qualification gates.
+- Ran a standalone Linux/Node v24.22.1 transport experiment. Six categories
+  passed: atomic cancellation of a busy worker, permanent flag/cancellation
+  priority, elapsed busy-loop exhaustion, huge exact BigInt allowance, invalid
+  transport refusal, and inherited fd-1/worker-local exit behavior. This probe
+  executes no generated Sovra code and is not a runtime API implementation.
+- Confirmed existing backend direct readSync(0)/writeSync(1) operations inherit
+  process descriptors; Worker stream options do not isolate them. The design
+  explicitly retains this host boundary and does not imply per-worker capture,
+  filesystem isolation, browser/mobile support or a process sandbox.
+- Documentation targets passed (177 Markdown files, 476 local links); diff
+  whitespace checks passed. No production Rust/backend source changed, so the
+  prior full Rust/native qualification was not rerun for this design slice.
+  Evidence and retained probe source:
+  `target/checked-evidence/g13-worker-transport-review.json`.
+- Paused before implementation at the explicit AGENTS/approved Rust-contract
+  review boundary for separate JavaScript transport. Rust cancellation/fuel
+  approvals remain valid. No default/CLI/native or Task Manager change.
+
+## 2026-11-13 — Approved generated Node Worker control
+
+- Implemented the explicitly approved worker-only backend API and
+  JavaScriptWorkerControl. An internal generator mode emits lexical checkpoints;
+  ordinary generators retain their APIs and do not depend on worker globals.
+  Existing CLI/native/default policies and Task Manager features remain unchanged.
+- Validate worker mode and the exact version-1 cancellation envelope; reject
+  ordinary/view/larger/growable buffers, extra/wrong fields and disabled-mode
+  supplied envelopes without fallback. Read a host-owned shared atomic flag;
+  embed exact BigInt Duration nanoseconds and monotonic elapsed checks.
+- Preserve declaration/entry/arity and cancellation/elapsed/fuel priority. Poll
+  before frames/parameter copies, dispatch, implicit returns, host entry, successful
+  result ingress and final status. Host throws retain their errors. Print checks
+  before the first write and after the completed line, never between partial writes.
+- Eight real-worker integration tests cover malformed/pre-cancelled/disabled/zero
+  controls, actual busy-callee cancellation and elapsed exhaustion, private exact
+  clocks/Duration::MAX, host effects/throws/minimum-shape preflight, partial writes,
+  model-v1 exact costs and an independent registered-package consumer. Deep tests
+  use 16,000-level arrays/alternating records with a 0.5 MiB worker stack, including
+  control failure after the first copied parameter and successful exact admission.
+  Supervisor test deadlines are harness controls, not runtime hard deadlines.
+- Strict all-target/all-feature Clippy, rustfmt and documentation target/diff
+  checks passed. Locked formatter/check/test/run/Node/native Linux compatibility
+  smoke passed with identical output. Evidence is recorded in
+  `target/checked-evidence/g13-worker-control-verification.json`.
+- Worker direct fd-0/fd-1 operations and filesystem authority remain shared with
+  the process; worker stream proxies do not redirect them. No preemption of host
+  I/O/helper work/GC, fixed latency, physical-memory cap, process isolation,
+  browser/mobile runtime, Node 22 CI, other-platform/MSRV/release or bounded-native
+  qualification is claimed. G13 remains partial. Next work includes explicit
+  host adapters/capabilities, full-work/physical-memory policy and the remaining
+  collection/error/binary/JSON decisions, each under its own review boundary.
+- Final validation: **875 all-target Rust tests passed**, zero failures/ignored;
+  eight worker tests are included in that total. Local worker execution used
+  Node v24.22.1. The retained report records source/log hashes and scope limits.
+
+## 2026-11-13 — Expanded 18-task product checklist and next collection review
+
+- Added docs/18_TASK_COMPLETION_CHECKLIST.md at the user's request, preserving
+  G01–G18 IDs and completed foundation scopes. Mapped the six product goals to
+  explicit remaining implementation/acceptance steps: independent installed
+  toolchain, Node-free native artifacts, general stdlib, Sovra-owned HTTP,
+  unified desktop/web/mobile UI and distributed packages.
+- Made G12 registry/version/cache/offline/publish work, G13 filesystem/date/process
+  APIs, G14 real server/resource lifecycle, G04/G15/G16 target UI work and G18 native
+  artifact qualification explicit. Preserved Windows deferral, exact-host release
+  gates, builder prerequisites and the Task Manager feature hold.
+- Updated current audit/roadmap/AGENTS links and stale summary descriptions for
+  local locks and implemented cooperative controls. Remaining features are not
+  marked implemented merely because the checklist now names them.
+- Continued G13 by inspecting canonical stdlib signatures and semantic array
+  argument checking, then prepared docs/design/G13_ARRAY_SLICE.md: typed snapshot
+  slicing, half-open checked bounds, runtime/type/fuel order, exact proposed cost
+  and an independent registered-library consumer gate. No builtin was added yet.
+- Paused new collection implementation at the explicit AGENTS and approved G13
+  next-collection review boundary. Prior typed-array/fuel/control contracts remain
+  approved. Checklist expansion does not determine new operation semantics.
+- Documentation targets and diff whitespace checks pass. This documentation/design
+  slice changes no production compiler code, so the prior 875-test/full native
+  checkpoint was not rerun or presented as new execution evidence.
+
+## 2026-11-13 — Snapshot array slicing and independent library consumption
+
+- Continued the reviewed G13 slice contract as directed by the user. Added the
+  canonical std::array_slice registry entry, dependent checked result typing and
+  legacy lowering facts. Preserve aliases, nested arrays, nominal package records,
+  inferred IDE types and existing recursive numeric widening without new syntax.
+- Rust and ordinary/worker Node runtimes validate Array/Int/Int and strict half-open
+  bounds before charging result fuel. Checked host-size/BigInt bounds prevent
+  truncation/clamping. Admit one container plus selected descendants atomically,
+  then clone iteratively without double charging. Rust partial output uses the
+  existing iterative ownership guard. Defaults and Task Manager features remain.
+- Six new integration tests cover legacy/checked parity, rejected source/type/
+  nominal mismatches, full/empty/invalid/i64-extreme bounds, Unicode/exact fuel,
+  malformed-IR validation priority, deep copies/refusal and independent package
+  consumption across Rust, ordinary Node and Node workers. IDE regression retains
+  Array<Float>/Array<Point> inferred facts. Expanded isolated Rust deep cases
+  from 40 to 44; worker selected copies use 16,000-level values and a 0.5 MiB stack.
+- Added examples/array-slice-packages: independent registered library exports tail
+  and nominal Sample arrays; consumer verifies snapshots, Float widening and empty
+  input behavior. Locked formatter/check/test/run/Node/native Linux smoke passed
+  with identical output. Node-free native execution now exercises the actual new
+  collection capability, not only default compatibility.
+- Updated spec, course, stdlib metadata documentation, reference, complete fuel
+  table, example catalog and expanded 18-task checklist. Verified the reviewed
+  source example's 18-node/6-text/7-output cost and one-under behavior.
+- Strict all-target/all-feature Clippy, rustfmt and documentation target/diff checks
+  passed. Evidence: `target/checked-evidence/g13-array-slice-verification.json`.
+  No other-platform/MSRV/release, browser/mobile runtime, physical-memory or
+  helper-preemption qualification is inferred. G13 remains partial; Map/Set,
+  general generics, errors/sum types, binary/JSON and filesystem/time/process APIs
+  remain separate work under the existing review boundaries.
+- Final validation: **882 all-target tests passed**, zero failures/ignored.
+  Guarded example package formatting/check and its consumer regression also passed
+  after formatting the library source. Retained evidence records hashes and limits.
+
+## 2026-11-13 — Next G13 snapshot growth contract
+
+- Inspected implemented slicing, dependent stdlib typing/coercion paths and the
+  expanded G13 checklist. Prepared docs/design/G13_ARRAY_GROWTH.md, reviewing
+  returned-snapshot append and concatenation together as useful array-growth APIs.
+- Made first-argument-directed element typing explicit, including permitted
+  second-argument numeric widening, typed-empty first inputs, preserved nominal
+  identity, no new backward generic inference and no heterogeneous Any result.
+- Specified the shared new-operation result-length ceiling, stable validation/
+  overflow/fuel order, complete selected-child snapshot charges, iterative cleanup
+  and forecasts for exact source-level accounting. No builtin/runtime code added.
+- Defined reusable independent collection-library/consumer acceptance, checked/
+  legacy/IDE/package coercion evidence, Rust/Node/worker parity, deep/wide values
+  and actual locked Linux native execution gates. Existing slice/resource/default
+  contracts remain unchanged; G13 and the wider product checklist remain partial.
+- Documentation targets pass (183 Markdown files, 511 local links), as does diff
+  whitespace validation. No production code changed, so prior 882-test/native
+  evidence was not rerun or counted as new qualification for this proposal.
+- Paused implementation at the explicit AGENTS/G13 next-collection review boundary
+  for new growth/type/length decisions; requested review of this concrete combined
+  contract. Task Manager features and release/platform gates remain unchanged.
+
+## 2026-11-13 — Approved snapshot array growth
+
+- Implemented the user-approved append/concat contract together. First input fixes
+  the known canonical element type; typed empty input works, unknown first leaves
+  fail, and second-side empty compatibility is preserved. No backward widening,
+  heterogeneous Any, mutating resize or new source generic syntax was introduced.
+- Semantic checking records dependent second-argument contexts/coercions and
+  result types. Checked and legacy lowering emit numeric conversion immediately
+  after the second argument, including nested/aliased Float arrays. IDE regressions
+  retain Array<Float>, nested arrays and package/nominal records.
+- Rust and ordinary/worker Node validate container shapes and checked result length
+  before admission. Shared new-operation ceiling is 4,294,967,295 elements;
+  boundary/overflow helpers are tested without giant allocation. Atomically charge
+  one output container plus all output-child footprints, then clone iteratively
+  with no duplicate child/container charges or refunds. Existing defaults remain.
+- Eight new integration tests compare Rust/Node/worker results/errors, first-directed
+  widening, rejected unknown/backward/nominal types, Unicode/record label fuel,
+  exact/one-under source costs, empty concat, deep refusal and 50,000-element width.
+  Two unit regressions cover inferred IDE types and checked length arithmetic.
+  Expanded isolated Rust deep cases from 44 to 52; worker 16,000-level copies use
+  a 0.5 MiB stack. Wide worker graphs avoid a huge generated switch function.
+- Extended the reusable registered sequence library with keep_positive, join_float
+  and appended_sample, consumed by separate growth-app. Existing slice app output
+  stays compatible. Guarded formatter/check, lock/check/test/run, Node and actual
+  Linux native output passed with identical results. Native execution exercises
+  real filtering, dependent numeric coercion and nominal record results.
+- Updated spec, course, reference, complete model-v1 cost table, example catalog
+  and the existing 18-task checklist. Confirmed append's 11-node and concat's
+  12-node forecasts, each with 6 text/7 independent output bytes, including root
+  completion and one-under prior-effect behavior.
+- Strict all-target/all-feature Clippy, rustfmt, documentation targets and diff
+  checks passed. Evidence: `target/checked-evidence/g13-array-growth-verification.json`.
+  Broader G13 collection/error/binary/JSON/filesystem/time/process work remains
+  open. No helper-preemption, physical-memory cap, browser/mobile, other-platform,
+  MSRV/release or Task Manager feature qualification/change is implied.
+- Final validation: **892 all-target tests passed**, zero failures/ignored;
+  this includes all eight growth tests and both new unit regressions. Retained
+  evidence records source/log hashes, supported-host scope and resource limits.
+
+## 2026-11-13 — Next G13 error-handling syntax contract
+
+- Reviewed current executable AST/stage contracts, lexer token/keyword behavior
+  and G11 enum-header inspection. Enum bodies remain unparsed; recognizing a
+  header does not implement error values or exhaustive handling. The lexer already
+  recognizes =>; enum/match remain contextual identifiers.
+- Prepared docs/design/G13_SUM_TYPE_SYNTAX.md for an additive bounded standalone
+  enum-declaration parser: nullary/single-payload variants, existing bounded type
+  spelling, original spans, strict unsupported-syntax refusal and explicit source/
+  token/variant/type-node/text admission. Proposed default values and exact EOF
+  counting are concrete; there is no new CLI default or public AST field.
+- Linked the next step from the existing 18-task checklist and collection/data
+  plan. The proposed API is syntax-only and leaves type/constructor/match/runtime,
+  generic Option/Result and standard-result migration as later explicit gates.
+  Current native formats, earlier parsers, G11 gaps and runtime semantics remain.
+- Documentation targets passed (186 Markdown files, 529 local links); diff
+  whitespace checks passed. No production code changed, so prior 892-test/native
+  evidence was not rerun or claimed for this design slice.
+- Paused at AGENTS' explicit new syntax/type/compatibility review boundary and
+  requested review of the concrete first parser API. Existing array/resource
+  approvals remain valid. This proposal does not complete G13 or error handling.
+
+## 2026-11-13 — Publish foundation checkpoint before continuing
+
+- User requested pushing current work, then a fresh pull before continuation.
+  Captured the accumulated compiler/runtime/package/tooling/shared-UI and roadmap
+  work, preserving existing changes and the Task Manager feature hold.
+- Fetched main at 81f93284ef055bf475960c0cee463c9b07d74668. Its tree exactly
+  matches the existing a758fba base, incorporating the earlier merged compiler
+  PR without a content divergence. Publish this checkpoint on a new feature
+  branch for review; do not overwrite or merge main automatically.
+- Latest production checkpoint remains 892 passing all-target tests, strict
+  Clippy/format and locked Linux native growth-consumer execution. Subsequent
+  changes only prepare the still-proposed enum syntax contract. Documentation
+  targets (186 Markdown files, 529 local links) and diff checks pass at publication.
+- Enum syntax proposal remains pending its own review; publishing it does not
+  approve or implement enums/match/Option/Result. G11/G12/G13 and platform/release
+  gates remain partial. Private target evidence is not a shipped release artifact.

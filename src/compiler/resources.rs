@@ -1,6 +1,7 @@
 //! Default and caller-selected compiler limits, independent of execution budgets.
 
 mod ast_budget;
+pub(crate) mod interface_strings;
 pub use ast_budget::check_ast_budget;
 
 use super::diagnostics::{Diagnostic, Diagnostics, Severity, Span};
@@ -16,6 +17,36 @@ pub const DEFAULT_PACKAGE_SOURCE_BYTES: usize = 64 * 1024 * 1024;
 
 /// Approved AST admission ceiling for one checked source unit (ADR 0037).
 pub const DEFAULT_AST_NODES: usize = 250_000;
+
+/// Approved cumulative interface UTF-8 materialization ceiling per graph (ADR 0039).
+pub const DEFAULT_INTERFACE_STRING_BYTES: usize = 128 * 1024 * 1024;
+
+/// Caller-selected input quotas for primary application-project scanning.
+/// These do not bound optional body/service inspection or aggregate diagnostics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProjectScanLimits {
+    /// Maximum UTF-8 bytes read from each discovered source path.
+    pub max_source_bytes: usize,
+    /// Maximum source bytes across successful reads; aliases count per read.
+    pub max_total_source_bytes: usize,
+    /// Maximum discovered .svr paths retained for scanning.
+    pub max_source_files: usize,
+    /// Maximum directories scheduled, including the root and empty directories.
+    pub max_directories: usize,
+    /// Maximum yielded directory entries, including non-source entries/errors.
+    pub max_directory_entries: usize,
+}
+
+impl ProjectScanLimits {
+    /// Approved primary application-project discovery/read defaults (ADR 0040).
+    pub const DEFAULT: Self = Self {
+        max_source_bytes: 16 * 1024 * 1024,
+        max_total_source_bytes: 64 * 1024 * 1024,
+        max_source_files: 4096,
+        max_directories: 4096,
+        max_directory_entries: 100_000,
+    };
+}
 
 /// Caller-selected retained IR emission limits. These are not execution quotas.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

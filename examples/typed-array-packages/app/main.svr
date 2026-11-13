@@ -1,0 +1,12 @@
+use collections::numbers;
+
+fn main() {
+    print(collections::numbers::total([2, 3, 4]));
+    let samples = collections::numbers::samples([3, 4]);
+    print(samples.values[0] / 2);
+    print(std::array_len(collections::numbers::empty()));
+    let original: [Float] = [1, 2];
+    let changed = collections::numbers::changed(original);
+    print(original[0]);
+    print(changed[0] / 2);
+}

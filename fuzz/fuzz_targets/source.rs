@@ -68,8 +68,22 @@ fuzz_target!(|data: &[u8]| {
     {
         Ok(typed) => {
             let program = ir::lower(&typed);
+            let parsed = Parser::new().parse_source(source).unwrap();
+            let (active, checked) = sovra::compiler::compile_program(&parsed)
+                .expect("small valid source fits active evidence limits");
+            assert_eq!(active, program);
+            assert!(checked.source().is_none());
+            assert!(checked.semantic_evidence().unwrap().lowering().is_some());
             let image = native_image::encode(&program).expect("small checked program must encode");
             assert_eq!(native_image::decode(&image).unwrap(), program);
+            // Trivia must not change checked meaning or lowering (never execute it).
+            let prefixed = format!("// λ😀 fuzz trivia\r\n\t{source}");
+            let reparsed = Parser::new().parse_source(&prefixed).unwrap();
+            assert_eq!(ir::lower_program(&reparsed).unwrap(), program);
+            assert_eq!(
+                sovra::compiler::compile_program(&reparsed).unwrap().0,
+                program
+            );
             let _ = backend::render_javascript(&program);
         }
         Err(errors) => {

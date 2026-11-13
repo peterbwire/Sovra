@@ -155,3 +155,101 @@ implemented; non-Windows writes remain disabled pending execution qualification.
 The retained Unix helper tests are not evidence that Unix replacement was tested
 locally. Package imports/application syntax remain deferred. See the development
 log for actual validation evidence and the reference for current limitations.
+
+## 2026-11-12: G10 Linux write qualification
+
+`fmt --write` now enables the existing guarded replacement path on Linux as well
+as Windows. Tests cover permission preservation, unchanged inode/timestamp,
+read-only/link/special-mode refusal, staging cleanup and failure injection for
+source identity, mode and parent changes. A test fixture now sets its initial
+mode explicitly so restrictive process umasks cannot hide the injected change.
+Existing token/comment/AST/fixed-point and interpreter/JavaScript preservation
+checks remain active. Other hosts stay disabled. Imports and package-directory
+formatting remain deferred; this is a partial G10 checkpoint. No Task Manager
+features changed. Replacement remains a best-effort conflict check, without an
+atomic cross-process lock or ACL/xattr preservation guarantee.
+
+## 2026-11-12: G10 import-aware single-file formatting
+
+The package compiler and formatter now share the existing token-level import
+parser. No new grammar or resolver is introduced. Formatter output validates
+ordered import alias/module identities alongside token spelling, comments,
+normalized AST and fixed points. Unresolved imports require no manifest or
+dependency reads; nested/malformed imports still fail. Regression coverage uses
+comments inside import paths, duplicates, CRLF/Unicode, malformed syntax and
+formatting both entries in a copied real package graph with interpreter/JS
+behavior comparison. Guarded Windows/Linux writes remain available. Directory
+formatting and macOS write qualification remain G10 work. No Task Manager
+features changed. This supersedes the first-slice import rejection above.
+
+## 2026-11-12: G10 read-only package graph formatting checks
+
+Explicit `fmt --package --check DIR` now follows the existing compiler resolver
+and deduplicates canonical entry files. It includes local dependencies outside
+the root, without recursive scanning, execution or writes. A 128-package cap,
+16 MiB cumulative manifest/source input cap and 64 MiB cumulative output cap
+bound preparation. Manifest snapshots precede a second graph resolution; source
+and manifest snapshots are rechecked before reporting any formatting notices.
+Errors retain source ownership and emit no partial style report. This remains
+best-effort disk conflict detection. Package stdout/write modes are usage errors.
+Regression coverage includes shared aliases, nested entries, unrelated sources,
+clean/dirty states, malformed provider syntax, missing dependencies, link policy,
+no-write timestamps and graph/byte ceilings. CI runs the package formatter suite.
+Next is multi-file write qualification; macOS writes remain deferred. No Task
+Manager features changed.
+
+## 2026-11-12: G10 staged package writes
+
+Explicit `fmt --package --write DIR` now preflights and stages all canonical graph
+entry outputs before any original replacement. Local dependencies outside the
+root are included; manifests and unrelated sources stay unchanged. All snapshots
+and staging identities/metadata/bytes are validated before publication; manifests
+and the current source/staging are checked again per replacement. Staging reads
+use retained handles. Linux metadata comparisons now include link counts and
+Windows comparisons include file attributes. Existing single-file writes reuse
+the same staging primitive.
+
+Publication is atomic per file, not across the package: late failures stop,
+report the changed-file completion count, retain earlier replacements and clean
+unpublished staging files. No rollback or filesystem locking is claimed. The
+existing 128-entry, cumulative input/output and per-file limits remain active.
+Regression tests inject manifest/source/staging-content/staging-identity/link
+changes before publication and external edits after the first replacement.
+CLI tests cover valid writes, late-invalid-source preflight refusal, read-only
+and hard-link policies, unchanged inode/timestamps and unchanged manifests.
+Windows/Linux enable the command; new execution evidence is Linux-only. macOS
+writes and cross-platform qualification remain G10 gates. Task Manager remains
+on hold. This supersedes the earlier package-write deferral.
+
+## 2026-11-12: G10 exact-host qualification reports
+
+`scripts/qualify-formatter.mjs` now retains platform/architecture, compiler and
+selected checkout hashes, version logs, formatter-related Rust regressions and
+both real CLI formatter suites. It checks hashes again after execution and
+records command statuses, timeouts/signals and log hashes. Missing/wrong compiler
+regressions require failed reports and forbid qualification. Package tests accept
+an explicit compiler path; unsupported hosts now explicitly verify standalone
+write refusal as well as package write refusal.
+
+Three-OS CI invokes the report runner and uploads reports/logs with `always()`.
+Windows/Linux success means writes verified on that host. macOS success means
+its disabled-write policy was verified, not that writes were enabled or qualified.
+Only actual retained host reports can close execution gates; this change does
+not claim remote Windows/macOS runs. Task Manager remains unchanged.
+
+## 2026-11-12: formatter open-race hardening
+
+Review before G11 found that pathname regular-file checks preceded a plain open:
+a replacement FIFO could block before bounded reads began. Snapshot and conflict
+reads now share an opened-handle check that rejects unexpected metadata before
+reading. Linux x86/x86_64/aarch64 add nonblocking/no-follow flags; Windows opens
+reparse points directly and rejects their handles. No dependency was added;
+Linux flag values are explicitly limited to the stated architectures. Other
+architectures retain regular-handle/metadata checks without those flags.
+
+A deterministic Linux test replaces the already-statted source with a no-writer
+FIFO, a link to the original and a different regular file. All are rejected and
+original/external bytes remain intact. Existing best-effort parent/final-rename
+race limitations remain. Windows execution and macOS write gates stay open.
+Next: G11 structured application work under accepted ADR 0009. Task Manager
+features remain unchanged.
