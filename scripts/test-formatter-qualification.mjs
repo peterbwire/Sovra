@@ -25,6 +25,7 @@ try {
             assert.equal(report.steps.length, 0);
         } else {
             assert.ok(report.steps.some(step => step.name === 'standalone-import-execution' && !step.success));
+            assert.ok(report.steps.some(step => step.name === 'versioned-syntax-formatter' && !step.success));
             assert.ok(report.steps.some(step => step.name === 'package-checks-writes' && !step.success));
             for (const step of report.steps) assert.ok(readFileSync(step.log).length > 0);
         }

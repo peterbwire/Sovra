@@ -211,43 +211,7 @@ impl SemanticAnalyzer {
         if diagnostics.limit_reached("E3019") {
             return Err(diagnostics);
         }
-        struct_fields.insert(
-            crate::compiler::stdlib::INPUT_LINE_TYPE.to_owned(),
-            HashMap::from([
-                ("eof".to_owned(), Type::Bool),
-                ("text".to_owned(), Type::String),
-            ]),
-        );
-        struct_fields.insert(
-            stdlib::TEXT_READ_TYPE.to_owned(),
-            HashMap::from([
-                ("ok".to_owned(), Type::Bool),
-                ("text".to_owned(), Type::String),
-                ("error".to_owned(), Type::String),
-            ]),
-        );
-        struct_fields.insert(
-            stdlib::TEXT_WRITE_TYPE.to_owned(),
-            HashMap::from([
-                ("ok".to_owned(), Type::Bool),
-                ("error".to_owned(), Type::String),
-            ]),
-        );
-        struct_fields.insert(
-            stdlib::SPLIT_ONCE_TYPE.to_owned(),
-            HashMap::from([
-                ("found".to_owned(), Type::Bool),
-                ("before".to_owned(), Type::String),
-                ("after".to_owned(), Type::String),
-            ]),
-        );
-        struct_fields.insert(
-            stdlib::PARSED_INT_TYPE.to_owned(),
-            HashMap::from([
-                ("ok".to_owned(), Type::Bool),
-                ("value".to_owned(), Type::Int),
-            ]),
-        );
+        add_standard_record_fields(&mut struct_fields);
         let mut declared_functions = HashMap::new();
         for function in &program.functions {
             if diagnostics.limit_reached("E3019") {
@@ -730,6 +694,213 @@ fn check_builtin_collision(name: &str, span: Span, diagnostics: &mut Diagnostics
     }
 }
 
+// Shared builtin record fields for the ordinary checker and detached v2 bodies.
+pub(crate) fn add_standard_record_fields(
+    struct_fields: &mut HashMap<String, HashMap<String, Type>>,
+) {
+    struct_fields.insert(
+        crate::compiler::stdlib::INPUT_LINE_TYPE.to_owned(),
+        HashMap::from([
+            ("eof".to_owned(), Type::Bool),
+            ("text".to_owned(), Type::String),
+        ]),
+    );
+    struct_fields.insert(
+        stdlib::TEXT_READ_TYPE.to_owned(),
+        HashMap::from([
+            ("ok".to_owned(), Type::Bool),
+            ("text".to_owned(), Type::String),
+            ("error".to_owned(), Type::String),
+        ]),
+    );
+    struct_fields.insert(
+        stdlib::TEXT_WRITE_TYPE.to_owned(),
+        HashMap::from([
+            ("ok".to_owned(), Type::Bool),
+            ("error".to_owned(), Type::String),
+        ]),
+    );
+    struct_fields.insert(
+        stdlib::SPLIT_ONCE_TYPE.to_owned(),
+        HashMap::from([
+            ("found".to_owned(), Type::Bool),
+            ("before".to_owned(), Type::String),
+            ("after".to_owned(), Type::String),
+        ]),
+    );
+    struct_fields.insert(
+        stdlib::PARSED_INT_TYPE.to_owned(),
+        HashMap::from([
+            ("ok".to_owned(), Type::Bool),
+            ("value".to_owned(), Type::Int),
+        ]),
+    );
+}
+
+/// Borrowed closed-scope body checking; callers admit structure and names first.
+/// No whole-program, call-target or executable lowering evidence is returned.
+pub(crate) struct DetachedBinding<'a> {
+    pub name: &'a str,
+    pub ty: &'a Type,
+    pub mutable: bool,
+}
+
+// Source-driven scopes for versioned function checking. No public v1 stage changes.
+#[derive(Default)]
+pub(crate) struct DetachedScope(LocalScope);
+impl DetachedScope {
+    pub(crate) fn fork(&self) -> Self {
+        Self(self.0.clone())
+    }
+    pub(crate) fn insert_immutable(&mut self, name: &str, ty: Type) {
+        self.0.mutable_names.remove(name);
+        self.0.types.insert(name.into(), ty);
+    }
+    pub(crate) fn insert(&mut self, name: &str, ty: Type) {
+        self.0.types.insert(name.into(), ty);
+    }
+    pub(crate) fn get(&self, name: &str) -> Option<&Type> {
+        self.0.types.get(name)
+    }
+    pub(crate) fn len(&self) -> usize {
+        self.0.types.len()
+    }
+    pub(crate) fn bindings(&self) -> impl Iterator<Item = DetachedBinding<'_>> {
+        self.0.types.iter().map(|(name, ty)| DetachedBinding {
+            name,
+            ty,
+            mutable: self.0.mutable_names.contains(name),
+        })
+    }
+    pub(crate) fn check_control_condition(
+        &self,
+        header: &Statement,
+        known: &HashMap<String, Type>,
+        fields: &HashMap<String, HashMap<String, Type>>,
+        functions: &HashMap<String, &Function>,
+        recorder: &mut Recorder,
+    ) -> Result<(), Diagnostics> {
+        let (condition, span, kind) = match header {
+            Statement::If {
+                condition, span, ..
+            } => (condition, *span, "if"),
+            Statement::While {
+                condition, span, ..
+            } => (condition, *span, "while"),
+            _ => unreachable!("private control header"),
+        };
+        let mut diagnostics = Diagnostics::new();
+        let ty = check_expression(
+            condition,
+            &self.0.types,
+            functions,
+            known,
+            fields,
+            &mut diagnostics,
+            recorder,
+        );
+        if !types_compatible(&Type::Bool, &ty, known) {
+            diagnostics.push_semantic(diagnostic(
+                "E3005",
+                format_args!("{kind} condition must be Bool, found {ty:?}"),
+                span,
+            ));
+        }
+        if diagnostics.is_empty() {
+            Ok(())
+        } else {
+            Err(diagnostics)
+        }
+    }
+    pub(crate) fn check_recorded(
+        &mut self,
+        statement: &Statement,
+        expected: &Type,
+        known: &HashMap<String, Type>,
+        fields: &HashMap<String, HashMap<String, Type>>,
+        functions: &HashMap<String, &Function>,
+        recorder: &mut Recorder,
+    ) -> Result<bool, Diagnostics> {
+        let mut diagnostics = Diagnostics::new();
+        check_statement(
+            statement,
+            &mut self.0,
+            functions,
+            known,
+            fields,
+            expected,
+            &mut diagnostics,
+            recorder,
+        );
+        if diagnostics.is_empty() {
+            Ok(block_guarantees_return(std::slice::from_ref(statement)))
+        } else {
+            Err(diagnostics)
+        }
+    }
+}
+
+pub(crate) fn check_detached_body(
+    body: &[Statement],
+    bindings: &[DetachedBinding<'_>],
+    expected_return: &Type,
+    named_types: &HashMap<String, Type>,
+    record_fields: &HashMap<String, HashMap<String, Type>>,
+) -> Result<bool, Diagnostics> {
+    check_detached_body_recorded(
+        body,
+        bindings,
+        expected_return,
+        named_types,
+        record_fields,
+        &HashMap::new(),
+        &mut Recorder::default(),
+    )
+}
+
+pub(crate) fn check_detached_body_recorded(
+    body: &[Statement],
+    bindings: &[DetachedBinding<'_>],
+    expected_return: &Type,
+    named_types: &HashMap<String, Type>,
+    record_fields: &HashMap<String, HashMap<String, Type>>,
+    functions: &HashMap<String, &Function>,
+    recorder: &mut Recorder,
+) -> Result<bool, Diagnostics> {
+    let mut scope = LocalScope::default();
+    for binding in bindings {
+        scope
+            .types
+            .insert(binding.name.to_owned(), binding.ty.clone());
+        if binding.mutable {
+            scope.mutable_names.insert(binding.name.to_owned());
+        } else {
+            scope.mutable_names.remove(binding.name);
+        }
+    }
+    let mut diagnostics = Diagnostics::new();
+    for statement in body {
+        if diagnostics.limit_reached("E3019") {
+            break;
+        }
+        check_statement(
+            statement,
+            &mut scope,
+            functions,
+            named_types,
+            record_fields,
+            expected_return,
+            &mut diagnostics,
+            recorder,
+        );
+    }
+    if diagnostics.is_empty() {
+        Ok(block_guarantees_return(body))
+    } else {
+        Err(diagnostics)
+    }
+}
+
 fn check_function_body(
     function: &Function,
     functions: &HashMap<String, &Function>,
@@ -927,6 +1098,15 @@ fn check_statement(
                     mutable: *is_mutable,
                 },
             );
+            evidence.detached_declare(
+                name,
+                *span,
+                super::v2::ScopedDeclarationKind::Local {
+                    mutable: *is_mutable,
+                },
+                &declared_type,
+                named_types,
+            );
             scope.types.insert(name.clone(), declared_type);
             if *is_mutable {
                 scope.mutable_names.insert(name.clone());
@@ -1078,7 +1258,7 @@ fn check_statement(
                         ));
                 }
                 if let ExpressionKind::Identifier(name) = &base.kind {
-                    if evidence.has_flow() && scope.types.contains_key(name) {
+                    if evidence.has_value_uses() && scope.types.contains_key(name) {
                         evidence.variable(target, name, UseKind::IndexedWrite);
                     }
                 }
@@ -1278,8 +1458,9 @@ fn check_expression(
         diagnostics,
         evidence,
     );
+    evidence.detached_expression(expression, &result, named_types);
     if let ExpressionKind::Identifier(name) = &expression.kind {
-        if evidence.has_flow() && scope.contains_key(name) {
+        if evidence.has_value_uses() && scope.contains_key(name) {
             evidence.variable(expression, name, UseKind::Read);
         }
     }

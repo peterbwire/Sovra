@@ -1,6 +1,10 @@
 # Snapshot array slicing
 
 Status: **Implemented in checked/legacy compilation, Rust and Node runtimes.**
+The additive [v2 Rust VM](runtime-vm-v2.md) also implements these operations with
+the same snapshot/result materialization costs; extended CLI/backend integration
+remains separate.
+
 The [reviewed contract](../design/G13_ARRAY_SLICE.md) adds
 `std::array_slice(values, start, end)`, returning the same array element type.
 This is a compiler-known dependent result, not source-level generic declarations.

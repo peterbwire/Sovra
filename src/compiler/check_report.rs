@@ -9,7 +9,7 @@ use crate::compiler::diagnostics::{Diagnostics, Severity, Span};
 pub enum CheckKind {
     /// A source file checked by the executable compiler pipeline.
     Source,
-    /// A project checked by the manifest and application-wiring scanner.
+    /// A directory/project target; the selected mode determines scanner or compiler checking.
     Project,
 }
 

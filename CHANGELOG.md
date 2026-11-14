@@ -2,6 +2,126 @@
 
 ## Unreleased
 
+- Check and execute qualified v2 same-file module functions with private/exported
+  call filtering, canonical identities, scoped types and charged shared metadata.
+
+- Retain source-owned v2 module function syntax and namespace paths for formatting
+  drafts; checked compilation and execution still refuse these bodies.
+
+- Admit bounded type-only inline modules in v2, preserving qualified nominal
+  ownership, original spans, formatting and checked enum/variant navigation.
+
+- Resolve v2 alias-qualified enum constructors and match arms to canonical IDs,
+  with charged signature/index metadata and preserved nominal/payload checks.
+
+- Add checked v2 enum/variant outline kinds and canonical constructor/match-arm
+  variant hover/definitions, sharing standalone symbol quotas and refusal policy.
+
+- Extend v2 standalone symbols with checked parameter/local/payload hover and
+  definitions, scope-owned read/write targets and shared optional quotas.
+
+- Add explicit v2 standalone checked function symbols and LSP root-function
+  hover/definition/outline with all-or-unavailable projection limits.
+
+- Add opt-in v2 source-backed native executable builds, strict private image
+  admission, shared finite VM policy, bounded UTF-8 arguments and denied I/O.
+  Legacy native images keep their existing runtime path.
+
+- Add opt-in v2 package syntax formatting through existing canonical graph/source
+  selection, all-input preflight, byte quotas and guarded staged writes.
+
+- Add explicit v2 LSP/VS Code standalone diagnostics, snapshot formatting and
+  source-only tasks, with cancellation/version gates and explicit unavailable symbols.
+
+- Add explicit v2 enum/match source formatting with syntax-only parsing, token/
+  comment/AST/fixed-point gates and existing guarded writes.
+
+- Add explicit v2 single-entry lock generation/check and locked commands using
+  the existing strict format, guarded publication and captured-input verification.
+
+- Connect v2 commands to guarded single-entry package capture, preserving entry
+  diagnostics and explicitly refusing dependency/module/locked modes.
+
+- Add bounded deterministic linked v2 IR inspection through the library and
+  explicit `build --experimental-v2 --emit ir`, without source execution.
+
+- Add independent experimental-run process stdin/text-file grants, preserving
+  bounded host operations, default denial and completed-effect ordering.
+
+- Add opt-in v2 language tests with single-program lowering, fresh invocation state,
+  finite suite admission and existing human/JSON reports, without stdin/file hosts.
+
+- Add opt-in `svr run --experimental-v2` with finite VM limits, arguments/status,
+  captured output and no stdin/filesystem authority.
+
+- Add opt-in `svr check --experimental-v2` root-source checking with bounded human/JSON diagnostics and no execution.
+
+- Support checked-program matches in if/else-if/else/while bodies with lexical
+  scopes, conservative returns, existing IR/fuel and bounded statement recursion.
+
+- Execute recursive matches directly inside checked-program match arms, preserving
+  immutable scopes, exhaustive returns, original spans and existing snapshot fuel.
+
+- Execute checked root-program function links in the opt-in Rust VM with callee-
+  owned graphs, shared policy/services and cumulative linked-graph admission.
+
+- Add bounded multi-function source checking and canonical forward/mutual call
+  links through IR validation; linked VM execution remains explicitly refused.
+
+- Add opt-in single-entry source-unit checking/execution with source-derived enum/
+  record/alias types, original token coordinates and explicit unsupported-form refusal.
+
+- Add independently granted v2 VM file services and explicit ProcessHost delegation,
+  preserving standard results, effect ordering and atomic materialization admission.
+
+- Add a narrow explicit v2 VM line-input host with minimum fuel preflight,
+  post-read control/full-result admission and oversized-return refusal.
+
+- Add explicit v2 VM program arguments and captured exit status, preserving
+  ordinary execute refusals and shared fuel without ambient process access.
+
+- Extend the opt-in v2 Rust VM with pure string/result helpers and println,
+  preserving atomic fuel admission; fix its Unicode len to existing UTF-8 bytes.
+
+- Extend the opt-in v2 Rust VM with snapshot array slice/append/concat, atomic
+  result admission and iterative nested copying; default CLI/backends unchanged.
+
+- Add opt-in Rust function-IR execution with nominal enums, iterative recursion,
+  shared budgets/control and a restricted memory-only standard adapter.
+
+- Add opt-in flat model-v2 runtime values, nominal enum value operations and
+  atomic wrapper/label/subtree fuel admission; function execution remains open.
+
+- Add versioned function control-flow emission with stores/scopes/matches/returns
+  and bounded definite-availability/tag validation; runtime integration remains open.
+
+- Add checked versioned expression register emission/validation, preserving
+  per-operand conversion order and deferring function control flow/runtime work.
+
+- Add bounded checked callable structural mapping, validating source/fact links
+  and coverage without fresh inference; executable IR emission remains open.
+
+- Add opt-in scoped callable declaration/read/write/match-scrutinee identities
+  with independent binding/frame quotas, preserving prior typed callable behavior.
+
+- Add opt-in typed callable expression facts, unit-owned IDs, call/context links
+  and array-element conversion contexts, preserving earlier callable quotas.
+
+- Add opt-in source enum constructors/self-recursion with bounded call-target and
+  conversion-context facts. Preserve standard-only APIs; execution remains open.
+
+- Add opt-in source-driven single-function checking with direct exhaustive matches,
+  inferred locals, immutable payloads and required return coverage; execution remains open.
+
+- Add opt-in closed-scope match arm type checking, immutable payload bindings,
+  nominal scrutinees and conservative return coverage; executable integration remains open.
+
+- Add opt-in versioned standalone match syntax with original spans, qualified
+  patterns, ordinary untyped arm bodies and bounded admission; execution remains open.
+- Add an opt-in bounded single-enum syntax API with ordered payload variants,
+  exact source spans and structured quota refusals. Preserve executable parsing
+  and public lexer behavior; enum execution/matching remains unimplemented.
+
 - Add approved snapshot array_append/array_concat with first-directed dependent
   types, recorded numeric widening, checked length limits and atomic fuel.
   Add reusable filtering/record package consumption across Rust/Node/native execution.
@@ -505,3 +625,12 @@
   structured diagnostics.
 - Added the M2 recursive-descent parser and AST.
 - Added M3 name resolution, basic type checking, and a minimal IR.
+
+- Experimental v2 checked IDE outlines now include same-file module containers,
+  including empty modules, under existing all-or-nothing symbol quotas.
+
+- Experimental v2 IDE outlines now include checked root/module record and alias
+  declarations, with source-owned ranges and shared optional projection limits.
+
+- Experimental v2 IDE navigation now resolves direct enum parameter/return
+  annotations, including arrays, through checked module-owned enum identities.

@@ -190,6 +190,7 @@ impl SemanticEvidence {
 
 #[derive(Default)]
 pub(crate) struct Recorder {
+    detached: Option<crate::compiler::v2::callable::CallRecorder>,
     limits: Option<SemanticEvidenceLimits>,
     node_limit: usize,
     index: Option<Index>,
@@ -207,6 +208,59 @@ pub(crate) struct Recorder {
 }
 
 impl Recorder {
+    pub(crate) fn detached(&mut self, recorder: crate::compiler::v2::callable::CallRecorder) {
+        self.detached = Some(recorder);
+    }
+    pub(crate) fn finish_detached(
+        &mut self,
+    ) -> Result<
+        Option<crate::compiler::v2::callable::RecordedCallable>,
+        crate::compiler::v2::EnumFunctionError,
+    > {
+        self.detached
+            .take()
+            .map(|recorder| recorder.finish())
+            .transpose()
+    }
+    pub(crate) fn detached_expression(
+        &mut self,
+        value: &Expression,
+        ty: &Type,
+        names: &HashMap<String, Type>,
+    ) {
+        if let Some(recorder) = &mut self.detached {
+            recorder.expression(value, ty, names);
+        }
+    }
+    pub(crate) fn detached_declare(
+        &mut self,
+        name: &str,
+        span: crate::compiler::diagnostics::Span,
+        kind: crate::compiler::v2::ScopedDeclarationKind,
+        ty: &Type,
+        named: &HashMap<String, Type>,
+    ) {
+        if let Some(recorder) = &mut self.detached {
+            recorder.declare(name, span, kind, ty, named);
+        }
+    }
+    pub(crate) fn detached_scrutinee(
+        &mut self,
+        name: &str,
+        span: crate::compiler::diagnostics::Span,
+        index: usize,
+    ) {
+        if let Some(recorder) = &mut self.detached {
+            recorder.scrutinee(name, span, index);
+        }
+    }
+    pub(crate) fn has_value_uses(&self) -> bool {
+        self.has_flow()
+            || self
+                .detached
+                .as_ref()
+                .is_some_and(|recorder| recorder.has_scopes())
+    }
     pub(super) fn enable_imports<'a>(
         &mut self,
         owner: usize,
@@ -376,6 +430,9 @@ impl Recorder {
     }
 
     pub(crate) fn enter_scope(&mut self) {
+        if let Some(recorder) = &mut self.detached {
+            recorder.enter_scope();
+        }
         if self.exhausted {
             return;
         }
@@ -385,6 +442,9 @@ impl Recorder {
     }
 
     pub(crate) fn exit_scope(&mut self) {
+        if let Some(recorder) = &mut self.detached {
+            recorder.exit_scope();
+        }
         if self.exhausted {
             return;
         }
@@ -426,6 +486,9 @@ impl Recorder {
     }
 
     pub(crate) fn variable(&mut self, node: &Expression, name: &str, kind: UseKind) {
+        if let Some(recorder) = &mut self.detached {
+            recorder.variable(node, name, kind);
+        }
         if !self.allow_use() {
             return;
         }
@@ -447,6 +510,9 @@ impl Recorder {
     }
 
     pub(crate) fn function_call(&mut self, head: &Expression, function: &Function, spelling: &str) {
+        if let Some(recorder) = &mut self.detached {
+            recorder.call(head, spelling);
+        }
         if !self.allow_use() {
             return;
         }
@@ -480,6 +546,9 @@ impl Recorder {
     }
 
     pub(crate) fn builtin_call(&mut self, head: &Expression, name: &'static str) {
+        if let Some(recorder) = &mut self.detached {
+            recorder.builtin(head, name);
+        }
         if !self.allow_use() {
             return;
         }
@@ -505,6 +574,9 @@ impl Recorder {
         expected: &Type,
         names: &HashMap<String, Type>,
     ) {
+        if let Some(recorder) = &mut self.detached {
+            recorder.context(value, kind, actual, expected, names);
+        }
         if self.flow.is_none() || self.exhausted {
             return;
         }
@@ -588,6 +660,9 @@ impl Recorder {
         element: &Type,
         names: &HashMap<String, Type>,
     ) {
+        if let Some(recorder) = &mut self.detached {
+            recorder.array_items(items, element, names);
+        }
         if self.flow.is_none() || self.exhausted {
             return;
         }

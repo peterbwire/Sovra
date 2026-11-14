@@ -54,7 +54,103 @@ impl Parser {
         self.parse_tokens_inner(tokens, FrontendLimits::DEFAULT.max_diagnostics)
     }
 
-    fn parse_tokens_inner(
+    // Called only with a suffix of an admitted, EOF-terminated lexer stream.
+    // Return consumed tokens without manufacturing a legacy Program or rewriting spans.
+    pub(crate) fn parse_block_prefix(
+        &self,
+        tokens: &[Token],
+        max_diagnostics: usize,
+    ) -> Result<(Vec<Statement>, usize), Diagnostics> {
+        let mut parser = TokenParser {
+            tokens,
+            position: 0,
+            diagnostics: Diagnostics::new(),
+            depth_exceeded: false,
+            statement_depth: 0,
+            max_diagnostics: max_diagnostics.max(1),
+        };
+        let body = parser.block();
+        if parser.diagnostics.is_empty() {
+            if let Some(body) = body {
+                return Ok((body, parser.position));
+            }
+        }
+        Err(parser.diagnostics)
+    }
+
+    // Private admitted-stream entry points for versioned function syntax.
+    pub(crate) fn parse_function_header_prefix(
+        &self,
+        tokens: &[Token],
+        max_diagnostics: usize,
+    ) -> Result<(Function, usize), Diagnostics> {
+        let mut parser = TokenParser {
+            tokens,
+            position: 0,
+            diagnostics: Diagnostics::new(),
+            depth_exceeded: false,
+            statement_depth: 0,
+            max_diagnostics: max_diagnostics.max(1),
+        };
+        let header = parser.function_header();
+        if parser.diagnostics.is_empty() {
+            if let Some(header) = header {
+                return Ok((header, parser.position));
+            }
+        }
+        Err(parser.diagnostics)
+    }
+    // Original-token control headers for versioned bodies; old statement parsing is unchanged.
+    pub(crate) fn parse_control_condition_prefix(
+        &self,
+        tokens: &[Token],
+        max_diagnostics: usize,
+    ) -> Result<(Expression, usize), Diagnostics> {
+        let mut parser = TokenParser {
+            tokens,
+            position: 1,
+            diagnostics: Diagnostics::new(),
+            depth_exceeded: false,
+            statement_depth: 0,
+            max_diagnostics: max_diagnostics.max(1),
+        };
+        let condition = if parser.consume_punctuation('(') {
+            let c = parser.expression();
+            parser.expect_punctuation(')');
+            c
+        } else {
+            parser.expression()
+        };
+        if parser.diagnostics.is_empty() {
+            if let Some(c) = condition {
+                return Ok((c, parser.position));
+            }
+        }
+        Err(parser.diagnostics)
+    }
+    pub(crate) fn parse_statement_prefix(
+        &self,
+        tokens: &[Token],
+        max_diagnostics: usize,
+    ) -> Result<(Statement, usize), Diagnostics> {
+        let mut parser = TokenParser {
+            tokens,
+            position: 0,
+            diagnostics: Diagnostics::new(),
+            depth_exceeded: false,
+            statement_depth: 0,
+            max_diagnostics: max_diagnostics.max(1),
+        };
+        let statement = parser.statement();
+        if parser.diagnostics.is_empty() {
+            if let Some(statement) = statement {
+                return Ok((statement, parser.position));
+            }
+        }
+        Err(parser.diagnostics)
+    }
+
+    pub(crate) fn parse_tokens_inner(
         &self,
         tokens: &[Token],
         max_diagnostics: usize,
@@ -261,7 +357,7 @@ impl<'a> TokenParser<'a> {
         })
     }
 
-    fn function(&mut self) -> Option<Function> {
+    fn function_header(&mut self) -> Option<Function> {
         let is_exported = self.consume_keyword("export");
         let start = self.expect_keyword("fn")?.span;
         let name = self.expect_identifier("function name")?;
@@ -303,6 +399,23 @@ impl<'a> TokenParser<'a> {
         } else {
             None
         };
+        Some(Function {
+            name,
+            is_exported,
+            parameters,
+            return_type,
+            return_type_span,
+            body: Vec::new(),
+            span: Span {
+                end: self.previous().span.end,
+                ..start
+            },
+        })
+    }
+
+    fn function(&mut self) -> Option<Function> {
+        let mut function = self.function_header()?;
+        let start = function.span;
         self.expect_punctuation('{');
         let mut body = Vec::new();
         while !self.check_punctuation('}') && !self.at_eof() {
@@ -314,18 +427,9 @@ impl<'a> TokenParser<'a> {
             }
         }
         let end = self.expect_punctuation('}').unwrap_or(start);
-        Some(Function {
-            name,
-            is_exported,
-            parameters,
-            return_type,
-            return_type_span,
-            body,
-            span: Span {
-                end: end.end,
-                ..start
-            },
-        })
+        function.body = body;
+        function.span.end = end.end;
+        Some(function)
     }
 
     fn statement(&mut self) -> Option<Statement> {

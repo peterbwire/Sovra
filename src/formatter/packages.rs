@@ -66,13 +66,14 @@ impl Selection {
     }
 }
 
-pub(super) fn execute(root: &Path, mode: Mode) -> Result<bool, Failure> {
-    execute_with(root, mode, |_| Ok(()))
+pub(super) fn execute(root: &Path, mode: Mode, experimental: bool) -> Result<bool, Failure> {
+    execute_with(root, mode, experimental, |_| Ok(()))
 }
 
 fn execute_with(
     root: &Path,
     mode: Mode,
+    experimental: bool,
     mut checkpoint: impl FnMut(usize) -> Result<(), String>,
 ) -> Result<bool, Failure> {
     if mode == Mode::Write && !cfg!(any(windows, target_os = "linux")) {
@@ -108,7 +109,12 @@ fn execute_with(
     for path in entries {
         let snapshot = Snapshot::read(&path).map_err(|e| at(&path, e.into()))?;
         charge(&mut input_bytes, snapshot.text.len(), MAX_INPUT_BYTES)?;
-        let output = format_source(&snapshot.text).map_err(|e| at(&path, e))?;
+        let output = if experimental {
+            super::v2::format_source(&snapshot.text)
+        } else {
+            format_source(&snapshot.text)
+        }
+        .map_err(|e| at(&path, e))?;
         charge(&mut output_bytes, output.len(), MAX_OUTPUT_BYTES)?;
         if mode == Mode::Write {
             snapshot.writable().map_err(|e| at(&path, e.into()))?;
@@ -233,6 +239,33 @@ mod tests {
                 .starts_with(".svr-fmt-")));
         }
     }
+    #[cfg(any(windows, target_os = "linux"))]
+    #[test]
+    fn v2_preflight_and_late_manifest_conflicts_preserve_publication_boundaries() {
+        for late in [false, true] {
+            let (root, a, b) = fixture();
+            for path in [&a, &b] {
+                std::fs::write(path, "enum E{Value(Int),End}fn main(){}").unwrap();
+            }
+            let original_a = std::fs::read(&a).unwrap();
+            let original_b = std::fs::read(&b).unwrap();
+            let result = execute_with(&root.join("a"), Mode::Write, true, |published| {
+                if published == usize::from(late) {
+                    std::fs::write(root.join("b/sovra.toml"), "external change").unwrap();
+                }
+                Ok(())
+            });
+            assert!(result.is_err());
+            if late {
+                assert_ne!(std::fs::read(&a).unwrap(), original_a);
+            } else {
+                assert_eq!(std::fs::read(&a).unwrap(), original_a);
+            }
+            assert_eq!(std::fs::read(&b).unwrap(), original_b);
+            no_staging(&root);
+            std::fs::remove_dir_all(root).unwrap();
+        }
+    }
     #[cfg(target_os = "linux")]
     #[test]
     fn registered_dependency_conflicts_abort_before_any_source_is_published() {
@@ -247,7 +280,7 @@ mod tests {
         let module = root.join("b/values.svr");
         std::fs::write(&module, "mod values{export fn answer()->Int{return 1;}}").unwrap();
         let original = std::fs::read(&entry).unwrap();
-        let result = execute_with(&root.join("a"), Mode::Write, |published| {
+        let result = execute_with(&root.join("a"), Mode::Write, false, |published| {
             assert_eq!(published, 0);
             std::fs::write(&module, "// concurrent edit\n").unwrap();
             Ok(())
@@ -276,7 +309,7 @@ mod tests {
             }
             let (root, a, b) = fixture();
             let original = std::fs::read(&a).unwrap();
-            let result = execute_with(&root.join("a"), Mode::Write, |published| {
+            let result = execute_with(&root.join("a"), Mode::Write, false, |published| {
                 assert_eq!(published, 0);
                 match kind {
                     "manifest" => std::fs::write(root.join("b/sovra.toml"), "changed").unwrap(),
@@ -322,7 +355,7 @@ mod tests {
     #[test]
     fn late_publication_failure_keeps_prior_replacement_and_external_edit() {
         let (root, a, b) = fixture();
-        let result = execute_with(&root.join("a"), Mode::Write, |published| {
+        let result = execute_with(&root.join("a"), Mode::Write, false, |published| {
             if published == 1 {
                 std::fs::write(&b, "external edit").unwrap();
             }

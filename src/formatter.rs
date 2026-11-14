@@ -4,6 +4,7 @@ mod equivalence;
 mod files;
 mod layout;
 mod packages;
+mod v2;
 
 use crate::compiler::{
     diagnostics::{terminal_message, Diagnostics},
@@ -13,7 +14,7 @@ use crate::compiler::{
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-const HELP: &str = "Usage: svr fmt [--check | --write] [--] SOURCE.svr\n       svr fmt --package [--check | --write] [--] DIRECTORY\n  Default: formatted source on stdout; input unchanged.\n  --check: exit 1 if formatting is needed; no writes.\n  --write: guarded atomic replacement (Windows and Linux).\n  Executable syntax including package imports; application syntax unsupported.";
+const HELP: &str = "Usage: svr fmt [--check | --write] [--] SOURCE.svr\n       svr fmt --package [--check | --write] [--] DIRECTORY\n  --experimental-v2: opt-in root enum/match syntax for source files or package selection.\n  Default: formatted source on stdout; input unchanged.\n  --check: exit 1 if formatting is needed; no writes.\n  --write: guarded atomic replacement (Windows and Linux).\n  Executable syntax including package imports; application syntax unsupported.";
 
 #[derive(Debug)]
 enum Failure {
@@ -138,6 +139,33 @@ fn options(args: &[String]) -> Result<(Mode, PathBuf, bool), String> {
 }
 
 pub(crate) fn command(args: &[String]) -> ExitCode {
+    let count = args
+        .iter()
+        .take_while(|arg| arg.as_str() != "--")
+        .filter(|arg| arg.as_str() == "--experimental-v2")
+        .count();
+    if count > 1 {
+        eprintln!("svr fmt: duplicate --experimental-v2 option");
+        return ExitCode::from(2);
+    }
+    let filtered: Vec<_>;
+    let experimental = count == 1;
+    let args = if experimental {
+        let mut positional = false;
+        filtered = args
+            .iter()
+            .filter(|arg| {
+                if arg.as_str() == "--" {
+                    positional = true;
+                }
+                positional || arg.as_str() != "--experimental-v2"
+            })
+            .cloned()
+            .collect();
+        filtered.as_slice()
+    } else {
+        args
+    };
     if args.len() == 1 && matches!(args[0].as_str(), "-h" | "--help") {
         println!("{HELP}");
         return ExitCode::SUCCESS;
@@ -153,9 +181,9 @@ pub(crate) fn command(args: &[String]) -> ExitCode {
         }
     };
     let result = if package {
-        packages::execute(&path, mode)
+        packages::execute(&path, mode, experimental)
     } else {
-        execute(mode, &path)
+        execute_mode(mode, &path, experimental)
     };
     match result {
         Ok(changed) => ExitCode::from(u8::from(mode == Mode::Check && changed)),
@@ -191,7 +219,7 @@ pub(crate) fn command(args: &[String]) -> ExitCode {
     }
 }
 
-fn execute(mode: Mode, path: &Path) -> Result<bool, Failure> {
+fn execute_mode(mode: Mode, path: &Path, experimental: bool) -> Result<bool, Failure> {
     if mode == Mode::Write && !cfg!(any(windows, target_os = "linux")) {
         return Err(Failure::Message("formatter --write is currently qualified only on Windows and Linux; use stdout mode on this host".into()));
     }
@@ -199,9 +227,23 @@ fn execute(mode: Mode, path: &Path) -> Result<bool, Failure> {
     if mode == Mode::Write {
         snapshot.writable()?;
     }
-    let output = format_source(&snapshot.text)?;
+    let output = if experimental {
+        v2::format_source(&snapshot.text)?
+    } else {
+        format_source(&snapshot.text)?
+    };
     let changed = output != snapshot.text;
     match mode {
+        Mode::Stdout if experimental => {
+            use std::io::Write;
+            let mut stdout = std::io::stdout().lock();
+            stdout
+                .write_all(output.as_bytes())
+                .and_then(|_| stdout.flush())
+                .map_err(|error| {
+                    Failure::Message(format!("cannot publish formatted output: {error}"))
+                })?;
+        }
         Mode::Stdout => print!("{output}"),
         Mode::Check if changed => eprintln!(
             "Formatting needed: {}",

@@ -19,8 +19,10 @@ pub mod project;
 pub mod resources;
 pub mod semantic;
 pub mod stdlib;
+pub mod sum_syntax;
 pub mod testing;
 pub mod text_files;
+pub mod v2;
 
 const COMMANDS: &[&str] = &[
     "build", "check", "doc", "doctor", "fmt", "init", "install", "lock", "new", "repl", "run",

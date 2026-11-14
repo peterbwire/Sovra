@@ -1,6 +1,10 @@
 # Snapshot array append and concatenation
 
 Status: **Implemented in checked/legacy compilation, Rust and Node/Worker runtimes.**
+The additive [v2 Rust VM](runtime-vm-v2.md) also implements these operations with
+the same snapshot/result materialization costs; extended CLI/backend integration
+remains separate.
+
 The user-approved [growth contract](../design/G13_ARRAY_GROWTH.md) adds:
 
 | Operation | Result |

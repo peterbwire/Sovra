@@ -170,6 +170,12 @@ pub(crate) struct Budget {
     control: ActiveControl,
 }
 impl Budget {
+    pub(crate) fn execution_remaining(&self) -> ExecutionLimits {
+        self.policy.execution
+    }
+    pub(crate) fn materialization_remaining(&self) -> MaterializationLimits {
+        self.policy.materialization
+    }
     pub fn new(limits: RuntimePolicy) -> Self {
         Self {
             policy: limits,

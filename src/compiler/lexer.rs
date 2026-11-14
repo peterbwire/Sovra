@@ -33,6 +33,15 @@ pub struct Token {
     pub span: Span,
 }
 
+// Private classification preserves public lexer diagnostics while metadata APIs
+// can report resource dimensions without parsing human diagnostic messages.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LexLimitKind {
+    SourceBytes,
+    Tokens,
+    Diagnostics,
+}
+
 /// The Sovra lexer.
 #[derive(Debug, Default)]
 pub struct Lexer;
@@ -55,13 +64,22 @@ impl Lexer {
         source: &str,
         limits: FrontendLimits,
     ) -> Result<Vec<Token>, Diagnostics> {
+        self.tokenize_with_limit_kind(source, limits)
+            .map_err(|(diagnostics, _)| diagnostics)
+    }
+
+    pub(crate) fn tokenize_with_limit_kind(
+        &self,
+        source: &str,
+        limits: FrontendLimits,
+    ) -> Result<Vec<Token>, (Diagnostics, Option<LexLimitKind>)> {
         let mut scanner = Scanner::new(source);
         if source.len() > limits.max_source_bytes {
             scanner.resource_error(format!(
                 "source exceeds {} UTF-8 bytes",
                 limits.max_source_bytes
             ));
-            return Err(scanner.diagnostics);
+            return Err((scanner.diagnostics, Some(LexLimitKind::SourceBytes)));
         }
         let mut tokens = Vec::new();
 
@@ -72,7 +90,7 @@ impl Lexer {
                     "lexical diagnostic limit of {} reached",
                     limits.max_diagnostics.max(1)
                 ));
-                return Err(scanner.diagnostics);
+                return Err((scanner.diagnostics, Some(LexLimitKind::Diagnostics)));
             }
             if character.is_whitespace() {
                 scanner.advance();
@@ -91,7 +109,7 @@ impl Lexer {
             let span = scanner.current_span();
             if tokens.len() >= limits.max_tokens {
                 scanner.resource_error(format!("token limit of {} exceeded", limits.max_tokens));
-                return Err(scanner.diagnostics);
+                return Err((scanner.diagnostics, Some(LexLimitKind::Tokens)));
             }
             let kind = if character.is_ascii_alphabetic() || character == '_' {
                 scanner.identifier()
@@ -141,7 +159,7 @@ impl Lexer {
         if scanner.diagnostics.is_empty() {
             Ok(tokens)
         } else {
-            Err(scanner.diagnostics)
+            Err((scanner.diagnostics, None))
         }
     }
 }
@@ -449,5 +467,51 @@ mod tests {
             .tokenize("\"missing")
             .expect_err("source should fail");
         assert_eq!(diagnostics.items[0].code, "E1001");
+    }
+}
+
+#[cfg(test)]
+mod limit_classification_tests {
+    use super::*;
+    #[test]
+    fn private_resource_reasons_preserve_public_diagnostics() {
+        for (source, limits, expected) in [
+            (
+                "enum E{}",
+                FrontendLimits {
+                    max_source_bytes: 0,
+                    ..FrontendLimits::DEFAULT
+                },
+                Some(LexLimitKind::SourceBytes),
+            ),
+            (
+                "enum E{}",
+                FrontendLimits {
+                    max_tokens: 1,
+                    ..FrontendLimits::DEFAULT
+                },
+                Some(LexLimitKind::Tokens),
+            ),
+            (
+                "@@",
+                FrontendLimits {
+                    max_diagnostics: 1,
+                    ..FrontendLimits::DEFAULT
+                },
+                Some(LexLimitKind::Diagnostics),
+            ),
+            ("@", FrontendLimits::DEFAULT, None),
+        ] {
+            let (diagnostics, reason) = Lexer::new()
+                .tokenize_with_limit_kind(source, limits)
+                .unwrap_err();
+            assert_eq!(reason, expected);
+            assert_eq!(
+                Lexer::new()
+                    .tokenize_with_limits(source, limits)
+                    .unwrap_err(),
+                diagnostics
+            );
+        }
     }
 }

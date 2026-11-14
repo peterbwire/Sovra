@@ -38,3 +38,8 @@ qualification are outside this local example. See the [slice contract](../../doc
 The same reusable library also supplies an independent
 [growth consumer](growth-app/README.md) for append-based filtering, typed
 concatenation and nominal results. Existing slice consumer output is unchanged.
+
+
+An [array algorithm consumer](algorithms-app/README.md) now exercises reusable
+integer reversal/sorting using the existing language, preserving empty/snapshot
+behavior and documenting quadratic work/copy costs.

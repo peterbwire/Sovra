@@ -246,6 +246,14 @@ fn spacing(previous: Option<&TokenKind>, current: &TokenKind) -> bool {
 
 pub(super) fn render(source: &str, tokens: &[Token], program: &Program) -> Result<String, String> {
     let (before, after) = boundaries(program, tokens);
+    render_marked(source, tokens, &before, &after)
+}
+pub(super) fn render_marked(
+    source: &str,
+    tokens: &[Token],
+    before: &BTreeSet<usize>,
+    after: &BTreeSet<usize>,
+) -> Result<String, String> {
     let mut writer = Writer::default();
     let mut start = 0;
     let mut stack = Vec::new();

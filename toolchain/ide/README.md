@@ -4,6 +4,12 @@ This directory contains a dependency-free Node language server and an installabl
 VS Code extension. Compiler checking remains in the Rust-owned `svr` executable.
 Neither component introduces syntax or changes compiler diagnostic contracts.
 
+For opt-in enum/match diagnostics, formatting and source tasks, see
+[v2 editor mode](../../docs/reference/experimental-v2-ide.md). Set
+`"sovra.experimentalV2": true` and restart the server. V2 function hover/definitions/outline and parameter/local/payload navigation use
+checked evidence. Enum/variant outline and constructor/match variant definitions
+are also available; package overlays and broader type/field navigation remain open. Both modes support compiler-owned document formatting.
+
 ## VS Code
 
 Requires VS Code 1.90+, Node.js **22+** and a built/installed Sovra compiler.

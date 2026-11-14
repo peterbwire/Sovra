@@ -161,7 +161,17 @@ See the [reference](../reference/array-growth.md); slice/resource contracts stay
 
 ## Next error-handling foundation
 
-The proposed [payload-enum syntax slice](G13_SUM_TYPE_SYNTAX.md) adds bounded
-single-declaration variant/payload parsing beside unchanged older stages. It is
-not an implemented API, typed enum value, exhaustive match or Option/Result.
-Later constructor/handling/runtime contracts remain explicit review gates.
+The approved [payload-enum syntax slice](G13_SUM_TYPE_SYNTAX.md) now implements
+bounded single-declaration variant/payload parsing beside unchanged older stages.
+See the [reference](../reference/enum-syntax.md). It is not a typed enum value,
+exhaustive match or Option/Result. Later constructor/handling/runtime contracts
+remain explicit review gates.
+
+
+## Coordinated G13 completion
+
+The user requested finishing all G13 work. The proposed
+[completion contract](G13_COMPLETION_CONTRACT.md) groups the remaining enum/
+generic/container/data/host choices and acceptance gates for review. Ordinary
+existing-language library progress now includes independently consumed integer
+reversal/sorting; this does not close generic collections or executable errors.

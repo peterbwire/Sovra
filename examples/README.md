@@ -89,3 +89,39 @@ The [array growth consumer](array-slice-packages/growth-app/README.md) independe
 uses the registered collection library for filtering, numeric concatenation and
 nominal record results. It is executable on the current G13 compiler, not a planned
 registry or browser application.
+
+
+The [array algorithm consumer](array-slice-packages/algorithms-app/README.md)
+executes reusable integer reversal/sorting from the separate registered sequence
+library. It uses existing G13 array operations and is not generic collection or
+error-runtime completion.
+
+- [enum-entry](enum-entry/README.md): opt-in v2 Rust single-entry source-unit fixture;
+  default CLI enum parsing and broader program/backend integration remain pending.
+
+- [enum-functions](enum-functions/README.md): opt-in linked Rust program fixture;
+  forward enum/record helper calls execute without default CLI integration.
+
+- [nested-matches](nested-matches/README.md): checked-program recursive arm matches;
+  default CLI and condition/loop match integration remain pending.
+
+- [control-matches](control-matches/README.md): checked-program matches in branches/
+  loops; default CLI/backend/package/tooling integration remains pending.
+
+- [Enum tests](enum-tests/README.md): independent host-free v2 language tests,
+  checked and executed with `svr test --experimental-v2`.
+
+- [Enum text copy](enum-text-copy/README.md): input-to-file enum program with
+  independent explicit stdin/file grants and bounded execution.
+
+- [Enum package](enum-package/README.md): guarded single-entry package with enum
+  helpers, executable main, entry-local test and deterministic IR inspection.
+
+- [Transparent enum aliases](enum-aliases/README.md): opt-in v2 constructor/match
+  aliases preserve canonical identity, numeric payload widening and snapshots.
+
+- [Type-only inline modules](type-modules/README.md): module-owned enums, records
+  and aliases used by root functions; module functions/imports remain unsupported.
+
+- [Checked module functions](module-functions/README.md): qualified exported calls,
+  private helpers and module-owned enum return types in experimental v2.

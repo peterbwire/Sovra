@@ -54,6 +54,8 @@ try {
             output: 'true\nleft\nright:tail\ntrue\n-9223372036854775808\nfalse\ntrue\nfalse\n\\u{000A}\\u{0009}\n' },
         { args: ['values'], status: 0, output: '1\n9\ntrue\ntrue\nPoint { x: 2, y: 3 }\n6\nshort circuit\n-0\n' },
         { args: ['array-holes'], status: 0, output: '9007199254740992\n9007199254740993\n2.5\n' },
+        { args: ['array-helpers'], status: 0, output: '2\n9\n2\ntrue\ntrue\n3\n0\n' },
+        { args: ['slice-error'], status: 1, error: /slice|bounds/ },
         { args: ['record-alias'], status: 0, output: 'true\ntrue\nPoint { x: 2, y: 3 }\n' },
         { args: ['stdin'], input: 'caf\u00e9\r\n', status: 0, output: 'false\n5\ntrue\n0\n' },
         { args: ['stdin'], input: '\ufeffcaf\u00e9\r\n', status: 0, output: 'false\n8\ntrue\n0\n' },

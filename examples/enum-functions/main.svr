@@ -1,0 +1,12 @@
+// Executed through the opt-in v2 Rust checked-program API, not default svr run.
+struct Packet { count: Int }
+enum Outcome { Value(Packet), End }
+fn main() {
+    let outcome = make(7);
+    match outcome {
+        Outcome::Value(packet) => { print(twice(packet.count)); },
+        Outcome::End() => { print("end"); },
+    }
+}
+fn make(n: Int) -> Outcome { return Outcome::Value(Packet { count: n }); }
+fn twice(n: Int) -> Int { return n + n; }

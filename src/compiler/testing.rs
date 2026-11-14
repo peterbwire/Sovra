@@ -24,7 +24,7 @@ pub struct TestOutcome {
     pub name: String,
     /// Whether execution completed with status zero.
     pub passed: bool,
-    /// Lines captured even when execution fails.
+    /// Captured lines; legacy execution retains failure output, v2 retains successful VM output only.
     pub output: Vec<String>,
     /// Final status, absent when a runtime error interrupts execution.
     pub exit_code: Option<u8>,

@@ -11,7 +11,7 @@ async function activate(context) {
     const diagnostics = vscode.languages.createDiagnosticCollection('sovra');
     const output = vscode.window.createOutputChannel('Sovra Language Server');
     context.subscriptions.push(diagnostics, output);
-    let child, ready = false, sequence = 0;
+    let child, ready = false, sequence = 0, experimentalV2 = false;
     const pending = new Map();
     const opened = new Set();
     const selector = [{ language: 'sovra', scheme: 'file' }, { language: 'sovra', scheme: 'untitled' }];
@@ -64,6 +64,7 @@ async function activate(context) {
         stop();
         if (!vscode.workspace.isTrusted) { output.appendLine('Trust the workspace to enable compiler diagnostics.'); return; }
         const config = vscode.workspace.getConfiguration('sovra');
+        const requestedV2 = config.get('experimentalV2', false) === true;
         const worker = spawn(config.get('nodePath', 'node'), [path.join(__dirname, 'language-server/server.mjs'), config.get('compilerPath', 'svr')], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
         child = worker;
         const reader = new FrameReader(message => {
@@ -89,9 +90,9 @@ async function activate(context) {
         worker.on('error', error => { output.appendLine(`Cannot start server: ${error.message}`); if (child === worker) stop(); });
         worker.on('close', () => { if (child === worker) { output.appendLine('Language server stopped. Use Sovra: Restart Language Server to reconnect.'); stop(); } });
         try {
-            await request('initialize', { processId: process.pid, capabilities: { general: { positionEncodings: ['utf-16'] } }, rootUri: vscode.workspace.workspaceFolders?.[0]?.uri.toString() || null, workspaceFolders: vscode.workspace.workspaceFolders?.map(f => ({ uri: f.uri.toString(), name: f.name })) || [] });
+            await request('initialize', { processId: process.pid, initializationOptions: { experimentalV2: requestedV2 }, capabilities: { general: { positionEncodings: ['utf-16'] } }, rootUri: vscode.workspace.workspaceFolders?.[0]?.uri.toString() || null, workspaceFolders: vscode.workspace.workspaceFolders?.map(f => ({ uri: f.uri.toString(), name: f.name })) || [] });
             if (child !== worker) return;
-            send({ method: 'initialized', params: {} }); ready = true;
+            send({ method: 'initialized', params: {} }); experimentalV2 = requestedV2; ready = true;
             for (const doc of vscode.workspace.textDocuments) open(doc);
         } catch (error) { output.appendLine(error.message); if (child === worker) stop(); }
     }
@@ -159,7 +160,18 @@ async function activate(context) {
     context.subscriptions.push(vscode.languages.registerDocumentSymbolProvider(selector, {
         async provideDocumentSymbols(doc) {
             const result = await query('textDocument/documentSymbol', doc);
-            return (result || []).map(item => new vscode.DocumentSymbol(item.name, item.detail, vscode.SymbolKind.Function, rangeOf(item.range), rangeOf(item.selectionRange)));
+            return (result || []).map(item => new vscode.DocumentSymbol(item.name, item.detail, item.kind === 23 ? vscode.SymbolKind.Struct : item.kind === 26 ? vscode.SymbolKind.TypeParameter : item.kind === 2 ? vscode.SymbolKind.Module : item.kind === 10 ? vscode.SymbolKind.Enum : item.kind === 22 ? vscode.SymbolKind.EnumMember : vscode.SymbolKind.Function, rangeOf(item.range), rangeOf(item.selectionRange)));
+        },
+    }));
+    context.subscriptions.push(vscode.languages.registerDocumentFormattingEditProvider(selector, {
+        async provideDocumentFormattingEdits(doc, options, cancellation) {
+            if (!ready || !vscode.workspace.isTrusted || cancellation.isCancellationRequested) return [];
+            const version = doc.version;
+            try {
+                const edits = await request('textDocument/formatting', { textDocument: { uri: doc.uri.toString() }, options });
+                if (cancellation.isCancellationRequested || doc.version !== version) return [];
+                return edits.map(edit => vscode.TextEdit.replace(rangeOf(edit.range), edit.newText));
+            } catch (error) { output.appendLine(error.message); return []; }
         },
     }));
     for (const [name, args] of Object.entries({ check: ['check'], buildIR: ['build', '--emit', 'ir'], buildJS: ['build', '--emit', 'js'], run: ['run'] })) {
@@ -172,7 +184,7 @@ async function activate(context) {
                 const target = await prepareTaskTarget(doc, () => vscode.workspace.textDocuments,
                     source => request('sovra/taskTarget', { textDocument: { uri: source.uri.toString(), version: source.version } }), canonicalFile);
                 const scope = vscode.workspace.getWorkspaceFolder(doc.uri) || vscode.TaskScope.Global;
-                const commandArgs = name === 'check' && target.package ? ['check', '--executable-package'] : args;
+                const commandArgs = experimentalV2 ? [args[0], '--experimental-v2', ...args.slice(1)] : name === 'check' && target.package ? ['check', '--executable-package'] : args;
                 const task = new vscode.Task({ type: 'sovra', action: name, package: target.package, target: target.target }, scope, name, 'Sovra', new vscode.ProcessExecution(vscode.workspace.getConfiguration('sovra').get('compilerPath', 'svr'), [...commandArgs, target.target], { cwd: target.cwd }));
                 await vscode.tasks.executeTask(task);
             } catch (error) { void vscode.window.showErrorMessage(error.message); }

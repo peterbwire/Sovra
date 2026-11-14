@@ -30,7 +30,14 @@ const deepMetadata = structuredClone(metadata);
 deepMetadata.locals[0].inferred_type = 'Array<'.repeat(129) + 'Int' + '>'.repeat(129);
 deepMetadata.locals[0].signature = `let x: ${deepMetadata.locals[0].inferred_type} (inferred)`;
 assert.doesNotThrow(() => decodeEvidence(deepMetadata, metadataBytes));
+for (const kind of [2, 10, 12, 22, 23, 26]) {
+    const item = structuredClone(metadata); item.declarations[0].kind = kind;
+    assert.equal(decodeEvidence(item, metadataBytes).declarations[0].kind, kind);
+}
 for (const mutate of [
+    item => { item.declarations[0].kind = 11; },
+    item => { item.declarations[0].kind = '10'; },
+    item => { item.declarations[0].kind = null; },
     item => { item.declarations = {}; },
     item => { item.locals[0] = null; },
     item => { item.locals = null; },

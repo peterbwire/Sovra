@@ -347,3 +347,20 @@ Input containers are not charged as output children; all copied descendants and
 labels are counted once. Runtime raw-IR container checks do not reconstruct static
 element types. The representation ceiling is not an allocator/RSS limit, and
 helper work remains non-preemptible at the approved cooperative boundaries.
+
+
+## Separate bounded enum syntax metadata
+
+The [opt-in declaration parser](reference/enum-syntax.md) admits source before
+lexing and retains variants/names/types under independent checked caps. Private
+lexer limit classification preserves public diagnostics without matching message
+text. No partial declaration is exposed on refusal. Shared type depth and lexical
+diagnostic guards remain active. Returned metadata is not type checking, runtime
+authorization, a whole-project success, process isolation or implemented error
+values. Lexer/token temporary memory is separate from returned-text accounting.
+
+The opt-in [v2 callable-source checker](reference/callable-function-v2.md) admits
+constructor/self-signatures and call/context facts under separate finite limits.
+Evidence exhaustion refuses without fallback; ordinary semantic errors take
+precedence. Constructor/builtin collisions retain original enum provenance.
+This is checking metadata, not runtime authorization or process isolation.

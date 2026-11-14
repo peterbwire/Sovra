@@ -44,7 +44,7 @@ export function decodeEvidence(symbols, bytes) {
             if (!identifier.test(item.name)) throw new Error('Invalid symbol name');
         }
     };
-    for (const item of declarations) span(item, true);
+    for (const item of declarations) { span(item, true); if (own(item, 'kind') && ![2, 10, 12, 22, 23, 26].includes(item.kind)) throw new Error('Invalid declaration kind'); }
     for (const item of locals) {
         span(item, true);
         if (!['local', 'parameter'].includes(item.kind) || item.name.includes('::')) throw new Error('Invalid local declaration');

@@ -25,7 +25,8 @@
             "title": "Sovra",
             "properties": {
                 "sovra.compilerPath": { "type": "string", "default": "svr", "description": "Compiler on PATH or an absolute executable path. Changes require restarting the language server.", "restricted": true },
-                "sovra.nodePath": { "type": "string", "default": "node", "description": "Node.js 22+ on PATH or an absolute executable path for the language server.", "restricted": true }
+                "sovra.nodePath": { "type": "string", "default": "node", "description": "Node.js 22+ on PATH or an absolute executable path for the language server.", "restricted": true },
+                "sovra.experimentalV2": {"type": "boolean", "default": false, "description": "Opt into v2 standalone buffer diagnostics, formatting and source tasks. Requires language-server restart. Checked function/binding/enum-variant navigation is available; v2 field/package navigation and JS emission are unavailable.", "restricted": true}
             }
         }
     }

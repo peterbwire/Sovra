@@ -1,5 +1,347 @@
 # Development log
 
+## 2026-11-14: G13 explicit enum header navigation
+
+- Projected direct enum parameter/return annotations through each checked
+  function's environment and canonical enum IDs. Array wrappers are iterative;
+  references select the original final identifier and canonical declaration.
+- Covered same-named module types and qualified cross-module annotations,
+  exact/one-under aggregate limits and refusal to invent alias/record targets.
+  Existing function/constructor/variant indices remain stable.
+- Alias/local/payload/record annotation targets, field navigation, imports,
+  dependency linking and later G13 phases remain open. No executable semantics
+  or Task Manager behavior changes.
+- Validation: 21 focused Rust tests, strict all-target/all-feature Clippy,
+  formatting, legacy/v2 LSP, VSIX admission and real VS Code 1.106.0 passed.
+  Exact hashes:
+  `target/checked-evidence/g13-v2-enum-annotation-verification.json`.
+
+## 2026-11-14: G13 checked record and alias outlines
+
+- Added checked root/module record and type-alias declarations with canonical
+  qualified outline names and original short-name/full-declaration ranges.
+  Alias detail preserves written headers. Existing function/variant reference
+  indices and the function-only projection remain unchanged.
+- Extended strict LSP decoding and VS Code display mappings for Struct and
+  TypeParameter (alias) kinds. Shared quotas remain all-or-nothing; oversized
+  written headers refuse optional IDE facts without undoing successful checking.
+- Type-use/field target evidence, imports, nested modules, dependency linking and
+  the remaining G13 phases stay open. This slice changes no executable semantics.
+- Validation: 19 focused Rust tests, strict all-target/all-feature Clippy,
+  formatting, legacy/v2 LSP, VSIX admission and real VS Code 1.106.0 passed.
+  Exact source hashes are retained in
+  `target/checked-evidence/g13-v2-type-outline-verification.json`.
+
+## 2026-11-14: G13 checked module containers in IDE outlines
+
+- Added module declaration/name ranges and Module kind to the checked v2 symbol
+  envelope, including empty modules. Retained enum target indices remain stable;
+  the function-only API is unchanged. The strict LSP decoder admits Module kind.
+- Module entries share aggregate item/text budgets. Exact and one-under tests
+  verify all-or-nothing refusal; invalid bodies continue to clear IDE facts.
+- Qualified module functions remain the executable profile. Imports, nested
+  modules, dependency linking, full type shadowing and later G13 phases stay open.
+- Validation: 17 focused Rust tests, strict all-target/all-feature Clippy,
+  formatting, legacy/v2 LSP, VSIX admission and real VS Code 1.106.0 passed.
+  The host caught and verified the extension Module-kind mapping fix.
+  Exact source hashes are recorded in
+  `target/checked-evidence/g13-v2-module-outline-verification.json`.
+
+## 2026-11-14: G13 checked qualified module functions
+
+- Linked same-file module functions through scoped type views, canonical headers,
+  sealed function IDs, checked IR, VM execution, explicit v2 CLI and native hosts.
+  Qualified calls respect private/exported visibility. Root main and test discovery
+  remain root-only; the older single-entry API stays strict.
+- Charged scoped metadata and signatures to cumulative admission budgets. Reject
+  conflicting root-type shadows and enum-constructor/callable name collisions.
+- Verified 84 focused Rust tests across eight targets, strict all-target/all-feature
+  Clippy, formatting, protocol/legacy LSP, VSIX, package navigation, real VS Code
+  and relocated Linux native execution without source or Node/PATH tools. The
+  prior full-suite baseline was not rerun for this slice.
+- G13 remains partial: imports, nested modules, dependency linking, full type
+  shadowing and later backend/platform gates remain open. Native images still
+  recheck bounded source at startup. Changes remain local and unpushed.
+- Evidence: `target/checked-evidence/g13-v2-module-functions-verification.json`.
+
+## 2026-11-14: G13 module function syntax ownership
+
+- Extended the syntax-only parser with original module function bodies, written
+  names/export intent and parallel `function_modules()` paths. Same-named bodies
+  in different modules remain distinguishable without rewriting source names.
+  The v1 core projection still contains type headers only, never fake executable
+  enum/module bodies. Root and module syntax share function/declaration/work caps.
+- The v2 formatter can now prepare module-function drafts through its existing
+  token/comment/AST/fixed-point and guarded-write gates, including supported
+  package selection. Semantic errors are not formatting errors; imports/nested
+  modules remain outside syntax admission.
+- Checked entry/program APIs use strict admission and still reject module
+  functions. CLI check/run/test/IR and native source-image decoding also refuse,
+  even for unused bodies. Tests exercise a file-capable run after formatting and
+  verify no marker file or partial checked facts are produced.
+- Passed 48 focused Rust checks across raw modules, source syntax, CLI formatting,
+  check admission and native-image refusal. Strict Clippy/rustfmt/docs/whitespace
+  checks pass; no new full-suite total is claimed because it was not rerun.
+- Actual v2 LSP and Linux VS Code 1.106.0 development-host tests format module
+  drafts while preserving E3120 and empty navigation facts. Existing function/
+  binding/type-module formatting, tasks/restart and legacy LSP behavior pass.
+- This is parser/formatter preparation only. Module function scope qualification,
+  private/exported call visibility, canonical function links and executable
+  lowering remain required before module functions can execute. G13 remains
+  partial. See [module body scope](reference/type-modules-v2.md).
+- Evidence: `target/checked-evidence/g13-v2-module-body-syntax-verification.json`.
+
+## 2026-11-14: G13 type-only inline modules
+
+- Extended the source/syntax projector with one level of inline module containers
+  and enum/alias/record children. Root functions consume qualified types through
+  existing scoped type resolution; module functions (even unused), nested/exported
+  module containers and imports remain explicit refusals. Same-file type lookup
+  is not package/interface visibility or dependency linking.
+- Preserved global token spans, source fragments and core module wrappers rather
+  than concatenating source or projecting enum bodies into v1 syntax. Added
+  parallel raw enum module paths backed by shared immutable strings and a Module
+  declaration-coverage category; containers/children share declaration admission.
+- Added pre-elaboration module-prefix work admission using existing type-text
+  ceilings, including exact/one-under tests. Long prefixes cannot silently expand
+  through many member identifiers before that check. Existing frontend/nesting/
+  type/AST/retained metadata limits remain; no hard isolation claim is made.
+- Qualified enum/variant projection validates the written short declaration name
+  at the canonical module-owned location. V2 keyword suggestions include mod for
+  this limited type-only scope. No module container/function/field navigation is
+  fabricated; root callable/binding behavior remains unchanged.
+- Seven new type-module tests cover root execution with local records/aliases and
+  recursive enums, root/module and inter-module homonyms, Unicode/CRLF provenance,
+  unsupported syntax, unused errors/duplicates/cycles, declaration admission and
+  qualifier limits. All 62 focused source/syntax/CLI/formatter regressions pass;
+  strict Clippy, rustfmt, docs and whitespace checks pass. Full Rust-suite totals
+  were not updated because the full suite was not rerun.
+- Added a [runnable same-file example](../examples/type-modules/README.md). CLI
+  check/symbols/test/IR/run and formatting preserve its output. Actual LSP and
+  Linux VS Code 1.106.0 development-host tests pass with qualified module aliases,
+  nominal definitions, existing scoped navigation, formatting/tasks and restart.
+  Legacy/package navigation and exact-source VSIX admission pass.
+- Actual locked Linux native acceptance passes with module-owned enums/aliases,
+  source removal, relocation, empty PATH, arguments/status, no I/O grants, fuel/
+  output limits, no-overwrite/stale-lock refusals and cleanup. Installed/other-host
+  acceptance remains separate. G13 stays partial; full module functions/imports,
+  package linking and the remaining library phases still need implementation.
+- Evidence: `target/checked-evidence/g13-v2-type-modules-verification.json` and
+  `target/checked-evidence/g13-v2-type-module-native-host-verification.json`.
+
+## 2026-11-14: G13 transparent enum qualifier aliases
+
+- Extended v2 constructor and match checking to resolve validated enum aliases
+  and alias chains to the same canonical enum/variant IDs. Mixed spellings retain
+  payload arity/type/widening, equality and owned snapshot behavior. Array/scalar/
+  record aliases are not constructor namespaces; foreign enums never mix.
+- Added closed `resolve_enum` lookup without changing exact canonical `find`.
+  Retained canonical-name indexing is charged one node/name copy per enum;
+  exact/one-under metadata tests now account for those records. Alias resolution
+  reuses flattened validated types rather than repeatedly walking source chains.
+- Alias constructor signatures are counted before retention, deterministically
+  ordered and charged through existing per-function/cumulative signature/text
+  budgets. Structural mapping validates qualifier resolution against the retained
+  target. Standard-call collisions still refuse E3110, now naming the callable;
+  unused colliding aliases also refuse rather than shadowing standard identity.
+- Added six focused semantic/execution tests, including recursive calls, nominal
+  equality, nested-array payload widening and snapshot isolation, non-enum/foreign
+  rejection, exact signature limits and collisions. All 69 unique focused Rust
+  regressions pass across callable/types/mapping/execution/CLI/image/symbol layers.
+  Strict Clippy, rustfmt, docs/whitespace and LSP/VS Code checks pass. No new full
+  Rust-suite total is claimed; that suite was not rerun in this slice.
+- Added a formatted [root-source example](../examples/enum-aliases/README.md).
+  CLI check/test/IR/run and formatting preserve its behavior. Actual Linux native
+  acceptance uses aliases in a locked package, removes source/tools from runtime
+  PATH, and passes arguments/status, host denial, fuel/output, no-overwrite,
+  stale-lock and cleanup checks. A harness-only unused-stdin EPIPE race was fixed
+  by removing unnecessary input; refusal assertions remain unchanged.
+- V2 LSP and Linux VS Code 1.106.0 development-host tests verify alias-qualified
+  constructor/pattern definitions retain canonical variant targets. Legacy LSP
+  behavior passes. Native/editor installed/other-host qualification remains open.
+- Default legacy behavior remains unchanged. This is transparent nominal alias
+  integration, not generic std::Result, error propagation, package linking or G13
+  completion. See [alias contract](reference/enum-aliases-v2.md).
+- Evidence: `target/checked-evidence/g13-v2-enum-aliases-verification.json` and
+  `target/checked-evidence/g13-v2-alias-native-host-verification.json`.
+
+## 2026-11-14: G13 checked enum/variant navigation
+
+- Extended the full standalone symbol projection with checked enum/variant
+  declarations and constructor/match-arm references. Canonical nominal IDs and
+  exhaustive match plans select targets; tokens only validate original ranges.
+  An iterative preorder walk follows controls and nested matches without guessing
+  targets from source names. Function-only projection remains unchanged.
+- Added enum/member symbol kinds (LSP 10/22), strict kind validation and VS Code
+  enum/member glyph mapping. Function default 12 and legacy/package navigation
+  remain compatible. Native VS Code sorts flat outline entries by source range;
+  tests verify that host behavior independently of compiler table indices.
+- Constructor hover shows canonical payload signatures with bounded arrays,
+  records and recursive nominal leaves; nullary/Unit payloads stay distinct.
+  Nominal declarations/references share existing global symbol admission and
+  unavailable-on-refusal behavior with functions and bindings.
+- Five new Rust tests cover alias-annotated values, reordered arms, distinct
+  same-named variants, nested/sibling/control preorder, payload signatures and
+  exact/exceeded all-table quotas. All 23 focused projection/check/CLI tests pass,
+  with strict Clippy, rustfmt, documentation links and whitespace checks. The
+  full Rust suite was not rerun or assigned a new total.
+- Actual v2 protocol tests pass for Unicode constructor/pattern definitions and
+  hover while retaining function/binding/failure retirement checks. Legacy
+  protocol strict decoder mutations, package navigation/diagnostics and VSIX
+  exact-source admission pass. Linux VS Code 1.106.0 development-host acceptance
+  passes for enum/member glyphs, constructor definition/hover and prior features.
+- No new syntax or name-resolution behavior is introduced. Alias-qualified
+  constructor/match spellings currently rejected by the checker remain rejected;
+  aliases can still annotate values with existing nominal identity. Alias/record/
+  annotation/field and qualified type-prefix navigation remain unavailable.
+  Installed/other-host editor qualification and remaining G13 phases stay open.
+- Evidence: `target/checked-evidence/g13-v2-enum-symbols-verification.json`.
+
+## 2026-11-14: G13 checked v2 binding navigation
+
+- Added `CheckedProgramSource::render_symbols` for checked root functions plus
+  parameter/local/match-payload declarations and read/write/indexed-write/
+  scrutinee targets. The earlier function-only projection retains its behavior.
+  CLI `--symbols` now selects the full standalone projection.
+- Targets resolve retained per-function declaration IDs with checked output-table
+  offsets; tokens only validate original ranges. Indexed-write metadata exposes
+  the root identifier separately from its index reads. Shadowed names and same-
+  named bindings in different functions/arms remain distinct.
+- Hover labels use retained checked types, bounded iterative array labels and
+  actual mutability/payload roles. Unknown empty-array holes and unavailable
+  labels stay explicit; no Any or inferred type is fabricated. Existing strict
+  LSP decoding/UTF-16 mapping/Markdown escaping remain the consumer boundary.
+- All selected declarations/references share the existing 8192-record/512 KiB
+  optional quota. Range/ownership/output refusal exposes empty unavailable tables;
+  semantic failure and document-generation changes clear previous facts.
+- Five new projection tests cover initializer/shadow/cross-function identities,
+  nested payloads and scrutinees, indexed writes, exact/exceeded aggregate quotas
+  and empty-array holes. Existing function/CLI/scoped-checker regressions pass;
+  exact focused totals and logs are recorded in the verification artifact.
+- Actual v2 protocol and Linux VS Code 1.106.0 development-host tests pass for
+  scoped definitions and checked hover, including same-line Unicode, source
+  failure/unavailable retirement, existing function navigation, formatting/tasks
+  and restart. Legacy standalone/package navigation, package diagnostics and
+  exact-source VSIX regression pass. Strict Clippy/rustfmt/docs checks pass.
+- G13 remains partial. Nominal type/field and package navigation, semantic
+  completion, installed/other-host acceptance and the remaining E1/library
+  phases stay open. The full Rust suite was not rerun or assigned a new total.
+- Evidence: `target/checked-evidence/g13-v2-binding-symbols-verification.json`.
+
+## 2026-11-14: G13 checked v2 root-function IDE navigation
+
+- Added optional `ProgramSymbolLimits` and a checked-program projection of root
+  function declarations, written signatures and canonical call references. IDs
+  come from successful program checking; original tokens validate retained spans.
+  Constructor/standard/type/local targets are not invented or exposed.
+- Added explicit standalone `check --experimental-v2 --format json --symbols`.
+  No opt-in leaves report shape unchanged; failed checks have no symbol table.
+  Package/human/duplicate/other-command misuse refuses. Shared test argument
+  parsing retains its existing option contract.
+- Projection caps total records at 8192, complete escaped output at 512 KiB and
+  strings at 4096 bytes under frontend quotas. Exhaustion/projection failure
+  returns only an unavailable empty envelope and preserves successful checking.
+- V2 LSP now requests the evidence and enables root-function hover/definition/
+  outline through the existing strict decoder, UTF-16 conversion and generation
+  invalidation. Plaintext signatures remain escaped in the VS Code UI.
+- Passed 31 focused Rust tests (five projection, one CLI symbols, seven check,
+  eight lock, nine test-command and one help regression), strict all-target/
+  all-feature Clippy, rustfmt, document links and whitespace checks. The full
+  Rust suite was not rerun or given a new total in this slice.
+- Actual v2 LSP tests pass for forward/canonical function navigation, same-line
+  Unicode, missing constructor facts, failed/unavailable evidence retirement and
+  formatting/cancellation limits. Legacy LSP, package diagnostics/navigation and
+  exact-source VSIX checks pass. Linux VS Code 1.106.0 development-host acceptance
+  passes for function hover/definition/outline, formatting, tasks and mode restart.
+- Package contexts, local/payload/type navigation, semantic completion, installed
+  VSIX/other-host acceptance and the remaining E1/library phases stay open.
+  G13 remains partial. See [navigation scope](reference/program-symbols-v2.md).
+- Evidence: `target/checked-evidence/g13-v2-symbols-verification.json`.
+
+## 2026-11-14: G13 source-backed v2 native execution
+
+- Added `build --experimental-v2 --emit exe --output PATH`, including guarded
+  single-entry package `--locked` selection. The existing native builder shares
+  its runtime-source validation, staged linking, no-overwrite publication and
+  cleanup path with legacy output. IR remains the v2 default; JS/grant flags refuse.
+- Added a private exact version/model/feature/length source image (1 MiB), bounded
+  UTF-8 decoding and full semantic rechecking before execution. Encoding validates
+  linked lowering. Native binaries embed source and recheck/lower at startup;
+  this is not an executable IR codec, optimizer or stable ABI. Old image decoding
+  and execution remain separate and unchanged.
+- Shared the existing finite CLI runtime policy with v2 native execution. Native
+  arguments cap at 1024 entries/64 KiB UTF-8; no file/stdin services are supplied.
+  Whole-program host-call preflight still refuses unused privileged calls.
+  Output is published only on success; diagnostics are bounded and escaped.
+- Passed 34 focused image/IR/run/package Rust tests, 16 native-related library
+  tests, the CLI help test, strict all-target/all-feature Clippy, rustfmt, v2 LSP
+  and documentation/whitespace checks. A unit link initially exhausted workspace
+  space; only stale generated test artifacts were removed and the check reran
+  successfully. The previous full-suite baseline was not rerun or relabeled.
+- Actual Linux v2 native acceptance passes for locked build, relocation after
+  source removal, empty PATH, enum/function behavior, Unicode arguments/status,
+  denied I/O, finite fuel, failure output, no-overwrite/stale-lock refusal and
+  staging cleanup. Separate successful and denied-host binaries preserve preflight
+  behavior. An initial smoke fixture incorrectly used a missing argument; its
+  corrected behavior is verified with the CLI before native building.
+- The existing legacy native corpus initially refused its stale builtin inventory;
+  added the four existing array helpers, snapshot/empty/widening checks and invalid
+  slicing. The unchanged strict inventory check now passes, followed by all 33
+  native/interpreter conformance cases over 19 builtins and I/O bounds.
+- Reorganized G13's checklist around actual phase status. G13 is not finalized:
+  module/dependency/backend/tooling qualification, generic Option/Result and
+  propagation, Map/Set, bytes/codecs/JSON, filesystem/time and owned processes
+  remain open under the approved contract. Windows/macOS/installed v2 acceptance
+  also remains a separate qualification gate.
+- Evidence: `target/checked-evidence/g13-v2-native-host-verification.json` and
+  `target/checked-evidence/g13-v2-native-verification.json`.
+
+## 2026-11-14: G13 opt-in v2 package formatting
+
+- Connected `fmt --experimental-v2 --package --check|--write` to the existing
+  canonical package/inventory selection, manifest/source snapshots, cumulative
+  byte quotas, all-source preflight and guarded staged publication. Only the
+  syntax formatter is selected differently; legacy defaults remain unchanged.
+- Added four CLI regressions for dependency-alias deduplication, type-invalid
+  declaration files, source-owned parse refusal before notices/writes, selected
+  registered files, no execution, untouched manifests/locks/unrelated drafts and
+  source/manifest limit failures. Added deterministic v2 preflight and late
+  manifest-conflict coverage with staging cleanup and retained prior effects.
+- Formatter qualification passes on Linux: 17 replacement/unit tests, 14 v2 CLI
+  tests, seven syntax tests, eight real programs in both engines, 261 comment
+  placements and existing package/quota/write regressions. Missing/wrong compiler
+  qualification refusal and v2 LSP regression pass. Strict all-target/all-feature
+  Clippy, rustfmt and documentation links pass. The previous 1228-test full Rust
+  baseline was not rerun or promoted to a new full-suite claim in this slice.
+- Formatting a graph is syntax tooling: v2 compilation still refuses dependencies
+  and registered modules; imports/inline modules still refuse in v2 formatting.
+  Locks are not verified or updated, and multi-file publication is not atomic.
+  Windows v2 package execution remains a host qualification gate. G13 stays partial;
+  next compiler integration work includes v2 module/dependency linking, symbol
+  evidence and executable backend support before claiming E1 qualification.
+- Evidence: `target/formatter/v2-package-linux-verification.json` and
+  `target/checked-evidence/g13-v2-package-format-verification.json`.
+
+## 2026-11-14: G13 opt-in v2 editor integration
+
+- Added explicit v2 initialization and restricted VS Code setting for standalone
+  enum/match diagnostics, keyword suggestions, snapshot formatting and source-only
+  check/IR/run tasks. Legacy remains the default; unavailable v2 symbols are empty.
+- Formatting uses private copies, compiler safety gates, bounded output/deadlines,
+  cancellation and version checks; shutdown waits for formatting cleanup. Legacy
+  editing also gains its existing compiler formatter through LSP.
+- Actual protocol checks cover UTF-16 diagnostics, semantic-error formatting,
+  CR-only ranges, fixed points, stale/cancelled requests, request/output limits,
+  temporary cleanup, no original writes and legacy behavior. Package/navigation
+  and exact-source VSIX regressions pass.
+- Official Linux VS Code 1.106.0 development-host checks pass for v2 editing/tasks,
+  explicit JS refusal and pipeline restart; legacy, package and restricted-trust
+  hosts pass. Installed VSIX and Windows/macOS execution remain unqualified here.
+- No Rust sources changed in this slice; the prior 1228-test Rust/Clippy baseline
+  is recorded separately, not claimed as rerun. G13 remains partial: package-aware
+  v2 editing, symbol evidence, semantic completion and backend gates remain open.
+  See [editor scope](reference/experimental-v2-ide.md).
+
 ## 2026-11-12: G09 checked cross-file function navigation
 
 - Added optional bounded navigation projected from the same successful checked
@@ -8278,3 +8620,840 @@ Task Manager behavior remain outside this proposal.
 - Enum syntax proposal remains pending its own review; publishing it does not
   approve or implement enums/match/Option/Result. G11/G12/G13 and platform/release
   gates remain partial. Private target evidence is not a shipped release artifact.
+
+## 2026-11-13 — Approved bounded payload-enum syntax API
+
+- Implemented compiler::sum_syntax::parse_enum_declaration under the user's
+  explicit approval. New owned declaration/variant types retain optional export,
+  ordered duplicate/nullary/single-payload syntax, canonical type spelling and
+  exact original spans. This is not executable enum/type/match semantics.
+- Enforce independent source/token/variant/payload-node/retained-text admission,
+  with real zero caps, checked sums, no partial successful declarations and no
+  unbounded retry. Shared 128-level type depth and existing lexer diagnostic guard
+  remain active. Canonical payload text is admitted before allocation/retention.
+- Added private lexer resource classification to report structured dimensions
+  without parsing diagnostic messages. Earlier public lexer result/error formats,
+  token/EOF behavior and contextual identifiers remain unchanged. No public core
+  AST fields/variants, IR/native formats or CLI modes were changed.
+- Nine integration tests cover grammar/unsupported forms, original Unicode/CRLF
+  spans, duplicate/empty metadata, known type spelling, all exact/zero/one-under
+  limits and all default saturation boundaries. Two private unit tests verify
+  arithmetic overflow and old public lexer diagnostics. Core enum parsing stays
+  rejected; G11 enum-header bodies remain unparsed; enum/match identifiers still
+  compile in ordinary source.
+- Full validation: **903 all-target tests passed**, zero failed/ignored. Strict
+  all-target/all-feature Clippy, rustfmt, documentation targets and diff checks
+  passed. Unchanged depth/security scripts initially reported sandbox spawnSync
+  EPERM; authorized outer-environment reruns passed, including 24 isolated security
+  checks. Retain both failed sandbox and successful outer logs as environment
+  evidence, without weakening assertions or treating failed execution as success.
+- Evidence: `target/checked-evidence/g13-enum-syntax-verification.json`.
+  No new native/browser/mobile/runtime/MSRV/release qualification is inferred from
+  this metadata API. Updated reference/spec/design/checklist status keeps G13
+  partial. Next: separately reviewed nominal enum/type checks, constructors,
+  exhaustive handling/return flow and bindings, then runtime/package/fuel evidence
+  and eventually generic Option/Result/propagation. Broader stdlib and G11/G12/
+  G14–G18 work remains open; Task Manager features stay paused.
+
+## 2026-11-13 — G13 finish request, ordinary algorithms and coordinated contract
+
+- User requested finishing G13. Kept all expanded checklist items open unless
+  actually implemented; enum syntax metadata is not executable errors/generics.
+  Prepared docs/design/G13_COMPLETION_CONTRACT.md for coordinated review of the
+  remaining enum/match/generic/Option/Result, Map/Set, binary/JSON and host APIs.
+- The contract makes versioned compatibility, source/IR/value migration, new-type
+  logical costs, first supported data/time boundaries, deny-by-default new host
+  authority and process ownership/cleanup prerequisites explicit. G14 resource
+  dependencies must be implemented where required; HTTP/network/server features
+  themselves remain G14. No new host powers or type semantics were implemented
+  from a broad checklist alone. Requested review through the user-input tool.
+- Completed unaffected existing-language library work: reversed([Int]) and
+  sorted([Int]) in the separate registered sequence package, plus an independent
+  algorithms-app. Cover negative/duplicate values, original snapshots, empty/
+  single/already/reverse-sorted inputs. Document quadratic work/copy costs rather
+  than claiming generic or optimized collections.
+- Nine collection integration tests pass, including the new bounded-consumer case
+  in Rust/ordinary Node/Node workers with exhausted fuel refusing without fallback.
+  Guarded package formatter/check and locked check/test/run/Node/native Linux smoke
+  passed with identical output. Existing compiler/runtime source semantics and
+  Task Manager features remain unchanged by this ordinary-library addition.
+- Strict Clippy, rustfmt and documentation/diff checks pass. Evidence:
+  `target/checked-evidence/g13-algorithms-completion-review.json`.
+- G13 remains partial. The repository's explicit syntax/type/compatibility review
+  boundary still applies to the proposed completion contract; prior approved
+  array/resource/enum-syntax work remains valid. No sandbox, hard memory/deadline,
+  browser/mobile or new other-platform/MSRV/release qualification is inferred.
+- Final validation: **904 all-target tests passed**, zero failures/ignored.
+  The report retains log hashes and distinguishes completed ordinary-library work
+  from the still-proposed G13 completion contract.
+
+## 2026-11-13 — Approved G13 completion: initial E1 type foundation
+
+Implemented additive compiler::v2 enum environments, bounded nominal payload
+resolution through aliases/records/modules, environment-owned identities,
+constructor type/coercion plans and exhaustive arm-shape plans. Source-origin
+diagnostics and exact budget boundaries have focused regression coverage.
+Existing v1 AST/runtime APIs remain unchanged. This is metadata checking only;
+E1 source-body checking, versioned IR/runtime, packages and tooling are next,
+followed by the remaining approved G13 phases. See
+[API scope](reference/enum-types-v2.md).
+
+Verification: all 916 all-target tests passed, including 11 focused enum-type
+tests; strict all-target/all-feature Clippy, rustfmt and documentation targets passed.
+Local evidence: `target/checked-evidence/g13-enum-types-verification.json`.
+
+## 2026-11-13 — G13 E1 standalone match parsing
+
+Added bounded compiler::v2::parse_match_statement with qualified variant patterns,
+optional payload bindings and ordinary core bodies. A crate-private parser entry
+consumes an admitted token suffix directly, preserving original spans without
+manufacturing a v1 Program. Source/token/header/arm limits and fixed depth checks
+reject without partial success. Parser diagnostics honor caller-selected frontend
+allowances. Contextual match/enum identifiers remain compatible. This is syntax
+only: scoped immutable binding/type/return-flow checking, nested match bodies,
+versioned lowering/runtime and packages/tooling remain open. See
+[reference](reference/match-syntax-v2.md).
+
+Verification: all 924 all-target tests passed, including eight focused match
+syntax regressions. Strict all-target/all-feature Clippy, rustfmt and documentation
+target checks passed. Evidence: `target/checked-evidence/g13-match-syntax-verification.json`.
+
+## 2026-11-13 — G13 E1 closed-scope match body validation
+
+Added check_match_bodies beside unchanged v1 stages. Reused core checking through
+a private borrowed body entry and shared standard-record field initialization.
+Each arm receives fresh supplied locals plus an immutable typed payload binding;
+checks preserve core shadowing, assignment/return/coercion rules and conservative
+return flow. Real record fields are retained under enum-environment quotas, while
+private enum type probes never authorize record literals/projections. Added exact
+record-retention and closed-scope admission boundaries and nominal/scope/body
+regressions. Whole-function source integration, user function targets, nested
+matches, lowering/runtime and package/tooling remain open; no executable enum
+claim. See [reference](reference/match-bodies-v2.md).
+
+Verification: all 936 all-target tests passed; 31 focused enum/match tests
+passed, including 11 closed-body regressions. Strict all-target/all-feature Clippy,
+rustfmt and documentation targets passed. Local evidence:
+`target/checked-evidence/g13-match-bodies-verification.json`.
+
+## 2026-11-13 — G13 E1 source-driven single-function checking
+
+Added check_function_source with separate versioned function/statement syntax,
+source-derived annotated parameters/local inference/mutability, direct matches
+and required return coverage. Reused original-token core header/statement parsing
+and a private persistent semantic scope; match arms remain isolated. Factored
+payload conversion for both closed-body and source-function checking. New quotas
+cover function admission and cumulative arm/header/scope-copy counts. Tests cover
+return continuations, scope leakage, immutable shadowing, signature/entry rules,
+original Unicode/CRLF spans, limits and explicit unsupported forms. No v1 Program
+projection or executable enum claim. Constructor/user calls, nested matches,
+complete programs, lowering/runtime and packages/tooling remain next. See
+[reference](reference/enum-function-v2.md).
+
+Verification: the full 946-test all-target suite passed. A subsequent additional
+truncation regression and all 11 source-function tests passed; implementation
+behavior did not change after the full suite. Strict all-target/all-feature
+Clippy, rustfmt and documentation targets passed. Evidence:
+`target/checked-evidence/g13-enum-function-verification.json`.
+
+## 2026-11-13 — G13 E1 constructor/self-call source checking
+
+Added check_callable_function_source with private nominal constructor/current
+function signatures, core arity/type checking and bounded call/context recording.
+Existing source and closed-body APIs retain their standard-only call scope.
+Extended the optional core recorder hooks without changing v1 fact construction,
+then reused the same persistent/arm semantic paths with explicit call maps.
+Verified nullary/Unit distinction, record/enum identities, array widening, recursion,
+standard aliases, original spans, exact quota boundaries, diagnostic precedence
+and original-provenance builtin collisions. Full lowering evidence (array elements,
+expression/value identities), external user calls, nested matches, programs and
+execution/package/tooling remain open. See
+[reference](reference/callable-function-v2.md).
+
+Verification: 958 all-target tests passed after clearing disposable Rust
+incremental caches. The initial run exhausted disk space while CLI fixtures were
+created; its log remains `/tmp/sovra-callable-all-storage-failure.log`. No code
+change or test weakening was needed for the rerun. All 11 focused callable tests,
+strict all-target/all-feature Clippy, rustfmt and documentation targets passed.
+Evidence: `target/checked-evidence/g13-callable-function-verification.json`.
+
+## 2026-11-13 — G13 E1 typed callable expression/context evidence
+
+Added check_typed_callable_function_source beside unchanged callable APIs. Core
+semantic callbacks now optionally retain unit-owned expression IDs/types, call
+result links and actual-value context links. Array literals record inferred item
+contexts, including scalar/nested array widening and identity/hole contexts.
+Pointer maps are private checking scratch and disappear before syntax ownership
+moves; foreign unit IDs are refused, while clones retain IDs. Added independent
+expression/type-copy quotas; array contexts share existing callable counters only
+in this opt-in mode. Tests verify exact limits, error precedence, source spans,
+empty-array holes, nominal call results, indexed assignment and compatibility.
+Scoped declarations/read/write/match-scrutinee identities and executable lowering
+remain open. See [reference](reference/typed-callable-v2.md).
+
+Verification: all 967 all-target tests passed, including nine new typed
+callable regressions. Related focused callable/function/type checks, strict
+all-target/all-feature Clippy, rustfmt and documentation targets passed. Removed
+only disposable Rust incremental caches after compilation to preserve fixture
+space. Evidence: `target/checked-evidence/g13-typed-callable-verification.json`.
+
+## 2026-11-13 — G13 E1 scoped callable value identities
+
+Added check_scoped_callable_function_source with unit-owned declaration/use IDs,
+source parameter/local/payload types and scope-resolved read/write/indexed-write/
+match-scrutinee facts. Reads link to typed expression IDs; writes/scrutinees remain
+separate sites. Core scope/declaration/use hooks and explicit match-arm frames
+preserve initializer ordering, shadowing and branch/loop/arm isolation. Added
+independent declaration/use/name/type/frame admission and retained previous API
+quotas. Tests cover exact limits, precedence, ID isolation/clones, original spans,
+multiple/reordered matches, branch/loop restoration and typed compatibility.
+Versioned IR mapping/validation, executable lowering/runtime and broader source/
+package/tooling integration remain open. See
+[reference](reference/scoped-callable-v2.md).
+
+Verification: all 978 all-target tests passed, including 11 new scoped
+callable regressions. Related typed/callable/function focused checks, strict
+all-target/all-feature Clippy, rustfmt and documentation targets passed. Cleared
+only completed Rust incremental caches to preserve CLI fixture space. Evidence:
+`target/checked-evidence/g13-scoped-callable-verification.json`.
+
+## 2026-11-13 — G13 E1 checked structural mapping for versioned lowering
+
+Added map_for_lowering with borrowed preorder syntax nodes, mapping-local IDs,
+parent edges and checked expression/declaration/use/call/context attachments.
+Iterative scheduling admits nodes before retention. Validation checks all source
+value/declaration/use coverage, canonical call targets, actual context types and
+source role/name/permission agreement. Original locations are locators only;
+ambiguity, missing/foreign facts or disagreements refuse without fallback. Tests
+cover nested core structure, matches/payloads, writes, grouped/Unicode/CRLF spans,
+exact limits, ID isolation/clones and defensive ambiguous/missing/shape refusals.
+This is a structural map, not emitted IR. IR operation emission/validation and
+executable lowering/runtime remain next. See
+[reference](reference/callable-mapping-v2.md).
+
+Verification: all 988 all-target tests passed, including seven integration
+mapping tests and three defensive refusal tests. Strict all-target/all-feature
+Clippy, rustfmt and documentation targets passed. Cleared only completed Rust
+incremental caches to preserve CLI fixture space. Evidence:
+`target/checked-evidence/g13-callable-mapping-verification.json`.
+
+## 2026-11-13 — G13 E1 expression register instruction emission/validation
+
+Added emit_expression_ir from checked structural maps: graph-local typed registers,
+borrowed literals/types, binding reads, binary/call/constructor/array/record/field/
+index operations and explicit operand context conversions. Iterative tasks preserve
+left-to-right evaluation with each conversion before later siblings. Statement
+initialization/write/return contexts remain explicit deferred indexes; roots from
+branches/loops/arms are not an executable function stream. Validation checks
+source/target/type/definition/context/root coverage under instruction/value/operand/
+root/deferred/step limits. Tests cover conversion order, exact quotas, IDs, source
+forms and defensive dependency/type/target/conversion refusals. Stores/scope
+cleanup/control-flow/match dispatch/returns and runtime/backend integration remain
+next. See [reference](reference/expression-ir-v2.md).
+
+Verification: all 1000 all-target tests passed, including eight expression IR
+emission tests and four defensive verifier tests. Strict all-target/all-feature
+Clippy, rustfmt and documentation targets passed. Cleared only completed Rust
+incremental caches to preserve CLI fixture space. Evidence:
+`target/checked-evidence/g13-expression-ir-verification.json`.
+
+## 2026-11-13 — G13 E1 function control-flow emission/validation
+
+Added emit_function_ir over checked expression graphs, with parameter/local
+initialization, stores/indexed stores, boundary conversions, root release, scopes,
+branches/loops, once-captured nominal matches, guarded payload snapshots and
+returns. Verified expression-root segment ownership. Bounded worklist validation
+checks static coverage/types/targets and reachable binding/root/context/snapshot
+availability, tag guards, scope joins and completion cleanup. Logical work/state
+counters refuse without partial results. Tests cover joins/back edges, matches,
+cleanup, shadowing, unreachable checked source, limits and corrupted target/
+availability/tag/type/cleanup refusal. Runtime values/execution/model-v2 policy and
+backend/native integration remain next. See
+[reference](reference/function-ir-v2.md).
+
+Final refinement: function-flow validation now separately tracks definite
+availability and possibly live resources, intersecting the former and unioning
+the latter at joins. A corrupted single-branch missing release is refused at
+completion. Statement/expression address indexes also use separate domains.
+
+Verification: all 1013 all-target tests passed after the final join-cleanup
+refinement, including nine function IR integration tests and four defensive flow
+tests. Strict all-target/all-feature Clippy, rustfmt and documentation targets
+passed. Unit-test compilation temporarily exhausted disk space; the failure log
+is retained at `/tmp/sovra-function-ir-refusal-storage-failure.log`. Cleared only
+disposable incremental caches and used two compiler jobs for the final rerun.
+Evidence: `target/checked-evidence/g13-function-ir-verification.json`.
+
+## 2026-11-13 — G13 E1 model-v2 runtime values/enum materialization
+
+Added opaque flat RuntimeValueV2 arenas with safe deep ordinary drop, transferred
+array/record/enum construction, guarded payload/member snapshots, nominal enum
+equality, exact display/footprints and scalar inspection. Reused v1 atomic node/
+text admission through a separate opt-in RuntimeValueFuel; v1 markers/Value APIs
+remain unchanged. Wrapper labels charge once, descendants transfer without double
+charge, and numeric widening stays free. Ingress validates complete enum payloads
+and record schemas before admission. Tests cover Unicode costs, atomic refusal,
+nominal/arity/record disguise rejection, import parity, formatting and 16,000-level
+construction/copy/extraction/equality/display/drop. This is the enum/value-layer
+subset, not function execution; instruction/output/control/host policy, arithmetic/
+bounds, frame cleanup and backend integration remain open. See
+[reference](reference/runtime-values-v2.md).
+
+Verification: all 1022 all-target tests passed. Strengthened existing positive
+record/deep legacy-import assertions afterward and reran the same nine focused
+value tests; implementation behavior remained unchanged. Deep record import/schema
+validation and 16,000-level enum operations passed. Strict all-target/all-feature
+Clippy, rustfmt and documentation targets passed. Cleared only disposable Rust
+incremental caches. Evidence: `target/checked-evidence/g13-runtime-values-v2-verification.json`.
+
+## 2026-11-13 — G13 E1 initial Rust VM execution
+
+Added FunctionIr::execute with iterative frames, source-resolved slots, expression
+root execution, boundary conversions, stores/scopes/branches/loops, nominal enum
+construction/match/payload snapshots and returns. Added trusted private value
+helpers for free coercion/transfer/index replacement without dead arena nodes.
+One invocation shares instruction/output/materialization/control limits across
+self-calls. Print preflight/commit preserves output-first admission and common
+materialization costs; supported standard calls are print/to_string/len/array_len.
+All other calls refuse before execution; no process host or fallback is enabled.
+Tests cover exact enum/common fuel costs, legacy output/fuel parity, recursion,
+array ownership/rebasing, arithmetic/bounds, ingress types, control, output and
+instruction limits. Broader adapters/host/backend/native/source/program/package/
+tooling qualification remain open. See [reference](reference/runtime-vm-v2.md).
+
+Verification: all 1035 all-target tests passed, including 13 focused VM tests.
+Strict all-target/all-feature Clippy, rustfmt, documentation targets and diff
+whitespace checks passed. Removed only completed disposable incremental caches
+to preserve fixture space. Evidence: `target/checked-evidence/g13-runtime-vm-verification.json`.
+
+## 2026-11-13 — G13 E1 Rust VM snapshot array adapters
+
+Extended the opt-in sealed-function VM with array_slice/append/concat, preserving
+first-directed checked widening and independent nominal/nested snapshots. The
+private shared result builder checks container/bounds/length, measures selected
+descendants, admits the entire node/text cost, then iteratively copies without a
+second fuel charge. Tests cover legacy common-cost/output parity, exact and
+one-under allowances, invalid/empty bounds, nominal payloads, widening, Unicode
+atomic refusal and 16,000-level copying/cleanup. Other standard/host adapters,
+complete programs and CLI/JS/native/package/tooling integration remain open.
+
+Verification: all 1040 all-target tests passed, including 16 VM execution tests
+and two private array-value tests. Strict all-target/all-feature Clippy, rustfmt,
+documentation targets and diff whitespace checks passed. Removed only completed
+disposable incremental caches for fixture space. Evidence:
+`target/checked-evidence/g13-runtime-vm-arrays-verification.json`.
+
+## 2026-11-13 — G13 E1 Rust VM pure string/result adapters
+
+Added split_once, parse_int, lines_unique, escape_terminal and println adapters
+to the opt-in VM, with existing standard result record identities and atomic
+whole-result node/text admission. Pure helper semantics reuse the standard library;
+terminal output is premeasured before construction. A regression reproduced the
+new VM's incorrect Unicode scalar len (2 versus existing UTF-8 byte len 6 for λ😀);
+fixed it and corrected the earlier assertion/reference. Tests compare output and
+exact/one-under common fuel to the legacy interpreter, cover decimal boundaries
+and invalid grammar, empty/missing delimiters, LF line rules and terminal controls.
+Private tests check unchanged fuel after whole-record/escaped-text refusal.
+Input/argument/exit/file host adapters and full program/backend/package/tooling
+integration remain open; G13 is partial and default APIs/CLI remain unchanged.
+
+Verification: all 1046 all-target tests passed, including 20 VM execution tests
+and two private string-value admission tests. Strict all-target/all-feature Clippy,
+rustfmt, documentation targets and diff whitespace checks passed. Removed only
+completed disposable incremental caches for fixture space. Evidence:
+`target/checked-evidence/g13-runtime-vm-strings-verification.json`.
+
+## 2026-11-13 — G13 E1 explicit VM command context
+
+Added execute_with_arguments and RuntimeVmCommandOutcome without changing existing
+execute/outcome shapes. Explicit borrowed strings support arg_count/arg; captured
+0..=125 exit status starts at zero and is shared across iterative self-calls.
+Argument snapshots use existing fuel costs/checkpoints; status validates before
+Unit admission and updates afterward. No actual process arguments/status or I/O
+are touched, and existing execute still refuses command calls in preflight.
+Tests compare legacy output/status/exact common fuel, Unicode snapshots, bounds,
+exit-code ranges, empty context, shared recursion and per-invocation reset. Input/
+file calls still refuse before execution, including unreachable calls. Full host/
+program/backend/package/tooling integration remains open and G13 remains partial.
+
+Verification: all 1051 all-target tests passed, including 24 VM execution tests
+and one private status-admission test. Strict all-target/all-feature Clippy,
+rustfmt, documentation targets and diff whitespace checks passed. Removed only
+completed disposable incremental caches for fixture space. Evidence:
+`target/checked-evidence/g13-runtime-vm-command-verification.json`.
+
+## 2026-11-13 — G13 E1 explicit VM line-input host
+
+Added RuntimeVmInput/execute_with_input without changing earlier APIs or granting
+file/output/process authority. The read_line adapter preflights minimum shape/
+labels, checks cooperative control around the host, validates the existing line
+byte ceiling, then admits the full standard InputLine record and returned text.
+Host failures do not create a value or charge result fuel. Consumed input remains
+consumed on later cancellation/size/fuel refusal; blocking reads are not interrupted.
+Tests compare legacy output/EOF/empty/Unicode semantics and exact/one-under fuel,
+verify no reads after preflight refusal, post-read text refusal, host errors,
+oversize returns, cancellation before/after reads, shared recursive input and
+preflight refusal of file calls. Broader file-host integration and full program/
+CLI/backend/package/tooling qualification remain open; G13 remains partial.
+
+Verification: all 1057 all-target tests passed, including 29 VM execution tests
+and one private input-admission test. Strict all-target/all-feature Clippy,
+rustfmt, documentation targets and diff whitespace checks passed. Removed only
+completed disposable incremental caches for fixture space. Evidence:
+`target/checked-evidence/g13-runtime-vm-input-verification.json`.
+
+## 2026-11-13 — G13 E1 explicit VM file services
+
+Added RuntimeVmFiles/RuntimeVmServices/execute_with_services with independently
+granted input/files. The explicit ProcessHost file implementation delegates its
+existing bounded read, atomic replacement and conditional-write coordination. No
+default filesystem is installed; earlier APIs retain refusals. Adapters preflight
+minimum record nodes/labels, checkpoint around calls, reject oversized read returns
+and atomically admit complete result records afterward. Unknown error text/fuel or
+cancellation can refuse after effects; no rollback or hard interruption is claimed.
+Tests compare legacy records/output/effect order/exact common fuel, missing reads,
+conditional conflicts, minimum preflight, post-read payload refusal, post-write
+cancellation, independent capabilities, combined input/files and oversized returns.
+A real temporary-file consumer verifies existing ProcessHost read/replacement/
+conditional conflict behavior. A private test checks post-effect result refusal
+without partial fuel charge. Full program/CLI/backend/package/tooling and broader
+host/platform qualification remain open; G13 is partial.
+
+Verification: all 1064 all-target tests passed, including all 35 VM execution
+tests and one private file-admission test. The final full suite verified the direct
+production ProcessHost delegation (focused suite preceded that reuse change).
+Actual temporary-file operations passed on Linux; other hosts are not inferred.
+Strict all-target/all-feature Clippy, rustfmt, documentation targets and diff
+whitespace checks passed. Removed only completed disposable incremental caches
+for fixture space. Evidence: `target/checked-evidence/g13-runtime-vm-files-verification.json`.
+
+## 2026-11-13 — G13 E1 single-entry source units
+
+Added check_entry_source/CheckedEntrySource: complete supported root sources now
+derive aliases/records/enums and one checked entry from original tokens without
+caller-supplied type metadata or sliced/reconstructed function source. Private
+preparsed bridges preserve byte/line/column spans through existing bounded type/
+function/scoped checking; old fragment APIs still use their original parse paths.
+A bounded declaration inventory rejects every unsupported/additional declaration.
+Checked source units explicitly lower and execute through existing VM APIs with
+separate lowering/runtime limits and optional services. The independent enum-entry
+fixture prints 7; tests cover forward declarations, original Unicode/CRLF spans,
+errors/limits/truncations, legacy parity, root export intent and service boundaries.
+Single-entry integration is partial: cross-function/module/import/nested-match,
+full program/CLI/backend/package/tooling and later G13 phases remain open.
+
+Verification: all 1076 all-target tests passed, including 12 source-unit tests.
+Strict all-target/all-feature Clippy, rustfmt, documentation targets and diff
+whitespace checks passed. Initial full-run compilation exhausted disk; after
+confirming compilation had stopped, removed only disposable incremental caches
+(source/binaries/evidence preserved), then the complete retry passed. Linux
+qualification only; broader host/platform support is not inferred. Evidence:
+`target/checked-evidence/g13-entry-source-verification.json`.
+
+## 2026-11-13 — G13 E1 checked root-program call links
+
+Added check_program_source/CheckedProgramSource with one source-owned type/header
+environment, private per-request function identities, all-body checking and
+retained canonical caller/callee links. Forward/mutual/self calls use program IDs;
+existing numeric/array contexts and nominal enum checks survive IR mapping and
+validation. Shared headers are admitted before copies; initial/per-body signature
+records/text and retained evidence/link totals have explicit cumulative allowances
+alongside existing per-function syntax/type/scope limits. Earlier single-entry
+APIs remain strict. The standalone VM refuses program calls before any execution
+effects instead of treating them as self-calls. Tests cover links/coercions, invalid
+unused bodies/signatures/arity/nominals, foreign identities, exact/one-under caps,
+original coordinates, old scope boundaries and VM refusal. This is checked
+compiler linking only: linked-program execution and broader backend/package/
+tooling integration remain the next slices, and G13 stays partial.
+
+Verification: all 1086 all-target tests passed, including 10 program-link tests
+and the existing 12 single-entry source tests. Strict all-target/all-feature
+Clippy, rustfmt, documentation targets and diff whitespace checks passed. Removed
+only completed disposable incremental caches for fixture space. Evidence:
+`target/checked-evidence/g13-program-links-verification.json`.
+
+## 2026-11-13 — G13 E1 linked root-program Rust execution
+
+Added checked-program execute/execute_with_services and ProgramLoweringLimits with
+cumulative mapping/link/register/instruction admission, including unused graphs.
+A shared runner preserves earlier standalone refusal while linked mode validates
+the complete owned table and all service capabilities before effects. Iterative
+frames select callee-owned instructions/expressions/scopes, resume caller waiting
+registers and share one invocation fuel/control/depth/command/services context.
+The independent enum-functions fixture prints 14. Tests cover forward/mutual/self
+calls, snapshot/scope isolation, numeric coercions, legacy output/common-cost
+parity, exact/one-under aggregate graph limits, instruction/depth/cancellation,
+shared input/arguments/status, unused-service refusal and post-write cancellation
+without rollback. Modules/imports/nested matches, CLI/backend/package/tooling and
+broader host/platform qualification remain open; G13 remains partial.
+
+Verification: all 1095 all-target tests passed, including nine linked-execution,
+ten program-link and 35 existing VM execution tests. The initial focused run
+covered eight linked tests; the final full suite also covered the subsequently
+added aggregate exact/one-under graph-boundary test. Strict all-target/all-feature
+Clippy, rustfmt, documentation targets and diff whitespace checks passed. Removed
+only completed disposable incremental caches for fixture space. Linux verification
+only; broader platforms/releases are not inferred. Evidence:
+`target/checked-evidence/g13-linked-vm-verification.json`.
+
+## 2026-11-13 — G13 E1 recursive program match arms
+
+Added program-only RecursiveMatchSyntax with original headers and separately
+retained complete versioned arm bodies. Parsing checks global depth first and
+admits cumulative match arms/header text before retention. Semantic checking
+forks bounded scopes, preserves ancestor mutability while removing it for payload
+shadows, validates every exhaustive arm and incorporates nested return flow.
+Scoped scrutinee/payload plans, mapping and function IR now share lexical preorder
+and emit nested snapshots/tag guards/payloads/releases through the existing VM.
+Earlier standalone/single-entry grammars remain strict; if/while matches stay open.
+Tests cover linked returns, shadowing/escape, mutable outer updates versus captured
+snapshots, permuted/sibling/three-level matches, 16-level execution/depth refusal,
+exact/one-under quotas and model-v2 fuel. The nested-matches fixture prints 7/0/0.
+No new value model, default CLI or backend/package/tooling support is claimed;
+those and broader G13 work remain open.
+
+Verification: all 1106 all-target tests passed, including 11 nested-match tests.
+The final suite includes strengthened exact header/scope quotas and independent
+fixture assertions added after the focused pass. Strict all-target/all-feature
+Clippy, rustfmt, documentation targets and diff whitespace checks passed. Initial
+linking/CLI verification exhausted disk (failed CLI log preserved); after removing
+only completed incremental caches, reran all cases with two harness threads and
+automatic cache cleanup immediately after compilation. Complete retry passed.
+Source/binaries/evidence preserved; Linux qualification only. Evidence:
+`target/checked-evidence/g13-nested-match-verification.json`.
+
+## 2026-11-13 — G13 E1 structured program control bodies
+
+Added RecursiveControlSyntax and original-token conditional header parsing with
+complete versioned if/else-if/else/while bodies. Explicit statement-depth admission
+bounds unbraced else-if chains beyond brace nesting. Program semantic checking
+reuses core Bool rules, lexical scope forks and conservative return coverage while
+retaining every match/control body. Mapping and function lowering now traverse
+control bodies in source order, preserve match preorder and emit existing scopes/
+branches/jumps/snapshot releases. Loop conditions re-evaluate and locals/snapshots
+release before backedges. Earlier standalone/single-entry parsers remain strict.
+Tests cover linked branch returns, loop scopes, controls in arms, invalid/unused
+coverage and conditions, payload immutability, legacy exact output/fuel parity,
+frame admission, instruction limits, once-per-test conditions and deep else-if
+refusal. The independent control-matches fixture prints 9. No new VM/value model
+or default CLI/backend/package/tooling integration is claimed; G13 remains partial.
+
+Verification completed 2026-11-14: all 1115 all-target tests passed, including
+nine control-match, 11 existing nested-match and nine existing linked-execution
+tests. The full suite includes the independent fixture assertion added after the
+focused pass. Strict all-target/all-feature Clippy, rustfmt, documentation targets
+and diff whitespace checks passed. Disk exhaustion initially blocked compilation/
+linking. Cleared completed incremental caches and orphan generated objects,
+rebuilt the obsolete unit-test executable, and removed redundant temporary npm
+download/PowerShell installer caches while retaining installed tools and evidence.
+Full verification ran with two harness threads and automatic completed-cache
+cleanup. Linux qualification only. Evidence:
+`target/checked-evidence/g13-control-match-verification.json`.
+
+## 2026-11-14 — G13 E1 opt-in CLI source checking
+
+Added `svr check --experimental-v2` for the checked root-program subset, including
+linked typed functions, enums and recursive match/control bodies. Human output
+escapes paths; JSON keeps check schema version 1. The source-only mode rejects
+package/symbol/service options and never executes print, input, file or exit
+operations. Default commands and v1 stage APIs retain their existing behavior.
+
+A public bounded error projection preserves original root coordinates and codes,
+clears internal fragment labels, caps output at 64 diagnostics, and fails closed
+for empty/warning-only error containers. Unsupported roots, missing functions and
+unavailable evidence use E3120/E3121/E3122; quotas retain E3025 and null locations.
+Ten new integration tests cover output, effects, coordinates, usage, read bounds,
+projection quotas and terminal controls. Updated the contract, checklist, examples
+and experimental checker reference. CLI execution, packages, IDE selection and
+backend integration remain open; G13 is partial.
+
+Verification: all 1125 all-target Rust tests passed with two harness threads,
+including seven new CLI and three diagnostic-projection tests. Strict all-target/
+all-feature Clippy, formatting, documentation links and diff whitespace checks
+passed. All four enum/match examples passed manual opt-in CLI checking. Updated
+the existing exact help snapshot after the full suite exposed the new usage
+lines. An earlier compile attempt exhausted workspace disk; removed only completed
+incremental caches and orphan generated object files, then reran successfully.
+Logs preserve both interrupted attempts and the final passing suite. Local hashes
+and verification record: `target/checked-evidence/g13-v2-check-cli-verification.json`.
+Linux execution is verified here; Windows/macOS acceptance remains a CI gate.
+
+## 2026-11-14 — G13 E1 opt-in CLI linked execution
+
+Added `svr run --experimental-v2` for regular root-source files with a checked
+parameterless Unit main, linked enum/record/match/control execution and explicit
+program arguments/status. Default command behavior, native builds and library
+runtime defaults are unchanged. Shared bounded source reading now serves both
+experimental CLI modes; checking still grants no execution or services.
+
+The command installs finite instruction/output/node/text/depth limits plus a
+30-second cooperative elapsed allowance. It grants no stdin or filesystem host;
+all bodies undergo capability preflight, including unused functions. It publishes
+raw captured lines and requested status only after successful VM execution.
+Output write/flush failures return 1 without a panic; a publication failure may
+leave a partial OS write. No package execution, unlimited fallback or policy
+option was added. Compiler work/helper traversals are outside hard deadline
+claims; this is not an OS sandbox.
+
+Ten new Linux integration tests cover four independent fixtures, default-pipeline
+compatibility, linked arguments/status and flag delimiters, main/source failures,
+unused-host denial, failure output withholding, finite instruction/call/output/
+node/text refusals and a closed output pipe. Updated docs, examples and the G13
+checklist; package/host/backend/tooling and cross-platform qualification remain
+open. G13 is partial.
+
+Verification: all 1135 all-target Rust tests passed with two harness threads,
+including ten new execution tests and the existing check/projection suites.
+Strict all-target/all-feature Clippy, formatting, documentation targets and diff
+whitespace checks passed. Targets were compiled in small batches with completed
+incremental/orphan-object cleanup to stay within workspace disk capacity; no
+source, production binaries or retained evidence was removed. Execution is
+verified on Linux; Windows/macOS acceptance remains a CI gate. Verification
+record: `target/checked-evidence/g13-v2-run-cli-verification.json`.
+
+## 2026-11-14 — G13 E1 opt-in CLI language tests
+
+Added host-free `CheckedProgramSource::test` and `svr test --experimental-v2`.
+The runner discovers parameterless Unit test_ functions (including Unit aliases),
+rejects all invalid signatures before execution, lowers the complete linked
+program once and runs tests in source order with fresh VM state/fuel/empty
+arguments/status. No main is required or automatically invoked. Runtime failure
+and nonzero status fail a test while later tests continue. Unused input/file
+calls are denied by whole-program preflight; no hosts are granted.
+
+CLI tests use the finite experimental run profile independently per invocation,
+with additional admission of at most 32 tests and one MiB total retained capture,
+including LF. Suite-output refusal discards that outcome without consuming the
+remaining capture allowance. Human/JSON renderers retain test schema 1. V2 runtime
+failure output is unavailable; nonzero ordinary returns retain capture/status.
+Source/read failures also produce test reports, never a check-schema document.
+Regular bounded source loading is shared across all experimental CLI modes.
+Default testing and native builds are unchanged; G13 remains partial.
+
+Added ten library and nine Linux CLI tests plus an independent enum test source
+without main. Coverage includes alias/signature/span admission, no-tests behavior,
+fresh fuel/status, ordered failure continuation, unused-host denial, lowering and
+suite quotas, diagnostic caps, report schemas/escaping and closed stdout. Replaced
+a race in the run/test closed-output test setup with a Unix socket whose reader
+is closed before spawn; the assertions still require failure without a panic.
+Docs/examples/checklist describe precise limits and remaining package/backend/
+tooling/platform gates. Logical fuel and cooperative elapsed allowances do not
+establish physical-memory isolation or a hard whole-suite deadline.
+
+Verification: all 1154 all-target Rust tests passed with two harness threads,
+including 19 new tests. All 36 focused test/check/run regressions passed; strict
+all-target/all-feature Clippy, formatting, documentation links and diff whitespace
+checks passed. Precompiled targets in small batches and removed only completed
+incremental caches/orphan object files to remain within disk capacity. Linux
+execution is verified; Windows/macOS acceptance remains a CI gate. Local source
+hashes and logs: `target/checked-evidence/g13-v2-test-cli-verification.json`.
+
+## 2026-11-14 — G13 E1 explicit CLI process hosts
+
+Connected existing v2 process adapters to experimental run using independent,
+duplicate-checked `--allow-stdin` and `--allow-files` grants before the program-
+argument delimiter. Added explicit ProcessHost delegation for RuntimeVmInput,
+reusing the bounded strict-UTF-8 line reader without publishing VM output. File
+services retain existing read/write/conditional-write contracts and process path
+permissions. Neither host is installed by default; v2 check/test and default
+commands retain their behavior. Grant flags after `--` are ordinary arguments.
+
+Whole-program capability preflight remains before all effects, including unused
+calls. Existing finite CLI limits are unchanged. Captured print output is still
+published only after successful execution; completed host effects survive later
+arithmetic, fuel or output-publication failures. Blocking host operations are
+not interrupted by cooperative elapsed checks. File grants are deliberately
+process authority, not confined roots or separate read/write policies, and do not
+complete the future H1 filesystem policy.
+
+Added an independent enum/helper input-to-file fixture and ten Linux CLI tests:
+independent/default grant admission, exact one-MiB CRLF input and strict UTF-8,
+EOF/final-CR semantics, shared linked hosts, atomic/conditional results, stable
+file failure categories and byte ceilings, prior effects after runtime/fuel/
+publication refusal, missing-capability and source-error preflight, flag delimiters/
+usage and caller-CWD authority. Every effect test uses owned temporary paths.
+Updated CLI help, references, examples and G13 checklist. Packages, confined/new
+host policies, IDE integration, v2 JS/native backends and cross-platform
+qualification remain open; G13 remains partial.
+
+Verification: all 1164 all-target Rust tests passed with two harness threads,
+including ten new host tests. All 36 focused CLI check/run/test/host tests passed.
+Strict all-target/all-feature Clippy, formatting, documentation links and diff
+whitespace checks passed. Precompiled targets in small batches with only completed
+incremental-cache/orphan-object cleanup to stay within workspace disk capacity.
+Linux execution is verified; Windows/macOS host acceptance remains a CI gate.
+Local verification record: `target/checked-evidence/g13-v2-host-cli-verification.json`.
+
+## 2026-11-14 — G13 E1 deterministic linked IR inspection
+
+Added `CheckedProgramSource::render_ir` and explicit
+`svr build --experimental-v2 [--emit ir]` for standalone sources. Complete linked
+lowering/validation happens before bounded text generation and publication. No
+main or runtime host is required; input/file/status/print/loop operations are
+inspected without execution. Default builds and old image encoding are unchanged.
+Unsupported v2 native/JS/output/package/host modes refuse before compilation.
+
+Inspection includes flat enum/type tables, sorted record schemas, source-order
+functions, bindings/uses/contexts, typed expression operations/roots and function
+instructions. Calls and dispatch use normalized local IDs, never process-global
+ownership nonces; labels/paths are omitted, original byte spans retained, and
+strings/operators escaped. Recursive nominal metadata stays flat. Output admission
+counts the complete escaped artifact, with a four-MiB CLI default; refusal returns
+no partial artifact or unlimited fallback. Publication errors return 1 without
+panic but can leave a partial OS write. This text is not a stable machine schema
+or executable codec, and does not close native/JS/package/tooling/G13 gates.
+
+Added eight library and seven Linux CLI tests for linked/recursive enum metadata,
+mutual calls without main, instruction/context coverage, determinism across
+requests/labels, exact byte boundaries, Unicode/control escaping, lowering refusal,
+no host effects/execution, backend/option refusal and output-publication errors.
+Updated the exact build-help expectation and earlier v2 rejection checks to target
+still-unsupported JS emission. Docs/checklist/examples reflect inspection support.
+
+Verification: all 1179 all-target Rust tests passed with two harness threads,
+including 15 new IR tests. All 32 focused compiler/CLI checks passed, plus strict
+all-target/all-feature Clippy, formatting, documentation links and diff whitespace.
+An initial generated unit-test link exhausted disk and failed with linker SIGBUS;
+removed the failed output and completed incremental/orphan-object caches, cleaned
+three exact stale fixture directories from aborted historical CLI tests, and
+preserved six old temporary profiling binaries as verified gzip archives (index:
+`/tmp/sovra-profile-archive-index.json`). Installed tools, production binaries,
+source and verification logs were retained. Rebuilt the generated unit-test
+binary, precompiled targets in small batches and completed the full suite. Linux
+execution is verified; other hosts remain CI gates. Local source hashes/logs:
+`target/checked-evidence/g13-v2-ir-inspection-verification.json`.
+
+## 2026-11-14 — G13 E1 guarded single-entry package integration
+
+Added `packages::capture_root_source` and immutable `CapturedRootSource`, reusing
+existing inventory/manifest admission and the guarded opened-source reader.
+Supported packages have exactly one root entry and no dependencies or registered
+module files. Unsupported package shapes refuse with E3124 before entry-byte
+capture; existing graph/path/budget diagnostics can refuse earlier. Capture alone
+does not parse/check source, verify a lock or establish an atomic filesystem
+snapshot. Supported capture hosts remain Linux x86/x86_64/aarch64 with procfs;
+other hosts refuse rather than weakening the reader.
+
+Experimental check/run/test/IR commands now share this capture path and consume
+its bytes without source rereads. Nested entry paths work; known diagnostics keep
+canonical entry filenames and original Unicode/CRLF byte spans. Check JSON retains
+schema 1 directory kind project; test JSON retains package kind and the supplied
+target. Manifest diagnostics preserve their own provenance. Main is still required
+only for run, test discovery remains entry-local, and IR agrees with standalone
+inspection of the same source. Package selection changes neither CWD nor host
+grants. All v2 locked requests still reject before capture; unlocked capture reads
+no lock and never changes it. Defaults and existing package/compiler APIs remain
+unchanged apart from clarified directory-kind documentation.
+
+Added an independent nested-entry enum package, seven capture tests and nine
+Linux CLI tests. Proof covers all four commands, captured bytes after disk edits,
+no parsing/execution during capture, Unicode/source provenance, source size/UTF-8,
+unsafe/outside entry refusal, dependency/module refusal before entry capture,
+unregistered-file exclusion, unchanged locks, caller-CWD effects with explicit
+grants and helper-only packages. Updated usage/help expectations and references;
+full linking/locks, package-host qualification, IDE and v2 native/JS gates remain
+open. G13 remains partial.
+
+Verification: all 1195 all-target Rust tests passed with two harness threads,
+including 16 new package tests. All 59 focused capture/CLI regressions passed.
+Strict all-target/all-feature Clippy, formatting, documentation targets and diff
+whitespace checks passed. To stay within disk capacity, rebuilt obsolete generated
+unit/CLI test executables after clearing completed incremental/orphan-object caches,
+then precompiled targets in small batches. Production binaries, installed tools,
+source and retained evidence were preserved. Linux execution is verified; other
+package hosts remain explicit qualification gates. Verification/source hashes:
+`target/checked-evidence/g13-v2-root-package-verification.json`.
+
+## 2026-11-14 — G13 E1 locked single-entry packages
+
+Added root-capture lock generation, in-memory verification, guarded existing-lock
+verification and guarded publication/check APIs. Shared lock-document construction
+retains the existing strict version-one schema and original legacy input order;
+ordinary root packages produce identical canonical bytes through both paths.
+Root locks retain exact captured manifest/source hashes, byte counts and portable
+paths, with no source/manifest rereads during verification. Lock integrity does
+not establish source validity, toolchain pinning or publisher authentication.
+
+`svr lock --experimental-v2 [--check]` now generates or verifies root-only locks;
+all four experimental compiler commands support package `--locked`. Verification
+precedes semantic checking, lowering, test discovery and VM effects. Missing,
+unsafe, stale, malformed/oversized locks refuse with E4165 and no unlocked fallback
+or compiler lock modification. Dependency/module scope remains denied before
+verification; standalone/duplicate/unrelated options remain usage errors. CWD,
+arguments/status and runtime host grants are unchanged. Lock status publication
+errors return 1 without a panic and cannot undo completed guarded publication.
+Unlocked behavior and legacy APIs/formats are unchanged.
+
+Added eight library and eight Linux CLI tests covering legacy byte parity,
+relocation, retained inputs after disk removal, same-length changes, strict JSON/
+version/size refusal, explicit stale-lock regeneration, read-only/symlink/hardlink
+publication safety, all locked compiler modes, no effects/tests/IR after refusal,
+option scope, unchanged file authority and semantic errors after valid integrity.
+Updated the previous package-lock refusal test for configuration-report behavior.
+Generated and verified a concrete lock for the enum-package example. Docs and G13
+checklist separate root lock support from open dependency/module/backend/tooling/
+other-host gates; G13 remains partial.
+
+Verification: all 1211 all-target Rust tests passed with two harness threads,
+including 16 new lock tests. All 62 focused root/legacy lock and v2 CLI regressions
+passed; strict all-target/all-feature Clippy, formatting, documentation links and
+diff whitespace checks passed. The concrete example lock was generated and checked
+through the new CLI. A preparation-time library rebuild exhausted disk; cleared
+completed incremental/orphan objects and retried successfully. Rebuilt obsolete
+generated unit/CLI/runtime test executables in small batches, then released only
+the generated library-unit executable after its completed full-suite run to keep
+runtime fixtures within disk capacity. No production binary, installed tool,
+source or retained evidence was removed. Linux execution is verified; other
+package-host qualification remains open. Source hashes/logs:
+`target/checked-evidence/g13-v2-root-lock-verification.json`.
+
+## 2026-11-14 — G13 E1 syntax-only v2 source formatter
+
+Factored root syntax parsing into `parse_program_syntax`/`ParsedProgramSyntax`,
+retaining original declaration/enum/versioned-body coordinates without semantic
+facts or old-AST projection of executable v2 nodes. Checked entry/program APIs
+still perform type/evidence checking and preserve their prior missing-function
+error precedence. Syntax parsing admits declaration-only/empty and semantically
+invalid source but refuses unsupported modules/imports and explicit parser quotas.
+
+Added `svr fmt --experimental-v2` with stdout/check/guarded-write modes for one
+source file. Existing layout now accepts syntax-derived boundary sets; default
+formatting keeps its path and style. V2 gates compare token kind/spelling/order,
+comment content/attachment, normalized complete versioned syntax and fixed-point
+output before replacement/publication. No source executes or manifest/lock is
+read. Unknown-location quotas retain their code without fabricated line/column.
+Writes reuse existing snapshot/atomic guards; unchanged metadata stays unchanged.
+Package formatting/editor selection remain open. Formatting writes intentionally
+invalidate byte-based source locks and never regenerate them automatically.
+
+Added seven parser and ten CLI cases covering unresolved/duplicate/type-only
+syntax, original spans/depth/quota refusal, recursive enum/control fixture runtime
+parity, literal/comment/CRLF/Unicode fidelity, no effects, refusal/write integrity,
+fixed points/metadata, links/readonly paths, closed stdout and a relocated
+standalone formatter executable. Qualification now hashes v2 parser/formatter
+inputs and runs these cases against the selected compiler through an explicit
+test-only override. Its negative harness requires unrelated compilers to fail
+the v2 step, preventing workspace-binary substitution from qualifying old tools.
+Docs/checklist/examples label CLI-only scope and remaining G13 gates accurately.
+
+Verification: all 1228 all-target Rust tests passed with two harness threads,
+including 17 new parser/formatter cases. All 39 focused parser/CLI/entry/program
+regressions and strict all-target/all-feature Clippy, formatting, documentation
+links and diff whitespace checks passed. Final exact-host formatter qualification
+passed: 16 replacement/filter cases, 17 versioned cases, eight real programs in
+both engines, 261 comment placements and package selection/write regressions.
+Its missing/wrong-compiler negative regression also passed. Final report:
+`target/formatter/v2-linux-final-verification.json`.
+
+The first qualification attempt correctly stayed unqualified when sandboxed Node
+subprocess supervision returned EPERM, even though Rust children produced passing
+output. Retained that report and reran the same timeouts/assertions with approved
+process-execution permission. After the unlocated-quota diagnostic fix, repeated
+qualification and negative checks against the final compiler/source hashes.
+Completed incremental/orphan-object caches and obsolete generated test outputs
+were cleared for disk capacity; small-batch precompilation preserved build flags.
+Released only completed generated unit/array test executables after their passing
+full-suite runs to make room for runtime fixtures. Source, production binaries,
+installed tools and retained evidence were preserved. Linux execution is verified;
+other-host/installer/IDE/package-formatter gates remain open. Consolidated hashes:
+`target/checked-evidence/g13-v2-formatter-verification.json`.

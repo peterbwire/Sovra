@@ -2733,7 +2733,7 @@ fn build_help_describes_current_usage() {
     assert!(output.status.success());
     assert_eq!(
         String::from_utf8_lossy(&output.stdout).trim(),
-        "Usage: svr build [--locked] [--emit ir|js] <source.svr|package-directory>\n       svr build --emit exe --output PATH <source.svr|package-directory>\n  exe: host-native output; Rust/Cargo and a host linker are build-time requirements."
+        "Usage: svr build [--locked] [--emit ir|js] <source.svr|package-directory>\n       svr build --emit exe --output PATH <source.svr|package-directory>\n  exe: host-native output; Rust/Cargo and a host linker are build-time requirements.\n       svr build --experimental-v2 [--locked] [--emit ir|exe] [--output PATH] <source.svr|package-directory>\n  Experimental v2: bounded IR inspection or source-backed native executable; JS unavailable."
     );
 }
 
@@ -2745,7 +2745,7 @@ fn check_help_describes_current_usage() {
     assert!(output.status.success());
     assert_eq!(
         String::from_utf8_lossy(&output.stdout).trim(),
-        "Usage: svr check [--format human|json] [--service-calls] [--symbols] <source.svr|project-directory>\n       svr check --format json --overlays-stdin <package-directory>\n  --service-calls  Experimental project-only contract checks; incomplete coverage fails.\n  --symbols        Opt-in checked symbol/type evidence for successful standalone JSON checks.\n  --overlays-stdin Framed unsaved package buffers; requires JSON, never executes or writes source.\n  --package-context Resolve canonical entry paths only; JSON, no source validation.\n  --locked         Verify sovra.lock; requires --executable-package.\n  --executable-package Compile all package sources and linked IR; never execute them."
+        "Usage: svr check [--format human|json] [--service-calls] [--symbols] <source.svr|project-directory>\n       svr check --format json --overlays-stdin <package-directory>\n       svr check --experimental-v2 [--locked] [--format human|json] [--symbols] <source.svr|package-directory>\n  --experimental-v2 Opt-in single-entry source/package enum/match checking only; no execution.\n  --service-calls  Experimental project-only contract checks; incomplete coverage fails.\n  --symbols        Opt-in checked symbol/type evidence for successful standalone JSON checks.\n  --overlays-stdin Framed unsaved package buffers; requires JSON, never executes or writes source.\n  --package-context Resolve canonical entry paths only; JSON, no source validation.\n  --locked         Verify sovra.lock; requires --executable-package or --experimental-v2 package mode.\n  --executable-package Compile all package sources and linked IR; never execute them."
     );
 }
 

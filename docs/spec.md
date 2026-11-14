@@ -1413,3 +1413,252 @@ fuel charges one container plus complete output-child footprints before iterativ
 copying, with no duplicate charges or refunds. Existing argument costs, source
 syntax, defaults and CLI/native policies remain. See the
 [exact growth contract](reference/array-growth.md).
+
+
+## Opt-in enum declaration syntax metadata
+
+The additive Rust `compiler::sum_syntax::parse_enum_declaration` API parses one
+optional-export enum declaration with ordered nullary/single-payload variants,
+existing type spelling and exact source spans. Explicit source/token/variant/
+payload-node/text caps reject exhaustion without partial syntax. Duplicate names
+and empty enums remain syntactic data, not proven semantic declarations. Existing
+lexer/parser diagnostics and contextual identifier behavior remain; executable
+parsers, public AST/Value/IR/native formats and CLI defaults do not gain enum
+semantics. See the [syntax reference](reference/enum-syntax.md).
+
+## Opt-in versioned enum type metadata
+
+The additive `compiler::v2` APIs resolve nominal root/module enum payloads
+against existing alias/record headers, reject empty/duplicate variants and produce
+constructor-type and exhaustive arm-shape plans. Their immutable identities are
+environment-local. Caller-supplied argument annotations are not checked expressions,
+and arm shapes are not checked bodies. This API does not enable executable enum
+syntax in CLI or change public v1 AST/Value/IR formats. See the
+[versioned enum type reference](reference/enum-types-v2.md).
+
+The separate `compiler::v2::parse_match_statement` API now retains standalone
+match patterns and ordinary untyped arm bodies with original spans and bounded
+admission. It does not enable matches in v1 functions or prove semantic validity.
+See the [match syntax reference](reference/match-syntax-v2.md).
+
+The additive `CheckedEnumTypes::check_match_bodies` API checks ordinary arms
+against caller-supplied closed locals and an expected return annotation. It checks
+nominal scrutinee/coverage, immutable payload bindings, core body types and
+conservative return flow. It does not establish whole-function checking, module
+visibility, user call targets or executable lowering. See
+[closed-scope match checking](reference/match-bodies-v2.md).
+
+The opt-in `CheckedEnumTypes::check_function_source` API now derives one function's
+annotated parameters and local scopes from source, retains direct matches in
+separate versioned syntax and validates required return coverage. It supports
+standard calls; constructors/user calls, nested matches, complete programs and
+execution remain open. See [source-driven function checking](reference/enum-function-v2.md).
+
+The separate `check_callable_function_source` API now checks canonical enum
+constructor calls and self-recursion through explicit private signatures and
+retains bounded resolved call/actual-expected context facts. It does not supply
+complete lowering evidence or execution; earlier APIs remain standard-only. See
+[constructor/self-call checking](reference/callable-function-v2.md).
+
+The separate `check_typed_callable_function_source` API now records unit-owned
+core value-expression types and call/context links, including array-literal
+element conversions. Scoped declarations/uses and executable lowering remain
+open; previous APIs and their quota behavior remain unchanged. See
+[typed callable evidence](reference/typed-callable-v2.md).
+
+The separate `check_scoped_callable_function_source` API now records unit-owned
+value declarations, scope-resolved read/write uses and direct match-scrutinee
+bindings. It follows core and arm lexical scopes under independent binding/frame
+quotas. Structural IR mapping/validation and executable lowering remain open;
+see [scoped callable identities](reference/scoped-callable-v2.md).
+
+The additive `CheckedScopedCallableFunction::map_for_lowering` API now maps
+immutable checked syntax and facts into a borrowed structural graph. It validates
+source/fact attachment and coverage, refusing ambiguous/missing locations without
+fallback. It does not emit or execute IR instructions. See
+[checked structural mapping](reference/callable-mapping-v2.md).
+
+`MappedCallable::emit_expression_ir` now emits/validates typed register operations
+for core expression trees, resolved calls/constructors and ordered operand
+conversions. Roots and deferred statement contexts require later stores/control
+flow/return emission; no executable function/runtime is claimed. See
+[versioned expression IR](reference/expression-ir-v2.md).
+
+`ExpressionIr::emit_function_ir` now emits checked single-function scopes/stores,
+branches/loops, nominal match snapshot/dispatch/payload cleanup and returns. A
+bounded reachable-flow validator checks availability, scope joins and payload tag
+guards. Execution, model-v2 resource policy and backend/native integration remain
+open; see [versioned function IR](reference/function-ir-v2.md).
+
+The additive RuntimeValueV2/RuntimeValueFuel API now implements flat owned
+snapshots and nominal enum construction/tag/extraction/equality/display with
+atomic model-v2 value-layer materialization costs. Function-IR execution and
+complete runtime/backend policy integration remain open. See
+[versioned runtime values](reference/runtime-values-v2.md).
+
+The separate `FunctionIr::execute` API now runs sealed single-function IR in Rust
+with enum/array/record operations, iterative self-recursion, shared component
+budgets and cooperative control. The initial standard adapter supports only
+print/to_string/len/array_len; other calls refuse before execution. No default
+CLI/backend/package/host integration is claimed. See
+[opt-in Rust VM](reference/runtime-vm-v2.md).
+
+The opt-in v2 Rust VM now also adapts existing `std::array_slice`,
+`std::array_append` and `std::array_concat` with their existing checked typing,
+snapshot semantics and atomic result fuel. This does not extend CLI enum support.
+
+The v2 Rust VM also adapts existing split_once/parse_int/lines_unique/escape_terminal
+and println. Standard record identities/fields, strict decimal grammar, escaping
+and cumulative fuel match the existing runtime; `std::len` counts UTF-8 bytes.
+These pure adapters introduce no host authority or CLI/backend feature selection.
+
+Additive `FunctionIr::execute_with_arguments` supplies explicitly borrowed program
+arguments for std::arg_count/std::arg and captures std::set_exit_code (0..=125)
+in a separate command outcome. Status updates follow Unit admission and are shared
+across self-calls, reset for each invocation and published only by caller choice.
+Ordinary execute still preflight-refuses these operations; no process I/O is added.
+
+Additive `FunctionIr::execute_with_input` accepts an explicit `RuntimeVmInput`
+line host and enables existing std::read_line semantics/standard InputLine records.
+It preflights minimum result fuel before the read, checks control around it and
+admits complete returned text afterward. Host errors have no result fuel charge;
+oversize returns above MAX_INPUT_LINE_BYTES refuse. Consumed input cannot be rolled
+back and blocking reads are not interrupted. Earlier APIs and file access stay unchanged.
+
+Additive `FunctionIr::execute_with_services` accepts independently optional input
+and file capabilities. RuntimeVmFiles adapts existing read_text/write_text/
+write_text_if records/contracts, with minimum preflight before effects and complete
+result admission after cooperative checkpoints. Explicit ProcessHost delegation
+reuses bounded/atomic/conditional operations under its existing path authority.
+Oversized read text refuses; effects are not rolled back on later refusal. Earlier
+APIs, default CLI/backend behavior and filesystem authority remain unchanged.
+
+The opt-in [single-entry source-unit API](reference/entry-source-v2.md) now checks
+aliases/records/enums and exactly one function from the same complete supported
+root source. Original tokens retain file coordinates; unknown declarations and
+additional functions refuse. Checked units can lower/execute through the v2 Rust
+VM with explicit compilation/runtime limits and optional services. Default CLI,
+legacy AST/stages and JS/native/package/tooling behavior remain unchanged.
+
+The separate [root-program source checker](reference/program-source-v2.md) now
+checks every root function against one source-owned signature/type environment,
+retaining canonical per-request function identities and forward/mutual/self-call
+links. Signature/text/evidence/link quotas are explicit; previous single-entry
+APIs stay strict. These targets survive IR mapping/validation. Standalone IR
+execution retains preflight refusal; the checked-program runtime below supplies
+the complete owned table.
+
+[Checked root-program execution](reference/program-execution-v2.md) now selects
+callee-owned expression/instruction/scope state by canonical function identity.
+Frames share invocation fuel/control/depth/services/status; all functions are
+validated/preflighted before effects. Explicit cumulative graph admission precedes
+execution and its clock. Standalone IR retains program-target refusal; default CLI,
+legacy APIs, modules/packages/tooling and JS/native integration remain unchanged.
+
+Program-only [recursive match-arm bodies](reference/recursive-match-v2.md) now
+retain complete versioned statements, check exhaustive nested return flow and
+immutable payload scopes, and lower to nested snapshots/tag dispatch/releases.
+Original token/depth limits and cumulative arm/header/scope quotas apply. Earlier
+standalone/single-entry APIs remain strict; matches under if/while and extended
+CLI/backend/package/tooling support remain open. Runtime value/fuel costs are unchanged.
+
+[Structured checked-program bodies](reference/control-match-v2.md) now retain
+if/else-if/else/while conditions and complete recursive branches without v1 body
+projection. Matches inside controls and controls inside arms use Bool checks,
+lexical immutable payload scopes, conservative return coverage and existing IR.
+An explicit statement-depth guard also bounds unbraced else-if chains (E2007).
+Earlier standalone/single-entry/default CLI APIs remain unchanged; package/tooling/
+backend integration and broader G13 qualification remain open.
+
+The opt-in `svr check --experimental-v2` command now checks v2 root sources with
+human/JSON diagnostics and no execution. Default commands are unchanged; G13 remains partial.
+Package/backend/tooling integration remains open. See [experimental checking](reference/experimental-v2-check.md).
+
+`svr run --experimental-v2` now explicitly executes root sources with finite VM
+limits, arguments/status and success-only output publication. No stdin/file hosts
+are granted by default. See [experimental execution](reference/experimental-v2-run.md).
+
+`svr test --experimental-v2` now runs parameterless Unit root test_ functions in
+source order with isolated invocation state, bounded suite output/test count and
+no input/file hosts. See [experimental testing](reference/experimental-v2-test.md).
+Default testing is unchanged; packages/backends/tooling and G13 completion remain open.
+
+Experimental `run` now accepts independent `--allow-stdin` and `--allow-files`
+grants for existing bounded ProcessHost services. Without flags, v2 execution
+denies both; experimental check/test remain host-free. File grants use process permissions without path confinement and
+completed effects survive later refusal. See [explicit hosts](reference/experimental-v2-hosts.md).
+
+`svr build --experimental-v2 [--emit ir]` now emits deterministic bounded linked
+IR inspection without requiring main or executing source. IDs are local, source
+coordinates retained and controls escaped. See [IR inspection](reference/experimental-v2-ir.md).
+This is not an executable image/codec; v2 native/JS/package/tooling gates remain open.
+
+Experimental v2 check/run/test/IR commands now accept guarded single-entry package
+directories. Captured entry bytes and canonical diagnostic identity are retained;
+dependencies/registered modules still refuse. See [root packages](reference/experimental-v2-packages.md). Linux/procfs package capture is qualified;
+other package hosts and full linking/locks/backends/tooling remain open.
+
+Single-entry v2 packages now support `lock --experimental-v2 [--check]` and
+`--locked` check/run/test/IR over the same captured bytes, using the existing
+strict schema and guarded publication. See [v2 locks](reference/experimental-v2-locks.md). Lock integrity is not source validity/authentication;
+dependency/module and other-host/backend/tooling gates remain open.
+
+`svr fmt --experimental-v2` now formats root enum/match syntax without requiring
+semantic validity, with token/comment/AST/idempotence gates and the existing guarded
+source-write path. See [v2 formatting](reference/experimental-v2-format.md). Default formatting is unchanged; opt-in package formatting and standalone
+editor selection are now available. Syntax-only parsing does not establish checked success.
+
+Opt-in v2 IDE mode now provides standalone buffer diagnostics, snapshot formatting
+and source-only check/IR/run tasks. See [v2 editor mode](reference/experimental-v2-ide.md).
+V2 package overlays, type/field navigation, semantic completion and other-host
+qualification remain open; G13 remains partial. Legacy mode remains the default.
+
+`fmt --experimental-v2 --package --check|--write` now reuses bounded package
+selection, all-source preflight and guarded staged publication with the v2 syntax
+formatter. See [package formatting](reference/experimental-v2-format.md). It does not link or execute
+dependencies/registered modules; v2 compilation and G13 completion gates remain open.
+
+`build --experimental-v2 --emit exe --output PATH` now builds a private
+source-backed native runner with a version/model/feature-checked image, finite
+shared CLI policy and no stdin/file services. See [v2 native scope](reference/experimental-v2-native.md).
+The binary rechecks/lowers embedded source at startup; it is not an executable IR
+codec or optimizing backend. Legacy images retain their path. G13 remains partial;
+module/dependency integration and the E2/C1/D1/H1/H2 library phases remain open.
+
+Standalone v2 JSON checks can now request `--symbols` for bounded checked root-
+function hover/definition/outline. The v2 LSP requests it automatically; failed
+checks and optional projection refusals clear facts. See [root-function navigation](reference/program-symbols-v2.md).
+No constructor/standard/type/field/package navigation is implied. G13 stays partial.
+
+V2 standalone symbols now also project scope-owned parameters, locals and match
+payloads, including shadowing, indexed writes and match-scrutinee identities.
+Checked type labels are bounded; unresolved array holes remain explicitly unavailable.
+See [binding navigation](reference/program-symbols-v2.md). Type/field/package navigation remains open.
+
+V2 standalone symbols now also expose checked enum/variant outline entries and
+constructor/match-arm variant definitions, selected by nominal IDs and coverage
+plans. See [nominal navigation](reference/program-symbols-v2.md). Alias/record/annotation/field and
+package navigation still require their own evidence; G13 remains partial.
+
+V2 enum aliases now work as constructor and match-arm qualifiers under the same
+canonical nominal IDs, payload rules and standard-call collision refusals. Alias
+signatures consume existing count/text quotas; the canonical lookup index is
+charged to retained type metadata. See [enum aliases](reference/enum-aliases-v2.md).
+Default legacy behavior is unchanged; G13 remains partial.
+
+V2 now admits type-only inline modules containing enums/aliases/records, with
+qualified use by root functions, original spans and qualifier-work admission.
+See [type modules](reference/type-modules-v2.md). Module functions, nested modules, imports and
+dependency linking remain refused; same-file lookup is not package visibility.
+G13 remains partial.
+
+V2 raw syntax/formatting now retains module function bodies with original names,
+spans and parallel module paths under shared admission. Checked source, execution
+and native decoding still explicitly refuse those bodies. See [syntax-only module
+bodies](reference/type-modules-v2.md). Scope/visibility/call linking remain open; G13 is partial.
+
+V2 program checking/execution now supports qualified same-file module functions,
+private/exported call filtering and module-owned type views with charged aggregate
+metadata. See [checked module functions](reference/module-functions-v2.md). Root entry/test selection
+remains root-only. Conflicting root-type shadows, nested modules/imports/dependency
+linking remain refused; the single-entry API stays strict. G13 is partial.

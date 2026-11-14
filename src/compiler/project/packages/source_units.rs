@@ -222,7 +222,7 @@ fn load(root: &Path, limits: LoadLimits) -> Result<LoadedPackageSources, Diagnos
     })
 }
 
-fn read_snapshot(
+pub(super) fn read_snapshot(
     registration: &PackageSource,
     limit: usize,
 ) -> Result<(String, (u64, u64)), Diagnostics> {

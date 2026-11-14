@@ -1,6 +1,7 @@
 # G13: first payload-enum syntax slice for error handling
 
-Status: **Proposed for review; not implemented.** This begins the error-handling
+Status: **Approved by the user and implemented as an additive syntax-only API.**
+See the [API reference](../reference/enum-syntax.md) for exact fields and evidence. This begins the error-handling
 work in the [18-task checklist](../18_TASK_COMPLETION_CHECKLIST.md), after the
 implemented array APIs. It does not implement exceptions, Option/Result or enum
 execution. Existing specialized InputLine/TextRead/TextWrite/ParsedInt records
@@ -25,7 +26,7 @@ identifiers. Keep ordinary lexing and identifier compatibility unchanged. New
 syntax must not globally reserve names or accept old application bodies as typed
 errors. Match parsing/execution is outside this first slice.
 
-## Proposed accepted declaration grammar
+## Approved declaration grammar
 
 ```svr
 enum ReadOutcome {
@@ -53,7 +54,7 @@ variants. Unsupported forms return an error, not partial successful syntax.
 No model syntax, constructors, match statements, guards, wildcard/nested patterns,
 function/closure payload syntax or generic substitution is added.
 
-## Additive Rust API
+## Implemented additive Rust API
 
 Add compiler::sum_syntax with:
 
@@ -79,7 +80,7 @@ fabricate executable semantic diagnostics. Limit failures are structured metadat
 errors with their dimension, never success-with-missing-variants or a fallback to
 unbounded parsing. Refusal is not a whole-project checker success.
 
-## Admission and accounting proposal
+## Implemented admission and accounting
 
 DEFAULT for this opt-in API: 1 MiB source, 100,000 tokens, 4,096 variants,
 16,384 payload-type nodes and 256 KiB retained name/type bytes. Reuse the existing
@@ -97,9 +98,8 @@ components contribute text, not separate type nodes. Nullary variants consume no
 payload-type nodes. Count enum/variant names and the complete canonical retained
 payload spelling once each, with checked cumulative arithmetic and no refunds.
 
-For `enum E { A, B([Int]) }`, expected retained type nodes are 2 and retained text
-is 8 bytes: E + A + B + [Int]. Verify this against actual implementation before
-reporting it as enforced evidence. Token count excludes the final EOF sentinel.
+For `enum E { A, B([Int]) }`, verified retained type nodes are 2 and retained text
+is 8 bytes: E + A + B + [Int]. Exact/one-under tests enforce these counts. Token count excludes the final EOF sentinel.
 An empty variant list needs zero variant/type-node allowance but still pays its
 enum name/text/tokens. Comments are not retained name text. Source-byte admission
 remains independent. Admission errors discard all intermediate owned metadata.
@@ -146,7 +146,8 @@ HTTP/resource/process work must not claim those prerequisites from syntax alone.
 [AGENTS.md](../../AGENTS.md) says: "Document and pause before fundamental syntax,
 memory-model, type-semantics or compatibility decisions." The approved
 [collection/data plan](G13_COLLECTIONS_AND_DATA.md) also requires review before
-the next error-model decision. Approval requested here covers this exact additive,
-non-executable parser API, grammar and admission table. It does not approve new
+the next error-model decision. The user explicitly approved this additive,
+non-executable parser API, grammar and admission table before implementation.
+Do not ask again for this parser contract. The approval does not cover new
 runtime values/IR, a public AST break, generics, match execution or migration of
 existing standard result records. Earlier array/resource approvals remain valid.

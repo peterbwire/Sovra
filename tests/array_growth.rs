@@ -447,3 +447,27 @@ if(failure!=='execution value node allowance exceeded'||svrNodeRemaining!==size.
         String::from_utf8_lossy(&result.stderr)
     );
 }
+
+#[test]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")
+))]
+fn ordinary_collection_algorithms_are_independently_reusable_and_fuel_bounded() {
+    let package = sovra::compiler::project::packages::compile_registered_records(
+        "examples/array-slice-packages/algorithms-app",
+    )
+    .unwrap();
+    compare(
+        package.ir(),
+        policy(100000, 100000),
+        "[2, 0, 3, -1, 3]\n[-1, 0, 2, 3, 3]\n[3, -1, 3, 0, 2]\n[]\n[]\n[7]\n[1, 2, 3]\n[1, 2, 3]\n",
+        None,
+    );
+    compare(
+        package.ir(),
+        policy(0, 0),
+        "",
+        Some("execution value node allowance exceeded"),
+    );
+}

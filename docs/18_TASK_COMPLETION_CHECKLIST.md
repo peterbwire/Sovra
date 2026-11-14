@@ -104,25 +104,59 @@ Task Manager feature expansion remains paused.
 
 ## G13 — General standard library and data/error foundations (active, partial)
 
-- [x] Typed arrays/array_len, iterative value handling, optional fuel and approved
-  Rust/Node Worker cooperative controls, with independent package evidence.
-- [x] Add snapshot array slicing with typed results, strict bounds, explicit fuel
-  and an independent registered package consumer.
-- [x] Add snapshot append/concat with first-directed typing, checked length,
-  complete fuel and independent filtering/record-package consumption.
-- [ ] Add further array operations, Map/Set and generic abstractions under explicit
-  element/equality/iteration/snapshot contracts.
-- [ ] Define and implement structured errors, payload sum types, Option/Result,
-  exhaustive matching and propagation before depending on them in public APIs.
-- [ ] Add binary buffers/codecs and bounded JSON with explicit Unicode, precision,
-  duplicate-key, error-location and depth/size policies.
-- [ ] Expand filesystem/path/directory operations and dates/clocks/timezones/timers.
-- [ ] Add process argument/environment/launch/exit/stream APIs with G14's resource,
-  authority, cancellation and cleanup contracts; do not expose ambient authority silently.
-- [ ] For each capability: independent package consumer, documented valid/error cases,
-  exact/exceeded limits and actual supported-backend evidence.
-- [ ] Review helper-work/physical-memory/default policies separately. Current fuel
-  and cooperative checks do not establish process isolation or hard deadlines.
+The approved [completion contract](design/G13_COMPLETION_CONTRACT.md) is the
+acceptance boundary. This task is not finalized by compiler scaffolding or a
+Node-free executable alone. Current supported v2 behavior is opt-in; legacy
+commands and representations remain the default.
+
+| Phase | Current state | Required work before closure |
+| --- | --- | --- |
+| C0 — ordinary array algorithms | Implemented bounded slice/append/concat and ordinary reversal/sorting libraries with independent consumers. | Retain supported-host and snapshot/resource evidence as integration expands. |
+| E1 — nominal enums/matching | Root and type-only-module aliases/records/enums, constructors, exhaustive recursive statement matching, linked forward/mutual functions, bounded Rust VM, commands, single-entry locks, syntax formatting and standalone IDE integration are implemented. Source-backed native construction is implemented; exact host evidence is separate. | Module/dependency visibility/linking, executable backend/codec compatibility, v2 package editor contexts and type/field symbol evidence and consolidated parity/host qualification. |
+| E2 — generic abstractions and errors | Approved contract; not implemented. | Bounded symbolic checking and concrete specialization for functions/records/enums/aliases, qualified std::Option/std::Result/std::Error, explicit adapters and compatible postfix propagation. |
+| C1 — Map/Set | Approved contract; not implemented. | Generic snapshot collections, Key constraints, deterministic operations/equality/iteration and full copy/fuel admission. |
+| D1 — bytes/codecs/JSON | Approved contract; not implemented. | Byte/Bytes, strict UTF-8/hex/base64, recursive JSON, exact integers, duplicate/error-offset policy and complete resource/error qualification. |
+| H1 — filesystem/time | Existing narrow text services; general capability API not implemented. | Explicit-authority paths/metadata/directories, guarded mutations and portable errors; Gregorian dates, UTC/fixed offsets, wall/monotonic clocks and bounded timers. |
+| H2 — processes | Existing program arguments/status; owned child-process API not implemented. | Explicit executable/argument/environment/cwd policy, bounded streams, cancellation/deadlines, kill/reap and failed-cleanup reporting with G14 prerequisites. |
+| Q1 — consolidated qualification | Focused tests and host artifacts exist; full completion proof remains open. | Independent locked consumers, backend parity, malformed/extreme/cleanup tests, exact native/platform artifacts, current full regression and policy review. |
+
+Implemented evidence:
+
+- [Root-program checking](reference/program-source-v2.md),
+  [linked VM execution](reference/program-execution-v2.md),
+  [recursive controls/matches](reference/control-match-v2.md) and
+  [flat runtime snapshots](reference/runtime-values-v2.md).
+- Opt-in [check](reference/experimental-v2-check.md),
+  [run](reference/experimental-v2-run.md), [test](reference/experimental-v2-test.md),
+  [bounded IR inspection](reference/experimental-v2-ir.md) and
+  [explicit narrow host grants](reference/experimental-v2-hosts.md).
+- Guarded [single-entry packages](reference/experimental-v2-packages.md) and
+  [captured-byte locks](reference/experimental-v2-locks.md). Dependencies and
+  registered modules remain refused by v2 compilation.
+- [Source/package formatting](reference/experimental-v2-format.md) preserves
+  tokens/comments/AST/fixed points and reuses guarded publication. Formatting a
+  selected graph does not compile or link it.
+- [Standalone IDE mode](reference/experimental-v2-ide.md) supplies diagnostics,
+  formatting, source tasks, checked function and parameter/local/payload navigation;
+  unavailable type/field/package facts are not guessed.
+- [Source-backed native builds](reference/experimental-v2-native.md) embed bounded
+  source and recheck/lower at startup, with finite runtime limits and no stdin/file
+  services. This is not an executable IR codec or optimizing backend.
+
+- [x] Typed arrays/array_len, iterative values and reviewed runtime controls.
+- [x] Snapshot slice/append/concat with typed results, strict bounds and copy fuel.
+- [x] Independent ordinary-library reversal/sorting and snapshot/error cases.
+- [x] Source-owned enum syntax and executable root-program enum/match foundations.
+- [x] Explicit v2 source-backed native construction and default-denied I/O.
+- [ ] Complete E1 package/backend/tooling integration and qualification.
+- [ ] Implement E2 generic functions/types and structured error propagation.
+- [ ] Implement C1 generic Map/Set collections.
+- [ ] Implement D1 binary buffers/codecs and bounded strict JSON.
+- [ ] Implement H1 filesystem/path/directory and date/clock/timer capabilities.
+- [ ] Implement H2 owned process resources with explicit authority and cleanup.
+- [ ] Complete Q1 independent-consumer/backend/host and full-regression evidence.
+- [ ] Review helper-work, physical-memory and default policies separately;
+  logical fuel/cooperative controls are not process isolation or hard deadlines.
 
 ## G14 — Resources, networking, HTTP and server lifecycle (planned/design)
 
@@ -174,9 +208,85 @@ Task Manager feature expansion remains paused.
 Keep G11/G12 incomplete status explicit and continue G13 toward useful libraries.
 The reviewed [array_slice](design/G13_ARRAY_SLICE.md) operation is now implemented.
 Reviewed [snapshot append/concat](design/G13_ARRAY_GROWTH.md) are now implemented.
-Next review: the [bounded payload-enum syntax slice](design/G13_SUM_TYPE_SYNTAX.md)
-starts error-handling foundations without claiming enum execution. Continue the
+The approved [bounded payload-enum syntax slice](design/G13_SUM_TYPE_SYNTAX.md)
+is now implemented without enum execution. Next: nominal enum/type checking,
+constructors and exhaustive handling under explicit contracts. Continue the
 remaining collection/error/data work; checklist expansion does not
 approve future type, bounds, error, memory, authority or compatibility semantics.
 G14 follows reviewed error/binary/resource foundations. Windows-specific evidence remains deferred until a
 Windows host is available; portable work can continue independently.
+
+Opt-in v2 IDE mode now provides standalone buffer diagnostics, snapshot formatting
+and source-only check/IR/run tasks. See [v2 editor mode](reference/experimental-v2-ide.md).
+V2 package overlays, type/field navigation, semantic completion and other-host
+qualification remain open; G13 remains partial. Legacy mode remains the default.
+
+`fmt --experimental-v2 --package --check|--write` now reuses bounded package
+selection, all-source preflight and guarded staged publication with the v2 syntax
+formatter. See [package formatting](reference/experimental-v2-format.md). It does not link or execute
+dependencies/registered modules; v2 compilation and G13 completion gates remain open.
+
+`build --experimental-v2 --emit exe --output PATH` now builds a private
+source-backed native runner with a version/model/feature-checked image, finite
+shared CLI policy and no stdin/file services. See [v2 native scope](reference/experimental-v2-native.md).
+The binary rechecks/lowers embedded source at startup; it is not an executable IR
+codec or optimizing backend. Legacy images retain their path. G13 remains partial;
+module/dependency integration and the E2/C1/D1/H1/H2 library phases remain open.
+
+Standalone v2 JSON checks can now request `--symbols` for bounded checked root-
+function hover/definition/outline. The v2 LSP requests it automatically; failed
+checks and optional projection refusals clear facts. See [root-function navigation](reference/program-symbols-v2.md).
+No constructor/standard/type/field/package navigation is implied. G13 stays partial.
+
+V2 standalone symbols now also project scope-owned parameters, locals and match
+payloads, including shadowing, indexed writes and match-scrutinee identities.
+Checked type labels are bounded; unresolved array holes remain explicitly unavailable.
+See [binding navigation](reference/program-symbols-v2.md). Type/field/package navigation remains open.
+
+V2 standalone symbols now also expose checked enum/variant outline entries and
+constructor/match-arm variant definitions, selected by nominal IDs and coverage
+plans. See [nominal navigation](reference/program-symbols-v2.md). Alias/record/annotation/field and
+package navigation still require their own evidence; G13 remains partial.
+
+V2 enum aliases now work as constructor and match-arm qualifiers under the same
+canonical nominal IDs, payload rules and standard-call collision refusals. Alias
+signatures consume existing count/text quotas; the canonical lookup index is
+charged to retained type metadata. See [enum aliases](reference/enum-aliases-v2.md).
+Default legacy behavior is unchanged; G13 remains partial.
+
+V2 now admits type-only inline modules containing enums/aliases/records, with
+qualified use by root functions, original spans and qualifier-work admission.
+See [type modules](reference/type-modules-v2.md). Module functions, nested modules, imports and
+dependency linking remain refused; same-file lookup is not package visibility.
+G13 remains partial.
+
+V2 raw syntax/formatting now retains module function bodies with original names,
+spans and parallel module paths under shared admission. Checked source, execution
+and native decoding still explicitly refuse those bodies. See [syntax-only module
+bodies](reference/type-modules-v2.md). Scope/visibility/call linking remain open; G13 is partial.
+
+V2 program checking/execution now supports qualified same-file module functions,
+private/exported call filtering and module-owned type views with charged aggregate
+metadata. See [checked module functions](reference/module-functions-v2.md). Root entry/test selection
+remains root-only. Conflicting root-type shadows, nested modules/imports/dependency
+linking remain refused; the single-entry API stays strict. G13 is partial.
+
+
+G13 IDE checkpoint (2026-11-14): checked same-file module containers now appear
+in the flat outline with original source/name ranges and shared projection
+quotas. Invalid bodies still clear all facts. This does not complete imports,
+nested modules, dependency linking or G13. See
+[checked navigation](reference/program-symbols-v2.md).
+
+
+G13 IDE declaration checkpoint (2026-11-14): root/module records and type aliases
+now have checked outline entries, original ranges and aggregate quota coverage.
+Type-use/field navigation and remaining G13 language/package work stay open. See
+[checked navigation](reference/program-symbols-v2.md).
+
+
+G13 enum header navigation checkpoint (2026-11-14): direct enum parameter/return
+annotations now navigate through checked module scope and canonical enum IDs,
+including array wrappers. Alias/local/record/field targets and remaining G13
+package/language phases stay open. See
+[checked navigation](reference/program-symbols-v2.md).

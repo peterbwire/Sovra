@@ -10,8 +10,9 @@ const scratch = await mkdtemp(join(tmpdir(), 'sovra-vscode-test-'));
 const artifacts = resolve('target/ide');
 await mkdir(artifacts, { recursive: true });
 const untrusted = process.env.SOVRA_TEST_UNTRUSTED === '1';
+const v2 = process.env.SOVRA_TEST_V2 === '1';
 const packageWorkspace = process.env.SOVRA_TEST_PACKAGE_WORKSPACE === '1';
-if (untrusted && packageWorkspace) throw new Error('Choose one host acceptance mode');
+if ([untrusted, packageWorkspace, v2].filter(Boolean).length > 1) throw new Error('Choose one host acceptance mode');
 const workspace = join(scratch, 'workspace with spaces');
 if (packageWorkspace) {
     await mkdir(join(workspace, 'app/src'), { recursive: true }); await mkdir(join(workspace, 'lib'), { recursive: true });
@@ -20,6 +21,11 @@ if (packageWorkspace) {
     await writeFile(join(workspace, 'app/src/main.svr'), 'use api::exports; fn main() { print(api::exports::value()); }');
     await writeFile(join(workspace, 'lib/main.svr'), '// λ😀\r\nmod exports { export fn value() -> Int { return 1; } } fn main() {}');
     await writeFile(join(workspace, 'notes.svr'), 'fn main() {}');
+}
+if (v2) {
+    await mkdir(join(workspace, 'src'), { recursive: true });
+    await writeFile(join(workspace, 'src/main.svr'), 'fn main(){}');
+    await writeFile(join(workspace, 'sovra.toml'), '[project]\nname="app"\nentry="src/main.svr"\n[dependencies.missing]\npath="missing"\n');
 }
 if (untrusted) {
     await mkdir(join(scratch, 'workspace'));
@@ -30,9 +36,9 @@ try {
     const options = {
         version: '1.106.0', cachePath: process.env.SOVRA_VSCODE_CACHE || join(scratch, 'downloads'),
         extensionDevelopmentPath: resolve('toolchain/ide'),
-        extensionTestsPath: resolve(packageWorkspace ? 'scripts/fixtures/vscode-package-tests.cjs' : 'scripts/fixtures/vscode-extension-tests.cjs'),
-        extensionTestsEnv: { SOVRA_TEST_COMPILER: resolve('target/debug', process.platform === 'win32' ? 'svr.exe' : 'svr'), SOVRA_TEST_NODE: process.execPath, SOVRA_TEST_ARTIFACTS: artifacts, SOVRA_TEST_UNTRUSTED: untrusted ? '1' : '0', SOVRA_TEST_WORKSPACE: packageWorkspace ? workspace : '' },
-        launchArgs: ['--no-sandbox', '--disable-gpu', '--skip-welcome', '--skip-release-notes', ...(untrusted ? [join(scratch, 'workspace')] : [...(packageWorkspace ? [workspace] : []), '--disable-workspace-trust']), '--user-data-dir', join(scratch, 'profile'), '--extensions-dir', join(scratch, 'extensions'), ...(process.env.SOVRA_VSCODE_HEADLESS === '1' ? ['--ozone-platform=headless'] : [])],
+        extensionTestsPath: resolve(v2 ? 'scripts/fixtures/vscode-v2-tests.cjs' : packageWorkspace ? 'scripts/fixtures/vscode-package-tests.cjs' : 'scripts/fixtures/vscode-extension-tests.cjs'),
+        extensionTestsEnv: { SOVRA_TEST_COMPILER: resolve('target/debug', process.platform === 'win32' ? 'svr.exe' : 'svr'), SOVRA_TEST_NODE: process.execPath, SOVRA_TEST_ARTIFACTS: artifacts, SOVRA_TEST_UNTRUSTED: untrusted ? '1' : '0', SOVRA_TEST_WORKSPACE: (packageWorkspace || v2) ? workspace : '' },
+        launchArgs: ['--no-sandbox', '--disable-gpu', '--skip-welcome', '--skip-release-notes', ...(untrusted ? [join(scratch, 'workspace')] : [...((packageWorkspace || v2) ? [workspace] : []), '--disable-workspace-trust']), '--user-data-dir', join(scratch, 'profile'), '--extensions-dir', join(scratch, 'extensions'), ...(process.env.SOVRA_VSCODE_HEADLESS === '1' ? ['--ozone-platform=headless'] : [])],
     };
     if (untrusted) {
         // runTests adds --disable-workspace-trust. Direct launch verifies actual restricted mode.

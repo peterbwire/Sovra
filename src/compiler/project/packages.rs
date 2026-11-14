@@ -1328,3 +1328,11 @@ mod tests {
         assert_eq!(resolve(root).unwrap_err().items[0].code, "E4007");
     }
 }
+
+mod root_source;
+pub use root_source::{capture_root_source, CapturedRootSource};
+
+pub use locks::{
+    check_root_source_lock, generate_root_source_lock, verify_existing_root_source_lock,
+    verify_root_source_lock, write_root_source_lock,
+};

@@ -17,7 +17,7 @@ const LIMIT = 512 * 1024;
 const TOTAL = 4 * 1024 * 1024;
 const zero = { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } };
 let initialized = false, shutdown = false, active, pumping = false, exiting = false;
-let roots = Promise.resolve([]), workspaceMode = false, packageSequence = 0;
+let roots = Promise.resolve([]), workspaceMode = false, packageSequence = 0, experimentalV2 = false;
 const send = value => {
     if (exiting) return;
     if (process.stdout.writableLength > 4 * 1024 * 1024) return stop(1);
@@ -67,7 +67,7 @@ function symbolAt(doc, point) {
     return { declaration: reference.declaration || doc.evidence.declarations[reference.definition], signature: reference.signature, range: reference.range };
 }
 
-async function compilerReport(doc, args, cwd, input) {
+async function compilerReport(doc, args, cwd, input, textOnly = false) {
     if (doc.cancelled || shutdown) throw new Error('Document changed');
     return new Promise((accept, reject) => {
         const child = spawn(compiler, args, { cwd, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
@@ -85,7 +85,11 @@ async function compilerReport(doc, args, cwd, input) {
             clearTimeout(timer);
             if (failure) return reject(new Error(failure));
             if (code !== 0 && code !== 1) return reject(new Error('Compiler check did not complete'));
-            try { accept(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(output)))); }
+            try {
+                const text = new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(output));
+                if (textOnly && code !== 0) return reject(new Error('Compiler formatter refused the source'));
+                accept(textOnly ? text : JSON.parse(text));
+            }
             catch { reject(new Error('Compiler returned an invalid JSON report')); }
         });
     });
@@ -138,7 +142,7 @@ async function check(doc) {
         const source = join(directory, 'main.svr');
         await writeFile(source, doc.text, { mode: 0o600 });
         if (doc.cancelled || shutdown) return;
-        const report = await compilerReport(doc, ['check', '--format', 'json', '--symbols', source], directory);
+        const report = await compilerReport(doc, experimentalV2 ? ['check', '--experimental-v2', '--format', 'json', '--symbols', source] : ['check', '--format', 'json', '--symbols', source], directory);
         if (report.schema_version !== 1 || report.kind !== 'source' || !Array.isArray(report.diagnostics)) throw new Error('Unsupported compiler report');
         const bytes = Buffer.from(doc.text, 'utf8');
         const diagnostics = report.diagnostics.map(item => ({
@@ -175,6 +179,7 @@ async function taskTarget(doc, control) {
     const file = await canonicalFile(doc.uri);
     if (!file) throw new Error('Task source must exist on disk');
     const standalone = { schema_version: 1, package: false, target: file, cwd: dirname(file), sources: [file], manifests: [] };
+    if (experimentalV2) return standalone;
     const root = await nearestPackage(file, await roots);
     if (!root) return standalone;
     const report = await compilerReport(control, ['check', '--format', 'json', '--package-context', root], root);
@@ -197,14 +202,14 @@ function retireTask(id, record, code, message) {
     taskRequests.delete(id); clearTimeout(record.timer); record.cancelled = true; record.child?.kill();
     error(id, code, message);
 }
-function requestTaskTarget(id, params) {
+function requestDocumentAction(id, params, action, formatting = false) {
     const doc = documents.get(params?.textDocument?.uri);
-    if (!doc || params?.textDocument?.version !== doc.version) return error(id, -32801, 'Document changed or unavailable');
+    if (!doc || doc.rejected || (!formatting && params?.textDocument?.version !== doc.version)) return error(id, -32801, 'Document changed or unavailable');
     if (activeTaskRequests.size >= 4 || taskRequests.has(id)) return error(id, -32000, 'Too many task target requests');
-    const record = { doc, cancelled: false };
-    record.timer = setTimeout(() => retireTask(id, record, -32800, 'Task target request timed out'), 11000);
+    const record = { doc, cancelled: false, formatting };
+    record.timer = setTimeout(() => retireTask(id, record, -32800, formatting ? 'Formatting request timed out' : 'Task target request timed out'), 11000);
     taskRequests.set(id, record); activeTaskRequests.add(record);
-    void taskTarget(doc, record).then(result => {
+    void action(doc, record, id).then(result => {
         if (taskRequests.get(id) === record && !record.cancelled && documents.get(doc.uri) === doc && !shutdown) send({ id, result });
     }).catch(cause => {
         if (taskRequests.get(id) === record && !record.cancelled && !shutdown) error(id, -32000, cause.message);
@@ -212,6 +217,23 @@ function requestTaskTarget(id, params) {
         clearTimeout(record.timer); activeTaskRequests.delete(record);
         if (taskRequests.get(id) === record) taskRequests.delete(id);
     });
+}
+
+async function formatDocument(doc, control, id) {
+    let directory;
+    try {
+        directory = await mkdtemp(join(tmpdir(), 'sovra-lsp-format-'));
+        const source = join(directory, 'main.svr');
+        await writeFile(source, doc.text, { mode: 0o600 });
+        if (control.cancelled || documents.get(doc.uri) !== doc || shutdown) throw new Error('Document changed');
+        const text = await compilerReport(control, ['fmt', ...(experimentalV2 ? ['--experimental-v2'] : []), source], directory, undefined, true);
+        if (control.cancelled || documents.get(doc.uri) !== doc || shutdown) throw new Error('Document changed');
+        if (!scalar(text)) throw new Error('Formatter returned invalid Unicode');
+        const lines = doc.text.split(/\r\n|\r|\n/);
+        const result = text === doc.text ? [] : [{ range: { start: { line: 0, character: 0 }, end: { line: lines.length - 1, character: lines.at(-1).length } }, newText: text }];
+        frame({ jsonrpc: '2.0', id, result }); // Enforce transport admission before publication.
+        return result;
+    } finally { if (directory) await rm(directory, { recursive: true, force: true }); }
 }
 
 function cancel(doc) {
@@ -248,10 +270,12 @@ function receive(message) {
     if (method === 'exit') return stop(shutdown ? 0 : 1);
     if (method === 'initialize' && !initialized && id !== undefined) {
         if (Array.isArray(params?.workspaceFolders) && params.workspaceFolders.length > 16) return error(id, -32602, 'At most 16 workspace folders supported');
-        workspaceMode = (Array.isArray(params?.workspaceFolders) && params.workspaceFolders.length > 0) || typeof params?.rootUri === 'string';
+        if (params?.initializationOptions?.experimentalV2 !== undefined && typeof params.initializationOptions.experimentalV2 !== 'boolean') return error(id, -32602, 'experimentalV2 must be boolean');
+        experimentalV2 = params?.initializationOptions?.experimentalV2 === true;
+        workspaceMode = !experimentalV2 && ((Array.isArray(params?.workspaceFolders) && params.workspaceFolders.length > 0) || typeof params?.rootUri === 'string');
         roots = workspaceRoots(params).catch(() => []);
         initialized = true;
-        return send({ id, result: { capabilities: { positionEncoding: 'utf-16', textDocumentSync: { openClose: true, change: 1 }, hoverProvider: true, definitionProvider: true, documentSymbolProvider: true, completionProvider: { resolveProvider: false }, experimental: { sovraTaskTarget: true } }, serverInfo: { name: 'sovra-lsp', version: '0.3.0' } } });
+        return send({ id, result: { capabilities: { positionEncoding: 'utf-16', textDocumentSync: { openClose: true, change: 1 }, hoverProvider: true, definitionProvider: true, documentSymbolProvider: true, documentFormattingProvider: true, completionProvider: { resolveProvider: false }, experimental: { sovraTaskTarget: true, sovraPipeline: experimentalV2 ? 'v2-standalone' : 'legacy' } }, serverInfo: { name: 'sovra-lsp', version: '0.3.0' } } });
     }
     if (!initialized) { if (id !== undefined) error(id, -32002, 'Server not initialized'); return; }
     if (shutdown) { if (id !== undefined) error(id, -32600, 'Server has shut down'); return; }
@@ -283,9 +307,10 @@ function receive(message) {
         return;
     }
     if (method === 'workspace/didChangeWatchedFiles' || method === 'textDocument/didSave') { if (workspaceMode) refreshWorkspace(); return; }
-    if (method === 'sovra/taskTarget' && id !== undefined) return requestTaskTarget(id, params);
+    if (method === 'textDocument/formatting' && id !== undefined) return requestDocumentAction(id, params, formatDocument, true);
+    if (method === 'sovra/taskTarget' && id !== undefined) return requestDocumentAction(id, params, taskTarget);
     if (method === 'textDocument/completion' && id !== undefined) {
-        const words = ['fn', 'let', 'mut', 'return', 'if', 'else', 'while', 'mod', 'export', 'use', 'true', 'false', 'Int', 'Float', 'Bool', 'String', 'Unit'];
+        const words = experimentalV2 ? ['fn', 'let', 'mut', 'return', 'if', 'else', 'while', 'mod', 'enum', 'match', 'type', 'struct', 'export', 'true', 'false', 'Int', 'Float', 'Bool', 'String', 'Unit'] : ['fn', 'let', 'mut', 'return', 'if', 'else', 'while', 'mod', 'export', 'use', 'true', 'false', 'Int', 'Float', 'Bool', 'String', 'Unit'];
         return send({ id, result: documents.has(params?.textDocument?.uri) ? words.map(label => ({ label, kind: 14, detail: 'Sovra keyword/type (basic suggestion)' })) : [] });
     }
     if (id !== undefined && ['textDocument/hover', 'textDocument/definition', 'textDocument/documentSymbol'].includes(method)) {
@@ -296,7 +321,7 @@ function receive(message) {
             symbolRequests.set(id, { doc, message, timer });
             return;
         }
-        if (method === 'textDocument/documentSymbol') return send({ id, result: doc?.evidence?.declarations.map(item => ({ name: item.name, detail: item.signature, kind: 12, range: item.range, selectionRange: item.selectionRange })) || [] });
+        if (method === 'textDocument/documentSymbol') return send({ id, result: doc?.evidence?.declarations.map(item => ({ name: item.name, detail: item.signature, kind: item.kind ?? 12, range: item.range, selectionRange: item.selectionRange })) || [] });
         const symbol = symbolAt(doc, params?.position);
         if (method === 'textDocument/definition') return send({ id, result: symbol?.declaration ? { uri: symbol.declaration.uri || doc.uri, range: symbol.declaration.selectionRange } : null });
         return send({ id, result: symbol ? { contents: { kind: 'plaintext', value: symbol.declaration?.signature || symbol.signature }, range: symbol.range } : null });
@@ -313,7 +338,7 @@ function stop(code) {
     shutdown = true;
     process.stdin.pause();
     const finish = () => {
-        if (pumping) return setTimeout(finish, 10);
+        if (pumping || [...activeTaskRequests].some(record => record.formatting)) return setTimeout(finish, 10);
         process.stdout.end(() => process.exit(code));
     };
     finish();

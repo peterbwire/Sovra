@@ -1,0 +1,28 @@
+enum Outcome {
+    Value(Float),
+    End,
+}
+type Result = Outcome;
+type CopiedResult = Result;
+
+fn make(value: Int) -> CopiedResult {
+    return CopiedResult::Value(value);
+}
+
+fn main() {
+    let result = make(7);
+    match result {
+        Result::End() => {
+            print("end");
+        },
+        CopiedResult::Value(value) => {
+            print(value);
+        },
+    }
+}
+
+fn test_alias_identity() {
+    if make(7) != Outcome::Value(7.0) {
+        std::set_exit_code(1);
+    }
+}

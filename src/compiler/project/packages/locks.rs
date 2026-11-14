@@ -1,6 +1,9 @@
 //! Deterministic local-source lock generation and verification from retained inputs.
 mod json;
-use super::{error, LoadedPackageSources, PackageSourceKind};
+use super::{
+    error, CapturedRootSource, LoadedPackageSources, PackageManifestSnapshot,
+    PackageSourceInventory, PackageSourceKind,
+};
 use crate::compiler::diagnostics::Diagnostics;
 use json::Value;
 use std::{
@@ -65,9 +68,28 @@ fn source(path: &str, bytes: &str) -> Result<Value, Diagnostics> {
     ]))
 }
 fn expected(inputs: &LoadedPackageSources) -> Result<Value, Diagnostics> {
+    let sources: Vec<_> = inputs
+        .units()
+        .iter()
+        .map(|unit| (unit.source_index(), unit.source()))
+        .collect();
+    expected_parts(inputs.inventory(), inputs.manifests(), &sources)
+}
+fn expected_root(inputs: &CapturedRootSource) -> Result<Value, Diagnostics> {
+    expected_parts(
+        inputs.inventory(),
+        inputs.manifests(),
+        &[(0, inputs.source())],
+    )
+}
+fn expected_parts(
+    inventory: &PackageSourceInventory,
+    manifests: &[PackageManifestSnapshot],
+    sources: &[(usize, &str)],
+) -> Result<Value, Diagnostics> {
     let mut roots = Vec::new();
     let mut seen = BTreeSet::new();
-    for source in &inputs.inventory().sources {
+    for source in &inventory.sources {
         if seen.insert(source.package_root.clone()) {
             roots.push(source.package_root.clone());
         }
@@ -79,20 +101,22 @@ fn expected(inputs: &LoadedPackageSources) -> Result<Value, Diagnostics> {
         .collect();
     let mut packages = Vec::new();
     for root in roots {
-        let package = &inputs.inventory().graph.packages[&root];
-        let manifest = inputs
-            .manifests()
+        let package = &inventory.graph.packages[&root];
+        let manifest = manifests
             .iter()
             .find(|manifest| manifest.package_root() == root)
             .ok_or_else(|| problem("missing captured manifest"))?;
         let mut entry = None;
         let mut modules = Vec::new();
-        for unit in inputs.units() {
-            let registration = &inputs.inventory().sources[unit.source_index()];
+        for &(source_index, bytes) in sources {
+            let registration = inventory
+                .sources
+                .get(source_index)
+                .ok_or_else(|| problem("missing captured source registration"))?;
             if registration.package_root != root {
                 continue;
             }
-            let record = source(&registration.declared_path, unit.source())?;
+            let record = source(&registration.declared_path, bytes)?;
             match &registration.kind {
                 PackageSourceKind::Entry => entry = Some(record),
                 PackageSourceKind::Module(name) => {
@@ -175,6 +199,48 @@ pub fn verify_source_lock(inputs: &LoadedPackageSources, lock: &str) -> Result<(
         ));
     }
     Ok(())
+}
+
+/// Generate the same version-one schema from guarded single-entry captured bytes.
+/// No legacy parsing, source rereads, semantic checking, execution or publication.
+pub fn generate_root_source_lock(inputs: &CapturedRootSource) -> Result<SourceLock, Diagnostics> {
+    let output = json::canonical(&expected_root(inputs)?).map_err(problem)?;
+    json::parse(&output).map_err(problem)?;
+    Ok(SourceLock { text: output })
+}
+/// Verify exact captured root manifest/entry bytes and metadata under the existing
+/// strict schema. No authentication, semantic checking or disk-source rereads.
+pub fn verify_root_source_lock(inputs: &CapturedRootSource, lock: &str) -> Result<(), Diagnostics> {
+    let actual = json::parse(lock).map_err(problem)?;
+    if actual != expected_root(inputs)? {
+        return Err(problem(
+            "lock does not match captured graph and input bytes",
+        ));
+    }
+    Ok(())
+}
+/// Read the existing bounded lock through the guarded reader and verify these same
+/// captured inputs. Never updates a lock or falls back to unlocked compilation.
+pub fn verify_existing_root_source_lock(inputs: &CapturedRootSource) -> Result<(), Diagnostics> {
+    let lock = super::source_units::read_guarded(
+        &inputs.root().join("sovra.lock"),
+        inputs.root(),
+        MAX_LOCK_BYTES,
+    )
+    .map_err(|_| problem("cannot capture lock: missing, unsafe, unreadable or over budget"))?;
+    verify_root_source_lock(inputs, &lock)
+}
+/// Capture root-only inputs and atomically publish a version-one source lock using
+/// the existing guarded publisher. Does not parse/check or execute source.
+pub fn write_root_source_lock(root: impl AsRef<Path>) -> Result<(), Diagnostics> {
+    let inputs = super::capture_root_source(root)?;
+    let lock = generate_root_source_lock(&inputs)?;
+    publication::publish(inputs.root(), lock.as_str()).map_err(problem)
+}
+/// Capture root-only inputs and verify the existing lock without writes/execution.
+pub fn check_root_source_lock(root: impl AsRef<Path>) -> Result<(), Diagnostics> {
+    let inputs = super::capture_root_source(root)?;
+    verify_existing_root_source_lock(&inputs)
 }
 
 /// Verify an existing root lock and compile exactly the same captured inputs.

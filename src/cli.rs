@@ -19,6 +19,8 @@ macro_rules! cli_error {
     };
 }
 
+mod extended;
+
 /// The version of the Sovra toolchain exposed by the CLI.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -100,6 +102,13 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
     }
 
     if command == "lock" {
+        if args
+            .iter()
+            .take_while(|a| a.as_str() != "--")
+            .any(|a| a == "--experimental-v2")
+        {
+            return extended::lock(args);
+        }
         return lock_command(args);
     }
     if command == "doctor" {
@@ -109,7 +118,14 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
         return crate::formatter::command(args);
     }
 
-    let help_requested = if command == "check" || command == "run" {
+    let help_requested = if command == "check"
+        || command == "run"
+        || (matches!(command, "test" | "build")
+            && args
+                .iter()
+                .take_while(|a| a.as_str() != "--")
+                .any(|a| a == "--experimental-v2"))
+    {
         args.iter()
             .take_while(|arg| arg.as_str() != "--")
             .any(|arg| arg == "--help" || arg == "-h")
@@ -125,23 +141,35 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
                 "Usage: svr test [--locked] [--format human|json] <source.svr|package-directory>"
             );
             println!("  Run root-level parameterless Unit test_ functions; stdin is unavailable.");
+            println!("       svr test --experimental-v2 [--locked] [--format human|json] <source.svr|package-directory>");
+            println!("  Experimental v2: finite per-test/suite limits, no stdin/filesystem hosts.");
         } else if command == "build" {
             println!("Usage: svr build [--locked] [--emit ir|js] <source.svr|package-directory>");
             println!("       svr build --emit exe --output PATH <source.svr|package-directory>");
             println!("  exe: host-native output; Rust/Cargo and a host linker are build-time requirements.");
+            println!(
+                "       svr build --experimental-v2 [--locked] [--emit ir|exe] [--output PATH] <source.svr|package-directory>"
+            );
+            println!("  Experimental v2: bounded IR inspection or source-backed native executable; JS unavailable.");
         } else if command == "check" {
             println!("Usage: svr check [--format human|json] [--service-calls] [--symbols] <source.svr|project-directory>");
             println!("       svr check --format json --overlays-stdin <package-directory>");
+            println!("       svr check --experimental-v2 [--locked] [--format human|json] [--symbols] <source.svr|package-directory>");
+            println!("  --experimental-v2 Opt-in single-entry source/package enum/match checking only; no execution.");
             println!("  --service-calls  Experimental project-only contract checks; incomplete coverage fails.");
             println!("  --symbols        Opt-in checked symbol/type evidence for successful standalone JSON checks.");
             println!("  --overlays-stdin Framed unsaved package buffers; requires JSON, never executes or writes source.");
             println!("  --package-context Resolve canonical entry paths only; JSON, no source validation.");
-            println!("  --locked         Verify sovra.lock; requires --executable-package.");
+            println!("  --locked         Verify sovra.lock; requires --executable-package or --experimental-v2 package mode.");
             println!("  --executable-package Compile all package sources and linked IR; never execute them.");
         } else {
             println!(
                 "Usage: svr run [--locked] <source.svr|package-directory> [-- <program-arg>...]"
             );
+            println!("       svr run --experimental-v2 [--locked] [--allow-stdin] [--allow-files] <source.svr|package-directory> [-- <program-arg>...]");
+            println!("  Experimental v2 uses finite VM limits and captured output; stdin/filesystem services require explicit grants.");
+            println!("  --allow-stdin   Grant bounded process line input (experimental run only).");
+            println!("  --allow-files   Grant process-permission text-file access (experimental run only; not a sandbox).");
         }
         return ExitCode::SUCCESS;
     }
@@ -155,13 +183,43 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
         return new_command(args);
     }
 
+    if command == "run"
+        && args
+            .iter()
+            .take_while(|a| a.as_str() != "--")
+            .any(|a| a == "--experimental-v2")
+    {
+        return extended::run(args);
+    }
+    if command == "build"
+        && args
+            .iter()
+            .take_while(|a| a.as_str() != "--")
+            .any(|a| a == "--experimental-v2")
+    {
+        return extended::build(args);
+    }
     if command == "run" || command == "build" {
         return compile_command(command, args);
     }
     if command == "check" {
+        if args
+            .iter()
+            .take_while(|a| a.as_str() != "--")
+            .any(|a| a == "--experimental-v2")
+        {
+            return extended::check(args);
+        }
         return check_command(args);
     }
     if command == "test" {
+        if args
+            .iter()
+            .take_while(|a| a.as_str() != "--")
+            .any(|a| a == "--experimental-v2")
+        {
+            return extended::test(args);
+        }
         return test_command(args);
     }
 
@@ -1074,6 +1132,7 @@ fn lock_command(args: &[String]) -> ExitCode {
     use compiler::project::packages;
     if matches!(args, [arg] if arg == "--help" || arg == "-h") {
         println!("Usage: svr lock [--check] <package-directory>");
+        println!("       svr lock --experimental-v2 [--check] <package-directory>");
         return ExitCode::SUCCESS;
     }
     let mut check = false;

@@ -20,9 +20,11 @@ async function run() {
     const doc = await vscode.workspace.openTextDocument({ language: 'sovra', content: text });
     await vscode.window.showTextDocument(doc);
     if (untrusted) {
+        await config.update('experimentalV2', true, vscode.ConfigurationTarget.Global);
         await vscode.commands.executeCommand('sovra.restartServer');
         await new Promise(done => setTimeout(done, 1500));
         assert.deepEqual(vscode.languages.getDiagnostics(doc.uri), []);
+        assert.deepEqual(await vscode.commands.executeCommand('vscode.executeFormatDocumentProvider', doc.uri, { tabSize: 4, insertSpaces: true }) || [], []);
         await fs.writeFile(path.join(process.env.SOVRA_TEST_ARTIFACTS, 'vscode-untrusted-verification.json'), JSON.stringify({ success: true, host: vscode.version, checks: ['untrusted workspace activation', 'diagnostics disabled', 'restart remains gated'] }, null, 2));
         return;
     }

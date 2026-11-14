@@ -25,6 +25,11 @@ const hash = path => createHash('sha256').update(readFileSync(path)).digest('hex
 const inputs = [
     'Cargo.toml', 'Cargo.lock', 'src/formatter.rs', 'src/formatter/files.rs',
     'src/formatter/layout.rs', 'src/formatter/equivalence.rs', 'src/formatter/packages.rs',
+    'src/formatter/v2.rs', 'src/compiler/v2/entry_source.rs', 'src/compiler/v2/mod.rs',
+    'src/compiler/v2/function.rs', 'src/compiler/v2/recursive_match.rs',
+    'src/compiler/v2/match_syntax.rs', 'src/compiler/sum_syntax.rs',
+    'src/compiler/parser.rs', 'src/compiler/lexer.rs',
+    'tests/program_syntax_v2.rs', 'tests/cli_v2_fmt.rs',
     'src/compiler/project/packages.rs', 'src/compiler/project/packages/executable.rs',
     'scripts/qualify-formatter.mjs', 'scripts/test-formatter-qualification.mjs',
     'scripts/test-formatter.mjs', 'scripts/test-formatter-packages.mjs',
@@ -43,7 +48,7 @@ mkdirSync(logs, { recursive: true });
 function run(name, binary, argv) {
     const result = spawnSync(binary, argv, {
         cwd: root, encoding: 'utf8', timeout: 180000, maxBuffer: 16 * 1024 * 1024,
-        windowsHide: true, env: { ...process.env, SOVRA_REQUIRE_CLI_EXECUTION: '1', CARGO_TERM_COLOR: 'never' },
+        windowsHide: true, env: { ...process.env, SOVRA_REQUIRE_CLI_EXECUTION: '1', SOVRA_FORMATTER_COMPILER: compiler, CARGO_TERM_COLOR: 'never' },
     });
     const path = join(logs, `${name}.log`);
     writeFileSync(path, `${result.stdout ?? ''}${result.stderr ?? ''}${result.error ? `\n${result.error.message}\n` : ''}`);
@@ -58,13 +63,14 @@ try {
     const compilerVersion = run('compiler-version', compiler, ['--version']);
     const rustVersion = run('rust-version', 'rustc', ['--version']);
     const unit = run('replacement-regressions', 'cargo', ['test', '--locked', '--lib', 'formatter', '--', '--nocapture']);
+    const versioned = run('versioned-syntax-formatter', 'cargo', ['test', '--locked', '--test', 'program_syntax_v2', '--test', 'cli_v2_fmt', '--', '--test-threads=1']);
     const standalone = run('standalone-import-execution', process.execPath, [join(root, 'scripts/test-formatter.mjs'), '--compiler', compiler]);
     const packages = run('package-checks-writes', process.execPath, [join(root, 'scripts/test-formatter-packages.mjs'), '--compiler', compiler]);
     if (hash(compiler) !== report.compiler.sha256) report.errors.push('Compiler changed during qualification');
     for (const path of inputs) {
         if (hash(join(root, path)) !== report.source_sha256[path]) report.errors.push(`Source changed during qualification: ${path}`);
     }
-    report.success = compilerVersion && rustVersion && unit && standalone && packages && report.errors.length === 0;
+    report.success = compilerVersion && rustVersion && unit && versioned && standalone && packages && report.errors.length === 0;
     report.write_qualification = report.success
         ? (report.writes_enabled ? 'verified_on_this_host' : 'disabled_policy_verified') : 'not_verified';
 } catch (error) {
