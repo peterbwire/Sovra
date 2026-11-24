@@ -1121,3 +1121,11 @@ passes independent Python HTTP-client checks for GET/HEAD, JSON echo, 404 and
 Result-based handler 500 through CLI/native launch, with no Node/source startup
 dependency. Chunked/full protocol, production controls and additional platforms
 remain open; see [HTTP exchange scope](reference/http-exchange-v4.md).
+
+
+2026-11-24 G14 incremental chunked-decoder checkpoint: the experimental Rust
+helper now validates binary chunk frames and ignored extensions with aggregate
+wire/body/line/chunk/work limits, sticky failures and no partial body exposure.
+[Scope and next integration](reference/http-chunked-v4.md): nonempty trailers
+refuse; request-head/socket/CLI/native chunked admission remains open. The
+existing fixed-length Sovra HTTP serving checkpoint is unchanged.

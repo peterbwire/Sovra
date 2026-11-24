@@ -53,7 +53,10 @@ framing, Host/field syntax, partial input and lowerable limits. Bounded response
 construction owns framing, HEAD/bodyless rules and field injection refusal.
 `http.receive`/`http.respond` now wire these to execution-owned sockets with
 aggregate deadlines and one-request state. A real Sovra HTTP/JSON example passes
-independent CLI/native client acceptance. Chunked/full protocol, production
+independent CLI/native client acceptance. A bounded incremental chunked-body Rust
+decoder now preserves aggregate work and sticky failure across feeds; request-head
+and socket integration remains pending (see `docs/reference/http-chunked-v4.md`).
+Chunked serving/full protocol, production
 server controls and wider qualification remain open. Continue under `docs/design/G14_COMPLETION_CONTRACT.md`. Consult
 `docs/G13_QUALIFICATION.md` and `docs/reference/generic-formatting.md` for current
 evidence and remaining gates. Historical checkpoints below do not reopen these

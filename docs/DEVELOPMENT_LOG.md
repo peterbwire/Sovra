@@ -11283,3 +11283,20 @@ Byte storage plans refuse instead of selecting Int keys. See
 [checked data layout graphs](reference/generic-data-layouts-v2.md).
 Checked byte operations, owned Result/error admission, runtime Byte keys, CLI/native
 data profiles and JSON remain open; D1/G13 are incomplete.
+
+
+2026-11-24 G14 chunked decoding foundation: added the experimental incremental
+Rust `HttpChunkedDecoder`, reviewing RFC 9112 sections 7.1–7.1.3. Per-byte state
+tracks strict CRLF, checked hexadecimal sizes, binary data, bounded extensions
+and the terminal empty trailer line. Body publication requires consuming
+completion; errors and trailing bytes permanently revoke it. Aggregate wire,
+body, line, chunk-count and logical work limits persist across feeds. Nine
+focused tests cover fragmentation, truncation, grammar, mutation and exact limits;
+existing HTTP framing/exchange regressions remain strict. Nonempty trailers
+refuse. This is a Rust decoder foundation, not CLI/native chunked admission.
+Next: checked head/socket integration and independent client acceptance under
+existing deadlines before enabling transfer coding in actual Sovra servers.
+See [contract and scope](reference/http-chunked-v4.md).
+Validation for this checkpoint: 638 Rust tests, strict Clippy, Rust 1.74.0,
+Windows GNU all-target compilation, formatting and documentation links pass.
+CLI/native HTTP acceptance was not rerun for this isolated Rust helper.
