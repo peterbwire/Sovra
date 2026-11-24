@@ -1,0 +1,14 @@
+enum Outcome { Value(Int), End }
+fn main() { print(value()); }
+fn obtain() -> Outcome { return Outcome::Value(14); }
+fn value() -> Int {
+    let outcome = obtain();
+    match outcome {
+        Outcome::Value(n) => { return n; },
+        Outcome::End() => { return 0; },
+    }
+}
+fn test_value() {
+    if value() != 14 { std::set_exit_code(1); }
+    print("ok");
+}

@@ -9,8 +9,55 @@ use crate::compiler::diagnostics::Span;
 use crate::compiler::lexer::{Lexer, Token, TokenKind};
 use crate::compiler::semantic::Type;
 
+mod entry_validation;
 mod imports;
+mod page_placeholders;
+pub use page_placeholders::{check_page_placeholders, PagePlaceholderCheck};
+mod page_targets;
+pub use page_targets::{check_local_page_targets, LocalPageTarget, PageTargetCheck};
+mod model_fields;
+pub use model_fields::{
+    check_model_primitive_fields, ModelFieldSyntax, ModelFieldsSyntax, ModelPrimitiveField,
+    ModelPrimitiveFieldCheck, MAX_MODEL_FIELDS,
+};
+mod policy_models;
+pub use policy_models::{check_local_policy_models, LocalPolicyModelReference, PolicyModelCheck};
+mod schedule_targets;
+pub use schedule_targets::{
+    check_local_schedule_targets, LocalScheduleTarget, ScheduleTargetCheck,
+};
+mod route_coverage;
+pub use route_coverage::{
+    check_service_calls_with_routes, FileRouteCheck, ServiceCheckWithRoutes,
+    MAX_PROJECT_ROUTE_BINDINGS, MAX_PROJECT_ROUTE_PLACEHOLDERS,
+};
+mod structured_routes;
+pub use structured_routes::{check_structured_route_placeholders, StructuredRoutePlaceholderCheck};
+mod route_placeholders;
+pub use route_placeholders::{check_route_placeholders, RoutePlaceholderCheck};
+mod route_targets;
+pub use entry_validation::{
+    check_entry_paths, EntryPathCheck, MAX_ENTRY_PATH_DIAGNOSTICS, MAX_ENTRY_PATH_DIAGNOSTIC_BYTES,
+};
+pub use route_targets::{check_local_route_targets, LocalRouteTarget, LocalRouteTargetCheck};
+mod local_validation;
+pub use local_validation::{
+    check_local_functions, check_structured_local_functions, LocalFunctionCheck,
+    StructuredLocalFunctionCheck,
+};
+mod syntax_coverage;
+pub use syntax_coverage::{
+    check_service_calls_with_auth_syntax, check_service_calls_with_combined_syntax,
+    check_service_calls_with_local_functions, check_service_calls_with_model_fields,
+    check_service_calls_with_structured_syntax, check_service_calls_with_syntax,
+    FileAuthSyntaxCoverage, FileCombinedSyntaxCoverage, FileLocalFunctionCheck,
+    FileModelFieldCheck, FileStructuredSyntaxCoverage, FileSyntaxCoverage,
+    ServiceCheckWithAuthSyntax, ServiceCheckWithCombinedSyntax, ServiceCheckWithLocalFunctions,
+    ServiceCheckWithModelFields, ServiceCheckWithStructuredSyntax, ServiceCheckWithSyntax,
+    MAX_SYNTAX_FILES, MAX_SYNTAX_INPUT_BYTES, MAX_SYNTAX_TOKENS,
+};
 mod ordinary;
+pub mod syntax;
 
 /// Explicit per-file outcome for experimental project receiver inspection.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,8 +87,16 @@ pub struct ServiceCheck {
 /// ordinary imports are resolved; record construction and unsupported expressions still
 /// require complete application typing.
 pub fn check_service_calls(project: &super::ProjectCheck) -> ServiceCheck {
-    use crate::compiler::diagnostics::{Diagnostic, Diagnostics, Severity};
     let (files, signatures) = imports::inspect(project);
+    check_inspections(project, files, signatures)
+}
+
+fn check_inspections(
+    project: &super::ProjectCheck,
+    files: Vec<FileInspection>,
+    signatures: super::service_types::ServiceSignatures,
+) -> ServiceCheck {
+    use crate::compiler::diagnostics::{Diagnostic, Diagnostics, Severity};
     let mut diagnostics = Diagnostics::new();
     let mut operations = std::collections::BTreeMap::new();
     for operation in &project.service_operations {
@@ -879,6 +934,41 @@ fn inspect_functions_in_module(
     owner: &str,
     records: &imports::Records,
 ) -> Result<Vec<FunctionCalls>, String> {
+    inspect_functions_in_module_skipping(
+        source,
+        services,
+        signatures,
+        imported,
+        owner,
+        records,
+        &[],
+    )
+}
+
+fn inspect_functions_skipping(
+    source: &str,
+    skipped: &[Span],
+) -> Result<Vec<FunctionCalls>, String> {
+    inspect_functions_in_module_skipping(
+        source,
+        &[],
+        &[],
+        &Default::default(),
+        "<source>",
+        &Default::default(),
+        skipped,
+    )
+}
+
+fn inspect_functions_in_module_skipping(
+    source: &str,
+    services: &[ServiceIdentity],
+    signatures: &[super::service_types::TypedServiceOperation],
+    imported: &std::collections::BTreeMap<String, Option<FunctionSignature>>,
+    owner: &str,
+    records: &imports::Records,
+    skipped: &[Span],
+) -> Result<Vec<FunctionCalls>, String> {
     let preliminary = parse_functions(
         source,
         services,
@@ -886,6 +976,7 @@ fn inspect_functions_in_module(
         &Default::default(),
         owner,
         records,
+        skipped,
     )?;
     let mut ordinary = std::collections::BTreeMap::new();
     for builtin in crate::compiler::stdlib::functions() {
@@ -895,7 +986,13 @@ fn inspect_functions_in_module(
             parameters: builtin
                 .parameters
                 .iter()
-                .map(|name| Type::from_name_with_known(name, None))
+                .map(|name| {
+                    if *name == "Array" {
+                        Type::Array(Box::new(Type::Unknown))
+                    } else {
+                        Type::from_name_with_known(name, None)
+                    }
+                })
                 .collect(),
             any_parameters: builtin
                 .parameters
@@ -926,7 +1023,9 @@ fn inspect_functions_in_module(
             .and_modify(|entry| *entry = None)
             .or_insert_with(|| signature.clone());
     }
-    parse_functions(source, services, signatures, &ordinary, owner, records)
+    parse_functions(
+        source, services, signatures, &ordinary, owner, records, skipped,
+    )
 }
 
 fn parse_functions(
@@ -936,11 +1035,24 @@ fn parse_functions(
     ordinary: &std::collections::BTreeMap<String, Option<FunctionSignature>>,
     owner: &str,
     records: &imports::Records,
+    skipped: &[Span],
 ) -> Result<Vec<FunctionCalls>, String> {
-    let tokens = Lexer::new()
+    let mut tokens = Lexer::new()
         .tokenize(source)
         .map_err(|_| "file contains unsupported lexical syntax".to_owned())?;
     check_nesting(&tokens)?;
+    if !skipped.is_empty() {
+        tokens.retain(|token| {
+            if token.kind == TokenKind::Eof {
+                return true;
+            }
+            let index = skipped.partition_point(|span| span.end <= token.span.start);
+            !skipped
+                .get(index)
+                .is_some_and(|span| span.start <= token.span.start && token.span.end <= span.end)
+        });
+    }
+
     let mut aliases = match &records.module {
         Some(module) => module.clone(),
         None => super::application_types::Aliases::collect_in_module(&tokens, owner)?,

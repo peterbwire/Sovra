@@ -1,5 +1,19 @@
 # Roadmap
 
+The [current maturity audit](LANGUAGE_MATURITY_AUDIT.md) maps actual capabilities,
+remaining work, dependencies and contributor-sized tasks onto this roadmap.
+The [18-task completion checklist](18_TASK_COMPLETION_CHECKLIST.md) assigns the
+six product goals to explicit implementation and qualification criteria.
+Historical foundation milestone labels below do not imply a complete language,
+standard library or qualified platform runtime.
+
+The enduring goal is a general-purpose language powering mobile, desktop, web,
+servers and other environments; see [platform vision](PLATFORM_VISION.md).
+Android/iOS runtime, UI and packaging remain planned. Current compiler, editor,
+Windows host and Task Manager work are foundation and validation slices toward
+that goal. Existing M0–M15 numbers and release gates remain unchanged; completing
+a focused release does not complete platform coverage.
+
 Conditional persistence checkpoint (2026-10-23): approved ADR 0034 is implemented
 in both engines and current Task Manager save paths. Cooperative conditional
 replacement rejects stale snapshots/busy markers. Retained crash markers need
@@ -104,7 +118,8 @@ Add a native or portable compiled backend over the stable IR.
 Independent developers must be able to publish reusable Sovra libraries.
 Project-local imports are a first stage, not a permanent ecosystem restriction.
 Preserve package-qualified module identities and public/private exports while
-finishing cross-file resolution. Then deliver local dependencies and lockfiles,
+finishing cross-file resolution. Local dependencies already execute; complete
+general multi-file package loading and reproducible lockfiles, then
 Git/registry resolution and caching, followed by publishing and ownership flows.
 Integrate package-aware testing and inspection with M13 and M15 without
 renumbering existing milestones. Exact manifest/import syntax and registry
@@ -113,6 +128,17 @@ policies remain open design decisions. See the
 
 The next roadmap turns the foundation into the application language shown in
 [`examples/fielddesk`](../examples/fielddesk):
+
+G12 is now the active contributor track alongside partial G11. The
+[multi-file module and local lock design](design/G12_MODULES_AND_LOCKS.md) is
+approved. Bounded opt-in module source inventory is partially implemented;
+source-owned capture/parsing and registered-header validation are implemented as
+an additive Linux-guarded API. An additive primitive callable compiler now checks
+source-owned bodies and links an independent consumer in interpreter/Node JS.
+A separate nominal record slice, including visible record-valued fields, now
+executes across registered source/package boundaries. Remaining type contexts, executable CLI routing,
+source locks/locked CLI and complete tooling remain planned.
+Starting it does not close G11 or renumber M12.
 
 ## M12 — Project Checker (started)
 

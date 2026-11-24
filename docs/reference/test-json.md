@@ -17,7 +17,9 @@ do not add a second stdout document. Usage errors return 2 on stderr.
 
 Each test has `name`, `passed`, `output` (array of captured lines), `exit_code`
 and `error`. An ordinary return has a numeric exit code and null error; a runtime
-failure has null exit code and an error string. Output before a failure is retained.
+failure has null exit code and an error string. Legacy execution retains output
+before a failure. The opt-in [v2 test mode](experimental-v2-test.md) uses this
+schema with its documented VM failure-output and suite-admission rules.
 Nonzero ordinary status fails without inventing a runtime error.
 
 Each diagnostic has `severity`, `code`, `message`, `source_file` and `span`.

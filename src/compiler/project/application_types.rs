@@ -9,6 +9,7 @@ use crate::compiler::semantic::{collect_named_types_with_imports, collect_struct
 
 #[derive(Debug, Clone)]
 pub(super) struct Aliases {
+    pub syntax: Option<std::sync::Arc<super::application::syntax::ApplicationTypeSyntax>>,
     pub types: HashMap<String, Type>,
     pub fields: HashMap<String, HashMap<String, Type>>,
     pub public_fields: HashMap<String, HashMap<String, Type>>,
@@ -97,6 +98,22 @@ impl Aliases {
         let program = Parser::new()
             .parse_tokens(&selected)
             .map_err(|_| "unsupported or malformed application type declaration".to_owned())?;
+        // This older partial application projection has no array-aware record
+        // privacy/identity contract. Refuse the newly parsed type syntax rather
+        // than treating array element names as unqualified application types.
+        if program
+            .type_declarations
+            .iter()
+            .any(|alias| alias.target.contains('['))
+            || program.struct_declarations.iter().any(|record| {
+                record
+                    .fields
+                    .iter()
+                    .any(|field| field.type_name.contains('['))
+            })
+        {
+            return Err("array declarations are unavailable in application type inspection".into());
+        }
         let mut diagnostics = Diagnostics::new();
         let mut types = collect_named_types_with_imports(&program, imported, &mut diagnostics);
         let raw_fields = collect_struct_fields(&program, &types, &mut diagnostics);
@@ -173,7 +190,9 @@ impl Aliases {
             visible_fields.extend(imported_fields.clone());
             fields.extend(imported_fields.clone());
         }
+        let syntax = super::application::syntax::retain(program, tokens, &ends);
         Ok(Self {
+            syntax,
             types,
             fields,
             public_fields,

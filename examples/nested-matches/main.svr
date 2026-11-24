@@ -1,0 +1,19 @@
+// Opt-in checked-program Rust execution; earlier CLI/standalone parsers stay strict.
+enum I { N(Int), Empty }
+enum O { Some(I), None }
+fn main() {
+    print(unwrap(O::Some(I::N(7))));
+    print(unwrap(O::Some(I::Empty())));
+    print(unwrap(O::None()));
+}
+fn unwrap(value: O) -> Int {
+    match value {
+        O::Some(inner) => {
+            match inner {
+                I::N(n) => { return n; },
+                I::Empty() => { return 0; },
+            }
+        },
+        O::None() => { return 0; },
+    }
+}

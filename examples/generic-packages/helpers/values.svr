@@ -1,0 +1,11 @@
+mod values {
+    export struct Box<T> { value: T }
+
+    export fn boxed<T>(value: T) -> Box<T> {
+        return Box::<T> { value: value };
+    }
+
+    export fn keep<T>(value: std::Option<T>) -> std::Option<T> {
+        return std::Option::<T>::Some(value?);
+    }
+}

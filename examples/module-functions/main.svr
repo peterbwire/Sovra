@@ -1,0 +1,29 @@
+mod values {
+    enum Outcome {
+        Value(Int),
+        End
+    }
+    type Result = Outcome;
+    fn hidden(value: Int) -> Result {
+        return Result::Value(value);
+    }
+    export fn obtain(value: Int) -> Result {
+        return values::hidden(value);
+    }
+}
+fn main() {
+    let result = values::obtain(7);
+    match result {
+        values::Result::Value(value) => {
+            print(value);
+        },
+        values::Outcome::End() => {
+            print("end");
+        },
+    }
+}
+fn test_exported_call() {
+    if values::obtain(7) != values::Outcome::Value(7) {
+        std::set_exit_code(1);
+    }
+}

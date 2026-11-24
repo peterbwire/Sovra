@@ -1,0 +1,6 @@
+[project]
+name = "array-collections"
+entry = "main.svr"
+
+[modules]
+numbers = "numbers.svr"

@@ -59,6 +59,15 @@ already have committed. Closing during an event waits for success; errors keep
 the window open. Rejected submissions retain drafts. Unchanged action controls
 retain drafts, focus and selection; removed or kind-changed controls discard them.
 
+Responsive layout follow-up (2026-11-11): horizontal text/action rows bind their
+maximum width to the actual group width including margins. Inputs use a bounded
+preferred width in rows and return to stretching when moved into vertical groups.
+Labels/button captions wrap; long drafts remain in the same native TextBox.
+Initial size/minimums fit the primary Windows work area with a small margin.
+This does not establish per-monitor DPI awareness or replace real monitor/scaling
+qualification. The responsive fixture tests narrow/wide/narrow transitions,
+overflow, focus, draft/selection retention and absence of resize-triggered events.
+
 Status, accessible names, Tab order, unmodified Enter and Escape remain host
 behavior. The compiled renderer uses Windows system colors in high-contrast mode
 and refreshes its palette when Windows reports a high-contrast change. Theme
@@ -87,3 +96,11 @@ Mobile adapters, public lifecycle/navigation contracts, cancellation,
 screen-reader/high-contrast/DPI qualification and clean-machine verification are
 not complete. The PowerShell adapter remains available as a compatibility
 baseline while the compiled adapter receives broader parity testing.
+
+On a non-Windows development host, optional reference-only validation is available
+through `scripts/check-native-ui-csharp.ps1` using PowerShell 7/Roslyn and
+Microsoft.NETFramework.ReferenceAssemblies.net48 1.0.3. Pass `-ReferenceDirectory`
+pointing at its `build/.NETFramework/v4.8` DLLs. This compiles the actual host and
+acceptance harness as C# 5; it does not execute WPF. The report at
+`target/native-ui-compile/verification.json` records source hashes and explicitly
+sets `native_windows_executed: false`. Windows runtime tests remain mandatory.

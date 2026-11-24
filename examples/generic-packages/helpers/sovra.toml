@@ -1,0 +1,6 @@
+[project]
+name = "generic-value-helpers"
+entry = "main.svr"
+
+[modules]
+values = "values.svr"

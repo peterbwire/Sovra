@@ -7,7 +7,8 @@ use crate::compiler::{
 
 /// Count AST nodes within a caller-selected allowance before semantic cloning.
 /// Modules, aliases, records/fields, functions/parameters, statements and expressions
-/// each count one; the Program and collection containers do not. Iterator frames
+/// each count one; each array annotation wrapper also counts one. The Program
+/// and collection containers do not. Iterator frames
 /// avoid allocating a work queue proportional to a wide body. This does not bound
 /// parsing, repeated semantic passes, string sizes or caller-owned AST destruction.
 pub fn check_ast_budget(program: &Program, max_nodes: usize) -> Result<usize, Diagnostics> {
@@ -31,10 +32,17 @@ pub fn check_ast_budget(program: &Program, max_nodes: usize) -> Result<usize, Di
             });
             Err(errors)
         }
+        fn annotation(&mut self, name: &str, span: Span) -> Result<(), Diagnostics> {
+            for _ in name.bytes().take_while(|byte| *byte == b'[') {
+                self.charge(span)?;
+            }
+            Ok(())
+        }
         fn record(&mut self, record: &StructDeclaration) -> Result<(), Diagnostics> {
             self.charge(record.span)?;
             for field in &record.fields {
                 self.charge(field.span)?;
+                self.annotation(&field.type_name, field.type_span.unwrap_or(field.span))?;
             }
             Ok(())
         }
@@ -42,6 +50,12 @@ pub fn check_ast_budget(program: &Program, max_nodes: usize) -> Result<usize, Di
             self.charge(function.span)?;
             for parameter in &function.parameters {
                 self.charge(parameter.span)?;
+                if let Some(name) = &parameter.type_name {
+                    self.annotation(name, parameter.type_span.unwrap_or(parameter.span))?;
+                }
+            }
+            if let Some(name) = &function.return_type {
+                self.annotation(name, function.return_type_span.unwrap_or(function.span))?;
             }
             enum Work<'a> {
                 Statement(&'a Statement),
@@ -81,6 +95,14 @@ pub fn check_ast_budget(program: &Program, max_nodes: usize) -> Result<usize, Di
                             | Statement::While { span, .. } => *span,
                         };
                         self.charge(span)?;
+                        if let Statement::Let {
+                            type_name: Some(name),
+                            type_span,
+                            ..
+                        } = statement
+                        {
+                            self.annotation(name, type_span.unwrap_or(span))?;
+                        }
                         match statement {
                             Statement::Let { value, .. } | Statement::Expression(value) => {
                                 pending.push(Work::Expression(value))
@@ -157,6 +179,7 @@ pub fn check_ast_budget(program: &Program, max_nodes: usize) -> Result<usize, Di
     };
     for alias in &program.type_declarations {
         counter.charge(alias.span)?;
+        counter.annotation(&alias.target, alias.span)?;
     }
     for record in &program.struct_declarations {
         counter.record(record)?;
@@ -168,6 +191,7 @@ pub fn check_ast_budget(program: &Program, max_nodes: usize) -> Result<usize, Di
         counter.charge(module.span)?;
         for alias in &module.type_declarations {
             counter.charge(alias.span)?;
+            counter.annotation(&alias.target, alias.span)?;
         }
         for record in &module.struct_declarations {
             counter.record(record)?;

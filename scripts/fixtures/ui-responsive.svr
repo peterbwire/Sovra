@@ -1,0 +1,17 @@
+// Shared-host layout fixture; resizing must never invoke ui-event.
+fn main() {
+    if std::arg(0) == "ui-event" {
+        std::write_text(std::arg(1), "unexpected event");
+        std::set_exit_code(1);
+        return;
+    }
+    print("SVR-UI-2");
+    print("heading|Responsive native component");
+    print("group|content|vertical|card");
+    print("group|actions|horizontal|plain");
+    print("text|A long shared-component description that must wrap inside a narrow native window and remain readable when the user changes the window size.");
+    print("input|draft|A long descriptive input label that must wrap inside its row without forcing horizontal overflow|Save this component value with a long descriptive action label");
+    print("button|other|Another descriptive native action label that must wrap rather than extend outside the viewport");
+    print("end|actions");
+    print("end|content");
+}

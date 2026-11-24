@@ -1,0 +1,23 @@
+fn adapt_input_line(value: std::InputLine) -> std::Option<String> {
+    if value.eof { return std::Option::<String>::None(); }
+    return std::Option::<String>::Some(value.text);
+}
+fn adapt_parsed_int(value: std::ParsedInt) -> std::Option<Int> {
+    if value.ok { return std::Option::<Int>::Some(value.value); }
+    return std::Option::<Int>::None();
+}
+fn adapt_split_once(value: std::SplitOnce) -> std::Option<[String]> {
+    if value.found { return std::Option::<[String]>::Some([value.before, value.after]); }
+    return std::Option::<[String]>::None();
+}
+fn adapt_text_read(value: std::TextRead) -> std::Result<String, std::Error> {
+    if value.ok { return std::Result::<String, std::Error>::Ok(value.text); }
+    let error = std::Error { code: "text_read_failed", message: value.error, offset: std::Option::<Int>::None() };
+    return std::Result::<String, std::Error>::Err(error);
+}
+fn adapt_text_write(value: std::TextWrite) -> std::Result<Unit, std::Error> {
+    if value.ok { return std::Result::<Unit, std::Error>::Ok(adapter_unit()); }
+    let error = std::Error { code: "text_write_failed", message: value.error, offset: std::Option::<Int>::None() };
+    return std::Result::<Unit, std::Error>::Err(error);
+}
+fn adapter_unit() {}

@@ -1,0 +1,22 @@
+// No main is needed: the experimental test command selects test_ functions.
+type Done = Unit;
+enum Outcome { Value(Int), End }
+fn obtain() -> Outcome { return Outcome::Value(7); }
+fn twice(n: Int) -> Int { return n + n; }
+fn test_value() -> Done {
+    let outcome = obtain();
+    match outcome {
+        Outcome::Value(n) => {
+            if twice(n) != 14 { std::set_exit_code(1); }
+            print(twice(n));
+        },
+        Outcome::End() => { std::set_exit_code(1); },
+    }
+}
+fn test_end() {
+    let outcome = Outcome::End();
+    match outcome {
+        Outcome::Value(n) => { std::set_exit_code(1); },
+        Outcome::End() => { print("end"); },
+    }
+}

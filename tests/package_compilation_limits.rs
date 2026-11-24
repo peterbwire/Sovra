@@ -5,7 +5,7 @@ use sovra::compiler::{
     parser::Parser,
     project::packages::{
         compile, compile_with_compilation_limits, compile_with_graph_limits,
-        compile_with_source_limit,
+        compile_with_interface_string_limit, compile_with_source_limit,
     },
     resources::{
         check_ast_budget, LoweringLimits, PackageCompilationLimits, PackageGraphLimits,
@@ -366,4 +366,223 @@ fn approved_ast_default_counts_the_whole_graph() {
     let errors = compile(fixture.app()).unwrap_err();
     assert_eq!(errors.items[0].code, "E3020");
     assert!(errors.items[0].message.contains("1000000"));
+}
+
+#[test]
+fn interface_strings_charge_canonical_payloads_and_all_qualified_label_copies() {
+    let fixture = Fixture::new();
+    let identity = "@package1::type::api::Item";
+    let record = identity.len() + "value".len() + "Int".len();
+    let signatures = "make".len()
+        + "value".len()
+        + "Int".len()
+        + identity.len()
+        + "read".len()
+        + "item".len()
+        + identity.len()
+        + "Int".len();
+    let labels = [
+        "a::api::make",
+        "a::api::read",
+        "b::api::make",
+        "b::api::read",
+    ]
+    .iter()
+    .map(|name| name.len())
+    .sum::<usize>();
+    let aliases = "a::api::Item".len() + "b::api::Item".len() + 2 * identity.len();
+    // Library record/export signatures; two imported signature sets; attached
+    // and re-exposed record copies; alias ASTs; visible labels + reference labels.
+    let exact = 3 * record + 3 * signatures + aliases + 2 * labels;
+    let expected = compile(fixture.app()).unwrap();
+    assert_eq!(
+        compile_with_interface_string_limit(fixture.app(), exact).unwrap(),
+        expected
+    );
+    for limit in 0..exact {
+        let errors = compile_with_interface_string_limit(fixture.app(), limit).unwrap_err();
+        assert_eq!(errors.items.len(), 1);
+        let error = &errors.items[0];
+        assert_eq!(error.code, "E3024", "limit {limit}: {error:?}");
+        let source = std::fs::read_to_string(error.source_file.as_ref().unwrap()).unwrap();
+        assert!(error.span.start <= error.span.end && error.span.end <= source.len());
+        assert!(
+            source.is_char_boundary(error.span.start) && source.is_char_boundary(error.span.end)
+        );
+        if error.source_file.as_ref().unwrap().contains("app") {
+            assert!(
+                ["use a::api;", "use b::api;"].contains(&&source[error.span.start..error.span.end]),
+                "{error:?}"
+            );
+        }
+    }
+    assert_eq!(
+        compile_with_interface_string_limit(fixture.app(), exact).unwrap(),
+        expected
+    );
+    // Large source aliases normalize to Int: charge the copied canonical text,
+    // rather than either undercounting generated identities or charging source
+    // annotation bytes that are never copied into interface metadata.
+    let alias = format!("Scalar{}", "x".repeat(4096));
+    std::fs::write(
+        fixture.0.join("lib/main.svr"),
+        format!("type {alias} = Int;\n{}", LIBRARY.replace("Int", &alias)),
+    )
+    .unwrap();
+    assert_eq!(
+        compile_with_interface_string_limit(fixture.app(), exact).unwrap(),
+        expected
+    );
+    assert_eq!(
+        compile_with_interface_string_limit(fixture.app(), exact - 1)
+            .unwrap_err()
+            .items[0]
+            .code,
+        "E3024"
+    );
+}
+
+#[test]
+fn interface_string_zero_budget_allows_no_metadata_and_repeated_imports_count_again() {
+    let fixture = Fixture::new();
+    std::fs::write(
+        fixture.0.join("lib/main.svr"),
+        "mod api { export fn f() {} }",
+    )
+    .unwrap();
+    std::fs::write(fixture.0.join("app/main.svr"), "use a::api; fn main() {}").unwrap();
+    // Export validation + imported signature names + two qualified label copies.
+    let single = 2 * "f".len() + 2 * "a::api::f".len();
+    assert!(compile_with_interface_string_limit(fixture.app(), single).is_ok());
+    std::fs::write(
+        fixture.0.join("app/main.svr"),
+        "use a::api; use a::api; fn main() {}",
+    )
+    .unwrap();
+    let repeated = single + "f".len() + "a::api::f".len();
+    assert!(compile_with_interface_string_limit(fixture.app(), repeated).is_ok());
+    assert_eq!(
+        compile_with_interface_string_limit(fixture.app(), repeated - 1)
+            .unwrap_err()
+            .items[0]
+            .code,
+        "E3024"
+    );
+    std::fs::write(fixture.0.join("lib/main.svr"), "mod api {}").unwrap();
+    assert!(compile_with_interface_string_limit(fixture.app(), 0).is_ok());
+    // Runtime literal contents and ordinary source-local names aren't interfaces.
+    std::fs::write(
+        fixture.0.join("app/main.svr"),
+        "fn main() { print(\"λ\"); }",
+    )
+    .unwrap();
+    assert!(compile_with_interface_string_limit(fixture.app(), 0).is_ok());
+}
+
+#[test]
+fn approved_interface_string_default_rejects_overflow_and_allows_explicit_override() {
+    use sovra::compiler::resources::DEFAULT_INTERFACE_STRING_BYTES;
+    assert_eq!(DEFAULT_INTERFACE_STRING_BYTES, 128 * 1024 * 1024);
+    let fixture = Fixture::new();
+    let name = format!("f{}", "x".repeat(1019));
+    std::fs::write(
+        fixture.0.join("lib/main.svr"),
+        format!("mod api {{ export fn {name}() {{}} }}"),
+    )
+    .unwrap();
+    // Each import copies 1,020 name bytes + 1,028 qualified-label bytes.
+    // Export validation plus the final reference label also total 2,048 bytes.
+    // (65,535 + 1) * 2,048 = exactly 128 MiB; metadata nodes remain below 250k.
+    let source = format!(
+        "{} fn main() {{ print(42); }}",
+        "use a::api;\n".repeat(65535)
+    );
+    std::fs::write(fixture.0.join("app/main.svr"), &source).unwrap();
+    assert!(compile(fixture.app()).is_ok());
+    std::fs::write(
+        fixture.0.join("app/main.svr"),
+        format!("use a::api;\n{source}"),
+    )
+    .unwrap();
+    for result in [
+        compile(fixture.app()),
+        compile_with_source_limit(fixture.app(), DEFAULT_PACKAGE_SOURCE_BYTES),
+        compile_with_graph_limits(fixture.app(), PackageGraphLimits::DEFAULT),
+        compile_with_compilation_limits(fixture.app(), PackageCompilationLimits::DEFAULT),
+    ] {
+        assert_eq!(result.unwrap_err().items[0].code, "E3024");
+    }
+    let ir =
+        compile_with_interface_string_limit(fixture.app(), DEFAULT_INTERFACE_STRING_BYTES + 2048)
+            .unwrap();
+    assert_eq!(sovra::compiler::interpreter::run(&ir).unwrap(), ["42"]);
+}
+
+#[test]
+fn reused_import_type_contexts_preserve_owner_scope_and_refresh_each_compilation() {
+    let fixture = Fixture::new();
+    let library =
+        "type Number = Float; mod api { export fn keep(v: Number) -> Number { return v; } }";
+    std::fs::write(fixture.0.join("lib/main.svr"), library).unwrap();
+    std::fs::write(fixture.0.join("app/main.svr"), format!("{} type Number = Int; fn main() {{ let local: Number = 3; print(local); print(a::api::keep(3) / 2); print(b::api::keep(3) / 2); }}", "use a::api; use b::api;\n".repeat(20))).unwrap();
+    let ir = compile(fixture.app()).unwrap();
+    assert_eq!(
+        sovra::compiler::interpreter::run(&ir).unwrap(),
+        ["3", "1.5", "1.5"]
+    );
+    // A new graph compilation must not reuse stale identities/types from a
+    // previous invocation, even with identical paths and import spellings.
+    std::fs::write(
+        fixture.0.join("lib/main.svr"),
+        library.replace("Float", "Int"),
+    )
+    .unwrap();
+    let ir = compile(fixture.app()).unwrap();
+    assert_eq!(
+        sovra::compiler::interpreter::run(&ir).unwrap(),
+        ["3", "1", "1"]
+    );
+    std::fs::write(
+        fixture.0.join("lib/main.svr"),
+        library.replace("Float", "Missing"),
+    )
+    .unwrap();
+    let errors = compile(fixture.app()).unwrap_err();
+    assert!(errors.items.iter().any(|error| error.code == "E3017"));
+}
+
+#[test]
+fn long_import_diagnostics_preserve_clipped_text_and_consuming_source_ranges() {
+    let fixture = Fixture::new();
+    let name = "x".repeat(20000);
+    for (import, message) in [
+        (
+            format!("use {name}::api;"),
+            format!("undeclared dependency `{name}`"),
+        ),
+        (
+            format!("use a::{name};"),
+            format!("dependency `a` has no module `{name}`"),
+        ),
+    ] {
+        let source = format!("{import}\nfn main() {{}}");
+        let path = fixture.0.join("app/main.svr");
+        std::fs::write(&path, &source).unwrap();
+        let errors = compile(fixture.app()).unwrap_err();
+        assert_eq!(errors.items.len(), 1);
+        let error = &errors.items[0];
+        assert_eq!(error.code, "E4115");
+        assert_eq!(&source[error.span.start..error.span.end], import);
+        assert_eq!(
+            PathBuf::from(error.source_file.as_ref().unwrap()),
+            std::fs::canonicalize(&path).unwrap()
+        );
+        let mut expected = message;
+        // The retained diagnostic uses the existing 4 KiB UTF-8 prefix policy.
+        let suffix = " [message truncated]";
+        expected.truncate(4096 - suffix.len());
+        expected.push_str(suffix);
+        assert_eq!(error.message, expected);
+        assert!(error.message.capacity() <= 4096);
+    }
 }

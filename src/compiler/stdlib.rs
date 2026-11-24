@@ -7,11 +7,15 @@ pub struct StdFunction {
     pub name: &'static str,
     /// Parameter type names, in call order.
     pub parameters: &'static [&'static str],
-    /// Return type name.
+    /// Return type descriptor; array operations resolve Array from its first argument.
     pub return_type: &'static str,
 }
 
 const PRINT_PARAMETERS: &[&str] = &["Any"];
+const ARRAY_PARAMETERS: &[&str] = &["Array"];
+const ARRAY_APPEND_PARAMETERS: &[&str] = &["Array", "Element"];
+const ARRAY_CONCAT_PARAMETERS: &[&str] = &["Array", "Array"];
+const ARRAY_SLICE_PARAMETERS: &[&str] = &["Array", "Int", "Int"];
 const LEN_PARAMETERS: &[&str] = &["String"];
 const TO_STRING_PARAMETERS: &[&str] = &["Any"];
 const NO_PARAMETERS: &[&str] = &[];
@@ -20,6 +24,15 @@ const EXIT_CODE_PARAMETERS: &[&str] = &["Int"];
 const TEXT_PATH_PARAMETERS: &[&str] = &["String"];
 const TEXT_WRITE_PARAMETERS: &[&str] = &["String", "String"];
 const TEXT_WRITE_IF_PARAMETERS: &[&str] = &["String", "Bool", "String", "String"];
+
+pub(crate) const MAX_ARRAY_GROWTH_LENGTH: u64 = u32::MAX as u64;
+pub(crate) fn array_growth_len(left: u64, right: u64) -> Result<usize, &'static str> {
+    let length = left
+        .checked_add(right)
+        .filter(|length| *length <= MAX_ARRAY_GROWTH_LENGTH)
+        .ok_or("array result length exceeds limit")?;
+    usize::try_from(length).map_err(|_| "array result length exceeds limit")
+}
 
 /// Maximum byte length of one line returned from standard input.
 pub const MAX_INPUT_LINE_BYTES: usize = 1024 * 1024;
@@ -46,6 +59,27 @@ pub fn is_standard_record_type(name: &str) -> bool {
 }
 
 const FUNCTIONS: &[StdFunction] = &[
+    StdFunction {
+        name: "std::array_append",
+        parameters: ARRAY_APPEND_PARAMETERS,
+        return_type: "Array",
+    },
+    StdFunction {
+        name: "std::array_concat",
+        parameters: ARRAY_CONCAT_PARAMETERS,
+        return_type: "Array",
+    },
+    StdFunction {
+        name: "std::array_slice",
+        parameters: ARRAY_SLICE_PARAMETERS,
+        // Dependent result: semantic checking retains the first argument array type.
+        return_type: "Array",
+    },
+    StdFunction {
+        name: "std::array_len",
+        parameters: ARRAY_PARAMETERS,
+        return_type: "Int",
+    },
     StdFunction {
         name: "std::print",
         parameters: PRINT_PARAMETERS,
@@ -189,11 +223,34 @@ mod tests {
     use super::*;
 
     #[test]
+    fn growth_length_limit_checks_arithmetic_without_allocating() {
+        assert_eq!(array_growth_len(0, 0), Ok(0));
+        assert_eq!(
+            array_growth_len(MAX_ARRAY_GROWTH_LENGTH - 1, 1),
+            Ok(MAX_ARRAY_GROWTH_LENGTH as usize)
+        );
+        for (left, right) in [
+            (MAX_ARRAY_GROWTH_LENGTH, 1),
+            (u64::MAX, 1),
+            (u64::MAX, u64::MAX),
+        ] {
+            assert_eq!(
+                array_growth_len(left, right),
+                Err("array result length exceeds limit")
+            );
+        }
+    }
+
+    #[test]
     fn exposes_stable_std_namespace() {
         let names: Vec<_> = functions().iter().map(|function| function.name).collect();
         assert_eq!(
             names,
             vec![
+                "std::array_append",
+                "std::array_concat",
+                "std::array_slice",
+                "std::array_len",
                 "std::print",
                 "std::println",
                 "std::len",

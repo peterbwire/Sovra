@@ -24,6 +24,60 @@ pub(crate) fn build(program: &IrProgram, output: &Path) -> Result<PathBuf, Strin
     refuse_existing(output)?;
     let image = native_image::encode(program)?;
     native_image::decode(&image)?;
+    build_image(&image, output)
+}
+
+pub(crate) fn build_v2(
+    program: &crate::compiler::v2::CheckedProgramSource,
+    output: &Path,
+) -> Result<PathBuf, String> {
+    refuse_existing(output)?;
+    let image = program.encode_native_image()?;
+    crate::compiler::v2::decode_native_image(&image)?;
+    build_image(&image, output)
+}
+
+pub(crate) fn build_generic(
+    program: &crate::compiler::v2::CompiledGenericSource,
+    output: &Path,
+) -> Result<PathBuf, String> {
+    refuse_existing(output)?;
+    let image = program.encode_generic_native_image()?;
+    crate::compiler::v2::decode_generic_native_image(&image)?;
+    build_image(&image, output)
+}
+
+pub(crate) fn build_generic_package(
+    program: &crate::compiler::v2::CompiledGenericPackage,
+    output: &Path,
+) -> Result<PathBuf, String> {
+    refuse_existing(output)?;
+    let image = program.encode_generic_package_native_image()?;
+    crate::compiler::v2::decode_generic_package_native_image(&image)?;
+    build_image(&image, output)
+}
+
+pub(crate) fn build_generic_collection_package(
+    program: &crate::compiler::v2::CompiledGenericPackage,
+    output: &Path,
+) -> Result<PathBuf, String> {
+    refuse_existing(output)?;
+    let image = program.encode_generic_collection_package_native_image()?;
+    crate::compiler::v2::decode_generic_collection_package_native_image(&image)?;
+    build_image(&image, output)
+}
+
+pub(crate) fn build_generic_data_package(
+    program: &crate::compiler::v2::CompiledGenericPackage,
+    output: &Path,
+) -> Result<PathBuf, String> {
+    refuse_existing(output)?;
+    let image = program.encode_generic_data_package_native_image()?;
+    crate::compiler::v2::decode_generic_data_package_native_image(&image)?;
+    build_image(&image, output)
+}
+
+fn build_image(image: &[u8], output: &Path) -> Result<PathBuf, String> {
     let runtime = discover_runtime()?;
     let parent = output
         .parent()
@@ -34,7 +88,7 @@ pub(crate) fn build(program: &IrProgram, output: &Path) -> Result<PathBuf, Strin
     let parent = PathBuf::from(plain_path(&parent)?);
     let destination = parent.join(output.file_name().ok_or("output must name a file")?);
     let stage = reserve_stage(&parent)?;
-    let result = link(&image, &runtime, &stage, &destination);
+    let result = link(image, &runtime, &stage, &destination);
     let cleanup = fs::remove_dir_all(&stage);
     match (result, cleanup) {
         (Err(error), _) => Err(error),

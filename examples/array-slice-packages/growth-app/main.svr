@@ -1,0 +1,17 @@
+use library::sequences;
+
+fn main() {
+    let original = [0 - 2, 0, 3, 4];
+    let mut selected = library::sequences::keep_positive(original);
+    selected[0] = 9;
+    print(original);
+    print(selected);
+    let joined = library::sequences::join_float([1.0], [3]);
+    print(joined[1] / 2);
+    print(library::sequences::appended_sample()[0].value);
+}
+
+fn test_empty() {
+    let empty: [Int] = [];
+    print(std::array_len(library::sequences::keep_positive(empty)));
+}

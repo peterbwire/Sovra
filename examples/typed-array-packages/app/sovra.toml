@@ -1,0 +1,6 @@
+[project]
+name = "array-consumer"
+entry = "main.svr"
+
+[dependencies.collections]
+path = "../collections"

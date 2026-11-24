@@ -1,0 +1,22 @@
+fn obtain<T>(value: T) -> std::Result<std::Option<T>,String> {
+    return std::Result::<std::Option<T>,String>::Ok(std::Option::<T>::Some(value));
+}
+
+fn evaluate() -> Int {
+    let result = obtain::<Int>(42);
+    match result {
+        std::Result::Err(error) => { return 0; },
+        std::Result::Ok(option) => {
+            match option {
+                std::Option::None() => { return 0; },
+                std::Option::Some(value) => { return value; }
+            }
+        }
+    }
+}
+
+fn main() {
+    if evaluate() != 42 {
+        let failed = 1 / 0;
+    }
+}

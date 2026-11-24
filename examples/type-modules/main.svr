@@ -1,0 +1,33 @@
+mod models {
+    struct Item {
+        value: Int
+    }
+    enum Outcome {
+        Value(Item),
+        End
+    }
+    type Result = Outcome;
+}
+fn make() -> models::Result {
+    return models::Result::Value(models::Item {
+        value: 7
+    });
+}
+fn main() {
+    let result = make();
+    match result {
+        models::Result::Value(item) => {
+            print(item.value);
+        },
+        models::Outcome::End() => {
+            print("end");
+        },
+    }
+}
+fn test_value() {
+    if make() != models::Outcome::Value(models::Item {
+        value: 7
+    }) {
+        std::set_exit_code(1);
+    }
+}

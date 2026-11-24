@@ -1,5 +1,11 @@
 # Library ecosystem assessment
 
+Status guide (2026-11-11): dated findings, artifacts and planned-feature lists
+below retain their original checkpoint context. Consult the
+[current maturity audit](LANGUAGE_MATURITY_AUDIT.md) and
+[Windows foundation review](WINDOWS_FOUNDATION_REVIEW.md) for present scope.
+Existing release gates still apply; this note does not approve publication.
+
 Audited 2026-09-28 against the working tree, including existing uncommitted M12
 changes. The supplied 158-test baseline is historical. Before this work the
 Windows suite executed 188 library and 36 CLI tests: **224 passed**, no skips,

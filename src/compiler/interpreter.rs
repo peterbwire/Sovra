@@ -3,11 +3,21 @@
 use std::collections::HashMap;
 use std::io::{BufRead, Read, Write};
 
+use crate::compiler::execution::{
+    add_bytes, label_bytes, text_bytes, Budget, ExecutionControl, ExecutionLimits, RuntimePolicy,
+    SIZE_ERROR,
+};
 use crate::compiler::ir::{Instruction, IrFunction, IrProgram, Literal, MAX_CALL_DEPTH};
 use crate::compiler::stdlib;
+#[cfg(test)]
+mod control_tests;
+mod footprint;
+pub use footprint::ValueFootprint;
+mod values;
+use values::{dispose, OwnedValue, OwnedValues};
 
 /// Runtime values supported by the interpreter.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum Value {
     /// An integer.
     Int(i64),
@@ -32,30 +42,6 @@ pub struct StructValue {
     pub type_name: String,
     /// Record fields in source construction order.
     pub fields: Vec<(String, Value)>,
-}
-
-impl Value {
-    fn display(&self) -> String {
-        match self {
-            Self::Int(value) => value.to_string(),
-            Self::Float(value) => value.to_string(),
-            Self::Bool(value) => value.to_string(),
-            Self::String(value) => value.clone(),
-            Self::Array(values) => {
-                let parts: Vec<_> = values.iter().map(Self::display).collect();
-                format!("[{}]", parts.join(", "))
-            }
-            Self::Struct(record) => {
-                let parts: Vec<_> = record
-                    .fields
-                    .iter()
-                    .map(|(name, value)| format!("{name}: {}", value.display()))
-                    .collect();
-                format!("{} {{ {} }}", record.type_name, parts.join(", "))
-            }
-            Self::Unit => String::new(),
-        }
-    }
 }
 
 /// Execute the `main` function and return captured `print` output.
@@ -194,6 +180,39 @@ impl RuntimeHost for ProcessHost {
     }
 }
 
+/// Execute main with explicit instruction/output and model-v1 materialization policy.
+/// Cumulative fuel is not a physical heap or process sandbox.
+pub fn run_with_policy(program: &IrProgram, policy: RuntimePolicy) -> Result<Vec<String>, String> {
+    run_with_host_status_and_policy(program, &mut MemoryHost, policy).map(|outcome| outcome.output)
+}
+/// Execute main with a host and composed policy; earlier host effects are not rolled back.
+pub fn run_with_host_status_and_policy(
+    program: &IrProgram,
+    host: &mut dyn RuntimeHost,
+    policy: RuntimePolicy,
+) -> Result<RunOutcome, String> {
+    run_function_with_host_status_and_policy(program, "main", host, policy)
+}
+
+/// Execute main with explicit per-invocation instruction/output allowances.
+/// Existing run APIs remain unlimited by these optional component counters.
+pub fn run_with_limits(
+    program: &IrProgram,
+    limits: ExecutionLimits,
+) -> Result<Vec<String>, String> {
+    run_with_host_status_and_limits(program, &mut MemoryHost, limits).map(|outcome| outcome.output)
+}
+
+/// Execute main with a host and explicit shared instruction/output allowances.
+/// Failure preserves earlier host effects; limits do not preempt host calls.
+pub fn run_with_host_status_and_limits(
+    program: &IrProgram,
+    host: &mut dyn RuntimeHost,
+    limits: ExecutionLimits,
+) -> Result<RunOutcome, String> {
+    run_function_with_host_status_and_limits(program, "main", host, limits)
+}
+
 /// Execute `main` using a caller-supplied host, retaining output for inspection.
 pub fn run_with_host(
     program: &IrProgram,
@@ -221,6 +240,82 @@ pub fn run_function_with_host_status(
     function_name: &str,
     host: &mut dyn RuntimeHost,
 ) -> Result<RunOutcome, String> {
+    run_function_with_host_status_and_limits(
+        program,
+        function_name,
+        host,
+        ExecutionLimits::UNLIMITED,
+    )
+}
+
+/// Execute a trusted zero-argument lowered function with explicit allowances.
+/// Counters are fresh for this invocation and shared by all callees. Exhaustion
+/// returns an error without rolling back previous host effects or resetting fuel.
+pub fn run_function_with_host_status_and_limits(
+    program: &IrProgram,
+    function_name: &str,
+    host: &mut dyn RuntimeHost,
+    limits: ExecutionLimits,
+) -> Result<RunOutcome, String> {
+    run_function_with_host_status_and_policy(
+        program,
+        function_name,
+        host,
+        RuntimePolicy {
+            execution: limits,
+            ..RuntimePolicy::UNLIMITED
+        },
+    )
+}
+
+/// Execute a trusted lowered function with fresh composed policy shared by callees.
+/// Argument copies and implicit Unit results consume cumulative fuel as documented.
+pub fn run_function_with_host_status_and_policy(
+    program: &IrProgram,
+    function_name: &str,
+    host: &mut dyn RuntimeHost,
+    policy: RuntimePolicy,
+) -> Result<RunOutcome, String> {
+    run_function_with_host_status_and_policy_and_control(
+        program,
+        function_name,
+        host,
+        policy,
+        ExecutionControl::UNLIMITED,
+    )
+}
+
+/// Execute main with explicit logical fuel and cooperative Rust-host control.
+/// Cancellation and elapsed checks occur only at documented checkpoints.
+pub fn run_with_policy_and_control(
+    program: &IrProgram,
+    policy: RuntimePolicy,
+    control: ExecutionControl,
+) -> Result<Vec<String>, String> {
+    run_with_host_status_and_policy_and_control(program, &mut MemoryHost, policy, control)
+        .map(|outcome| outcome.output)
+}
+
+/// Execute main with cooperative control; completed host effects are not rolled back.
+pub fn run_with_host_status_and_policy_and_control(
+    program: &IrProgram,
+    host: &mut dyn RuntimeHost,
+    policy: RuntimePolicy,
+    control: ExecutionControl,
+) -> Result<RunOutcome, String> {
+    run_function_with_host_status_and_policy_and_control(program, "main", host, policy, control)
+}
+
+/// Execute a trusted zero-argument lowered function with fresh fuel and elapsed origin.
+/// All callees share control. Host failures retain their normal error behavior.
+pub fn run_function_with_host_status_and_policy_and_control(
+    program: &IrProgram,
+    function_name: &str,
+    host: &mut dyn RuntimeHost,
+    policy: RuntimePolicy,
+    control: ExecutionControl,
+) -> Result<RunOutcome, String> {
+    let mut budget = Budget::with_control(policy, control);
     crate::compiler::ir::validate_declarations(program)?;
     let function = program
         .functions
@@ -228,7 +323,10 @@ pub fn run_function_with_host_status(
         .find(|function| function.name == function_name)
         .ok_or_else(|| format!("entry function `{function_name}` was not found"))?;
     let mut exit_code = 0;
-    let (output, _) = execute_function(function, &[], program, host, &mut exit_code)?;
+    let (output, value) =
+        execute_function(function, &[], program, host, &mut exit_code, &mut budget)?;
+    dispose(value);
+    budget.checkpoint()?;
     Ok(RunOutcome { output, exit_code })
 }
 
@@ -239,7 +337,22 @@ struct CallFrame<'a> {
     pc: usize,
 }
 
-fn call_frame<'a>(function: &'a IrFunction, arguments: &[Value]) -> Result<CallFrame<'a>, String> {
+impl Drop for CallFrame<'_> {
+    fn drop(&mut self) {
+        for value in self.stack.drain(..) {
+            dispose(value);
+        }
+        for (_, value) in self.names.drain() {
+            dispose(value);
+        }
+    }
+}
+
+fn call_frame<'a>(
+    function: &'a IrFunction,
+    arguments: &[Value],
+    budget: &mut Budget,
+) -> Result<CallFrame<'a>, String> {
     if arguments.len() != function.parameters.len() {
         return Err(format!(
             "function `{}` expects {} argument(s), found {}",
@@ -248,18 +361,19 @@ fn call_frame<'a>(function: &'a IrFunction, arguments: &[Value]) -> Result<CallF
             arguments.len()
         ));
     }
-    let names = function
-        .parameters
-        .iter()
-        .cloned()
-        .zip(arguments.iter().cloned())
-        .collect();
-    Ok(CallFrame {
+    budget.checkpoint()?;
+    let mut frame = CallFrame {
         function,
         stack: Vec::new(),
-        names,
+        names: HashMap::new(),
         pc: 0,
-    })
+    };
+    for (name, value) in function.parameters.iter().zip(arguments) {
+        budget.checkpoint()?;
+        budget.snapshot(value)?;
+        frame.names.insert(name.clone(), value.clone());
+    }
+    Ok(frame)
 }
 
 fn execute_function(
@@ -268,14 +382,22 @@ fn execute_function(
     program: &IrProgram,
     host: &mut dyn RuntimeHost,
     exit_code: &mut u8,
+    budget: &mut Budget,
 ) -> Result<(Vec<String>, Value), String> {
-    let mut frames = vec![call_frame(function, arguments)?];
+    let mut frames = vec![call_frame(function, arguments, budget)?];
     let mut output = Vec::new();
     loop {
         let active_frames = frames.len();
         let frame = frames.last_mut().expect("entry call frame exists");
         if frame.pc >= frame.function.instructions.len() {
-            let return_value = frame.stack.pop().unwrap_or(Value::Unit);
+            budget.checkpoint()?;
+            let return_value = match frame.stack.pop() {
+                Some(value) => value,
+                None => {
+                    budget.materialize(1, 0)?;
+                    Value::Unit
+                }
+            };
             frames.pop();
             if let Some(caller) = frames.last_mut() {
                 caller.stack.push(return_value);
@@ -289,44 +411,68 @@ fn execute_function(
         let mut return_value = None;
         {
             let frame = frames.last_mut().expect("active call frame exists");
+            budget.checkpoint()?;
+            budget.instruction()?;
             let instruction: &Instruction = &frame.function.instructions[frame.pc];
             frame.pc += 1;
             match instruction {
-                Instruction::LoadLiteral(value) => frame.stack.push(value_from_literal(value)?),
-                Instruction::LoadName(name) => frame.stack.push(
-                    frame
+                Instruction::LoadLiteral(value) => {
+                    let text = if let Literal::String(text) = value {
+                        text_bytes(text)?
+                    } else {
+                        0
+                    };
+                    // Validate non-string literal syntax before admitting its scalar result.
+                    if let Literal::String(text_value) = value {
+                        budget.materialize(1, text)?;
+                        frame.stack.push(Value::String(text_value.clone()));
+                    } else {
+                        let value = value_from_literal(value)?;
+                        budget.materialize(1, 0)?;
+                        frame.stack.push(value);
+                    }
+                }
+                Instruction::LoadName(name) => {
+                    let value = frame
                         .names
                         .get(name)
-                        .cloned()
-                        .ok_or_else(|| format!("runtime name `{name}` was not found"))?,
-                ),
+                        .ok_or_else(|| format!("runtime name `{name}` was not found"))?;
+                    budget.snapshot(value)?;
+                    frame.stack.push(value.clone());
+                }
                 Instruction::StoreName(name) => {
                     let value = frame
                         .stack
                         .pop()
                         .ok_or_else(|| "stack underflow on store".to_owned())?;
-                    frame.names.insert(name.clone(), value);
+                    if let Some(previous) = frame.names.insert(name.clone(), value) {
+                        dispose(previous);
+                    }
                 }
                 Instruction::WidenFloat => {
-                    let value = frame
-                        .stack
-                        .pop()
-                        .ok_or_else(|| "stack underflow on widening".to_owned())?;
-                    frame.stack.push(match value {
-                        Value::Int(value) => Value::Float(value as f64),
-                        Value::Float(_) => value,
+                    let value = OwnedValue::new(
+                        frame
+                            .stack
+                            .pop()
+                            .ok_or_else(|| "stack underflow on widening".to_owned())?,
+                    );
+                    frame.stack.push(match &*value {
+                        Value::Int(value) => Value::Float(*value as f64),
+                        Value::Float(number) => Value::Float(*number),
                         _ => return Err("Float conversion expects Int or Float".to_owned()),
                     });
                 }
                 Instruction::WidenFloatArray { depth } => {
-                    let mut value = frame
-                        .stack
-                        .pop()
-                        .ok_or_else(|| "stack underflow on array widening".to_owned())?;
+                    let mut value = OwnedValue::new(
+                        frame
+                            .stack
+                            .pop()
+                            .ok_or_else(|| "stack underflow on array widening".to_owned())?,
+                    );
                     if *depth == 0 {
                         return Err("array widening depth must be positive".to_owned());
                     }
-                    let mut pending = vec![(&mut value, *depth)];
+                    let mut pending = vec![(&mut *value, *depth)];
                     while let Some((value, remaining)) = pending.pop() {
                         if remaining == 0 {
                             match value {
@@ -341,23 +487,33 @@ fn execute_function(
                             return Err("array widening expects Array".to_owned());
                         }
                     }
-                    frame.stack.push(value);
+                    frame.stack.push(value.into_inner());
                 }
                 Instruction::Binary(operator) => {
-                    let right = frame
-                        .stack
-                        .pop()
-                        .ok_or_else(|| "stack underflow on binary operator".to_owned())?;
-                    let left = frame
-                        .stack
-                        .pop()
-                        .ok_or_else(|| "stack underflow on binary operator".to_owned())?;
-                    frame.stack.push(binary(operator, left, right)?);
+                    let right = OwnedValue::new(
+                        frame
+                            .stack
+                            .pop()
+                            .ok_or_else(|| "stack underflow on binary operator".to_owned())?,
+                    );
+                    let left = OwnedValue::new(
+                        frame
+                            .stack
+                            .pop()
+                            .ok_or_else(|| "stack underflow on binary operator".to_owned())?,
+                    );
+                    frame.stack.push(binary(
+                        operator,
+                        left.into_inner(),
+                        right.into_inner(),
+                        budget,
+                    )?);
                 }
                 Instruction::MakeArray { length } => {
                     if *length > frame.stack.len() {
                         return Err("stack underflow on array literal".to_owned());
                     }
+                    budget.materialize(1, 0)?;
                     let mut items = Vec::with_capacity(*length);
                     for _ in 0..*length {
                         items.push(
@@ -374,6 +530,14 @@ fn execute_function(
                     if fields.len() > frame.stack.len() {
                         return Err("stack underflow on struct literal".to_owned());
                     }
+                    let mut seen = std::collections::HashSet::new();
+                    if fields.iter().any(|field| !seen.insert(field)) {
+                        return Err(format!("duplicate field in struct `{type_name}`"));
+                    }
+                    budget.materialize(
+                        1,
+                        label_bytes(type_name, fields.iter().map(String::as_str))?,
+                    )?;
                     let mut values = Vec::with_capacity(fields.len());
                     for _ in fields {
                         values.push(
@@ -384,74 +548,84 @@ fn execute_function(
                         );
                     }
                     values.reverse();
-                    let mut seen = std::collections::HashSet::new();
-                    if fields.iter().any(|field| !seen.insert(field)) {
-                        return Err(format!("duplicate field in struct `{type_name}`"));
-                    }
                     frame.stack.push(Value::Struct(Box::new(StructValue {
                         type_name: type_name.clone(),
                         fields: fields.iter().cloned().zip(values).collect(),
                     })));
                 }
                 Instruction::LoadField(field) => {
-                    let target = frame
-                        .stack
-                        .pop()
-                        .ok_or_else(|| "stack underflow on field access".to_owned())?;
-                    match target {
+                    let target = OwnedValue::new(
+                        frame
+                            .stack
+                            .pop()
+                            .ok_or_else(|| "stack underflow on field access".to_owned())?,
+                    );
+                    match &*target {
                         Value::Struct(record) => {
                             let value = record
                                 .fields
                                 .iter()
                                 .find(|(name, _)| name == field)
-                                .map(|(_, value)| value.clone())
+                                .map(|(_, value)| value)
                                 .ok_or_else(|| format!("struct value has no field `{field}`"))?;
-                            frame.stack.push(value);
+                            budget.snapshot(value)?;
+                            frame.stack.push(value.clone());
                         }
                         _ => return Err("field access requires a struct value".to_owned()),
                     }
                 }
                 Instruction::Index => {
-                    let index = frame
-                        .stack
-                        .pop()
-                        .ok_or_else(|| "stack underflow on index".to_owned())?;
-                    let target = frame
-                        .stack
-                        .pop()
-                        .ok_or_else(|| "stack underflow on index".to_owned())?;
-                    match (target, index) {
+                    let index = OwnedValue::new(
+                        frame
+                            .stack
+                            .pop()
+                            .ok_or_else(|| "stack underflow on index".to_owned())?,
+                    );
+                    let target = OwnedValue::new(
+                        frame
+                            .stack
+                            .pop()
+                            .ok_or_else(|| "stack underflow on index".to_owned())?,
+                    );
+                    match (&*target, &*index) {
                         (Value::Array(values), Value::Int(index)) => {
-                            let index = index as usize;
+                            let index = *index as usize;
                             if index >= values.len() {
                                 return Err("array index out of bounds".to_owned());
                             }
+                            budget.snapshot(&values[index])?;
                             frame.stack.push(values[index].clone());
                         }
                         _ => return Err("index requires an Array and Int index".to_owned()),
                     }
                 }
                 Instruction::StoreIndex => {
-                    let value = frame
-                        .stack
-                        .pop()
-                        .ok_or_else(|| "stack underflow on store-index".to_owned())?;
-                    let index = frame
-                        .stack
-                        .pop()
-                        .ok_or_else(|| "stack underflow on store-index".to_owned())?;
-                    let mut target = frame
-                        .stack
-                        .pop()
-                        .ok_or_else(|| "stack underflow on store-index".to_owned())?;
-                    match (&mut target, index) {
+                    let value = OwnedValue::new(
+                        frame
+                            .stack
+                            .pop()
+                            .ok_or_else(|| "stack underflow on store-index".to_owned())?,
+                    );
+                    let index = OwnedValue::new(
+                        frame
+                            .stack
+                            .pop()
+                            .ok_or_else(|| "stack underflow on store-index".to_owned())?,
+                    );
+                    let mut target = OwnedValue::new(
+                        frame
+                            .stack
+                            .pop()
+                            .ok_or_else(|| "stack underflow on store-index".to_owned())?,
+                    );
+                    match (&mut *target, &*index) {
                         (Value::Array(values), Value::Int(index)) => {
-                            let index = index as usize;
+                            let index = *index as usize;
                             if index >= values.len() {
                                 return Err("array index out of bounds".to_owned());
                             }
-                            values[index] = value;
-                            frame.stack.push(target);
+                            dispose(std::mem::replace(&mut values[index], value.into_inner()));
+                            frame.stack.push(target.into_inner());
                         }
                         _ => {
                             return Err(
@@ -470,12 +644,14 @@ fn execute_function(
                     if *target > frame.function.instructions.len() {
                         return Err("jump target out of bounds".to_owned());
                     }
-                    let condition = frame
-                        .stack
-                        .pop()
-                        .ok_or_else(|| "stack underflow on jump-if-false".to_owned())?;
-                    let is_true = match condition {
-                        Value::Bool(value) => value,
+                    let condition = OwnedValue::new(
+                        frame
+                            .stack
+                            .pop()
+                            .ok_or_else(|| "stack underflow on jump-if-false".to_owned())?,
+                    );
+                    let is_true = match &*condition {
+                        Value::Bool(value) => *value,
                         _ => return Err("if condition must be Bool".to_owned()),
                     };
                     if !is_true {
@@ -486,7 +662,7 @@ fn execute_function(
                     if *arguments > frame.stack.len() {
                         return Err("stack underflow on call".to_owned());
                     }
-                    let mut call_arguments = Vec::with_capacity(*arguments);
+                    let mut call_arguments = OwnedValues(Vec::with_capacity(*arguments));
                     for _ in 0..*arguments {
                         call_arguments.push(
                             frame
@@ -504,6 +680,7 @@ fn execute_function(
                             &mut frame.stack,
                             host,
                             exit_code,
+                            budget,
                         )?;
                     } else {
                         let callee = program
@@ -517,17 +694,26 @@ fn execute_function(
                                 callee.name
                             ));
                         }
-                        pending_frame = Some(call_frame(callee, &call_arguments)?);
+                        pending_frame = Some(call_frame(callee, &call_arguments, budget)?);
                     }
                 }
                 Instruction::Pop => {
-                    frame
-                        .stack
-                        .pop()
-                        .ok_or_else(|| "stack underflow on pop".to_owned())?;
+                    dispose(
+                        frame
+                            .stack
+                            .pop()
+                            .ok_or_else(|| "stack underflow on pop".to_owned())?,
+                    );
                 }
                 Instruction::Return => {
-                    return_value = Some(frame.stack.pop().unwrap_or(Value::Unit));
+                    return_value = Some(match frame.stack.pop() {
+                        Some(value) => value,
+                        None => {
+                            budget.checkpoint()?;
+                            budget.materialize(1, 0)?;
+                            Value::Unit
+                        }
+                    });
                 }
             }
         }
@@ -552,6 +738,7 @@ fn execute_std_call(
     stack: &mut Vec<Value>,
     host: &mut dyn RuntimeHost,
     exit_code: &mut u8,
+    budget: &mut Budget,
 ) -> Result<(), String> {
     let function = stdlib::lookup(name).expect("standard-library call was already checked");
     if arguments.len() != function.parameters.len() {
@@ -562,38 +749,69 @@ fn execute_std_call(
     }
     match function.name {
         "std::print" | "std::println" => {
-            let line = arguments[0].display();
+            let output_limit = budget.line_payload_limit()?;
+            if budget.materialization_enabled() {
+                let bytes = arguments[0]
+                    .logical_footprint()
+                    .ok_or(SIZE_ERROR)?
+                    .display_bytes;
+                budget.preflight_output(bytes)?;
+                budget.materialize(1, bytes)?;
+                budget.output_size(bytes)?;
+            }
+            let line = arguments[0].display_with_limit(output_limit)?;
+            if !budget.materialization_enabled() {
+                budget.output(line.len())?;
+            }
+            budget.checkpoint()?;
             host.write_line(&line)?;
+            budget.checkpoint()?;
             output.push(line);
             stack.push(Value::Unit);
         }
         "std::arg_count" => {
+            budget.checkpoint()?;
             let count = i64::try_from(host.arguments().len())
                 .map_err(|_| "program argument count exceeds Int range".to_owned())?;
+            budget.checkpoint()?;
+            budget.materialize(1, 0)?;
             stack.push(Value::Int(count));
         }
         "std::arg" => {
             let Value::Int(index) = &arguments[0] else {
                 return Err("std::arg expects an Int index".into());
             };
+            budget.checkpoint()?;
             let value = usize::try_from(*index)
                 .ok()
                 .and_then(|index| host.arguments().get(index))
                 .ok_or_else(|| "program argument index out of bounds".to_owned())?;
+            budget.checkpoint()?;
+            budget.materialize(1, text_bytes(value)?)?;
             stack.push(Value::String(value.clone()));
         }
         "std::set_exit_code" => {
             let Value::Int(code) = &arguments[0] else {
                 return Err("std::set_exit_code expects an Int code".into());
             };
-            *exit_code = u8::try_from(*code)
+            let code = u8::try_from(*code)
                 .ok()
                 .filter(|code| *code <= 125)
                 .ok_or_else(|| "exit code must be between 0 and 125".to_owned())?;
+            budget.materialize(1, 0)?;
+            *exit_code = code;
             stack.push(Value::Unit);
         }
         "std::read_line" => {
+            let labels = label_bytes(stdlib::INPUT_LINE_TYPE, ["eof", "text"].into_iter())?;
+            budget.preflight(3, labels)?;
+            budget.checkpoint()?;
             let line = host.read_line()?;
+            budget.checkpoint()?;
+            budget.materialize(
+                3,
+                add_bytes(labels, text_bytes(line.as_deref().unwrap_or(""))?)?,
+            )?;
             stack.push(Value::Struct(Box::new(StructValue {
                 type_name: stdlib::INPUT_LINE_TYPE.into(),
                 fields: vec![
@@ -606,7 +824,18 @@ fn execute_std_call(
             let Value::String(path) = &arguments[0] else {
                 return Err("std::read_text expects a String path".into());
             };
+            let labels = label_bytes(stdlib::TEXT_READ_TYPE, ["ok", "text", "error"].into_iter())?;
+            budget.preflight(4, labels)?;
+            budget.checkpoint()?;
             let result = host.read_text(path);
+            budget.checkpoint()?;
+            budget.materialize(
+                4,
+                add_bytes(
+                    labels,
+                    add_bytes(text_bytes(&result.text)?, text_bytes(&result.error)?)?,
+                )?,
+            )?;
             stack.push(Value::Struct(Box::new(StructValue {
                 type_name: stdlib::TEXT_READ_TYPE.into(),
                 fields: vec![
@@ -629,14 +858,32 @@ fn execute_std_call(
                         "std::write_text_if expects String, Bool, String, String arguments".into(),
                     );
                 };
+                budget.preflight(
+                    3,
+                    label_bytes(stdlib::TEXT_WRITE_TYPE, ["ok", "error"].into_iter())?,
+                )?;
+                budget.checkpoint()?;
                 host.write_text_if(path, *exists, expected, text)
             } else {
                 let (Value::String(path), Value::String(text)) = (&arguments[0], &arguments[1])
                 else {
                     return Err("std::write_text expects String path and text".into());
                 };
+                budget.preflight(
+                    3,
+                    label_bytes(stdlib::TEXT_WRITE_TYPE, ["ok", "error"].into_iter())?,
+                )?;
+                budget.checkpoint()?;
                 host.write_text(path, text)
             };
+            budget.checkpoint()?;
+            budget.materialize(
+                3,
+                add_bytes(
+                    label_bytes(stdlib::TEXT_WRITE_TYPE, ["ok", "error"].into_iter())?,
+                    text_bytes(&result.error)?,
+                )?,
+            )?;
             stack.push(Value::Struct(Box::new(StructValue {
                 type_name: stdlib::TEXT_WRITE_TYPE.into(),
                 fields: vec![
@@ -651,9 +898,18 @@ fn execute_std_call(
                 return Err("std::split_once expects String arguments".into());
             };
             let (found, before, after) = match text.split_once(delimiter.as_str()) {
-                Some((before, after)) => (true, before.to_owned(), after.to_owned()),
-                None => (false, text.clone(), String::new()),
+                Some((before, after)) => (true, before, after),
+                None => (false, text.as_str(), ""),
             };
+            let labels = label_bytes(
+                stdlib::SPLIT_ONCE_TYPE,
+                ["found", "before", "after"].into_iter(),
+            )?;
+            budget.materialize(
+                4,
+                add_bytes(labels, add_bytes(text_bytes(before)?, text_bytes(after)?)?)?,
+            )?;
+            let (before, after) = (before.to_owned(), after.to_owned());
             stack.push(Value::Struct(Box::new(StructValue {
                 type_name: stdlib::SPLIT_ONCE_TYPE.into(),
                 fields: vec![
@@ -667,6 +923,7 @@ fn execute_std_call(
             let Value::String(text) = &arguments[0] else {
                 return Err("std::lines_unique expects a String argument".into());
             };
+            budget.materialize(1, 0)?;
             stack.push(Value::Bool(stdlib::lines_unique(text)));
         }
         "std::parse_int" => {
@@ -674,6 +931,10 @@ fn execute_std_call(
                 return Err("std::parse_int expects a String argument".into());
             };
             let value = stdlib::parse_int(text);
+            budget.materialize(
+                3,
+                label_bytes(stdlib::PARSED_INT_TYPE, ["ok", "value"].into_iter())?,
+            )?;
             stack.push(Value::Struct(Box::new(StructValue {
                 type_name: stdlib::PARSED_INT_TYPE.into(),
                 fields: vec![
@@ -686,34 +947,111 @@ fn execute_std_call(
             let Value::String(text) = &arguments[0] else {
                 return Err("std::escape_terminal expects a String argument".into());
             };
+            if budget.materialization_enabled() {
+                let bytes = text.chars().try_fold(0u64, |total, character| {
+                    let point = character as u32;
+                    add_bytes(
+                        total,
+                        if point <= 0x1f || (0x7f..=0x9f).contains(&point) {
+                            8
+                        } else {
+                            character.len_utf8() as u64
+                        },
+                    )
+                })?;
+                budget.materialize(1, bytes)?;
+            }
             stack.push(Value::String(stdlib::escape_terminal(text)));
+        }
+        "std::array_append" | "std::array_concat" => {
+            let Value::Array(left) = &arguments[0] else {
+                return Err(if name == "std::array_append" {
+                    "std::array_append expects an array argument"
+                } else {
+                    "std::array_concat expects array arguments"
+                }
+                .into());
+            };
+            let right = if name == "std::array_concat" {
+                let Value::Array(right) = &arguments[1] else {
+                    return Err("std::array_concat expects array arguments".into());
+                };
+                right.as_slice()
+            } else {
+                &arguments[1..2]
+            };
+            let length = stdlib::array_growth_len(
+                u64::try_from(left.len()).map_err(|_| "array result length exceeds limit")?,
+                u64::try_from(right.len()).map_err(|_| "array result length exceeds limit")?,
+            )?;
+            let (mut nodes, mut text) = (1, 0);
+            if budget.materialization_enabled() {
+                for child in left.iter().chain(right) {
+                    let size = child.logical_footprint().ok_or(SIZE_ERROR)?;
+                    nodes = add_bytes(nodes, size.value_nodes)?;
+                    text = add_bytes(text, size.owned_text_bytes)?;
+                }
+            }
+            budget.materialize(nodes, text)?;
+            let mut result = OwnedValues(Vec::with_capacity(length));
+            for child in left.iter().chain(right) {
+                result.push(child.clone());
+            }
+            stack.push(Value::Array(std::mem::take(&mut result.0)));
+        }
+        "std::array_slice" => {
+            let (Value::Array(values), Value::Int(start), Value::Int(end)) =
+                (&arguments[0], &arguments[1], &arguments[2])
+            else {
+                return Err("std::array_slice expects Array, Int, Int arguments".into());
+            };
+            let start = usize::try_from(*start).map_err(|_| "array slice bounds out of range")?;
+            let end = usize::try_from(*end).map_err(|_| "array slice bounds out of range")?;
+            let selected = values
+                .get(start..end)
+                .ok_or("array slice bounds out of range")?;
+            let (mut nodes, mut text) = (1, 0);
+            if budget.materialization_enabled() {
+                for child in selected {
+                    let size = child.logical_footprint().ok_or(SIZE_ERROR)?;
+                    nodes = add_bytes(nodes, size.value_nodes)?;
+                    text = add_bytes(text, size.owned_text_bytes)?;
+                }
+            }
+            budget.materialize(nodes, text)?;
+            let mut result = OwnedValues(Vec::with_capacity(selected.len()));
+            for child in selected {
+                result.push(child.clone());
+            }
+            stack.push(Value::Array(std::mem::take(&mut result.0)));
+        }
+        "std::array_len" => {
+            let Value::Array(values) = &arguments[0] else {
+                return Err("std::array_len expects an array argument".into());
+            };
+            let length = i64::try_from(values.len()).map_err(|_| "array length exceeds Int")?;
+            budget.materialize(1, 0)?;
+            stack.push(Value::Int(length));
         }
         "std::len" => {
             let value = match &arguments[0] {
                 Value::String(value) => Value::Int(value.len() as i64),
                 _ => return Err(format!("{name} expects a String argument")),
             };
+            budget.materialize(1, 0)?;
             stack.push(value);
         }
         "std::to_string" => {
-            let value = match &arguments[0] {
-                Value::Int(value) => Value::String(value.to_string()),
-                Value::Float(value) => Value::String(value.to_string()),
-                Value::Bool(value) => Value::String(value.to_string()),
-                Value::String(value) => Value::String(value.clone()),
-                Value::Array(values) => Value::String(format!(
-                    "[{}]",
-                    values
-                        .iter()
-                        .map(Value::display)
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )),
-                value @ Value::Struct(_) => Value::String(value.display()),
-                Value::Unit => Value::String(String::new()),
-            };
-            stack.push(value);
+            if budget.materialization_enabled() {
+                let bytes = arguments[0]
+                    .logical_footprint()
+                    .ok_or(SIZE_ERROR)?
+                    .display_bytes;
+                budget.materialize(1, bytes)?;
+            }
+            stack.push(Value::String(arguments[0].display()));
         }
+
         _ => {
             return Err(format!(
                 "standard-library function `{name}` is not implemented"
@@ -738,14 +1076,16 @@ fn value_from_literal(value: &Literal) -> Result<Value, String> {
     }
 }
 
-fn binary(operator: &str, left: Value, right: Value) -> Result<Value, String> {
+fn binary(operator: &str, left: Value, right: Value, budget: &mut Budget) -> Result<Value, String> {
     let (left, right) = match (left, right) {
         (Value::Int(left), Value::Float(right)) => (Value::Float(left as f64), Value::Float(right)),
         (Value::Float(left), Value::Int(right)) => (Value::Float(left), Value::Float(right as f64)),
         values => values,
     };
+    let left = OwnedValue::new(left);
+    let right = OwnedValue::new(right);
     if operator == "/" {
-        let zero = match &right {
+        let zero = match &*right {
             Value::Int(value) => *value == 0,
             Value::Float(value) => *value == 0.0,
             _ => false,
@@ -754,18 +1094,21 @@ fn binary(operator: &str, left: Value, right: Value) -> Result<Value, String> {
             return Err("division by zero".to_owned());
         }
     }
-    match (operator, left, right) {
-        ("+", Value::Int(left), Value::Int(right)) => checked_integer(left.checked_add(right)),
-        ("-", Value::Int(left), Value::Int(right)) => checked_integer(left.checked_sub(right)),
-        ("*", Value::Int(left), Value::Int(right)) => checked_integer(left.checked_mul(right)),
-        ("/", Value::Int(left), Value::Int(right)) => checked_integer(left.checked_div(right)),
+    let result = match (operator, &*left, &*right) {
+        ("+", Value::Int(left), Value::Int(right)) => checked_integer(left.checked_add(*right)),
+        ("-", Value::Int(left), Value::Int(right)) => checked_integer(left.checked_sub(*right)),
+        ("*", Value::Int(left), Value::Int(right)) => checked_integer(left.checked_mul(*right)),
+        ("/", Value::Int(left), Value::Int(right)) => checked_integer(left.checked_div(*right)),
         ("+", Value::Float(left), Value::Float(right)) => Ok(Value::Float(left + right)),
         ("-", Value::Float(left), Value::Float(right)) => Ok(Value::Float(left - right)),
         ("*", Value::Float(left), Value::Float(right)) => Ok(Value::Float(left * right)),
         ("/", Value::Float(left), Value::Float(right)) => Ok(Value::Float(left / right)),
-        ("+", Value::String(left), Value::String(right)) => Ok(Value::String(left + &right)),
-        ("==", left, right) => Ok(Value::Bool(values_equal(&left, &right))),
-        ("!=", left, right) => Ok(Value::Bool(!values_equal(&left, &right))),
+        ("+", Value::String(left), Value::String(right)) => {
+            budget.materialize(1, add_bytes(text_bytes(left)?, text_bytes(right)?)?)?;
+            return Ok(Value::String(left.clone() + right));
+        }
+        ("==", left, right) => Ok(Value::Bool(values_equal(left, right))),
+        ("!=", left, right) => Ok(Value::Bool(!values_equal(left, right))),
         ("<", Value::Int(left), Value::Int(right)) => Ok(Value::Bool(left < right)),
         ("<=", Value::Int(left), Value::Int(right)) => Ok(Value::Bool(left <= right)),
         (">", Value::Int(left), Value::Int(right)) => Ok(Value::Bool(left > right)),
@@ -779,7 +1122,9 @@ fn binary(operator: &str, left: Value, right: Value) -> Result<Value, String> {
         (">", Value::String(left), Value::String(right)) => Ok(Value::Bool(left > right)),
         (">=", Value::String(left), Value::String(right)) => Ok(Value::Bool(left >= right)),
         _ => Err(format!("unsupported runtime operation `{operator}`")),
-    }
+    }?;
+    budget.materialize(1, 0)?;
+    Ok(result)
 }
 
 fn values_equal(left: &Value, right: &Value) -> bool {

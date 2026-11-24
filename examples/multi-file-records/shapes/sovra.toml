@@ -1,0 +1,6 @@
+[project]
+name = "record-shapes"
+entry = "main.svr"
+
+[modules]
+geometry = "geometry.svr"

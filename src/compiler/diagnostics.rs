@@ -5,6 +5,59 @@
 pub const MAX_DIAGNOSTIC_MESSAGE_BYTES: usize = 4096;
 const MESSAGE_TRUNCATED: &str = " [message truncated]";
 
+mod terminal;
+pub(crate) use terminal::terminal_message;
+
+/// Internal convenience for emitters that retain an owned message string.
+macro_rules! diagnostic_message {
+    ($($arguments:tt)*) => {
+        $crate::compiler::diagnostics::format_message(format_args!($($arguments)*))
+    };
+}
+pub(crate) use diagnostic_message;
+
+/// Format trusted compiler arguments directly into bounded message storage.
+/// Returning fmt::Error on exhaustion stops standard Display/Debug producers;
+/// eager argument construction and custom formatter internals remain separate.
+pub(crate) fn format_message(arguments: std::fmt::Arguments<'_>) -> String {
+    struct Message {
+        text: String,
+        clipped: bool,
+    }
+    impl std::fmt::Write for Message {
+        fn write_str(&mut self, value: &str) -> std::fmt::Result {
+            let remaining = MAX_DIAGNOSTIC_MESSAGE_BYTES - self.text.len();
+            if value.len() <= remaining {
+                self.text.push_str(value);
+                return Ok(());
+            }
+            let mut end = remaining;
+            while !value.is_char_boundary(end) {
+                end -= 1;
+            }
+            self.text.push_str(&value[..end]);
+            self.clipped = true;
+            Err(std::fmt::Error)
+        }
+    }
+    let mut message = Message {
+        text: String::with_capacity(MAX_DIAGNOSTIC_MESSAGE_BYTES),
+        clipped: false,
+    };
+    let _ = std::fmt::write(&mut message, arguments);
+    if message.clipped {
+        let mut end =
+            (MAX_DIAGNOSTIC_MESSAGE_BYTES - MESSAGE_TRUNCATED.len()).min(message.text.len());
+        while !message.text.is_char_boundary(end) {
+            end -= 1;
+        }
+        message.text.truncate(end);
+        message.text.push_str(MESSAGE_TRUNCATED);
+    }
+    message.text.shrink_to_fit();
+    message.text
+}
+
 /// A source location represented by zero-based byte, line, and column offsets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Span {
@@ -122,6 +175,77 @@ impl Diagnostics {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn clipped(message: String) -> String {
+        Diagnostic {
+            severity: Severity::Error,
+            code: "E3001",
+            message,
+            source_file: None,
+            span: Span {
+                start: 0,
+                end: 0,
+                line: 0,
+                column: 0,
+            },
+        }
+        .bounded()
+        .message
+    }
+
+    #[test]
+    fn streaming_messages_match_existing_clipping_for_utf8_debug_and_boundaries() {
+        for value in [
+            String::new(),
+            "x".repeat(4095),
+            "x".repeat(4096),
+            "x".repeat(4097),
+            "λ".repeat(3000),
+            "\n\"\\\tλ".repeat(2000),
+        ] {
+            for (actual, expected) in [
+                (
+                    format_message(format_args!("{value}")),
+                    clipped(value.clone()),
+                ),
+                (
+                    format_message(format_args!("prefix `{value}` suffix")),
+                    clipped(format!("prefix `{value}` suffix")),
+                ),
+                (
+                    format_message(format_args!("{value:?}")),
+                    clipped(format!("{value:?}")),
+                ),
+            ] {
+                assert_eq!(actual, expected);
+                assert!(actual.len() <= MAX_DIAGNOSTIC_MESSAGE_BYTES);
+                assert!(actual.capacity() <= MAX_DIAGNOSTIC_MESSAGE_BYTES);
+            }
+        }
+    }
+
+    #[test]
+    fn streaming_messages_stop_formatters_after_exhaustion() {
+        use std::{cell::Cell, fmt};
+        struct Repeated<'a>(&'a Cell<usize>);
+        impl fmt::Display for Repeated<'_> {
+            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                for _ in 0..100_000 {
+                    self.0.set(self.0.get() + 1);
+                    formatter.write_str("λ")?;
+                }
+                Ok(())
+            }
+        }
+        let calls = Cell::new(0);
+        let message = format_message(format_args!("{}", Repeated(&calls)));
+        assert!(
+            calls.get() < 10_000,
+            "formatter kept producing discarded text"
+        );
+        assert_eq!(message, clipped("λ".repeat(100_000)));
+        assert!(message.capacity() <= MAX_DIAGNOSTIC_MESSAGE_BYTES);
+    }
 
     #[test]
     fn message_byte_boundary_is_utf8_safe_and_raw_api_is_unchanged() {

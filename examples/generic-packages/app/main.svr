@@ -1,0 +1,30 @@
+use helpers::values;
+
+fn unwrap(value: std::Option<Int>) -> Int {
+    match value {
+        std::Option::Some(item) => { return item; },
+        std::Option::None() => { return 0; }
+    }
+}
+
+fn main() {
+    let boxed = helpers::values::boxed::<Int>(21);
+    let kept = helpers::values::keep::<Int>(std::Option::<Int>::Some(boxed.value));
+    if unwrap(kept) != 21 {
+        let failed = 1 / 0;
+    }
+}
+
+fn test_boxed_value() {
+    let boxed = helpers::values::boxed::<String>("ready");
+    if boxed.value != "ready" {
+        let failed = 1 / 0;
+    }
+}
+
+fn test_option_propagation() {
+    let kept = helpers::values::keep::<Int>(std::Option::<Int>::Some(21));
+    if unwrap(kept) != 21 {
+        let failed = 1 / 0;
+    }
+}

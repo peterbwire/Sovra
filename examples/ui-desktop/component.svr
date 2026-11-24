@@ -33,8 +33,10 @@ fn ui_view(message: String, grouped: Bool) {
     print("heading|Sovra reusable component");
     if (grouped) { print("group|message-card|vertical|card"); }
     print("text|" + message);
+    if (grouped) { print("group|message-actions|horizontal|plain"); }
     print("input|save-message|Message|Save");
     print("button|reset-message|Reset");
+    if (grouped) { print("end|message-actions"); }
     if (grouped) { print("end|message-card"); }
 }
 

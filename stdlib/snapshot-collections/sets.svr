@@ -1,0 +1,109 @@
+mod sets {
+    export struct SnapshotSet<K: std::Key> { items: [K] }
+
+    fn invalid() -> std::Error {
+        return std::Error { code: "invalid_snapshot_set", message: "set contains duplicate keys", offset: std::Option::<Int>::None() };
+    }
+
+    fn validate<K: std::Key>(set: SnapshotSet<K>) -> std::Result<Bool, std::Error> {
+        let items = set.items;
+        let mut i = 0;
+        while i < std::array_len(items) {
+            let mut j = i + 1;
+            while j < std::array_len(items) {
+                if (items[i] == items[j]) { return std::Result::<Bool, std::Error>::Err(invalid()); }
+                j = j + 1;
+            }
+            i = i + 1;
+        }
+        return std::Result::<Bool, std::Error>::Ok(true);
+    }
+
+    fn position<K: std::Key>(items: [K], key: K) -> std::Option<Int> {
+        let mut i = 0;
+        while i < std::array_len(items) {
+            if (items[i] == key) { return std::Option::<Int>::Some(i); }
+            i = i + 1;
+        }
+        return std::Option::<Int>::None();
+    }
+
+    export fn set_new<K: std::Key>() -> SnapshotSet<K> { return SnapshotSet::<K> { items: [] }; }
+
+    export fn set_len<K: std::Key>(set: SnapshotSet<K>) -> std::Result<Int, std::Error> {
+        validate::<K>(set)?;
+        return std::Result::<Int, std::Error>::Ok(std::array_len(set.items));
+    }
+
+    export fn set_contains<K: std::Key>(set: SnapshotSet<K>, key: K) -> std::Result<Bool, std::Error> {
+        validate::<K>(set)?;
+        let found = position::<K>(set.items, key);
+        match found {
+            std::Option::Some(index) => { return std::Result::<Bool, std::Error>::Ok(true); },
+            std::Option::None() => { return std::Result::<Bool, std::Error>::Ok(false); }
+        }
+    }
+
+    export fn set_get<K: std::Key>(set: SnapshotSet<K>, key: K) -> std::Result<std::Option<K>, std::Error> {
+        validate::<K>(set)?;
+        let items = set.items;
+        let found = position::<K>(items, key);
+        match found {
+            std::Option::Some(index) => { return std::Result::<std::Option<K>, std::Error>::Ok(std::Option::<K>::Some(items[index])); },
+            std::Option::None() => { return std::Result::<std::Option<K>, std::Error>::Ok(std::Option::<K>::None()); }
+        }
+    }
+
+    export fn set_insert<K: std::Key>(set: SnapshotSet<K>, key: K) -> std::Result<SnapshotSet<K>, std::Error> {
+        validate::<K>(set)?;
+        let items = set.items;
+        let found = position::<K>(items, key);
+        match found {
+            std::Option::Some(index) => { return std::Result::<SnapshotSet<K>, std::Error>::Ok(set); },
+            std::Option::None() => {
+                if (std::array_len(items) >= 4294967295) {
+                    return std::Result::<SnapshotSet<K>, std::Error>::Err(std::Error { code: "collection_capacity", message: "collection length exceeds representation ceiling", offset: std::Option::<Int>::None() });
+                }
+                return std::Result::<SnapshotSet<K>, std::Error>::Ok(SnapshotSet::<K> { items: std::array_append(items, key) });
+            }
+        }
+    }
+
+    export fn set_remove<K: std::Key>(set: SnapshotSet<K>, key: K) -> std::Result<std::Option<SnapshotSet<K>>, std::Error> {
+        validate::<K>(set)?;
+        let items = set.items;
+        let found = position::<K>(items, key);
+        match found {
+            std::Option::Some(index) => {
+                let before = std::array_slice(items, 0, index);
+                let after = std::array_slice(items, index + 1, std::array_len(items));
+                let updated = SnapshotSet::<K> { items: std::array_concat(before, after) };
+                return std::Result::<std::Option<SnapshotSet<K>>, std::Error>::Ok(std::Option::<SnapshotSet<K>>::Some(updated));
+            },
+            std::Option::None() => { return std::Result::<std::Option<SnapshotSet<K>>, std::Error>::Ok(std::Option::<SnapshotSet<K>>::None()); }
+        }
+    }
+
+    export fn set_values<K: std::Key>(set: SnapshotSet<K>) -> std::Result<[K], std::Error> {
+        validate::<K>(set)?;
+        return std::Result::<[K], std::Error>::Ok(set.items);
+    }
+
+    export fn set_equal<K: std::Key>(left: SnapshotSet<K>, right: SnapshotSet<K>) -> std::Result<Bool, std::Error> {
+        validate::<K>(left)?;
+        validate::<K>(right)?;
+        let a = left.items;
+        let b = right.items;
+        if (std::array_len(a) != std::array_len(b)) { return std::Result::<Bool, std::Error>::Ok(false); }
+        let mut i = 0;
+        while i < std::array_len(a) {
+            let found = position::<K>(b, a[i]);
+            match found {
+                std::Option::Some(index) => {},
+                std::Option::None() => { return std::Result::<Bool, std::Error>::Ok(false); }
+            }
+            i = i + 1;
+        }
+        return std::Result::<Bool, std::Error>::Ok(true);
+    }
+}

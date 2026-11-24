@@ -1,0 +1,21 @@
+struct Box<T> { value: T }
+enum Choice<T> { End, One(T) }
+
+fn identity<T>(value: T) -> T {
+    return value;
+}
+
+fn unwrap(value: Choice<Int>) -> Int {
+    match value {
+        Choice::End() => { return 0; },
+        Choice::One(item) => { return identity::<Int>(item); }
+    }
+}
+
+fn main() {
+    let boxed = Box::<Int> { value: 42 };
+    let result = unwrap(Choice::<Int>::One(boxed.value));
+    if result != 42 {
+        let failed = 1 / 0;
+    }
+}

@@ -1,0 +1,6 @@
+[project]
+name = "record-consumer"
+entry = "main.svr"
+
+[dependencies.shapes]
+path = "../shapes"

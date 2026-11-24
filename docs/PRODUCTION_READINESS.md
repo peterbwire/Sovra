@@ -1,5 +1,11 @@
 # Production-readiness audit and implementation plan
 
+Status guide (2026-11-11): dated findings, artifacts and planned-feature lists
+below retain their original checkpoint context. Consult the
+[current maturity audit](LANGUAGE_MATURITY_AUDIT.md) and
+[Windows foundation review](WINDOWS_FOUNDATION_REVIEW.md) for present scope.
+Existing release gates still apply; this note does not approve publication.
+
 Audit date: 2026-09-27. **Not production-ready.** The user superseded the
 developer-preview release plan and requested production-quality implementation.
 This is a code-informed gap assessment, not a security certification or proof

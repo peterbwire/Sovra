@@ -1,0 +1,22 @@
+use library::sequences;
+
+fn main() {
+    let original = [3, 0 - 1, 3, 0, 2];
+    print(library::sequences::reversed(original));
+    print(library::sequences::sorted(original));
+    print(original);
+    let empty: [Int] = [];
+    print(library::sequences::reversed(empty));
+    print(library::sequences::sorted(empty));
+    print(library::sequences::sorted([7]));
+    print(library::sequences::sorted([1, 2, 3]));
+    print(library::sequences::sorted([3, 2, 1]));
+}
+
+fn test_snapshot() {
+    let original = [2, 1];
+    let mut result = library::sequences::sorted(original);
+    result[0] = 9;
+    print(original);
+    print(result);
+}

@@ -1,0 +1,21 @@
+use helpers::values;
+fn verify_map()->Bool{
+ let empty:std::Map<Int,String>=std::map_new();
+ let full=std::map_insert(std::map_insert(empty,1,"one"),2,"two");
+ let removed=std::map_remove(full,1);
+ match removed{
+  std::Option::Some(updated)=>{
+   let final_map=std::map_insert(updated,1,"new");let pairs=std::map_entries(final_map);let first=pairs[0];let second=pairs[1];
+   let keys=std::map_keys(final_map);let vals=std::map_values(final_map);let imported=helpers::values::boxed::<std::MapEntry<Int,String>>(first);
+   let found=std::map_get(final_map,1);
+   match found{std::Option::Some(v)=>{return std::map_len(empty)==0&&std::map_len(full)==2&&std::map_contains(full,1)&&keys[0]==2&&keys[1]==1&&vals[0]=="two"&&v=="new"&&second.value=="new"&&imported.value.key==2&&std::to_string(final_map)=="std::Map { 2: two, 1: new }";},std::Option::None()=>{return false;}}
+  },std::Option::None()=>{return false;}
+ }
+}
+fn verify_set()->Bool{
+ let empty:std::Set<Bool>=std::set_new();let full=std::set_insert(std::set_insert(std::set_insert(empty,true),false),true);
+ let removed=std::set_remove(full,true);
+ match removed{std::Option::Some(updated)=>{let final_set=std::set_insert(updated,true);let items=std::set_values(final_set);let found=std::set_get(final_set,false);match found{std::Option::Some(v)=>{return v==false&&items[0]==false&&items[1]==true&&std::set_len(full)==2&&std::set_contains(final_set,true)&&std::to_string(final_set)=="std::Set { false, true }";},std::Option::None()=>{return false;}}},std::Option::None()=>{return false;}}
+}
+fn main(){if (verify_map()==false||verify_set()==false){let bad=1/0;}}
+fn test_collections(){main();}

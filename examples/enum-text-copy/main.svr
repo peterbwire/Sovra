@@ -1,0 +1,18 @@
+// Explicit process line input and text-file services; no hosts are granted by default.
+enum Line { Text(String), End }
+fn next_line() -> Line {
+    let line = std::read_line();
+    if line.eof { return Line::End(); }
+    else { return Line::Text(line.text); }
+}
+fn main() {
+    let line = next_line();
+    match line {
+        Line::Text(text) => {
+            let result = std::write_text(std::arg(0), text);
+            if result.ok { print(std::len(text)); }
+            else { print(result.error); std::set_exit_code(1); }
+        },
+        Line::End() => { print("eof"); },
+    }
+}

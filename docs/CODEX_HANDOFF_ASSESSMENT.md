@@ -1,5 +1,11 @@
 # Sovra handoff assessment
 
+Status guide (2026-11-11): dated findings, artifacts and planned-feature lists
+below retain their original checkpoint context. Consult the
+[current maturity audit](LANGUAGE_MATURITY_AUDIT.md) and
+[Windows foundation review](WINDOWS_FOUNDATION_REVIEW.md) for present scope.
+Existing release gates still apply; this note does not approve publication.
+
 Current tooling checkpoint (2026-10-21): the historical command table below is
 superseded by implemented `new`, `test`, `doctor` and standalone `fmt` commands.
 Formatter Windows writes are enabled; package formatting and other-host writes

@@ -77,7 +77,7 @@ function svrValueEqual(left, right) {
   return true;
 }
 
-function svrBinary(operator, left, right) {
+function svrBinary(operator, left, right, materialize = null) {
   // Rust UTF-8 ordering follows scalar values, not JavaScript UTF-16 code units.
   if (typeof left === "string" && typeof right === "string" &&
       (operator === "<" || operator === "<=" || operator === ">" || operator === ">=")) {
@@ -100,19 +100,25 @@ function svrBinary(operator, left, right) {
   if (operator !== "==" && operator !== "!=" && !numeric && !concatenation) {
     throw new Error("unsupported runtime operation `" + operator + "`");
   }
+  if (concatenation) {
+    if (materialize !== null) materialize(1n, BigInt(Buffer.byteLength(left, "utf8")) + BigInt(Buffer.byteLength(right, "utf8")));
+    return left + right;
+  }
   let result;
   switch (operator) {
     case "+": result = left + right; break;
     case "-": result = left - right; break;
     case "*": result = left * right; break;
     case "/": result = left / right; break;
-    case "==": return svrValueEqual(left, right);
-    case "!=": return !svrValueEqual(left, right);
-    case "<": return left < right;
-    case "<=": return left <= right;
-    case ">": return left > right;
-    case ">=": return left >= right;
+    case "==": result = svrValueEqual(left, right); break;
+    case "!=": result = !svrValueEqual(left, right); break;
+    case "<": result = left < right; break;
+    case "<=": result = left <= right; break;
+    case ">": result = left > right; break;
+    case ">=": result = left >= right; break;
     default: throw new Error("unsupported runtime operation `" + operator + "`");
   }
-  return typeof result === "bigint" ? svrCheckedInt(result) : result;
+  result = typeof result === "bigint" ? svrCheckedInt(result) : result;
+  if (materialize !== null) materialize(1n, 0n);
+  return result;
 }

@@ -50,7 +50,9 @@ every possible input or every combination of language features.
 
 ## Later platform capabilities
 
-Native UI, Node-free HTTP/network APIs, async scheduling, resource handles,
+Private compiled Windows/WPF UI now exists; native interaction and clean-machine
+qualification remain incomplete. See [Windows foundation review](WINDOWS_FOUNDATION_REVIEW.md).
+Public cross-platform UI, Node-free HTTP/network APIs, async scheduling, resource handles,
 database drivers, binary file APIs, WebAssembly and mobile adapters remain
 planned. The current browser GUI and HTTP dogfood use Node hosts. These are
 useful future capabilities, not implemented promises of the first executable.

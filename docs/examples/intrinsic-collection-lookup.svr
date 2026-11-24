@@ -1,0 +1,18 @@
+fn lookup<K:std::Key,V>(map:std::Map<K,V>,key:K)->std::Option<V>{
+    return std::map_get(map,key);
+}
+fn main()->Bool{
+    let empty:std::Map<String,Int>=std::map_new();
+    let counts=std::map_insert(empty,"requests",7);
+    let absent=lookup::<String,Int>(counts,"missing");
+    match absent{
+        std::Option::Some(value)=>{return false;},
+        std::Option::None()=>{
+            let present=lookup::<String,Int>(counts,"requests");
+            match present{
+                std::Option::Some(value)=>{return value==7;},
+                std::Option::None()=>{return false;}
+            }
+        }
+    }
+}

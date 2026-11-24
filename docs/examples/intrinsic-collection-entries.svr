@@ -1,0 +1,19 @@
+fn entries<K:std::Key,V>(map:std::Map<K,V>)->[std::MapEntry<K,V>]{
+    return std::map_entries(map);
+}
+fn main()->Bool{
+    let empty:std::Map<String,Int>=std::map_new();
+    let counts=std::map_insert(std::map_insert(empty,"requests",7),"errors",3);
+    let pairs=entries::<String,Int>(counts);
+    let mut i=0;
+    let mut total=0;
+    while i<std::array_len(pairs){
+        let pair=pairs[i];
+        total=total+pair.value;
+        i=i+1;
+    }
+    let first=pairs[0];
+    let second=pairs[1];
+    let expected=std::MapEntry::<String,Int>{key:"requests",value:7};
+    return total==10 && first==expected && second.key=="errors";
+}

@@ -30,3 +30,14 @@ ZIP checksum when obtaining a package. Accepted ADR 0027 exposes the installed
 the snapshot's complete `payload.sha256` list and compiler version before linking.
 The hashes detect corruption against the recorded bytes, not publisher authenticity.
 The compiler also retains check/run/IR/JS commands.
+
+The shared runner also dispatches explicit private v2 source images. V2 executables
+recheck/lower their bounded embedded source at startup and use finite VM limits,
+without stdin/file services. Legacy images retain their existing execution path.
+See [v2 native scope](../../docs/reference/experimental-v2-native.md) in the repository
+(the internal source payload is not a complete documentation distribution).
+
+The shared runner also recognizes the separate private generic source-image family.
+Generic standalone executables recheck/lower embedded source, use fixed host-free
+VM policy and refuse program arguments. See [generic native scope](../../docs/reference/generic-native-v2.md).
+Legacy and plain-v2 image formats and paths remain separate.

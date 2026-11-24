@@ -1,0 +1,9 @@
+fn main() {
+    let mut index = 0
+    let mut text = ""
+    while index < 300 {
+        text = text + "λ😀"
+        index = index + 1
+    }
+    print(std::len(text))
+}

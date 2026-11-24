@@ -107,6 +107,11 @@ try {
         }
     }
     $installedHash = (Get-FileHash -LiteralPath (Join-Path $prefix 'bin\svr.exe') -Algorithm SHA256).Hash
+    $node = (Get-Command node -CommandType Application -ErrorAction Stop).Source
+    & $node (Join-Path $PSScriptRoot 'test-installed-developer-tools.mjs') $prefix
+    if ($LASTEXITCODE -ne 0) { throw 'Installed developer tools acceptance failed.' }
+    $developerHealth = (& (Join-Path $prefix 'bin\svr-editor.ps1') -NodePath $node -Check) -join "`n"
+    if (($developerHealth | ConvertFrom-Json).success -ne $true) { throw 'Installed editor launcher check failed.' }
     $rejectedOverwrite = $false
     try { & (Join-Path $packageRoot 'install.ps1') -Prefix $prefix -NoPersistPath | Out-Null } catch {
         if ($_.Exception.Message -notmatch 'already exists') { throw }
@@ -116,6 +121,27 @@ try {
     if ((Get-FileHash -LiteralPath (Join-Path $prefix 'bin\svr.exe') -Algorithm SHA256).Hash -ne $installedHash) {
         throw 'Rejected reinstall changed the compiler.'
     }
+    $userPathBefore = [Environment]::GetEnvironmentVariable('Path', 'User')
+    $unmanaged = Join-Path $prefix 'personal-data.txt'
+    [IO.File]::WriteAllText($unmanaged, 'preserve this data')
+    $rejectedUnmanaged = $false
+    try { & (Join-Path $packageRoot 'install.ps1') -Prefix $prefix -NoPersistPath -Upgrade | Out-Null } catch {
+        if ($_.Exception.Message -notmatch 'Unmanaged installation file') { throw }
+        $rejectedUnmanaged = $true
+    }
+    if (-not $rejectedUnmanaged -or [IO.File]::ReadAllText($unmanaged) -cne 'preserve this data') { throw 'Upgrade did not preserve unmanaged data.' }
+    Remove-Item -LiteralPath $unmanaged
+    $state = Join-Path $testRoot 'outside-profile.txt'
+    [IO.File]::WriteAllText($state, 'profile data')
+    $upgradeOutput = @(& (Join-Path $packageRoot 'install.ps1') -Prefix $prefix -NoPersistPath -Upgrade)
+    $backupLine = @($upgradeOutput | Where-Object { $_ -like 'Previous installation retained at *' })
+    if ($backupLine.Count -ne 1) { throw 'Upgrade did not report one retained backup.' }
+    $backup = $backupLine[0].Substring('Previous installation retained at '.Length)
+    if ((Get-FileHash -LiteralPath (Join-Path $backup 'bin\svr.exe') -Algorithm SHA256).Hash -ne $installedHash) { throw 'Upgrade backup differs from old compiler.' }
+    & (Join-Path $packageRoot 'rollback.ps1') -Prefix $prefix -Backup $backup | Out-Null
+    if ([IO.File]::ReadAllText($state) -cne 'profile data' -or
+        -not [object]::Equals($userPathBefore, [Environment]::GetEnvironmentVariable('Path', 'User'))) { throw 'Upgrade/rollback changed outside state or user PATH.' }
+    if ((Get-FileHash -LiteralPath (Join-Path $prefix 'bin\svr.exe') -Algorithm SHA256).Hash -ne $installedHash) { throw 'Rollback did not restore the compiler.' }
     $shell = Join-Path $PSHOME 'powershell.exe'
     $originalPath = $env:Path
     try {

@@ -1,0 +1,7 @@
+use shapes::geometry;
+type Point = shapes::geometry::Point;
+fn main() {
+    let point = Point { x: 3, y: 4 };
+    print(shapes::geometry::length_squared(point));
+    print(shapes::geometry::origin().x / 2);
+}

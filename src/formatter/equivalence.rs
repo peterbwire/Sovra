@@ -53,7 +53,7 @@ fn normalize_function(function: &mut Function) {
     statements(&mut function.body);
 }
 
-fn statements(body: &mut [Statement]) {
+pub(super) fn statements(body: &mut [Statement]) {
     for statement in body {
         match statement {
             Statement::Let {

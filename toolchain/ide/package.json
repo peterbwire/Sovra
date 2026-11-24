@@ -1,0 +1,37 @@
+{
+    "name": "sovra-language",
+    "displayName": "Sovra Language",
+    "description": "Experimental Sovra diagnostics, checked symbol/type hover, navigation, syntax highlighting and basic suggestions",
+    "version": "0.3.0",
+    "publisher": "sovra-local",
+    "license": "MIT OR Apache-2.0",
+    "repository": { "type": "git", "url": "https://github.com/peterbwire/Sovra.git" },
+    "engines": { "vscode": "^1.90.0" },
+    "categories": ["Programming Languages"],
+    "main": "./extension.cjs",
+    "activationEvents": ["onLanguage:sovra", "onCommand:sovra.restartServer"],
+    "capabilities": { "untrustedWorkspaces": { "supported": "limited", "description": "Only syntax highlighting is available until the workspace is trusted." }, "virtualWorkspaces": false },
+    "contributes": {
+        "taskDefinitions": [{ "type": "sovra", "required": ["action", "target"], "properties": { "action": { "type": "string", "enum": ["check", "run", "buildIR", "buildJS"] }, "target": { "type": "string" }, "package": { "type": "boolean" } } }],
+        "languages": [{ "id": "sovra", "aliases": ["Sovra", "sovra"], "extensions": [".svr"], "configuration": "./language-configuration.json" }],
+        "grammars": [{ "language": "sovra", "scopeName": "source.sovra", "path": "./syntaxes/sovra.tmLanguage.json" }],
+        "commands": [
+            { "command": "sovra.restartServer", "title": "Sovra: Restart Language Server" },
+            { "command": "sovra.check", "title": "Sovra: Check Current File" },
+            { "command": "sovra.buildIR", "title": "Sovra: Build Current File as IR" },
+            { "command": "sovra.buildJS", "title": "Sovra: Build Current File as JavaScript" },
+            { "command": "sovra.run", "title": "Sovra: Run Current File" }
+        ],
+        "configuration": {
+            "title": "Sovra",
+            "properties": {
+                "sovra.compilerPath": { "type": "string", "default": "svr", "description": "Compiler on PATH or an absolute executable path. Changes require restarting the language server.", "restricted": true },
+                "sovra.nodePath": { "type": "string", "default": "node", "description": "Node.js 22+ on PATH or an absolute executable path for the language server.", "restricted": true },
+                "sovra.experimentalGenericPackageDiagnostics": {"type":"boolean","default":false,"description":"Opt into whole-package generic diagnostics for unsaved entry/module/dependency buffers. Requires experimentalGenerics and restart. Checked function/type/field definitions, hover and outlines and scope-aware local navigation are available. Diagnostics never execute or save source.","restricted":true},
+                "sovra.experimentalGenericPackageTasks": {"type":"boolean","default":false,"description":"Opt into compiler-selected generic package Check/Run targets, including registered modules. Requires experimentalGenerics and restart. Does not enable package diagnostics; saves related sources and refuses dirty manifests.","restricted":true},
+                "sovra.experimentalGenerics": {"type": "boolean", "default": false, "description": "Opt into standalone generic/Option/Result/? buffer diagnostics and Check/Run tasks. Requires language-server restart; mutually exclusive with experimentalV2. Checked root declaration outlines and local symbolic-type hover/navigation and function-header type definitions are available; syntax-preserving document formatting is available; body/type-parameter navigation and IR/JS tasks are unavailable; package buffers are checked as standalone files by default.", "restricted": true},
+                "sovra.experimentalV2": {"type": "boolean", "default": false, "description": "Opt into v2 standalone buffer diagnostics, formatting and source tasks. Requires language-server restart. Checked function/binding/enum-variant navigation is available; v2 field/package navigation and JS emission are unavailable.", "restricted": true}
+            }
+        }
+    }
+}

@@ -1,0 +1,6 @@
+[project]
+name = "snapshot-collection-consumer"
+entry = "main.svr"
+
+[dependencies.collections]
+path = "../../stdlib/snapshot-collections"

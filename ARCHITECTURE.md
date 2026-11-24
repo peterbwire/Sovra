@@ -3,8 +3,31 @@
 Sovra keeps the language definition, compiler, runtime, standard library,
 tooling, and `svr` command separate so each layer can evolve independently.
 
+The [platform goal](docs/PLATFORM_VISION.md) spans mobile, desktop, web, servers
+and other environments. Keep language semantics and reusable compiler/runtime
+interfaces portable, with target-specific UI, device services, lifecycle and
+packaging at backend/host boundaries. Current Windows and Node implementations
+are individual slices; mobile support remains planned and needs its own runtime,
+UI and deployment qualification.
+
 The compiler, runtime, and core tooling are implemented in Rust. The Rust crate
 exposes the compiler-stage boundaries under `src/compiler/`.
+Retained checked type/symbol evidence follows
+[ADR 0041](docs/adr/0041-retained-checked-evidence.md). Its additive immutable
+`CheckedUnit` ownership/structural-index foundation and opt-in checked value/
+parameter/local type recording are implemented. An explicit flow-enabled API
+also retains scoped function/value use identities and numeric coercion edges.
+Opt-in `check --symbols` and LSP/VS Code consume this standalone evidence for
+navigation and inferred-local hover. Explicit `ir::lower_checked` consumes lowering-
+ready snapshots and preserves exact IR with caller-selected budgets. Opt-in
+`compile_with_checked_evidence` retains canonical imported identities with cumulative
+metadata and shared package emission limits; normal CLI,
+test and native standalone callers now use bounded `compiler::compile_program`;
+ordinary package callers now use cumulative checked evidence too. An explicit
+legacy package lowering API remains for compatibility/parity without fallback. The existing
+public `TypedProgram` still wraps a mutable validated AST. Existing language and
+stage APIs remain compatible; executable standalone defaults now enforce the
+active checked-evidence admission policy. Plain semantic check remains separate.
 The M0-M11 foundation includes lexing, parsing, AST construction, semantic
 analysis, interpretation, modules, core types, a small `std` namespace,
 inspectable IR, and a portable JavaScript compiler backend.

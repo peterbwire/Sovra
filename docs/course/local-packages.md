@@ -19,6 +19,14 @@ manifest or alias header, before resolving the over-budget target. These limits
 also protect the initial project-classification manifest read; see
 [ADR 0036](../adr/0036-package-graph-resource-budgets.md).
 
+Interface string materialization permits 128 MiB cumulatively across the graph.
+Copied signature names/types, exported/attached records, generated aliases and
+qualified signature labels count at their UTF-8 byte lengths. Repeated imports
+consume the allowance again even when replacing earlier metadata. E3024 stops
+compilation before successful linking or execution; see accepted
+[ADR 0039](../adr/0039-interface-string-materialization.md). This is a component
+quota rather than a complete compiler memory/CPU bound.
+
 The [consumer](../../examples/local-packages/app/main.svr) declares this dependency
 in its [manifest](../../examples/local-packages/app/sovra.toml):
 
@@ -118,3 +126,31 @@ sections are present. Directories without them still use the partial application
 checker; check a standalone library's entry `.svr` directly for source semantics.
 `run` and `build` accept package directories even without dependencies. Experimental
 `--service-calls` is for application scanning and is rejected for dependency packages.
+
+
+General multi-file registration and local-source locks are now covered by a
+[approved G12 design](../design/G12_MODULES_AND_LOCKS.md). The additive
+[source-inventory API](../reference/package-source-inventory.md) and
+[source-unit loader](../reference/package-source-units.md) currently admit module
+registrations for metadata/captured parsing. Semantic linking, locks and locked commands are not
+available in this lesson's implemented entry-only workflow.
+
+
+A separate [multi-file callable example](../../examples/multi-file-packages/README.md)
+now executes through the additive Rust compiler API with primitive interfaces and
+private helpers. Its manifests still require that API; the default CLI workflow
+above remains entry-only, and general record interfaces/locks remain planned.
+
+A separate [registered shapes/record example](../../examples/multi-file-records/README.md)
+now executes nominal primitive-field records through the record-capable Rust API.
+It does not enable default CLI module loading or lock workflows.
+
+
+## Registered sources through the CLI
+
+On the supported guarded Linux reader, both [callable](../../examples/multi-file-packages/README.md)
+and [record](../../examples/multi-file-records/README.md) multi-file examples now
+support CLI check/run/build and root test discovery. See the [registered CLI
+contract](../reference/registered-package-cli.md) for commands and remaining
+context/formatter/editor limitations. Older Rust package APIs keep their original
+entry-only contract; locks remain planned.

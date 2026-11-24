@@ -1,0 +1,6 @@
+[project]
+name = "slice-consumer"
+entry = "main.svr"
+
+[dependencies.library]
+path = "../sequences"

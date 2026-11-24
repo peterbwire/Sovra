@@ -1,0 +1,1 @@
+{"format":"sovra-lock","packages":[{"dependencies":[],"entry":{"bytes":363,"path":"src/main.svr","sha256":"0ad8b2d8883cae749eb1828c49c6c9397821f7eb75e7fe0c719ab42bdb20b087"},"id":"p0","manifest":{"bytes":55,"sha256":"4d08c00be304afb4e060ab013eb724a6fbe8949bde02f3634018e07c5cf598b5"},"modules":[],"name":"enum-package","version":null}],"root":"p0","version":1}

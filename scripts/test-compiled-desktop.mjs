@@ -36,7 +36,7 @@ try {
     const sources = ['Bridge.cs', 'DesktopWindow.cs', 'DesktopTheme.cs', 'ApplicationProfile.cs', 'ProfileLease.cs', 'ProcessLifetime.cs', 'InvocationWorker.cs'].map(name => join(root, 'toolchain/ui/windows/compiled', name));
     report.sources = [...sources, join(root, 'toolchain/ui/windows/compiled/Entry.cs'),
         join(root, 'scripts/fixtures/CompiledDesktopTests.cs'), join(root, 'scripts/fixtures/UiProcessFixture.cs'),
-        join(root, 'scripts/fixtures/ui-moving.svr'), join(root, 'dogfood/01-task-manager/main.svr'),
+        join(root, 'scripts/fixtures/ui-moving.svr'), join(root, 'scripts/fixtures/ui-responsive.svr'), join(root, 'dogfood/01-task-manager/main.svr'),
         join(root, 'examples/ui-desktop/component.svr')]
         .map(path => ({ path, sha256: hash(path) }));
     report.compiler_sha256 = hash(join(root, 'target/debug/svr.exe'));

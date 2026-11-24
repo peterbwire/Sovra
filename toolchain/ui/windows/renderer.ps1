@@ -82,7 +82,7 @@ function Invoke-SovraUiProgram {
 }
 
 function ConvertFrom-SovraUiView([string]$Text) {
-    if ([Text.Encoding]::UTF8.GetByteCount($Text) -gt 65536) { throw 'UI view exceeds 65536 bytes.' }
+    if ([Text.UTF8Encoding]::new($false, $true).GetByteCount($Text) -gt 65536) { throw 'UI view exceeds 65536 bytes.' }
     if (-not $Text.EndsWith("`n")) { throw 'Incomplete UI view.' }
     $lines = $Text.Substring(0, $Text.Length - 1).Split([char]"`n")
     $grouped = $lines[0] -ceq 'SVR-UI-2'
@@ -174,6 +174,8 @@ function New-SovraUiSession {
 function Update-SovraUiView($Session) {
     $view = Invoke-SovraUiProgram $Session @($Session.ViewCommand, $Session.State)
     if ($view.Status -ne 0) { throw ('Cannot load Sovra view: ' + $view.Output + $view.Error) }
+    $expected = $(if ($Session.ViewCommand -ceq 'ui-layout-view') { 'SVR-UI-2' } else { 'SVR-UI-1' })
+    if (-not $view.Output.StartsWith($expected + "`n", [StringComparison]::Ordinal)) { throw 'Unexpected UI view version.' }
     $Session.Nodes = @(ConvertFrom-SovraUiView $view.Output)
 }
 
@@ -185,7 +187,7 @@ function Invoke-SovraUiEvent {
     if ($matchingNodes.Count -ne 1) { throw 'UI action is unavailable or ambiguous.' }
     $node = $matchingNodes[0]
     if (($node.Kind -ceq 'input') -ne [bool]$HasValue) { throw 'UI event value does not match its control.' }
-    if ([Text.Encoding]::UTF8.GetByteCount($Value) -gt 65536) { throw 'UI event value exceeds 65536 bytes.' }
+    if ([Text.UTF8Encoding]::new($false, $true).GetByteCount($Value) -gt 65536) { throw 'UI event value exceeds 65536 bytes.' }
     $argsList = @('ui-event', $Session.State, $Action)
     if ($HasValue) { $argsList += $Value }
     $result = Invoke-SovraUiProgram $Session $argsList

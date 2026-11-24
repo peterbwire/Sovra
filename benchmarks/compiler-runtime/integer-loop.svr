@@ -1,0 +1,9 @@
+fn main() {
+    let mut index = 0
+    let mut total = 0
+    while index < 5000 {
+        total = total + index
+        index = index + 1
+    }
+    print(total)
+}

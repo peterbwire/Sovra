@@ -1,0 +1,12 @@
+// Opt-in v2 Rust source-unit API example; default CLI enum parsing is pending.
+type Count = Int;
+struct Packet { count: Count }
+enum Outcome { Value(Packet), End }
+
+fn main() {
+    let outcome = Outcome::Value(Packet { count: 7 });
+    match outcome {
+        Outcome::Value(packet) => { print(packet.count); },
+        Outcome::End() => { print("end"); },
+    }
+}

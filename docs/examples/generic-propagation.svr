@@ -1,0 +1,32 @@
+fn option<T>(input: std::Option<T>) -> std::Option<T> {
+    return std::Option::<T>::Some(input?);
+}
+fn result<T>(input: std::Result<Int, std::Error>, fallback: T) -> std::Result<T, std::Error> {
+    let number = 10 + input?;
+    return std::Result::<T, std::Error>::Ok(fallback);
+}
+fn main() {
+    let value = option::<Int>(std::Option::<Int>::Some(9));
+    match value {
+        std::Option::Some(number) => { if number != 9 { let bad = 1 / 0; } },
+        std::Option::None() => { let bad = 1 / 0; }
+    }
+    let absent = option::<Int>(std::Option::<Int>::None());
+    match absent {
+        std::Option::Some(number) => { let bad = 1 / 0; },
+        std::Option::None() => {}
+    }
+    let error = std::Error { code: "invalid", message: "bad input", offset: std::Option::<Int>::Some(7) };
+    let failed = result::<Bool>(std::Result::<Int, std::Error>::Err(error), true);
+    match failed {
+        std::Result::Ok(value) => { let bad = 1 / 0; },
+        std::Result::Err(error) => {
+            if error.code != "invalid" { let bad = 1 / 0; }
+            let offset_value = error.offset;
+            match offset_value {
+                std::Option::Some(offset) => { if offset != 7 { let bad = 1 / 0; } },
+                std::Option::None() => { let bad = 1 / 0; }
+            }
+        }
+    }
+}

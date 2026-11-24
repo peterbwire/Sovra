@@ -1,0 +1,22 @@
+// Checked-program Rust API fixture; default CLI parsing remains unchanged.
+enum Event { Amount(Int), Skip }
+fn main() {
+    let mut n = 0;
+    let mut total = 0;
+    while n < 4 {
+        let event = Event::Amount(n);
+        if n < 3 {
+            match event {
+                Event::Amount(value) => { total = total + value; },
+                Event::Skip() => {},
+            }
+        } else {
+            match event {
+                Event::Amount(value) => { total = total + value * 2; },
+                Event::Skip() => {},
+            }
+        }
+        n = n + 1;
+    }
+    print(total);
+}

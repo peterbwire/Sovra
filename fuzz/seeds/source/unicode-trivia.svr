@@ -1,0 +1,11 @@
+// 😀 é seed: leading trivia must not change checked meaning.
+fn keep(value: Int) -> Int {
+    let x: Int = value
+    if true {
+        let x = x + 1
+        print(x)
+    }
+    print("λ😀\\n")
+    return x
+}
+fn main() { print(keep(2)) }

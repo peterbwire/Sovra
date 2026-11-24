@@ -1,0 +1,7 @@
+use utilities::arithmetic;
+
+mod application {
+    export fn answer() -> Int {
+        return utilities::arithmetic::square(7);
+    }
+}

@@ -41,11 +41,96 @@ fn instruction_text(instruction: &Instruction) -> String {
 
 /// Render IR as portable JavaScript.
 pub fn render_javascript(program: &IrProgram) -> String {
+    render_javascript_with_limits(program, super::execution::ExecutionLimits::UNLIMITED)
+}
+
+/// Render JavaScript with explicit per-script instruction/printed-output allowances.
+/// Existing rendering remains unlimited by these optional component counters.
+/// This does not meter host I/O, helper work, heap allocation or execution time.
+pub fn render_javascript_with_limits(
+    program: &IrProgram,
+    limits: super::execution::ExecutionLimits,
+) -> String {
+    render_javascript_with_policy(
+        program,
+        super::execution::RuntimePolicy {
+            execution: limits,
+            ..super::execution::RuntimePolicy::UNLIMITED
+        },
+    )
+}
+
+/// Render model-v1 logical materialization plus optional instruction/output policy.
+/// Counters are shared across the script; this is not a physical heap sandbox.
+pub fn render_javascript_with_policy(
+    program: &IrProgram,
+    policy: super::execution::RuntimePolicy,
+) -> String {
+    render_javascript_mode(program, policy, None)
+}
+
+/// Explicit Node Worker cooperative controls; no process isolation or I/O preemption.
+#[derive(Debug, Clone, Copy)]
+pub struct JavaScriptWorkerControl {
+    /// Require a version-1 shared atomic cancellation flag in workerData.
+    pub enable_cancellation: bool,
+    /// Monotonic elapsed allowance starting at generated script entry.
+    pub max_elapsed: Option<std::time::Duration>,
+}
+impl JavaScriptWorkerControl {
+    /// Disable cooperative controls while retaining worker-only execution.
+    pub const UNLIMITED: Self = Self {
+        enable_cancellation: false,
+        max_elapsed: None,
+    };
+}
+
+/// Generate a Node CommonJS worker script with explicit fuel and cooperative control.
+/// Stdio descriptors and filesystem authority remain shared with the supervisor.
+pub fn render_javascript_worker_with_policy_and_control(
+    program: &IrProgram,
+    policy: super::execution::RuntimePolicy,
+    control: JavaScriptWorkerControl,
+) -> String {
+    render_javascript_mode(program, policy, Some(control))
+}
+
+fn render_javascript_mode(
+    program: &IrProgram,
+    policy: super::execution::RuntimePolicy,
+    worker: Option<JavaScriptWorkerControl>,
+) -> String {
+    let limits = policy.execution;
     if let Err(error) = crate::compiler::ir::validate_declarations(program) {
         return format!("\"use strict\";\nthrow new Error({});\n", js_string(&error));
     }
     let mut output = String::new();
     let _ = writeln!(output, "\"use strict\";");
+    if let Some(control) = worker {
+        let _ = writeln!(
+            output,
+            "const svrControlOrigin = {};",
+            if control.max_elapsed.is_some() {
+                "process.hrtime.bigint()"
+            } else {
+                "null"
+            }
+        );
+        let _ = writeln!(
+            output,
+            "const svrCancellationEnabled = {};",
+            control.enable_cancellation
+        );
+        let _ = writeln!(
+            output,
+            "const svrElapsedAllowance = {};",
+            control.max_elapsed.map_or_else(
+                || "null".into(),
+                |duration| format!("{}n", duration.as_nanos())
+            )
+        );
+        output.push_str(include_str!("worker_control_runtime.js"));
+    }
     let _ = writeln!(output);
     let _ = writeln!(output, "const svrFs = require(\"node:fs\");");
     let _ = writeln!(output, "const svrPath = require(\"node:path\");");
@@ -53,6 +138,34 @@ pub fn render_javascript(program: &IrProgram) -> String {
     let _ = writeln!(output, "const svrFunctions = Object.create(null);");
     let _ = writeln!(output, "let svrCallDepth = 0;");
     let _ = writeln!(output, "let svrExitCode = 0;");
+    let integer =
+        |value: Option<u64>| value.map_or_else(|| "null".to_owned(), |value| format!("{value}n"));
+    let _ = writeln!(
+        output,
+        "let svrInstructionRemaining = {};",
+        integer(limits.max_instructions)
+    );
+    let _ = writeln!(
+        output,
+        "let svrOutputRemaining = {};",
+        integer(limits.max_output_bytes)
+    );
+    let _ = writeln!(
+        output,
+        "let svrNodeRemaining = {};",
+        integer(policy.materialization.max_value_nodes)
+    );
+    let _ = writeln!(
+        output,
+        "let svrTextRemaining = {};",
+        integer(policy.materialization.max_text_bytes)
+    );
+    let _ = writeln!(
+        output,
+        "const svrMaterializationModelVersion = {};",
+        super::execution::MATERIALIZATION_MODEL_VERSION
+    );
+    output.push_str(include_str!("materialization_runtime.js"));
     output.push_str(include_str!("numeric_runtime.js"));
     output.push_str(
         r#"
@@ -192,8 +305,29 @@ function svrWriteTextIf(path, exists, expected, replacement) {
   }
 }
 function svrWriteLine(value) {
-  const bytes = Buffer.from(svrDisplay(value) + "\n", "utf-8");
+  if (svrOutputRemaining === 0n) throw new Error("execution output byte allowance exceeded");
+  const payloadLimit = svrOutputRemaining === null ? null : svrOutputRemaining - 1n;
+  const enabled = svrMaterializationEnabled();
+  if (enabled) {
+    const size = svrFootprint(value).display;
+    if (svrOutputRemaining !== null && size + 1n > svrOutputRemaining) throw new Error("execution output byte allowance exceeded");
+    svrMaterialize(1n, size);
+    if (svrOutputRemaining !== null) svrOutputRemaining -= size + 1n;
+  }
+  const line = svrDisplay(value, payloadLimit);
+  const bytes = Buffer.from(line + "\n", "utf-8");
+  if (!enabled && svrOutputRemaining !== null) {
+    const count = BigInt(bytes.length);
+    if (count > svrOutputRemaining) throw new Error("execution output byte allowance exceeded");
+    svrOutputRemaining -= count;
+  }
   let written = 0;
+"#,
+    );
+    if worker.is_some() {
+        output.push_str("  svrCheckpoint();\n");
+    }
+    output.push_str(r#"
   while (written < bytes.length) {
     let count;
     try { count = svrFs.writeSync(1, bytes, written, bytes.length - written); }
@@ -201,19 +335,52 @@ function svrWriteLine(value) {
     if (count <= 0) throw new Error("standard output write failed");
     written += count;
   }
+"#,
+    );
+    if worker.is_some() {
+        output.push_str("  svrCheckpoint();\n");
+    }
+    output.push_str(r#"
 }
-function svrDisplay(value) {
-  if (value === undefined) return "";
-  if (typeof value === "number") return svrFormatFloat(value);
-  if (Array.isArray(value)) return "[" + value.map(svrDisplay).join(", ") + "]";
-  if (value !== null && typeof value === "object" &&
-      Object.prototype.hasOwnProperty.call(value, "__svrStruct")) {
-    const record = value.__svrStruct;
-    return record.typeName + " { " +
-      record.fieldOrder.map(name => name + ": " + svrDisplay(record.fields[name])).join(", ") +
-      " }";
+function svrDisplay(value, maxBytes = null) {
+  const parts = [];
+  let written = 0n;
+  const append = text => {
+    if (maxBytes !== null) {
+      const count = BigInt(Buffer.byteLength(text, "utf8"));
+      if (count > maxBytes - written) throw new Error("execution output byte allowance exceeded");
+      written += count;
+    }
+    parts.push(text);
+  };
+  const pending = [[false, value]];
+  while (pending.length) {
+    const [text, value] = pending.pop();
+    if (text) { append(value); continue; }
+    if (value === undefined) continue;
+    if (typeof value === "number") { append(svrFormatFloat(value)); continue; }
+    if (Array.isArray(value)) {
+      append("[");
+      pending.push([true, "]"]);
+      for (let index = value.length - 1; index >= 0; index--) {
+        pending.push([false, value[index]]);
+        if (index) pending.push([true, ", "]);
+      }
+    } else if (value !== null && typeof value === "object" &&
+        Object.prototype.hasOwnProperty.call(value, "__svrStruct")) {
+      const record = value.__svrStruct;
+      append(record.typeName); append(" { ");
+      pending.push([true, " }"]);
+      for (let index = record.fieldOrder.length - 1; index >= 0; index--) {
+        const name = record.fieldOrder[index];
+        pending.push([false, record.fields[name]]);
+        pending.push([true, ": "]);
+        pending.push([true, name]);
+        if (index) pending.push([true, ", "]);
+      }
+    } else { append(String(value)); }
   }
-  return String(value);
+  return parts.join("");
 }
 function svrEscapeTerminal(text) {
   return text.replace(/[\u0000-\u001F\u007F-\u009F]/g,
@@ -238,7 +405,8 @@ function svrFormatFloat(value) {
   if (point >= digits.length) return sign + digits + "0".repeat(point - digits.length);
   return sign + digits.slice(0, point) + "." + digits.slice(point);
 }
-function svrCopy(value) {
+function svrCopy(value, admit = true) {
+  if (admit) svrAdmitSnapshot(value);
   function shell(source) {
     if (Array.isArray(source)) return [];
     if (source !== null && typeof source === "object" &&
@@ -277,7 +445,13 @@ function svrCopy(value) {
     );
     let _ = writeln!(output);
     for (index, function) in program.functions.iter().enumerate() {
-        render_js_function(&mut output, index, function);
+        render_js_function(
+            &mut output,
+            index,
+            function,
+            limits.max_instructions.is_some(),
+            worker.is_some(),
+        );
     }
     for (index, function) in program.functions.iter().enumerate() {
         let _ = writeln!(
@@ -293,11 +467,20 @@ function svrCopy(value) {
         "if (!svrFunctions.main) throw new Error(\"entry function `main` was not found\");"
     );
     let _ = writeln!(output, "svrFunctions.main();");
+    if worker.is_some() {
+        let _ = writeln!(output, "svrCheckpoint();");
+    }
     let _ = writeln!(output, "process.exitCode = svrExitCode;");
     output
 }
 
-fn render_js_function(output: &mut String, index: usize, function: &IrFunction) {
+fn render_js_function(
+    output: &mut String,
+    index: usize,
+    function: &IrFunction,
+    limited: bool,
+    worker: bool,
+) {
     let _ = write!(output, "function {}(", js_function_name(index));
     for parameter_index in 0..function.parameters.len() {
         if parameter_index > 0 {
@@ -324,11 +507,17 @@ fn render_js_function(output: &mut String, index: usize, function: &IrFunction) 
             function.parameters.len()
         ))
     );
+    if worker {
+        let _ = writeln!(output, "  svrCheckpoint();");
+    }
     let _ = writeln!(output, "  svrCallDepth++;");
     let _ = writeln!(output, "  try {{");
     let _ = writeln!(output, "  const stack = [];");
     let _ = writeln!(output, "  const names = Object.create(null);");
     for (parameter_index, parameter) in function.parameters.iter().enumerate() {
+        if worker {
+            let _ = writeln!(output, "  svrCheckpoint();");
+        }
         let _ = writeln!(
             output,
             "  names[{}] = svrCopy(svr_arg_{parameter_index});",
@@ -337,9 +526,16 @@ fn render_js_function(output: &mut String, index: usize, function: &IrFunction) 
     }
     let _ = writeln!(output, "  let pc = 0;");
     let _ = writeln!(output, "  while (pc < {}) {{", function.instructions.len());
+    if worker {
+        let _ = writeln!(output, "    svrCheckpoint();");
+    }
+    if limited {
+        let _ = writeln!(output, "    if (svrInstructionRemaining === 0n) throw new Error(\"execution instruction allowance exceeded\");");
+        let _ = writeln!(output, "    svrInstructionRemaining -= 1n;");
+    }
     let _ = writeln!(output, "    switch (pc) {{");
     for (pc, instruction) in function.instructions.iter().enumerate() {
-        render_js_instruction(output, pc, instruction, function.instructions.len());
+        render_js_instruction(output, pc, instruction, function.instructions.len(), worker);
     }
     let _ = writeln!(
         output,
@@ -347,7 +543,18 @@ fn render_js_function(output: &mut String, index: usize, function: &IrFunction) 
     );
     let _ = writeln!(output, "    }}");
     let _ = writeln!(output, "  }}");
-    let _ = writeln!(output, "  return stack.length ? stack.pop() : undefined;");
+    if worker {
+        let _ = writeln!(output, "  svrCheckpoint();");
+    }
+    let _ = writeln!(
+        output,
+        "  return {}(stack);",
+        if worker {
+            "svrWorkerReturn"
+        } else {
+            "svrReturn"
+        }
+    );
     let _ = writeln!(output, "  }} finally {{ svrCallDepth--; }}");
     let _ = writeln!(output, "}}");
     let _ = writeln!(output);
@@ -358,11 +565,21 @@ fn render_js_instruction(
     pc: usize,
     instruction: &Instruction,
     instruction_count: usize,
+    worker: bool,
 ) {
     let _ = writeln!(output, "      case {pc}: {{");
     match instruction {
         Instruction::LoadLiteral(value) => {
-            let _ = writeln!(output, "        stack.push({});", js_literal(value));
+            let literal = js_literal(value);
+            if !literal.starts_with("(() => { throw") {
+                let bytes = if let Literal::String(text) = value {
+                    text.len()
+                } else {
+                    0
+                };
+                let _ = writeln!(output, "        svrMaterialize(1n, {bytes}n);");
+            }
+            let _ = writeln!(output, "        stack.push({literal});");
         }
         Instruction::LoadName(name) => {
             let _ = writeln!(
@@ -413,13 +630,14 @@ fn render_js_instruction(
             let _ = writeln!(output, "          const left = stack.pop();");
             let _ = writeln!(
                 output,
-                "          stack.push(svrBinary({}, left, right));",
+                "          stack.push(svrBinary({}, left, right, svrMaterializationEnabled() ? svrMaterialize : null));",
                 js_string(operator)
             );
             let _ = writeln!(output, "        }}");
         }
         Instruction::MakeArray { length } => {
             render_stack_guard(output, *length, "array literal");
+            let _ = writeln!(output, "        svrMaterialize(1n, 0n);");
             let _ = writeln!(
                 output,
                 "        {{
@@ -430,6 +648,26 @@ fn render_js_instruction(
         }
         Instruction::MakeStruct { type_name, fields } => {
             render_stack_guard(output, fields.len(), "struct literal");
+            let mut seen = std::collections::HashSet::new();
+            if fields.iter().any(|field| !seen.insert(field)) {
+                let _ = writeln!(
+                    output,
+                    "        throw new Error({});",
+                    js_string(&format!("duplicate field in struct `{type_name}`"))
+                );
+                let _ = writeln!(output, "      }}");
+                return;
+            }
+            let bytes =
+                match super::execution::label_bytes(type_name, fields.iter().map(String::as_str)) {
+                    Ok(bytes) => bytes,
+                    Err(error) => {
+                        let _ = writeln!(output, "        throw new Error({});", js_string(&error));
+                        let _ = writeln!(output, "      }}");
+                        return;
+                    }
+                };
+            let _ = writeln!(output, "        svrMaterialize(1n, {bytes}n);");
             let _ = writeln!(output, "        {{");
             let _ = writeln!(
                 output,
@@ -515,11 +753,16 @@ fn render_js_instruction(
             let _ = writeln!(output, "        }}");
             let _ = writeln!(output, "        break;");
         }
-        Instruction::Call { name, arguments } => render_js_call(output, name, *arguments),
+        Instruction::Call { name, arguments } => render_js_call(output, name, *arguments, worker),
         Instruction::Return => {
             let _ = writeln!(
                 output,
-                "        return stack.length ? stack.pop() : undefined;"
+                "        return {}(stack);",
+                if worker {
+                    "svrWorkerReturn"
+                } else {
+                    "svrReturn"
+                }
             );
         }
         Instruction::Pop => {
@@ -537,7 +780,18 @@ fn render_js_instruction(
     let _ = writeln!(output, "      }}");
 }
 
-fn render_js_call(output: &mut String, name: &str, arguments: usize) {
+fn render_host_result(output: &mut String, expression: &str, worker: bool) {
+    if worker {
+        let _ = writeln!(output, "    svrCheckpoint();");
+        let _ = writeln!(output, "    const hostResult = {expression};");
+        let _ = writeln!(output, "    svrCheckpoint();");
+        let _ = writeln!(output, "    stack.push(svrIngress(hostResult));");
+    } else {
+        let _ = writeln!(output, "    stack.push(svrIngress({expression}));");
+    }
+}
+
+fn render_js_call(output: &mut String, name: &str, arguments: usize, worker: bool) {
     render_stack_guard(output, arguments, "call");
     if let Some(function) = crate::compiler::stdlib::lookup(name) {
         if arguments != function.parameters.len() {
@@ -563,48 +817,62 @@ fn render_js_call(output: &mut String, name: &str, arguments: usize) {
             let _ = writeln!(output, "    stack.push(undefined);");
         }
         "std::arg_count" => {
-            let _ = writeln!(output, "    stack.push(BigInt(svrArgv.length));");
+            let _ = writeln!(
+                output,
+                "    svrMaterialize(1n, 0n); stack.push(BigInt(svrArgv.length));"
+            );
         }
         "std::arg" => {
             let _ = writeln!(output, "    if (typeof args[0] !== \"bigint\") throw new Error(\"std::arg expects an Int index\");");
             let _ = writeln!(output, "    if (args[0] < 0n || args[0] >= BigInt(svrArgv.length)) throw new Error(\"program argument index out of bounds\");");
-            let _ = writeln!(output, "    stack.push(svrArgv[Number(args[0])]);");
+            let _ = writeln!(output, "    svrMaterialize(1n, svrBytes(svrArgv[Number(args[0])])); stack.push(svrArgv[Number(args[0])]);");
         }
         "std::set_exit_code" => {
             let _ = writeln!(output, "    if (typeof args[0] !== \"bigint\") throw new Error(\"std::set_exit_code expects an Int code\");");
             let _ = writeln!(output, "    if (args[0] < 0n || args[0] > 125n) throw new Error(\"exit code must be between 0 and 125\");");
-            let _ = writeln!(output, "    svrExitCode = Number(args[0]);");
+            let _ = writeln!(
+                output,
+                "    svrMaterialize(1n, 0n); svrExitCode = Number(args[0]);"
+            );
             let _ = writeln!(output, "    stack.push(undefined);");
         }
         "std::read_line" => {
-            let _ = writeln!(output, "    stack.push(svrReadLine());");
+            let _ = writeln!(output, "    svrRequireMaterialization(3n, svrLabels(\"std::InputLine\", [\"eof\", \"text\"]));");
+            render_host_result(output, "svrReadLine()", worker);
         }
         "std::read_text" => {
-            let _ = writeln!(output, "    stack.push(svrReadText(args[0]));");
+            let _ = writeln!(output, "    if (typeof args[0] !== \"string\") throw new Error(\"std::read_text expects a String path\"); svrRequireMaterialization(4n, svrLabels(\"std::TextRead\", [\"ok\", \"text\", \"error\"]));");
+            render_host_result(output, "svrReadText(args[0])", worker);
         }
         "std::write_text" => {
-            let _ = writeln!(output, "    stack.push(svrWriteText(args[0], args[1]));");
+            let _ = writeln!(output, "    if (typeof args[0] !== \"string\" || typeof args[1] !== \"string\") throw new Error(\"std::write_text expects String path and text\"); svrRequireMaterialization(3n, svrLabels(\"std::TextWrite\", [\"ok\", \"error\"]));");
+            render_host_result(output, "svrWriteText(args[0], args[1])", worker);
         }
         "std::write_text_if" => {
             let _ = writeln!(
                 output,
-                "    stack.push(svrWriteTextIf(args[0], args[1], args[2], args[3]));"
+                "    if (typeof args[0] !== \"string\" || typeof args[1] !== \"boolean\" || typeof args[2] !== \"string\" || typeof args[3] !== \"string\") throw new Error(\"std::write_text_if expects String, Bool, String, String arguments\"); svrRequireMaterialization(3n, svrLabels(\"std::TextWrite\", [\"ok\", \"error\"]));"
+            );
+            render_host_result(
+                output,
+                "svrWriteTextIf(args[0], args[1], args[2], args[3])",
+                worker,
             );
         }
         "std::escape_terminal" => {
             let _ = writeln!(output, "    if (typeof args[0] !== \"string\") throw new Error(\"std::escape_terminal expects a String argument\");");
-            let _ = writeln!(output, "    stack.push(svrEscapeTerminal(args[0]));");
+            let _ = writeln!(output, "    if (svrMaterializationEnabled()) svrMaterialize(1n, svrEscapedBytes(args[0])); stack.push(svrEscapeTerminal(args[0]));");
         }
         "std::split_once" => {
             let _ = writeln!(output, "    if (typeof args[0] !== \"string\" || typeof args[1] !== \"string\") throw new Error(\"std::split_once expects String arguments\");");
             let _ = writeln!(output, "    const index = args[0].indexOf(args[1]);");
-            let _ = writeln!(output, "    stack.push(svrResult(\"std::SplitOnce\", {{ found: index !== -1, before: index === -1 ? args[0] : args[0].slice(0, index), after: index === -1 ? \"\" : args[0].slice(index + args[1].length) }}));");
+            let _ = writeln!(output, "    if (svrMaterializationEnabled()) svrMaterialize(4n, svrLabels(\"std::SplitOnce\", [\"found\", \"before\", \"after\"]) + svrBytes(args[0]) - (index === -1 ? 0n : svrBytes(args[1]))); stack.push(svrResult(\"std::SplitOnce\", {{ found: index !== -1, before: index === -1 ? args[0] : args[0].slice(0, index), after: index === -1 ? \"\" : args[0].slice(index + args[1].length) }}));");
         }
         "std::lines_unique" => {
             let _ = writeln!(output, "    if (typeof args[0] !== \"string\") throw new Error(\"std::lines_unique expects a String argument\");");
             let _ = writeln!(
                 output,
-                "    const lines = args[0] === \"\" ? [] : args[0].split(\"\\n\");"
+                "    svrMaterialize(1n, 0n); const lines = args[0] === \"\" ? [] : args[0].split(\"\\n\");"
             );
             let _ = writeln!(output, "    if (args[0].endsWith(\"\\n\")) lines.pop();");
             let _ = writeln!(
@@ -626,18 +894,61 @@ fn render_js_call(output: &mut String, name: &str, arguments: usize) {
             let _ = writeln!(output, "    const ok = valid && parsed >= -9223372036854775808n && parsed <= 9223372036854775807n;");
             let _ = writeln!(
                 output,
-                "    stack.push(svrResult(\"std::ParsedInt\", {{ ok, value: ok ? parsed : 0n }}));"
+                "    svrMaterialize(3n, svrLabels(\"std::ParsedInt\", [\"ok\", \"value\"])); stack.push(svrResult(\"std::ParsedInt\", {{ ok, value: ok ? parsed : 0n }}));"
+            );
+        }
+        "std::array_append" | "std::array_concat" => {
+            let append = name == "std::array_append";
+            let error = if append {
+                "std::array_append expects an array argument"
+            } else {
+                "std::array_concat expects array arguments"
+            };
+            let _ = writeln!(
+                output,
+                "    if (!Array.isArray(args[0]){}) throw new Error({});",
+                if append {
+                    ""
+                } else {
+                    " || !Array.isArray(args[1])"
+                },
+                js_string(error)
+            );
+            let _ = writeln!(
+                output,
+                "    const right = {};",
+                if append { "[args[1]]" } else { "args[1]" }
+            );
+            let _ = writeln!(
+                output,
+                "    svrGrowthLength(args[0].length, right.length); let nodes = 1n, text = 0n;"
+            );
+            let _ = writeln!(output, "    if (svrMaterializationEnabled()) for (const input of [args[0], right]) for (const child of input) {{ const size = svrFootprint(child); nodes = svrSize(nodes + size.nodes); text = svrSize(text + size.text); }}");
+            let _ = writeln!(output, "    svrMaterialize(nodes, text); const result = []; for (const input of [args[0], right]) for (const child of input) result.push(svrCopy(child, false)); stack.push(result);");
+        }
+        "std::array_slice" => {
+            let _ = writeln!(output, "    if (!Array.isArray(args[0]) || typeof args[1] !== \"bigint\" || typeof args[2] !== \"bigint\") throw new Error(\"std::array_slice expects Array, Int, Int arguments\");");
+            let _ = writeln!(output, "    if (args[1] < 0n || args[2] < args[1] || args[2] > BigInt(args[0].length)) throw new Error(\"array slice bounds out of range\");");
+            let _ = writeln!(output, "    const start = Number(args[1]), end = Number(args[2]); let nodes = 1n, text = 0n;");
+            let _ = writeln!(output, "    if (svrMaterializationEnabled()) for (let index = start; index < end; index++) {{ const size = svrFootprint(args[0][index]); nodes = svrSize(nodes + size.nodes); text = svrSize(text + size.text); }}");
+            let _ = writeln!(output, "    svrMaterialize(nodes, text); const selected = []; for (let index = start; index < end; index++) selected.push(svrCopy(args[0][index], false)); stack.push(selected);");
+        }
+        "std::array_len" => {
+            let _ = writeln!(output, "    if (!Array.isArray(args[0])) throw new Error(\"std::array_len expects an array argument\");");
+            let _ = writeln!(
+                output,
+                "    svrMaterialize(1n, 0n); stack.push(BigInt(args[0].length));"
             );
         }
         "std::len" => {
             let _ = writeln!(output, "    if (typeof args[0] !== \"string\") throw new Error(\"std::len expects a String argument\");");
             let _ = writeln!(
                 output,
-                "    stack.push(BigInt(new TextEncoder().encode(args[0]).length));"
+                "    svrMaterialize(1n, 0n); stack.push(BigInt(new TextEncoder().encode(args[0]).length));"
             );
         }
         "std::to_string" => {
-            let _ = writeln!(output, "    stack.push(svrDisplay(args[0]));");
+            let _ = writeln!(output, "    if (svrMaterializationEnabled()) svrMaterialize(1n, svrFootprint(args[0]).display); stack.push(svrDisplay(args[0]));");
         }
         _ => {
             let _ = writeln!(
