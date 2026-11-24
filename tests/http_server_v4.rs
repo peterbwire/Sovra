@@ -79,12 +79,19 @@ fn client_and_wait(mut server: Command, port: u16) {
     let script = r#"
 import http.client,json,sys,time
 port=int(sys.argv[1]);deadline=time.monotonic()+8
-cases=[('GET','/health',None,200,{'ok':True}),('HEAD','/health',None,200,None),('POST','/echo','{"n":7,"message":"λ😀"}'.encode('utf-8'),200,{'n':7,'message':'λ😀'}),('POST','/echo',[b'{"chunked":"', 'λ😀'.encode('utf-8')[:1], 'λ😀'.encode('utf-8')[1:], b'"}'],200,{'chunked':'λ😀'}),('POST','/echo',{'trailers':'{"trailers":"λ😀"}'.encode('utf-8')},200,{'trailers':'λ😀'}),('POST','/echo',{'expect':'100-continue','payload':b'{"continue":true}'},200,{'continue':True}),('POST','/echo',{'expect':'unrecognized','payload':b'{"never":true}'},417,None),('GET','/missing',None,404,{'error':'not_found'}),('GET','/failure',None,500,{'error':'handler'})]
+cases=[('GET','/health',None,200,{'ok':True}),('HEAD','/health',None,200,None),('POST','/echo','{"n":7,"message":"λ😀"}'.encode('utf-8'),200,{'n':7,'message':'λ😀'}),('POST','/echo',[b'{"chunked":"', 'λ😀'.encode('utf-8')[:1], 'λ😀'.encode('utf-8')[1:], b'"}'],200,{'chunked':'λ😀'}),('POST','/echo',{'trailers':'{"trailers":"λ😀"}'.encode('utf-8')},200,{'trailers':'λ😀'}),('POST','/echo',{'expect':'100-continue','payload':b'{"continue":true}'},200,{'continue':True}),('POST','/echo',{'expect':'unrecognized','payload':b'{"never":true}'},417,None),('POST','/echo',{'access':'origin','payload':b'{"never":true}'},403,None),('POST','/echo',{'access':'host','payload':b'{"never":true}'},403,None),('GET','/missing',None,404,{'error':'not_found'}),('GET','/failure',None,500,{'error':'handler'})]
 for index,(method,target,body,status,expected) in enumerate(cases):
  while True:
   connection=http.client.HTTPConnection('127.0.0.1',port,timeout=3)
   try:
-   if isinstance(body,dict) and 'expect' in body:
+   if isinstance(body,dict) and 'access' in body:
+    connection.putrequest(method,target,skip_host=True)
+    connection.putheader('Host','evil.test' if body['access']=='host' else '127.0.0.1:%d'%port)
+    connection.putheader('Origin','https://evil.example' if body['access']=='origin' else 'https://client.example')
+    connection.putheader('Content-Length',str(len(body['payload'])))
+    connection.putheader('Expect','100-continue')
+    connection.endheaders()
+   elif isinstance(body,dict) and 'expect' in body:
     payload=body['payload']
     connection.putrequest(method,target)
     connection.putheader('Content-Length',str(len(payload)))
@@ -103,17 +110,17 @@ for index,(method,target,body,status,expected) in enumerate(cases):
     connection.putheader('Trailer','X-Trace, Content-Digest')
     connection.endheaders()
     connection.send(('%x\r\n'%len(payload)).encode('ascii')+payload+b'\r\n0\r\nX-Trace: ignored\r\nContent-Digest: not-verified\r\n\r\n')
-   else:connection.request(method,target,body=body,encode_chunked=True)
+   else:connection.request(method,target,body=body,encode_chunked=True,headers={'Origin':'https://client.example'} if target=='/health' else {})
    break
   except ConnectionRefusedError:
    connection.close()
    if index or time.monotonic()>deadline:raise
    time.sleep(.02)
  response=connection.getresponse();assert response.status==status,(target,response.status)
- if status!=417:assert response.getheader('Content-Type')=='application/json'
+ if status not in (403,417):assert response.getheader('Content-Type')=='application/json'
  assert response.getheader('Connection')=='close'
  data=response.read()
- if status==417:assert data==b'' and response.getheader('Content-Length')=='0'
+ if status in (403,417):assert data==b'' and response.getheader('Content-Length')=='0'
  elif method=='HEAD':assert data==b'' and int(response.getheader('Content-Length'))==len(b'{"ok":true}')
  else:assert int(response.getheader('Content-Length'))==len(data) and json.loads(data)==expected,(target,data)
  connection.close()

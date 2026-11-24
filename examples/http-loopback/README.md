@@ -1,6 +1,6 @@
 # Bounded Sovra HTTP/JSON demonstration
 
-This Linux experimental data-profile example runs nine sequential connections,
+This Linux experimental data-profile example runs eleven sequential connections,
 one fixed-length or restricted chunked HTTP/1.1 request per connection, then
 exits. Sovra code owns routing and ordinary Result-based handler recovery. The trusted network host
 owns sockets, framing, deadlines and response validation.
@@ -23,9 +23,18 @@ for method, path, body in [('GET','/health',None), ('HEAD','/health',None),
                            ('POST','/echo',{'trailers':b'{"trailers":true}'}),
                            ('POST','/echo',{'expect':'100-continue','payload':b'{"continue":true}'}),
                            ('POST','/echo',{'expect':'unsupported','payload':b'{"never":true}'}),
+                           ('POST','/echo',{'access':'origin'}),
+                           ('POST','/echo',{'access':'host'}),
                            ('GET','/missing',None), ('GET','/failure',None)]:
     client = http.client.HTTPConnection('127.0.0.1', 47123, timeout=5)
-    if isinstance(body, dict) and 'expect' in body:
+    if isinstance(body, dict) and 'access' in body:
+        client.putrequest(method, path, skip_host=True)
+        client.putheader('Host', 'evil.test' if body['access'] == 'host' else '127.0.0.1:47123')
+        client.putheader('Origin', 'https://evil.example' if body['access'] == 'origin' else 'https://client.example')
+        client.putheader('Content-Length', '100')
+        client.putheader('Expect', '100-continue')
+        client.endheaders()
+    elif isinstance(body, dict) and 'expect' in body:
         payload = body['payload']
         client.putrequest(method, path)
         client.putheader('Content-Length', str(len(payload)))
@@ -54,7 +63,7 @@ for method, path, body in [('GET','/health',None), ('HEAD','/health',None),
 PYTHON
 ```
 
-Expected statuses are 200, 200, 200, 200, 200, 200, 417, 404 and 500. HEAD emits no body but retains
+Expected statuses are 200, 200, 200, 200, 200, 200, 417, 403, 403, 404 and 500. HEAD emits no body but retains
 its representation length. `/echo` parses and reserializes JSON; `/failure`
 deliberately raises an ordinary JSON Result error, which Sovra handles as a
 fixed generic 500 response. Routes use the exact raw target; this demo does not
@@ -84,3 +93,8 @@ The host performs a bounded [100-continue handshake](../../docs/reference/http-e
 Unsupported expectations receive 417 before body transfer. Sovra catches ordinary
 receive failures after host socket cleanup and continues to the next connection;
 VM faults/control cancellation and listener/respond failures still terminate.
+
+The external [HTTP access policy](../../docs/reference/http-access-v4.md) admits
+only Host `127.0.0.1:47123`, Origin `https://client.example` or explicitly absent
+Origin. Unlisted values receive 403 before any Continue/body transfer. These
+checks do not authenticate clients or provide CORS response headers.

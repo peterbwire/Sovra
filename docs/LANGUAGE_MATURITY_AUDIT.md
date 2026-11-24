@@ -1158,3 +1158,13 @@ recovers ordinary receive errors per connection and independent CLI/native
 clients verify headers-only waiting and subsequent requests. Full protocol,
 Host/origin authorization and production gates remain open.
 See [expectation scope](reference/http-expect-v4.md).
+
+
+2026-11-24 G14 Host/Origin checkpoint: optional trusted HTTP access policies now
+validate bounded exact Host/Origin grants and explicit missing-Origin rules
+before Continue/body processing. Admission consumes shared request work; denial
+returns bounded 403 and drops the owner. The example enables the policy and
+independent CLI/native clients test early denial without body transfer followed
+by successful requests. Existing policies without the object retain their HTTP
+behavior; this is not authentication, CORS or complete CSRF protection.
+See [access scope](reference/http-access-v4.md).

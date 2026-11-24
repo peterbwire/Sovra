@@ -60,7 +60,10 @@ decoder now shares HTTP head work and aggregate socket deadlines through
 with known security-field refusal (see `docs/reference/http-trailers-v4.md`).
 The host now supports bounded 100-continue with early 417 refusal for unsupported
 expectations and shared deadline/I/O accounting (see `docs/reference/http-expect-v4.md`).
-Trailer integrity/application access, full protocol, production
+Explicit optional HTTP Host/Origin access policies now check exact grants before
+100/body handling, with bounded 403 refusal and shared work admission; see
+`docs/reference/http-access-v4.md`. Policies without this object retain prior behavior.
+Trailer integrity/application access, authentication, full protocol, production
 server controls and wider qualification remain open. Continue under `docs/design/G14_COMPLETION_CONTRACT.md`. Consult
 `docs/G13_QUALIFICATION.md` and `docs/reference/generic-formatting.md` for current
 evidence and remaining gates. Historical checkpoints below do not reopen these

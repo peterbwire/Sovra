@@ -79,7 +79,7 @@ ordinary chunked requests. Native startup removes project files and Node/PATH.
 
 Trailer retention, integrity verification and application access remain separate
 future contracts. Other expectation forms, upgrades, CONNECT, other transfer codings/versions,
-Host/origin authorization, authentication, TLS, concurrency/backpressure and
+Deployment authentication, TLS, concurrency/backpressure and
 additional-host runtime qualification remain open under the [G14 contract](../design/G14_COMPLETION_CONTRACT.md).
 
 Validation: 681 unique Rust tests pass (600 library and 81 HTTP/network/v3-host
@@ -88,3 +88,6 @@ and 18 socket exchange tests. Four Node security/language/catalog/documentation
 checks, strict Clippy, exact Rust 1.74.0, Windows GNU all-target compilation and
 formatting pass. Windows runtime/full HTTP/production qualification remain open.
 Local evidence: `target/checked-evidence/g14-http-trailers/verification.json`.
+
+Optional [Host/Origin admission](http-access-v4.md) now runs on the original
+head before body/trailer processing; discarded trailer fields cannot alter it.

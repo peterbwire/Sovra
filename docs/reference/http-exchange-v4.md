@@ -28,7 +28,7 @@ There is no second response, persistence, implicit pipelining or worker thread.
 
 Malformed/truncated input is not published to a handler. Within remaining budget,
 the host attempts an empty fixed error response (400 for malformed framing,
-413 for limits, 417 for unsupported expectations, 501 for other unsupported contexts), then closes. Peer resets,
+413 for limits, 403 for configured Host/Origin denial, 417 for unsupported expectations, 501 for other unsupported contexts), then closes. Peer resets,
 expired budgets or limits too small for that error packet can prevent delivery;
 no drain or unbounded error-reply loop runs. Invalid response data likewise
 revokes and closes its owner without sending partial renderer output. Partial
@@ -81,7 +81,7 @@ or process isolation.
 
 ## Actual application evidence
 
-[The Sovra example](../../examples/http-loopback/README.md) runs nine sequential
+[The Sovra example](../../examples/http-loopback/README.md) runs eleven sequential
 connections with GET/HEAD health, fixed-length/chunked/trailer Unicode POST JSON echo, a 404 route and a handler Result
 error recovered as 500. Python's independent `http.client` validates status,
 Content-Type, exact Content-Length/body, HEAD and connection-close behavior.
@@ -93,7 +93,7 @@ This remains a restricted loopback HTTP profile, not full RFC 9112 conformance
 or production deployment. Transfer codings beyond a single chunked coding,
 upgrades, CONNECT,
 absolute targets and other HTTP versions still refuse. General method/routing,
-Host/origin authorization, concurrency/backpressure, TLS and additional-platform
+Authentication, concurrency/backpressure, TLS and additional-platform
 qualification remain open under the [G14 contract](../design/G14_COMPLETION_CONTRACT.md).
 
 ## Earlier fixed-length verification checkpoint
@@ -121,3 +121,7 @@ verified or exposed. Shared work/deadline/I/O limits include trailer processing.
 The host now supports [bounded 100-continue](http-expect-v4.md), with early 417
 for unsupported expectations. Interim writes share the accept-to-response
 deadline and I/O count; the public source response operation remains final-only.
+
+An optional trusted [Host/Origin access policy](http-access-v4.md) now runs after
+head/framing validation and before any Continue/body processing, sharing request
+work. The example enables it; absent policy preserves existing HTTP behavior.

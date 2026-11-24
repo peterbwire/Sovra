@@ -5,7 +5,9 @@ Linux through [owned HTTP exchanges](reference/http-exchange-v4.md). Real Sovra
 handlers pass independent CLI/native GET/HEAD, fixed-length/chunked Unicode JSON
 echo, 404 and recovered 500
 acceptance, including bounded declared-trailer discard and native startup without source files or Node. External
-policies grant exact loopback ports and lowerable aggregate limits. Full HTTP
+policies grant exact loopback ports and lowerable aggregate limits. Optional
+[Host/Origin access rules](reference/http-access-v4.md) now check exact head
+grants before Continue/body processing; application authentication remains open. Full HTTP
 protocol coverage, trailer integrity/retention, production controls and additional hosts
 remain open under the
 [G14 contract](design/G14_COMPLETION_CONTRACT.md).

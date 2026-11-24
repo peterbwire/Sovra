@@ -12,7 +12,10 @@ CLI/native clients cover chunked Unicode JSON and declared trailers.
 [Bounded validated-discard trailers](../reference/http-trailers-v4.md) remain
 separate from headers and never authorize application behavior. Bounded
 [100-continue handshakes](../reference/http-expect-v4.md) now precede body waits;
-unsupported expectations refuse with 417 before body transfer. Trailer integrity/
+unsupported expectations refuse with 417 before body transfer. Optional external
+[Host/Origin access policy](../reference/http-access-v4.md) now admits exact
+request-head grants before Continue/body handling; application authentication and
+production qualification remain separate. Trailer integrity/
 retention, remaining protocol coverage, production server controls and G14 qualification
 remain open.
 G13's experimental Linux foundation remains complete under its documented scope.

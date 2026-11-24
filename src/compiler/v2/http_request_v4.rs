@@ -200,7 +200,7 @@ fn target_valid(target: &[u8], method: &str) -> bool {
     }
     true
 }
-fn authority(value: &[u8]) -> bool {
+pub(super) fn authority(value: &[u8]) -> bool {
     let Ok(text) = std::str::from_utf8(value) else {
         return false;
     };

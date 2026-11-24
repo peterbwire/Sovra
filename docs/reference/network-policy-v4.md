@@ -82,3 +82,8 @@ Fields are validated and discarded; see [trailer policy](http-trailers-v4.md).
 HTTP interim 100 responses honor output/head/line/work ceilings and consume the
 same aggregate deadline and I/O operation count as request and final response
 processing. No extra grants or policy keys select expectation handling.
+
+Version-four policies may additionally configure the explicit `http_access`
+object with required `hosts`, `origins` and `allow_missing_origin` fields. The
+[Host/Origin contract](http-access-v4.md) defines exact matching, absence, bounded
+work and pre-body refusal. Omitting the object retains existing HTTP behavior.

@@ -53,6 +53,7 @@ pub struct NetworkHostV4 {
     owners: BTreeMap<i64, Owner>,
     limits: NetworkLimits,
     http: super::HttpExchangeLimits,
+    http_access: Option<super::HttpAccessPolicy>,
 }
 impl NetworkHostV4 {
     /// Start a denied host with only lowerable socket limits.
@@ -62,6 +63,7 @@ impl NetworkHostV4 {
             owners: BTreeMap::new(),
             limits,
             http: super::HttpExchangeLimits::DEFAULT,
+            http_access: None,
         })
     }
     /// Narrow aggregate HTTP policy before any socket owners are issued.
@@ -74,6 +76,17 @@ impl NetworkHostV4 {
             ));
         }
         self.http = limits;
+        Ok(())
+    }
+    /// Configure trusted HTTP head admission before creating socket owners.
+    pub fn set_http_access(&mut self, policy: super::HttpAccessPolicy) -> Result<(), HostError> {
+        if !self.owners.is_empty() {
+            return Err(error(
+                "policy",
+                "HTTP access must be configured before socket creation",
+            ));
+        }
+        self.http_access = Some(policy);
         Ok(())
     }
     /// Explicit trusted exact-port authority; request data cannot create grants.
@@ -188,6 +201,7 @@ impl NetworkHostV4 {
                 accepted,
                 self.limits,
                 self.http,
+                self.http_access.as_ref(),
                 checkpoint,
             )?
             .map(|(owner, request)| {

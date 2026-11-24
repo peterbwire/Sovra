@@ -11369,3 +11369,25 @@ checks, strict Clippy, exact Rust 1.74.0, Windows GNU all-target compilation and
 formatting pass. This is targeted Linux G14 evidence; Windows runtime, full HTTP
 conformance and production qualification remain open. Local evidence:
 `target/checked-evidence/g14-http-expect/verification.json`.
+
+
+2026-11-24 G14 explicit HTTP access: added immutable Rust and optional external
+`http_access` policies with required Host/Origin lists and missing-Origin Bool.
+Bounded exact matching, duplicate/malformed grants and duplicate Origin refusal
+run before Continue/body/handler publication. Admission precharges shared HTTP
+work; denial closes the claimed owner with best-effort 403. Raw grants and
+policies without access configuration preserve existing behavior. Six focused
+policy/socket tests cover grammar, limits, matching, absence, timing and work.
+The eleven-connection example enables access and independent CLI/native clients
+withhold bodies for denied Host/Origin cases, then verify continued service.
+This does not implement authentication, CORS response headers or complete CSRF
+protection. Next: application authentication/deployment and broader G14 protocol/
+production qualification. See [access contract](reference/http-access-v4.md).
+
+Validation: 693 unique Rust tests pass (600 library and 93 HTTP/network/v3-host
+integration tests), including six access-policy tests and independent CLI/native
+403 clients withholding request bodies. Four Node security/language/catalog/
+documentation checks, strict Clippy, exact Rust 1.74.0, Windows GNU all-target
+compilation and formatting pass. This targeted Linux G14 checkpoint does not
+establish Windows runtime, complete HTTP conformance or production readiness.
+Local evidence: `target/checked-evidence/g14-http-access/verification.json`.

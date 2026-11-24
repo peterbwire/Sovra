@@ -178,6 +178,7 @@ impl HttpConnection {
             "limit" => 413,
             "unsupported" => 501,
             "expectation" => 417,
+            "authority" => 403,
             _ => 400,
         };
         // Empty automatic error bodies are safe for HEAD even before method proof.
@@ -199,6 +200,7 @@ pub(super) fn receive<E>(
     accepted: Instant,
     socket: NetworkLimits,
     limits: HttpExchangeLimits,
+    access: Option<&super::HttpAccessPolicy>,
     mut checkpoint: impl FnMut() -> Result<(), E>,
 ) -> Result<Result<(HttpConnection, J), HostError>, E> {
     let mut connection = HttpConnection {
@@ -235,7 +237,7 @@ pub(super) fn receive<E>(
             }
         }
     }
-    let head = match parse_http_head(&buffer, limits.request, eof, true) {
+    let mut head = match parse_http_head(&buffer, limits.request, eof, true) {
         Ok(Some(head)) => head,
         Ok(None) => {
             connection.reject("limit", &mut checkpoint)?;
@@ -249,6 +251,12 @@ pub(super) fn receive<E>(
             return Ok(Err(error(e.code, e.message)));
         }
     };
+    if let Some(access) = access {
+        if let Err(e) = access.admit(&head.request, &mut head.work) {
+            connection.reject(e.code, &mut checkpoint)?;
+            return Ok(Err(e));
+        }
+    }
     let body = match receive_body(
         &mut connection,
         &buffer[head.bytes..],

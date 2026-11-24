@@ -117,6 +117,7 @@ fn network_policy(fields: &[(String, J)]) -> Result<NetworkHostV4, HostError> {
     let mut limits = NetworkLimits::DEFAULT;
     let mut ports = Vec::new();
     let mut http = super::HttpExchangeLimits::DEFAULT;
+    let mut access = None;
     for (key, value) in fields {
         match key.as_str() {
             "version" => {}
@@ -133,6 +134,9 @@ fn network_policy(fields: &[(String, J)]) -> Result<NetworkHostV4, HostError> {
                     }
                     ports.push(port);
                 }
+            }
+            "http_access" => {
+                access = Some(http_access(value)?);
             }
             "http" => {
                 let entries = match value {
@@ -203,8 +207,58 @@ fn network_policy(fields: &[(String, J)]) -> Result<NetworkHostV4, HostError> {
     }
     let mut host = NetworkHostV4::new(limits)?;
     host.set_http_limits(http)?;
+    if let Some(access) = access {
+        host.set_http_access(access)?;
+    }
     for port in ports {
         host.grant_port(port)?;
     }
     Ok(host)
+}
+
+fn http_access(value: &J) -> Result<super::HttpAccessPolicy, HostError> {
+    let J::Object(fields) = value else {
+        return Err(error("http_access must be an object"));
+    };
+    if fields.len() != 3 {
+        return Err(error(
+            "http_access requires hosts, origins and allow_missing_origin",
+        ));
+    }
+    let mut hosts = None;
+    let mut origins = None;
+    let mut missing = None;
+    for (key, value) in fields {
+        match key.as_str() {
+            "hosts" => hosts = Some(access_strings(value)?),
+            "origins" => origins = Some(access_strings(value)?),
+            "allow_missing_origin" => {
+                let J::Bool(value) = value else {
+                    return Err(error("allow_missing_origin must be Bool"));
+                };
+                missing = Some(*value);
+            }
+            _ => return Err(error("unknown HTTP access field")),
+        }
+    }
+    super::HttpAccessPolicy::new(
+        &hosts.ok_or_else(|| error("HTTP hosts missing"))?,
+        &origins.ok_or_else(|| error("HTTP origins missing"))?,
+        missing.ok_or_else(|| error("HTTP origin absence rule missing"))?,
+    )
+}
+fn access_strings(value: &J) -> Result<Vec<&str>, HostError> {
+    let J::Array(values) = value else {
+        return Err(error("HTTP access grants must be String arrays"));
+    };
+    if values.len() > 16 {
+        return Err(error("HTTP access list exceeds 16 entries"));
+    }
+    values
+        .iter()
+        .map(|value| match value {
+            J::String(value) => Ok(value.as_str()),
+            _ => Err(error("HTTP access grants must be Strings")),
+        })
+        .collect()
 }
