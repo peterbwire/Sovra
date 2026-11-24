@@ -589,7 +589,7 @@ fn package_command(
     }
     let execution = program.validate_command_entry().and_then(|_| {
         if let Some(path) = host_policy {
-            let host = HostV3::load_policy(Path::new(path)).map_err(|e| Diagnostics {
+            let host = DataHostPolicy::load_policy(Path::new(path)).map_err(|e| Diagnostics {
                 items: vec![Diagnostic {
                     severity: Severity::Error,
                     code: "E3125",
@@ -603,12 +603,9 @@ fn package_command(
                     source_file: None,
                 }],
             })?;
-            return execute_generic_data_package_with_host(
-                &program,
-                generic_command_runtime_policy(),
-                &host,
-            )
-            .map(|_| ());
+            return host
+                .execute(&program, generic_command_runtime_policy())
+                .map(|_| ());
         }
 
         let execute = if data {

@@ -41,8 +41,8 @@ Returned JSON tokens cannot carry a live socket beyond execution completion.
 The network host is a separate explicit adapter from version-three file/process
 hosts. Existing data execution and v3 entry points remain unchanged and install
 no networking. Requests cannot add grants. Check/build/test commands and native
-images gain no authority through this Rust API; no CLI policy or native runner
-version-four dispatch is implemented yet. There is no outbound connect, DNS,
+images gain no authority through this Rust API. [External policy dispatch](network-policy-v4.md)
+now enables explicit CLI/native launch without embedding grants. There is no outbound connect, DNS,
 remote bind, HTTP parser, async scheduler or TLS support in this slice.
 
 ## Evidence and continuation
@@ -55,9 +55,9 @@ schema refusal, duplicate fields, strict Base64, wrong-kind/foreign/stale tokens
 cancelled accept, EOF and explicit cleanup. Existing data and v3 host checks
 remain regression coverage.
 
-This is an embedding-driven byte server foundation, not yet an independently
-launched Sovra CLI/native HTTP server. Next is external policy/CLI/native host
-integration, then bounded sequential HTTP and independent API acceptance under
+The embedding-driven byte foundation now also has independent CLI/native
+acceptance through [external policies](network-policy-v4.md). HTTP is not
+implemented. Next is bounded sequential HTTP and independent API acceptance under
 the [G14 contract](../design/G14_COMPLETION_CONTRACT.md).
 
 Targeted Linux qualification passes 702 unique Rust tests: six network-host,

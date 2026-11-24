@@ -1,0 +1,70 @@
+# Explicit loopback policy for CLI and native execution
+
+Linux data-profile programs can now use the version-four network host through
+an external trusted policy file. The existing `--host-policy PATH` option selects
+exactly the policy's declared version: version 3 retains its file/process/time
+services; version 4 supplies loopback networking. Versions do not fall back or
+combine grants. Source requests cannot add or widen authority.
+
+```json
+{
+  "version": 4,
+  "listen_ports": [47123],
+  "limits": {
+    "listeners": 1,
+    "streams": 1,
+    "bytes": 65536,
+    "milliseconds": 2000
+  }
+}
+```
+
+Only `version`, optional `listen_ports` and optional `limits` are accepted.
+Port grants are distinct Ints in 0–65535, at most sixteen. Zero grants only
+OS-selected ephemeral ports, not arbitrary explicit port numbers. An absent or
+empty grant list denies all listens. Limits are nonnegative Ints and may only
+narrow the socket defaults: eight listeners, 64 streams, 64 KiB per operation
+and 30 seconds per polling operation. Unknown/duplicate fields, mixed versions,
+malformed JSON, duplicate ports and widened limits refuse before execution.
+
+```sh
+svr run --experimental-generics --experimental-data --locked \
+  --host-policy /trusted/network.json ./app
+svr build --experimental-generics --experimental-data --locked \
+  --emit exe --output ./app-native ./app
+./app-native --host-policy /trusted/network.json
+```
+
+The program requests its granted port with `net.listen`, then uses
+[version-four network requests](network-host-v4.md) for accept/read/write/close.
+The native data image retains feature word 2047 because requests use the existing
+JSON/data representation. Policy files and live socket ownership are never
+embedded. The generated executable needs neither Node nor original project
+sources, and accepts grants only through its explicit launch argument. No policy
+is selected from environment variables. Without a policy the existing denied
+host remains in place; version-four network requests gain no authority.
+
+Check/test/build refuse `--host-policy`; builds create no listener or captured
+network grants. Policies are bounded to 64 KiB regular files. Linux opens use
+nonblocking/no-follow flags, reject endpoint symlinks and FIFOs, validate the
+opened descriptor and cap reads even if the file grows. Windows compile coverage
+checks reparse-file refusal; it is not network runtime acceptance. Version-three
+service contracts are unchanged, with the same regular-file policy loader now
+used by CLI/native version dispatch. Direct trusted Rust v3 APIs remain available.
+
+Real tests start Sovra CLI/native byte servers and use an independent binary TCP
+client. Native launch is tested after project deletion, environment clearing and
+unavailable Node/PATH. Missing grants/policy, port conflicts and policy options
+on non-run commands refuse. Existing v3 source/native authority tests also pass.
+This is bounded loopback byte serving, not HTTP, TLS, remote networking, async
+scheduling or production deployment. Aggregate request/connection policies and
+protocol framing remain G14 work under the
+[completion contract](../design/G14_COMPLETION_CONTRACT.md).
+
+Targeted qualification passes 741 unique Rust tests (600 library, 77 CLI,
+16 generic CLI, 18 native-image, 10 v3 host, seven socket-owner, six network-host,
+three policy and four data/network CLI/native tests). Four Node checks cover
+compiler security, language workflows, the example catalog and documentation
+links. Clippy, formatting, exact Rust 1.74.0 and Windows GNU all-target compilation
+pass. Logs and the targeted report are retained under
+`target/checked-evidence/g14-external-network-policy/`.

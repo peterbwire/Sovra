@@ -655,6 +655,8 @@ pub use generic_package_native::{
 mod runtime_json;
 pub use runtime_json::{parse_json, serialize_json, JsonError, JsonLimits, JsonValue};
 
+mod data_host_policy;
+pub use data_host_policy::DataHostPolicy;
 mod network_host_v4;
 pub use network_host_v4::NetworkHostV4;
 mod network_v4;

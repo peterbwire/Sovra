@@ -46,7 +46,9 @@ remains separate. G14 now has a Rust-only owned loopback socket foundation,
 with explicit port grants, bounded nonblocking I/O and independent TCP-client
 tests. An explicit owned version-four network host now lets checked `.svr` data
 programs bind/accept/read/write/close, with scoped token custody and cleanup on
-VM success/failure. CLI/native network policy and HTTP remain open. Continue under `docs/design/G14_COMPLETION_CONTRACT.md`. Consult
+VM success/failure. Bounded external v3/v4 policy loading now enables explicit
+CLI/native loopback byte servers with no embedded grants, project or Node startup
+dependency. HTTP remains open. Continue under `docs/design/G14_COMPLETION_CONTRACT.md`. Consult
 `docs/G13_QUALIFICATION.md` and `docs/reference/generic-formatting.md` for current
 evidence and remaining gates. Historical checkpoints below do not reopen these
 implemented slices or establish G13/release/platform completion.
@@ -58,6 +60,10 @@ user-requested toolchain/native/stdlib/HTTP/UI/package goals. Preserve those IDs
 and completed foundation scopes; unchecked product criteria remain open.
 Older dated checkpoints are historical
 evidence, not a substitute for current source and exact-platform verification.
+
+User workflow rule (2026-11-24): at every G-task transition, push the completed
+work to GitHub and open a pull request before starting the next G task. G14 has
+its own review branch/PR; continue incremental work within that task.
 
 Current sequencing (2026-11-11): review and qualify the compiler/runtime, shared
 UI, developer tooling and Windows packaging before further Task Manager feature

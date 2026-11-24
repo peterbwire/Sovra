@@ -2,7 +2,8 @@
 
 Status: active implementation. The trusted Rust embedding foundation now
 provides version-four requests through checked `.svr` data execution with owned
-execution-scope handles. CLI/native network policy and HTTP remain open.
+execution-scope handles. Explicit external policies now enable CLI/native
+loopback byte serving; HTTP framing/handlers and full G14 qualification remain open.
 G13's experimental Linux foundation remains complete under its documented scope.
 Task Manager feature work remains paused.
 
