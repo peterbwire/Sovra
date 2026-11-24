@@ -6,9 +6,10 @@ execution-scope handles. Explicit external policies now enable CLI/native
 loopback byte serving. A pure bounded fixed-length HTTP request parser is now
 implemented, along with bounded final-response rendering and one-request owned
 HTTP socket dispatch. Real Sovra handlers pass independent CLI/native HTTP/JSON
-acceptance. A separate [incremental chunked decoder](../reference/http-chunked-v4.md)
-now validates bounded binary chunks/extensions; HTTP head/socket integration is
-still pending. Full transfer coding, production server controls and G14 qualification
+acceptance. The [incremental chunked decoder](../reference/http-chunked-v4.md)
+now integrates checked head framing, shared HTTP work and socket deadlines;
+CLI/native clients cover chunked Unicode JSON. Nonempty trailers, remaining
+protocol coverage, production server controls and G14 qualification
 remain open.
 G13's experimental Linux foundation remains complete under its documented scope.
 Task Manager feature work remains paused.

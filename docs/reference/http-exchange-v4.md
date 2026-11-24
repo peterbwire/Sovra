@@ -11,7 +11,9 @@ network policy and `std::host_call`:
 
 A received request has `method` and raw `target` Strings, source-order `headers`
 objects with `name` and Base64 `value`, and a Base64 `body`. Opaque wire field/body
-bytes are not implicitly interpreted as Unicode. Application code decides how
+bytes are not implicitly interpreted as Unicode. Fixed-length and restricted
+chunked requests are admitted; chunked bodies are decoded before Base64 output,
+while headers preserve original wire metadata. Application code decides how
 to decode and validate payloads; the JSON echo example uses strict UTF-8/JSON.
 
 ## Ownership state and refusal
@@ -68,8 +70,10 @@ Raw socket operations keep their existing policy semantics: HTTP limits are not
 a protocol sandbox for a program explicitly granted raw network authority.
 
 The receiver scans newly arrived head bytes incrementally, parses the head once,
-waits for the admitted body size and parses once more if needed. It does not
-reparse every prefix. Buffers, request/result descriptions, codecs and response
+then receives the admitted fixed-length body or feeds the bounded incremental
+chunked decoder. It does not reparse the head or growing body prefixes. Chunked
+decoding consumes the head parser's remaining HTTP work budget; see the
+[chunked contract](http-chunked-v4.md). Buffers, request/result descriptions, codecs and response
 serialization have finite ceilings; VM node/text/work admission still applies
 before a result reaches Sovra. Materialization can refuse below transport limits.
 No counter is a claim of exact allocator/OS backlog accounting, hard preemption
@@ -77,8 +81,8 @@ or process isolation.
 
 ## Actual application evidence
 
-[The Sovra example](../../examples/http-loopback/README.md) runs five sequential
-connections with GET/HEAD health, POST JSON echo, a 404 route and a handler Result
+[The Sovra example](../../examples/http-loopback/README.md) runs six sequential
+connections with GET/HEAD health, fixed-length/chunked Unicode POST JSON echo, a 404 route and a handler Result
 error recovered as 500. Python's independent `http.client` validates status,
 Content-Type, exact Content-Length/body, HEAD and connection-close behavior.
 Both CLI and native launch pass; native execution is tested after source deletion,
@@ -86,12 +90,13 @@ environment clearing and unavailable Node/PATH. Catalog checks do not run the
 server or open ports.
 
 This remains a restricted loopback HTTP profile, not full RFC 9112 conformance
-or production deployment. Chunked/transfer coding, Expect, upgrades, CONNECT,
+or production deployment. Transfer codings beyond a single chunked coding,
+nonempty trailers/Trailer declarations, Expect, upgrades, CONNECT,
 absolute targets and other HTTP versions still refuse. General method/routing,
 Host/origin authorization, concurrency/backpressure, TLS and additional-platform
 qualification remain open under the [G14 contract](../design/G14_COMPLETION_CONTRACT.md).
 
-## Verification checkpoint
+## Earlier fixed-length verification checkpoint
 
 The Linux checkpoint passes 772 unique Rust tests, including nine exchange tests
 and two independent HTTP client tests covering CLI and native execution, plus
@@ -100,3 +105,11 @@ denied, exact Rust 1.74.0, formatting and Windows GNU all-target compilation pas
 Windows compilation is not runtime acceptance. Retained local evidence is under
 `target/checked-evidence/g14-http-exchange/verification.json`; this is targeted
 G14 coverage, not a rerun of the full G13 qualification or full HTTP conformance.
+
+Latest chunked serving validation: 671 Rust tests pass (600 library and 71
+HTTP/network/v3-host integration tests), including independent CLI/native
+fixed-length and chunked Unicode JSON clients. Four Node security/language/
+example/documentation checks, strict Clippy, exact Rust 1.74.0, Windows GNU
+all-target compilation and formatting pass. Windows runtime and full HTTP
+conformance remain unqualified. Local evidence:
+`target/checked-evidence/g14-http-chunked-serving/verification.json`.

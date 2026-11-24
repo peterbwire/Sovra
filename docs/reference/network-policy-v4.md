@@ -69,3 +69,8 @@ compiler security, language workflows, the example catalog and documentation
 links. Clippy, formatting, exact Rust 1.74.0 and Windows GNU all-target compilation
 pass. Logs and the targeted report are retained under
 `target/checked-evidence/g14-external-network-policy/`.
+
+For chunked HTTP input, `http.work` is shared by head validation and incremental
+decoding, `body_bytes` caps decoded content and `line_bytes` also caps chunk-size/
+extension lines. Encoded body bytes/chunks retain fixed 2 MiB/4096 hard ceilings.
+Deadline and I/O counters span the complete exchange; see [chunked scope](http-chunked-v4.md).

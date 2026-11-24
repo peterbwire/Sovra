@@ -258,12 +258,61 @@ pub fn parse_http_request(
     eof: bool,
 ) -> Result<HttpRequestParse<'_>, HttpRequestError> {
     limits.validate()?;
-    if input.len() > limits.head_bytes + limits.body_bytes {
+    if input.len() > limits.head_bytes.saturating_add(limits.body_bytes) {
         return Err(fail("limit", 0, "HTTP aggregate input limit exceeded"));
     }
+    let Some(head) = parse_http_head(input, limits, eof, false)? else {
+        return incomplete(eof, input.len(), None);
+    };
+    let HttpBodyFraming::Fixed(length) = head.framing else {
+        unreachable!("fixed-only head parsing cannot admit chunked");
+    };
+    let expected = head.bytes + length;
+    if input.len() < expected {
+        return incomplete(eof, input.len(), Some(expected));
+    }
+    if input.len() > expected {
+        return Err(fail(
+            "framing",
+            expected,
+            "trailing or pipelined request bytes refuse",
+        ));
+    }
+    let mut request = head.request;
+    request.body = &input[head.bytes..expected];
+    Ok(HttpRequestParse::Complete(request))
+}
+#[derive(Debug, Clone, Copy)]
+pub(super) enum HttpBodyFraming {
+    Fixed(usize),
+    Chunked,
+}
+#[derive(Debug)]
+pub(super) struct HttpRequestHead<'a> {
+    pub request: HttpRequest<'a>,
+    pub framing: HttpBodyFraming,
+    pub bytes: usize,
+    pub work: usize,
+}
+/// Internal checked framing decision; never publishes a complete request to source.
+pub(super) fn parse_http_head(
+    input: &[u8],
+    limits: HttpRequestLimits,
+    eof: bool,
+    allow_chunked: bool,
+) -> Result<Option<HttpRequestHead<'_>>, HttpRequestError> {
+    limits.validate()?;
     let mut work = limits.work;
     let Some((start, mut cursor)) = line(input, 0, limits, &mut work)? else {
-        return incomplete(eof, input.len(), None);
+        return if eof {
+            Err(fail(
+                "truncated",
+                input.len(),
+                "HTTP head ended before completion",
+            ))
+        } else {
+            Ok(None)
+        };
     };
     charge(&mut work, start.len() * 2, 0)?;
     let mut parts = start.split(|b| *b == b' ');
@@ -323,11 +372,20 @@ pub fn parse_http_request(
     let mut host = false;
     let mut length = None;
     let mut transfer = false;
+    let mut chunked = false;
     let mut unsupported = false;
     loop {
         let at = cursor;
         let Some((field, next)) = line(input, cursor, limits, &mut work)? else {
-            return incomplete(eof, input.len(), None);
+            return if eof {
+                Err(fail(
+                    "truncated",
+                    input.len(),
+                    "HTTP head ended before completion",
+                ))
+            } else {
+                Ok(None)
+            };
         };
         cursor = next;
         if field.is_empty() {
@@ -417,6 +475,7 @@ pub fn parse_http_request(
                 ));
             }
             transfer = true;
+            chunked = value.eq_ignore_ascii_case(b"chunked");
         } else if name.eq_ignore_ascii_case("expect")
             || name.eq_ignore_ascii_case("upgrade")
             || name.eq_ignore_ascii_case("trailer")
@@ -435,28 +494,26 @@ pub fn parse_http_request(
             "Transfer-Encoding with Content-Length refuses",
         ));
     }
-    if transfer || unsupported {
+    if (transfer && (!allow_chunked || !chunked)) || unsupported {
         return Err(fail(
             "unsupported",
             cursor,
             "transfer coding, expectations, trailers and upgrades are not implemented",
         ));
     }
-    let expected = cursor + length.unwrap_or(0);
-    if input.len() < expected {
-        return incomplete(eof, input.len(), Some(expected));
-    }
-    if input.len() > expected {
-        return Err(fail(
-            "framing",
-            expected,
-            "trailing or pipelined request bytes refuse",
-        ));
-    }
-    Ok(HttpRequestParse::Complete(HttpRequest {
-        method,
-        target,
-        headers,
-        body: &input[cursor..expected],
+    Ok(Some(HttpRequestHead {
+        request: HttpRequest {
+            method,
+            target,
+            headers,
+            body: &[],
+        },
+        framing: if transfer {
+            HttpBodyFraming::Chunked
+        } else {
+            HttpBodyFraming::Fixed(length.unwrap_or(0))
+        },
+        bytes: cursor,
+        work,
     }))
 }

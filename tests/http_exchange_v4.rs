@@ -212,7 +212,7 @@ fn truncated_and_unsupported_requests_refuse_before_handler_publication() {
             b"400".as_slice(),
         ),
         (
-            b"POST / HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\n\r\n",
+            b"POST / HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: gzip, chunked\r\n\r\n",
             "unsupported",
             b"501",
         ),
@@ -322,4 +322,206 @@ fn execution_scope_cleanup_closes_an_unanswered_http_owner() {
     peer.read_to_end(&mut wire).unwrap();
     assert!(wire.is_empty());
     assert!(call(&mut host, &response(stream)).is_err());
+}
+
+#[test]
+fn chunked_binary_and_extensions_are_decoded_across_one_byte_reads() {
+    for coding in ["chunked", "cHuNkEd"] {
+        let (mut host, stream, mut peer) = connect(1, HttpExchangeLimits::DEFAULT);
+        peer.write_all(
+            format!(
+                "POST /echo HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: {coding}\r\n\r\n"
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+        peer.write_all(b"1;x=\"v\\\"\"\r\n\0\r\n1;ignored\r\n\xff\r\n000\r\n\r\n")
+            .unwrap();
+        let value = call(&mut host, &receive(stream)).unwrap();
+        assert_eq!(field(&value, "body"), &JsonValue::String("AP8=".into()));
+        assert_eq!(field(&value, "target"), &JsonValue::String("/echo".into()));
+        assert_eq!(call(&mut host, &receive(stream)).unwrap_err().code, "input");
+        call(&mut host, &response(stream)).unwrap();
+        let mut reply = Vec::new();
+        peer.read_to_end(&mut reply).unwrap();
+        assert!(reply.starts_with(b"HTTP/1.1 200"));
+        assert_eq!(host.usage(), (1, 0));
+        host.close_all().unwrap();
+    }
+}
+#[test]
+fn chunked_ambiguity_codings_trailers_and_bad_frames_never_publish() {
+    for (fields, body, code) in [
+        (
+            "Transfer-Encoding: chunked\r\nContent-Length: 0\r\n",
+            "0\r\n\r\n",
+            "framing",
+        ),
+        (
+            "Transfer-Encoding: chunked\r\nTransfer-Encoding: chunked\r\n",
+            "0\r\n\r\n",
+            "framing",
+        ),
+        (
+            "Transfer-Encoding: chunked, chunked\r\n",
+            "0\r\n\r\n",
+            "unsupported",
+        ),
+        (
+            "Transfer-Encoding: chunked, gzip\r\n",
+            "0\r\n\r\n",
+            "unsupported",
+        ),
+        (
+            "Transfer-Encoding: gzip, chunked\r\n",
+            "0\r\n\r\n",
+            "unsupported",
+        ),
+        (
+            "Transfer-Encoding: chunked;q=1\r\n",
+            "0\r\n\r\n",
+            "unsupported",
+        ),
+        ("Transfer-Encoding: \r\n", "0\r\n\r\n", "unsupported"),
+        (
+            "Transfer-Encoding: chunked\r\nTrailer: X-Trailer\r\n",
+            "0\r\n\r\n",
+            "unsupported",
+        ),
+        (
+            "Transfer-Encoding: chunked\r\n",
+            "0\r\nHost: other\r\n\r\n",
+            "unsupported",
+        ),
+        ("Transfer-Encoding: chunked\r\n", "1\r\nxX", "framing"),
+        (
+            "Transfer-Encoding: chunked\r\n",
+            "1;=bad\r\nx\r\n0\r\n\r\n",
+            "syntax",
+        ),
+        ("Transfer-Encoding: chunked\r\n", "0\r\n\r\nx", "framing"),
+        ("Transfer-Encoding: chunked\r\n", "2\r\nx", "truncated"),
+    ] {
+        let (mut host, stream, mut peer) = connect(4096, HttpExchangeLimits::DEFAULT);
+        peer.write_all(
+            format!("POST / HTTP/1.1\r\nHost: localhost\r\n{fields}\r\n{body}").as_bytes(),
+        )
+        .unwrap();
+        peer.shutdown(Shutdown::Write).unwrap();
+        assert_eq!(
+            call(&mut host, &receive(stream)).unwrap_err().code,
+            code,
+            "{fields:?} {body:?}"
+        );
+        assert!(call(&mut host, &response(stream)).is_err());
+        assert_eq!(host.usage(), (1, 0));
+        host.close_all().unwrap();
+    }
+}
+#[test]
+fn chunked_body_line_and_aggregate_work_limits_close_claimed_owner() {
+    for (request_limits, body) in [
+        (
+            HttpRequestLimits {
+                body_bytes: 1,
+                ..HttpRequestLimits::DEFAULT
+            },
+            "2\r\nab\r\n0\r\n\r\n".to_string(),
+        ),
+        (
+            HttpRequestLimits {
+                line_bytes: 64,
+                ..HttpRequestLimits::DEFAULT
+            },
+            format!("1;x={}\r\nx\r\n0\r\n\r\n", "a".repeat(65)),
+        ),
+        (
+            HttpRequestLimits {
+                work: 1000,
+                ..HttpRequestLimits::DEFAULT
+            },
+            format!("1;x={}\r\nx\r\n0\r\n\r\n", "a".repeat(120)),
+        ),
+    ] {
+        let (mut host, stream, mut peer) = connect(
+            4096,
+            HttpExchangeLimits {
+                request: request_limits,
+                ..HttpExchangeLimits::DEFAULT
+            },
+        );
+        peer.write_all(
+            format!(
+                "POST / HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\n\r\n{body}"
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+        assert_eq!(call(&mut host, &receive(stream)).unwrap_err().code, "limit");
+        let mut reply = Vec::new();
+        peer.read_to_end(&mut reply).unwrap();
+        assert_eq!(&reply[9..12], b"413");
+        assert_eq!(host.usage(), (1, 0));
+        host.close_all().unwrap();
+    }
+}
+#[test]
+fn chunked_body_slow_progress_obeys_shared_deadline_and_cleanup() {
+    let (mut host, stream, mut peer) = connect(
+        4096,
+        HttpExchangeLimits {
+            milliseconds: 30,
+            ..HttpExchangeLimits::DEFAULT
+        },
+    );
+    peer.write_all(
+        b"POST / HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\n\r\n20\r\nx",
+    )
+    .unwrap();
+    let sender = std::thread::spawn(move || {
+        for _ in 0..30 {
+            std::thread::sleep(Duration::from_millis(5));
+            if peer.write_all(b"x").is_err() {
+                break;
+            }
+        }
+    });
+    assert_eq!(
+        call(&mut host, &receive(stream)).unwrap_err().code,
+        "timeout"
+    );
+    sender.join().unwrap();
+    assert_eq!(host.usage(), (1, 0));
+    host.close_all().unwrap();
+}
+
+#[test]
+fn chunked_mid_body_cancellation_and_io_exhaustion_revoke_owner() {
+    let partial = b"POST / HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nx";
+    let (mut host, stream, mut peer) = connect(4096, HttpExchangeLimits::DEFAULT);
+    peer.write_all(partial).unwrap();
+    let mut checks = 0;
+    let result = host.call(&request(&receive(stream)), || {
+        checks += 1;
+        if checks >= 3 {
+            Err("cancel body wait")
+        } else {
+            Ok(())
+        }
+    });
+    assert_eq!(result.unwrap_err(), "cancel body wait");
+    assert_eq!(host.usage(), (1, 0));
+    assert!(call(&mut host, &response(stream)).is_err());
+    host.close_all().unwrap();
+    let (mut host, stream, mut peer) = connect(
+        4096,
+        HttpExchangeLimits {
+            io_operations: 1,
+            ..HttpExchangeLimits::DEFAULT
+        },
+    );
+    peer.write_all(partial).unwrap();
+    assert_eq!(call(&mut host, &receive(stream)).unwrap_err().code, "limit");
+    assert_eq!(host.usage(), (1, 0));
+    host.close_all().unwrap();
 }

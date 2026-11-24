@@ -30,8 +30,8 @@ A single decimal Content-Length defines the exact binary body. Duplicate
 Content-Length fields (even identical), comma lists, signs, overflow and
 Transfer-Encoding plus Content-Length refuse. Without a declared length the
 body is empty. EOF during a required frame is truncated, not a shorter success.
-Already-buffered trailing/pipelined bytes refuse; the future connection driver
-must close after one request and must not dispatch incomplete/refused input.
+Already-buffered trailing/pipelined bytes refuse. The socket driver closes after
+one request and does not dispatch incomplete/refused input.
 
 Transfer-Encoding, Expect, Upgrade and Trailer fields currently refuse explicitly.
 So do CONNECT, absolute-form targets and other HTTP versions. Chunked transfer
@@ -80,3 +80,9 @@ and primary-standard hashes are retained under
 `target/checked-evidence/g14-http-request-framing/`.
 
 [Owned HTTP exchange integration](http-exchange-v4.md) now connects this helper to sockets and real Sovra CLI/native handlers under a bounded one-request policy. Earlier helper-only checkpoint evidence above remains scoped to its original run.
+
+The fixed-length public borrowed API above retains its original refusal contract.
+The HTTP host now uses the same internal checked head validation with a separate
+[bounded incremental chunked decoder](http-chunked-v4.md); `http.receive` supports
+restricted chunked requests through CLI/native Sovra handlers. This does not
+establish full protocol conformance or admit nonempty trailers.

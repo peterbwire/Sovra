@@ -11300,3 +11300,27 @@ See [contract and scope](reference/http-chunked-v4.md).
 Validation for this checkpoint: 638 Rust tests, strict Clippy, Rust 1.74.0,
 Windows GNU all-target compilation, formatting and documentation links pass.
 CLI/native HTTP acceptance was not rerun for this isolated Rust helper.
+
+
+2026-11-24 G14 chunked socket integration: refactored the existing parser to share
+internal checked head framing while preserving the public borrowed fixed-length
+API. Socket receive parses the head once and incrementally decodes exactly one
+chunked coding; head work passes its remaining budget to the decoder. Decoded
+bytes/extension lines inherit HTTP limits, and the existing aggregate deadline,
+I/O count, cancellation and owned cleanup span all input and output. Original
+header metadata stays separate from decoded body content. Five additional socket
+tests cover binary one-byte reads/extensions, framing/coding/trailer refusals,
+truncation, shared work/body/line limits, slow input, cancellation and I/O refusal.
+The six-request Sovra example and independent Python CLI/native client now cover
+fixed/chunked Unicode JSON with splits inside UTF-8; native startup still removes
+project files and Node/PATH. Nonempty trailers and remaining HTTP/production
+gates remain open. Next: trailer policy/handling and broader protocol qualification
+under the [G14 contract](design/G14_COMPLETION_CONTRACT.md).
+
+Latest chunked serving validation: 671 Rust tests pass (600 library and 71
+HTTP/network/v3-host integration tests), including independent CLI/native
+fixed-length and chunked Unicode JSON clients. Four Node security/language/
+example/documentation checks, strict Clippy, exact Rust 1.74.0, Windows GNU
+all-target compilation and formatting pass. Windows runtime and full HTTP
+conformance remain unqualified. Local evidence:
+`target/checked-evidence/g14-http-chunked-serving/verification.json`.

@@ -1,9 +1,11 @@
 # Incremental chunked-body decoder
 
-Implemented as an experimental Rust library foundation:
+Implemented in the experimental Rust library and version-four HTTP socket host:
 `HttpChunkedDecoder::new(HttpChunkedLimits)`, `feed(new_bytes)` and consuming
-`finish()`. It is not yet wired into `parse_http_request` or `http.receive`;
-CLI/native HTTP serving continues to refuse Transfer-Encoding. G14 stays partial.
+`finish()`. `http.receive` now admits a single case-insensitive
+`Transfer-Encoding: chunked` field and returns the decoded body through the
+existing Base64 request description. The public borrowed `parse_http_request`
+API retains its fixed-length-only contract. G14 stays partial.
 
 The decoder follows the chunk-size/data/CRLF/last-chunk grammar in
 [RFC 9112 section 7.1](https://www.rfc-editor.org/rfc/rfc9112.html#section-7.1).
@@ -43,12 +45,48 @@ preservation, extensions, malformed grammar, sticky failures, exact/lowered
 limits, fragmentation-independent work, thousands of tiny chunks and deterministic
 byte mutations. Existing request, response and socket exchange tests remain strict.
 
-Next: integrate the decoder with a checked request-head framing decision and the
-existing aggregate socket deadline/work limits, without repeated head parsing or
-body copying. Test independent chunked clients through both CLI and native output
-before advertising chunked request support. Transfer-Encoding/Content-Length
-ambiguity, duplicate coding fields, non-final/repeated chunked and unsupported
-codings must continue to refuse; full protocol and production gates remain open.
+## HTTP host integration
+
+The receiver incrementally finds the head terminator and validates the head once.
+An internal checked decision admits either a fixed length or exactly `chunked`.
+Transfer-Encoding with Content-Length, duplicate coding fields, repeated/non-final
+chunked, coding lists/parameters and unsupported codings continue to refuse.
+`Trailer` declarations and nonempty trailers still refuse. No partially decoded
+body reaches Sovra, and all claimed failures drop the stream.
+
+Head validation and chunk decoding share the existing HTTP `work` budget: only
+remaining work passes to the decoder. Decoded bytes and size/extension lines use
+HTTP `body_bytes` and `line_bytes`; encoded body bytes and nonzero chunks also
+retain the decoder's 2 MiB/4096 hard caps. The existing accept-to-response deadline,
+read/write operation count, cancellation and VM result-materialization limits
+remain active. New feeds do not reset any counter. The decoder is bounded
+cooperative work; no hard preemption or streaming-body API is claimed.
+
+Wire headers remain original metadata, including Transfer-Encoding; the request
+`body` is decoded content. These metadata fields are not a reconstructed set of
+headers for forwarding the decoded body. Responses retain renderer-owned fixed
+Content-Length and connection-close framing.
+
+Independent Python `http.client` sends Unicode JSON through an iterable using
+chunked coding, splitting a UTF-8 sequence across chunks. Both CLI and generated
+native Sovra handlers parse the decoded JSON and return checked responses; native
+startup is tested after deleting project files with an empty environment and
+Node/PATH unavailable. Socket tests cover one-byte reads, ignored extensions,
+malformed framing/codings, truncation, shared work/line/body limits, slow body
+input, mid-body cancellation and I/O exhaustion. Production controls, trailers
+and full HTTP protocol qualification remain open.
+
+## Integrated serving validation
+
+Latest chunked serving validation: 671 Rust tests pass (600 library and 71
+HTTP/network/v3-host integration tests), including independent CLI/native
+fixed-length and chunked Unicode JSON clients. Four Node security/language/
+example/documentation checks, strict Clippy, exact Rust 1.74.0, Windows GNU
+all-target compilation and formatting pass. Windows runtime and full HTTP
+conformance remain unqualified. Local evidence:
+`target/checked-evidence/g14-http-chunked-serving/verification.json`.
+
+## Earlier isolated decoder checkpoint
 
 Validation: 638 Rust tests pass (600 library and 38 chunk/request/response/socket
 exchange tests), strict Clippy, exact Rust 1.74.0, Windows GNU all-target

@@ -1,7 +1,8 @@
 //! One-request owned socket framing. No worker threads, callbacks into source or persistence.
+use super::http_request_v4::{parse_http_head, HttpBodyFraming};
 use super::{
-    parse_http_request, render_http_response, HostError, HttpRequest, HttpRequestLimits,
-    HttpRequestParse, HttpResponseContext, HttpResponseHeader, HttpResponseLimits, JsonValue as J,
+    render_http_response, HostError, HttpChunkedDecoder, HttpChunkedLimits, HttpRequest,
+    HttpRequestLimits, HttpResponseContext, HttpResponseHeader, HttpResponseLimits, JsonValue as J,
     LoopbackStream, NetworkLimits, NetworkRead, RuntimeBytesLimits, RuntimeBytesV2,
     RuntimeDataWork, RuntimeValueFuel,
 };
@@ -26,7 +27,7 @@ pub struct HttpExchangeLimits {
     pub io_operations: usize,
 }
 impl HttpExchangeLimits {
-    /// Initial fixed-length one-request profile, not production HTTP conformance.
+    /// Initial fixed-length/chunked one-request profile, not production HTTP conformance.
     pub const DEFAULT: Self = Self {
         request: HttpRequestLimits::DEFAULT,
         response: HttpResponseLimits::DEFAULT,
@@ -195,78 +196,141 @@ pub(super) fn receive<E>(
     };
     let mut buffer = Vec::new();
     let mut scan = 0;
-    let mut expected = None;
     let mut eof = false;
-    loop {
-        if eof
-            || expected.is_some_and(|n| buffer.len() >= n)
-            || (expected.is_none() && buffer.len() >= limits.request.head_bytes)
-        {
-            match parse_http_request(&buffer, limits.request, eof) {
-                Ok(HttpRequestParse::Complete(request)) => {
-                    let value = match describe(&request, &mut || {
-                        checked(connection.started, connection.milliseconds, &mut checkpoint)
-                    }) {
-                        Ok(Ok(value)) => value,
-                        Ok(Err(e)) => return Ok(Err(e)),
-                        Err(Stop::External(e)) => return Err(e),
-                        Err(Stop::Timeout) => {
-                            return Ok(Err(error(
-                                "timeout",
-                                "aggregate HTTP exchange deadline exceeded",
-                            )))
-                        }
-                    };
-                    connection.context = if request.method() == "HEAD" {
-                        HttpResponseContext::Head
-                    } else {
-                        HttpResponseContext::Standard
-                    };
-                    return Ok(Ok((connection, value)));
-                }
-                Ok(HttpRequestParse::Incomplete {
-                    minimum_bytes: Some(n),
-                }) => expected = Some(n),
-                Ok(HttpRequestParse::Incomplete {
-                    minimum_bytes: None,
-                }) => {
-                    return Ok(Err(error(
-                        "limit",
-                        "HTTP head did not complete within limit",
-                    )))
-                }
-                Err(e) => {
-                    connection.reject(e.code, &mut checkpoint)?;
-                    return Ok(Err(HostError {
-                        code: e.code,
-                        message: e.message.into(),
-                    }));
-                }
+    // Scan only new head bytes. The complete head is parsed exactly once.
+    'head: loop {
+        while scan + 4 <= buffer.len() {
+            if &buffer[scan..scan + 4] == b"\r\n\r\n" {
+                break 'head;
             }
+            scan += 1;
         }
-        let ceiling = expected.unwrap_or(limits.request.head_bytes);
-        let maximum = ceiling.saturating_sub(buffer.len());
-        if maximum == 0 {
-            return Ok(Err(error("limit", "HTTP input admission exhausted")));
+        if eof || buffer.len() >= limits.request.head_bytes {
+            break;
         }
-        match connection.read(maximum, &mut checkpoint)? {
+        match connection.read(limits.request.head_bytes - buffer.len(), &mut checkpoint)? {
             Err(e) => return Ok(Err(e)),
             Ok(NetworkRead::Eof) => eof = true,
             Ok(NetworkRead::Data(bytes)) => {
-                if buffer.try_reserve_exact(bytes.len()).is_err() {
-                    return Ok(Err(error("limit", "HTTP buffer allocation refused")));
+                if buffer.try_reserve(bytes.len()).is_err() {
+                    return Ok(Err(error("limit", "HTTP head allocation refused")));
                 }
                 buffer.extend_from_slice(&bytes);
-                if expected.is_none() {
-                    while scan + 4 <= buffer.len() {
-                        if &buffer[scan..scan + 4] == b"\r\n\r\n" {
-                            expected = Some(buffer.len());
-                            break;
-                        }
-                        scan += 1;
+            }
+        }
+    }
+    let head = match parse_http_head(&buffer, limits.request, eof, true) {
+        Ok(Some(head)) => head,
+        Ok(None) => {
+            connection.reject("limit", &mut checkpoint)?;
+            return Ok(Err(error(
+                "limit",
+                "HTTP head did not complete within limit",
+            )));
+        }
+        Err(e) => {
+            connection.reject(e.code, &mut checkpoint)?;
+            return Ok(Err(error(e.code, e.message)));
+        }
+    };
+    let body = match receive_body(
+        &mut connection,
+        &buffer[head.bytes..],
+        head.framing,
+        head.work,
+        &mut checkpoint,
+    )? {
+        Ok(body) => body,
+        Err(e) => {
+            connection.reject(e.code, &mut checkpoint)?;
+            return Ok(Err(e));
+        }
+    };
+    let value = match describe(&head.request, &body, &mut || {
+        checked(connection.started, connection.milliseconds, &mut checkpoint)
+    }) {
+        Ok(Ok(value)) => value,
+        Ok(Err(e)) => return Ok(Err(e)),
+        Err(Stop::External(e)) => return Err(e),
+        Err(Stop::Timeout) => {
+            return Ok(Err(error(
+                "timeout",
+                "aggregate HTTP exchange deadline exceeded",
+            )))
+        }
+    };
+    connection.context = if head.request.method() == "HEAD" {
+        HttpResponseContext::Head
+    } else {
+        HttpResponseContext::Standard
+    };
+    Ok(Ok((connection, value)))
+}
+fn receive_body<E>(
+    connection: &mut HttpConnection,
+    initial: &[u8],
+    framing: HttpBodyFraming,
+    work: usize,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Result<Vec<u8>, HostError>, E> {
+    match framing {
+        HttpBodyFraming::Fixed(length) => {
+            if initial.len() > length {
+                return Ok(Err(error(
+                    "framing",
+                    "trailing or pipelined request bytes refuse",
+                )));
+            }
+            let mut body = Vec::new();
+            if body.try_reserve_exact(length).is_err() {
+                return Ok(Err(error("limit", "HTTP body allocation refused")));
+            }
+            body.extend_from_slice(initial);
+            while body.len() < length {
+                match connection.read(length - body.len(), checkpoint)? {
+                    Err(e) => return Ok(Err(e)),
+                    Ok(NetworkRead::Eof) => {
+                        return Ok(Err(error("truncated", "HTTP body ended before completion")))
+                    }
+                    Ok(NetworkRead::Data(bytes)) => body.extend_from_slice(&bytes),
+                }
+            }
+            Ok(Ok(body))
+        }
+        HttpBodyFraming::Chunked => {
+            let limits = HttpChunkedLimits {
+                body_bytes: connection.limits.request.body_bytes,
+                line_bytes: connection.limits.request.line_bytes,
+                work,
+                ..HttpChunkedLimits::DEFAULT
+            };
+            let mut decoder = match HttpChunkedDecoder::new(limits) {
+                Ok(d) => d,
+                Err(e) => return Ok(Err(error(e.code, e.message))),
+            };
+            let mut seen = initial.len();
+            let mut complete = match decoder.feed(initial) {
+                Ok(done) => done,
+                Err(e) => return Ok(Err(error(e.code, e.message))),
+            };
+            while !complete {
+                let maximum = limits.wire_bytes.saturating_sub(seen);
+                if maximum == 0 {
+                    return Ok(Err(error("limit", "chunked wire limit exceeded")));
+                }
+                match connection.read(maximum, checkpoint)? {
+                    Err(e) => return Ok(Err(e)),
+                    Ok(NetworkRead::Eof) => break,
+                    Ok(NetworkRead::Data(bytes)) => {
+                        seen += bytes.len();
+                        complete = match decoder.feed(&bytes) {
+                            Ok(done) => done,
+                            Err(e) => return Ok(Err(error(e.code, e.message))),
+                        };
                     }
                 }
             }
+            Ok(decoder.finish().map_err(|e| error(e.code, e.message)))
         }
     }
 }
@@ -309,6 +373,7 @@ pub(super) fn decode(value: &J, maximum: usize) -> Result<Vec<u8>, HostError> {
 }
 fn describe<E>(
     request: &HttpRequest<'_>,
+    body: &[u8],
     checkpoint: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<Result<J, HostError>, E> {
     checkpoint()?;
@@ -324,7 +389,7 @@ fn describe<E>(
             ("value".into(), J::String(value)),
         ]));
     }
-    let body = match encode(request.body()) {
+    let body = match encode(body) {
         Ok(v) => v,
         Err(e) => return Ok(Err(e)),
     };
