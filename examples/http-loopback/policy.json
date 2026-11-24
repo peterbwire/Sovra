@@ -23,6 +23,17 @@
     "origins": [
       "https://client.example"
     ],
-    "allow_missing_origin": true
+    "allow_missing_origin": true,
+    "methods": [
+      "GET",
+      "HEAD",
+      "POST"
+    ],
+    "targets": [
+      "/health",
+      "/echo",
+      "/missing",
+      "/failure"
+    ]
   }
 }

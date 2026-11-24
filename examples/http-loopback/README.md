@@ -1,6 +1,6 @@
 # Bounded Sovra HTTP/JSON demonstration
 
-This Linux experimental data-profile example runs eleven sequential connections,
+This Linux experimental data-profile example runs thirteen sequential connections,
 one fixed-length or restricted chunked HTTP/1.1 request per connection, then
 exits. Sovra code owns routing and ordinary Result-based handler recovery. The trusted network host
 owns sockets, framing, deadlines and response validation.
@@ -25,6 +25,8 @@ for method, path, body in [('GET','/health',None), ('HEAD','/health',None),
                            ('POST','/echo',{'expect':'unsupported','payload':b'{"never":true}'}),
                            ('POST','/echo',{'access':'origin'}),
                            ('POST','/echo',{'access':'host'}),
+                           ('DELETE','/health',{'access':'method'}),
+                           ('POST','/health?x=1',{'access':'target'}),
                            ('GET','/missing',None), ('GET','/failure',None)]:
     client = http.client.HTTPConnection('127.0.0.1', 47123, timeout=5)
     if isinstance(body, dict) and 'access' in body:
@@ -63,7 +65,7 @@ for method, path, body in [('GET','/health',None), ('HEAD','/health',None),
 PYTHON
 ```
 
-Expected statuses are 200, 200, 200, 200, 200, 200, 417, 403, 403, 404 and 500. HEAD emits no body but retains
+Expected statuses are 200, 200, 200, 200, 200, 200, 417, 403, 403, 403, 403, 404 and 500. HEAD emits no body but retains
 its representation length. `/echo` parses and reserializes JSON; `/failure`
 deliberately raises an ordinary JSON Result error, which Sovra handles as a
 fixed generic 500 response. Routes use the exact raw target; this demo does not
@@ -98,3 +100,8 @@ The external [HTTP access policy](../../docs/reference/http-access-v4.md) admits
 only Host `127.0.0.1:47123`, Origin `https://client.example` or explicitly absent
 Origin. Unlisted values receive 403 before any Continue/body transfer. These
 checks do not authenticate clients or provide CORS response headers.
+
+The policy also grants only GET/HEAD/POST and the four exact targets `/health`,
+`/echo`, `/missing` and `/failure`. All listed methods may use all listed targets.
+DELETE and unlisted query variants receive 403 before body transfer. These are
+coarse request permissions; application routing and authentication remain separate.

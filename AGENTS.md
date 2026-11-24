@@ -62,7 +62,9 @@ The host now supports bounded 100-continue with early 417 refusal for unsupporte
 expectations and shared deadline/I/O accounting (see `docs/reference/http-expect-v4.md`).
 Explicit optional HTTP Host/Origin access policies now check exact grants before
 100/body handling, with bounded 403 refusal and shared work admission; see
-`docs/reference/http-access-v4.md`. Policies without this object retain prior behavior.
+`docs/reference/http-access-v4.md`. Policies without this object retain prior behavior. Optional paired exact
+method/raw-target lists now further narrow access before Continue/body handling;
+query/escape/case variants do not select a normalization fallback.
 Trailer integrity/application access, authentication, full protocol, production
 server controls and wider qualification remain open. Continue under `docs/design/G14_COMPLETION_CONTRACT.md`. Consult
 `docs/G13_QUALIFICATION.md` and `docs/reference/generic-formatting.md` for current

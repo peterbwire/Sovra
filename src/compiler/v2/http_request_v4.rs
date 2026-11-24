@@ -173,7 +173,7 @@ fn line<'a>(
     }
     Ok(None)
 }
-fn target_valid(target: &[u8], method: &str) -> bool {
+pub(super) fn target_valid(target: &[u8], method: &str) -> bool {
     if target == b"*" {
         return method == "OPTIONS";
     }

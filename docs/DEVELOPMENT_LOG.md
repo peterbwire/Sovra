@@ -11391,3 +11391,26 @@ documentation checks, strict Clippy, exact Rust 1.74.0, Windows GNU all-target
 compilation and formatting pass. This targeted Linux G14 checkpoint does not
 establish Windows runtime, complete HTTP conformance or production readiness.
 Local evidence: `target/checked-evidence/g14-http-access/verification.json`.
+
+
+2026-11-24 G14 exact request permissions: extended explicit HTTP access policy
+with paired optional method and raw-target lists. Lists are independent exact
+allowlists, bounded to 16 unique entries (methods 32 bytes, targets 256 bytes).
+No URL decoding, normalization, wildcard/prefix or method-case folding occurs.
+Empty lists deny all; incomplete/malformed configuration refuses. Comparison
+work precharges the same head/access/chunk/trailer budget, and denial closes
+with bounded 403 before Continue/body/handler processing. Four additional tests
+cover policy grammar/limits, case/escape/query variants, empty denial and shared
+work. The thirteen-connection example enables the restrictions and independent
+CLI/native clients withhold bodies for denied method/query requests, then verify
+continued service. Next: application authentication and broader protocol/
+deployment qualification. See [request permission scope](reference/http-access-v4.md).
+
+Latest request-permission validation: 697 unique Rust tests pass (600 library
+and 97 HTTP/network/v3-host integration tests), including ten access-policy
+tests and independent CLI/native clients withholding bodies for denied methods/
+query targets. Four Node security/language/catalog/documentation checks, strict
+Clippy, exact Rust 1.74.0, Windows GNU all-target compilation and formatting pass.
+This is targeted Linux G14 evidence; client authentication, full HTTP conformance,
+production and Windows runtime qualification remain open. Local evidence:
+`target/checked-evidence/g14-http-request-access/verification.json`.

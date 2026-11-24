@@ -87,3 +87,7 @@ Version-four policies may additionally configure the explicit `http_access`
 object with required `hosts`, `origins` and `allow_missing_origin` fields. The
 [Host/Origin contract](http-access-v4.md) defines exact matching, absence, bounded
 work and pre-body refusal. Omitting the object retains existing HTTP behavior.
+
+`http_access` may also supply paired `methods` and `targets` arrays with bounded
+exact grants. Omitting both retains Host/Origin-only behavior; supplying only one
+refuses. Their comparisons consume shared HTTP work. See [request permissions](http-access-v4.md#optional-exact-method-and-target-grants).

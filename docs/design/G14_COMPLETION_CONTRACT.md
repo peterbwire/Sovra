@@ -14,7 +14,8 @@ separate from headers and never authorize application behavior. Bounded
 [100-continue handshakes](../reference/http-expect-v4.md) now precede body waits;
 unsupported expectations refuse with 417 before body transfer. Optional external
 [Host/Origin access policy](../reference/http-access-v4.md) now admits exact
-request-head grants before Continue/body handling; application authentication and
+request-head grants before Continue/body handling, with optional exact method/
+raw-target lists and shared comparison work; application authentication and
 production qualification remain separate. Trailer integrity/
 retention, remaining protocol coverage, production server controls and G14 qualification
 remain open.

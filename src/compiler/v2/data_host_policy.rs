@@ -220,7 +220,7 @@ fn http_access(value: &J) -> Result<super::HttpAccessPolicy, HostError> {
     let J::Object(fields) = value else {
         return Err(error("http_access must be an object"));
     };
-    if fields.len() != 3 {
+    if !(3..=5).contains(&fields.len()) {
         return Err(error(
             "http_access requires hosts, origins and allow_missing_origin",
         ));
@@ -228,8 +228,12 @@ fn http_access(value: &J) -> Result<super::HttpAccessPolicy, HostError> {
     let mut hosts = None;
     let mut origins = None;
     let mut missing = None;
+    let mut methods = None;
+    let mut targets = None;
     for (key, value) in fields {
         match key.as_str() {
+            "methods" => methods = Some(access_strings(value)?),
+            "targets" => targets = Some(access_strings(value)?),
             "hosts" => hosts = Some(access_strings(value)?),
             "origins" => origins = Some(access_strings(value)?),
             "allow_missing_origin" => {
@@ -241,11 +245,18 @@ fn http_access(value: &J) -> Result<super::HttpAccessPolicy, HostError> {
             _ => return Err(error("unknown HTTP access field")),
         }
     }
-    super::HttpAccessPolicy::new(
+    let policy = super::HttpAccessPolicy::new(
         &hosts.ok_or_else(|| error("HTTP hosts missing"))?,
         &origins.ok_or_else(|| error("HTTP origins missing"))?,
         missing.ok_or_else(|| error("HTTP origin absence rule missing"))?,
-    )
+    )?;
+    match (methods, targets) {
+        (None, None) => Ok(policy),
+        (Some(methods), Some(targets)) => policy.with_requests(&methods, &targets),
+        _ => Err(error(
+            "HTTP methods and targets must be configured together",
+        )),
+    }
 }
 fn access_strings(value: &J) -> Result<Vec<&str>, HostError> {
     let J::Array(values) = value else {

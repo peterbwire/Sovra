@@ -46,7 +46,7 @@ There is no background body wait or second request on the same connection.
 
 ## Application evidence
 
-The Sovra example handles eleven sequential connections and recovers ordinary
+The Sovra example handles thirteen sequential connections and recovers ordinary
 receive errors per connection, preserving host cleanup and subsequent service.
 An independent Python HTTP client sends only headers, verifies the 100 packet,
 then sends JSON and validates the final response. A separate unsupported
@@ -72,3 +72,6 @@ conformance and production qualification remain open. Local evidence:
 
 Configured [Host/Origin admission](http-access-v4.md) precedes any interim packet.
 Unlisted requests receive a final bounded 403 before the host awaits a body.
+
+Optional exact method/target access lists are checked before Continue, alongside
+the configured Host/Origin rules. Unlisted requests receive bounded final 403.

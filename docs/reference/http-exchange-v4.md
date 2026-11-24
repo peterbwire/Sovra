@@ -81,7 +81,7 @@ or process isolation.
 
 ## Actual application evidence
 
-[The Sovra example](../../examples/http-loopback/README.md) runs eleven sequential
+[The Sovra example](../../examples/http-loopback/README.md) runs thirteen sequential
 connections with GET/HEAD health, fixed-length/chunked/trailer Unicode POST JSON echo, a 404 route and a handler Result
 error recovered as 500. Python's independent `http.client` validates status,
 Content-Type, exact Content-Length/body, HEAD and connection-close behavior.
@@ -125,3 +125,7 @@ deadline and I/O count; the public source response operation remains final-only.
 An optional trusted [Host/Origin access policy](http-access-v4.md) now runs after
 head/framing validation and before any Continue/body processing, sharing request
 work. The example enables it; absent policy preserves existing HTTP behavior.
+
+Configured [method/target grants](http-access-v4.md#optional-exact-method-and-target-grants)
+now narrow HTTP access before Continue/body handling, with exact raw-target
+matching and shared work. They do not implement application authentication.

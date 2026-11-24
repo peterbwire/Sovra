@@ -1168,3 +1168,13 @@ independent CLI/native clients test early denial without body transfer followed
 by successful requests. Existing policies without the object retain their HTTP
 behavior; this is not authentication, CORS or complete CSRF protection.
 See [access scope](reference/http-access-v4.md).
+
+
+2026-11-24 G14 request-permission checkpoint: optional paired method/raw-target
+lists now narrow external HTTP access before Continue/body processing. Finite
+exact matching preserves method case, encoded targets and queries; comparisons
+consume existing HTTP work. Empty lists deny all, incomplete configurations
+refuse and omitting both preserves Host/Origin-only behavior. Independent CLI/
+native clients exercise unlisted methods and query variants without sending
+bodies. This is coarse request admission, not application authentication or
+per-route identity permissions. See [access contract](reference/http-access-v4.md).
