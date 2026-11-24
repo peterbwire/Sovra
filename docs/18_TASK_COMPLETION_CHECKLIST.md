@@ -277,12 +277,10 @@ Implemented evidence:
 - [x] Support bounded 100-continue after checked heads and before body waits, early 417 for unsupported expectations, shared interim output/deadline/I/O limits, and independent CLI/native handshakes plus per-connection receive recovery. See [expectation scope](reference/http-expect-v4.md); full HTTP/production gates remain open.
 - [x] Add explicit external Host/Origin allowlists with bounded exact matching, missing-Origin rules and shared work; refuse before Continue/body/handler publication and qualify CLI/native 403 clients. See [access scope](reference/http-access-v4.md). Application authentication, absent-policy defaults and production qualification remain separate.
 - [x] Narrow configured HTTP access with paired exact method/raw-target lists, bounded grants/shared work, case/query/percent-escape refusal and CLI/native pre-body 403 tests. See [request permissions](reference/http-access-v4.md#optional-exact-method-and-target-grants); application authentication/per-route identity permissions remain open.
-- [ ] Define owned handles, explicit capabilities, partial I/O, lifetime/cleanup,
-  cancellation/timeouts, scheduling/concurrency and unsupported-host behavior.
-- [ ] Implement sockets and a bounded Sovra-owned loopback server, then HTTP framing,
-  requests/responses, routing, JSON APIs and malformed/truncated/oversized refusal.
-- [ ] Prove real requests with an independent client; test port conflicts, partial
-  reads/writes, disconnects and reliable shutdown/resource cleanup.
+- [x] Define and exercise unique owned handles, explicit capabilities, partial I/O, scoped cleanup, cancellation/deadlines and unsupported-host refusal for the documented Linux profile. Scheduling/concurrency remain separate.
+- [x] Implement the documented restricted Sovra-owned loopback HTTP lifecycle, request/response framing, application routing/JSON and malformed/truncated/oversized refusal; full HTTP conformance remains open.
+- [x] Retain repeatable independent client, port-conflict, partial I/O, disconnect, deadline and cleanup evidence through the [frozen-source G14 qualifier](G14_QUALIFICATION.md), including CLI/native and v3 compatibility. Hosted/additional-platform results must be collected separately.
+- [ ] Implement client authentication and reviewed per-identity/per-route authorization; existing exact request allowlists do not authenticate clients.
 - [ ] Add reviewed concurrency/backpressure, streaming, TLS and deployment controls
   before claiming production server support. A private Node adapter is insufficient.
 

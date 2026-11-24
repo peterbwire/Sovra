@@ -88,3 +88,12 @@ path; an independent client must assert status, headers, body and JSON behavior.
 Retain malformed/ambiguous/truncated input, partial I/O, disconnect, resource,
 port-conflict, timeout/cancellation and reliable cleanup evidence. Unsupported
 hosts/features must refuse without silently selecting another backend.
+
+## Repeatable restricted-profile qualification
+
+The [G14 qualifier](../G14_QUALIFICATION.md) retains frozen-source Linux library,
+network/HTTP, CLI/native and v3 compatibility results plus strict lint/MSRV and
+Node checks. It rejects partial/skipped targets, command failures and source
+drift. CI uploads independent x86_64/ARM64 reports; configured jobs do not count
+as hosted runtime evidence. A passing restricted-profile run does not close
+client authentication, full conformance or production/platform gates.

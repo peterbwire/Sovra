@@ -11414,3 +11414,15 @@ Clippy, exact Rust 1.74.0, Windows GNU all-target compilation and formatting pas
 This is targeted Linux G14 evidence; client authentication, full HTTP conformance,
 production and Windows runtime qualification remain open. Local evidence:
 `target/checked-evidence/g14-http-request-access/verification.json`.
+
+
+2026-11-24 G14 repeatable qualification: added `scripts/qualify-g14.py`, unique
+UTC evidence directories, source/toolchain/CLI identities, per-stage progress
+reports, command timeout/interrupt cleanup and fail-closed Rust target coverage.
+Eight Python regressions cover failed/missing commands, timeout, source drift,
+new inputs and silent skips. Separate Linux x86_64/ARM64 CI jobs retain evidence
+even on failure. Reconciled redundant G14 parent checklist items with completed
+restricted loopback behavior; authentication, complete HTTP, production and
+additional-platform qualification remain open. Validation uses the runner and
+its failure regressions; exact current results are retained in each report.
+See [qualification scope](G14_QUALIFICATION.md).

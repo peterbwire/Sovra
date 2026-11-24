@@ -1178,3 +1178,12 @@ refuse and omitting both preserves Host/Origin-only behavior. Independent CLI/
 native clients exercise unlisted methods and query variants without sending
 bodies. This is coarse request admission, not application authentication or
 per-route identity permissions. See [access contract](reference/http-access-v4.md).
+
+
+2026-11-24 G14 qualification consolidation: a [frozen-source runner](G14_QUALIFICATION.md)
+now covers library/network/HTTP, actual CLI/native clients and v3 compatibility
+with strict lint/MSRV and Node checks. It retains stage failures and rejects
+source drift or missing/skipped Rust targets. The checklist now closes the
+implemented restricted loopback lifecycle/client foundation while keeping client
+authentication, full protocol/production and additional-platform gates explicit.
+CI jobs retain x86_64/ARM64 evidence; actual hosted passes require their reports.
