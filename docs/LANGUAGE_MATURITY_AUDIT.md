@@ -1205,3 +1205,12 @@ VM descriptions. Eight tests include real Sovra consumption and post-verifier
 controls/cleanup. This is not a CLI/native credential backend or cryptographic
 verification implementation; those deployment gates remain open.
 See [provider contract](reference/http-authentication-v4.md).
+
+
+2026-11-24 G14 verifier audience/transport context: trusted providers now receive
+exact admitted Host, optional Origin and actual loopback plaintext transport.
+Three additional cases verify per-audience refusal, exact/missing context and
+refusal despite forged secure forwarding claims. Context scans/validation share
+HTTP work and preserve credential/URI debug redaction. This does not implement
+TLS, trusted proxies or CLI/native credential backends.
+See [audience context](reference/http-authentication-v4.md#audience-and-actual-transport-context).

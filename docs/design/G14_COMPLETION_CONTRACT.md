@@ -104,3 +104,8 @@ inputs, special-file substitution and read-time identity/content changes. It
 bounds manifest/file/aggregate bytes and retains failure reports even before a
 source hash can be established. These tooling checks do not add protocol or
 production-server guarantees.
+
+The trusted verifier context now carries admitted raw Host/Origin plus actual
+loopback plaintext transport. Provider audience/channel decisions do not infer
+security from forwarded headers. This enables backend scoping; it does not add
+TLS, trusted proxies or a deployable credential backend.

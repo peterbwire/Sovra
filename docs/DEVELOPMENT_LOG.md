@@ -11455,3 +11455,16 @@ API. The G14 qualifier now includes this target. CLI/native credential backends,
 secure transport, reviewed cryptography/storage and identity permissions remain
 open; no credential scheme or secrets are embedded.
 See [authentication boundary scope](reference/http-authentication-v4.md).
+
+
+2026-11-24 G14 authentication audience context: extended the trusted borrowed
+verifier request with exact admitted Host/Origin getters and a non-exhaustive
+actual-transport enum, currently LoopbackPlaintext. Forwarded/Referer metadata
+never supplies authority/origin or promotes transport security. This lets a
+backend bind credentials to one admitted audience or refuse a nonconfidential
+channel before body/Continue. Framework context scans/UTF-8 validation consume
+shared work; Debug continues to omit all context values. Three new tests cover
+per-audience denial, raw/missing metadata and spoofed secure proxy headers;
+existing verifier API implementations remain source compatible. TLS/proxy trust,
+reviewed credential backends and production qualification remain open.
+See [provider context contract](reference/http-authentication-v4.md).

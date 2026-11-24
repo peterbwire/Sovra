@@ -318,3 +318,137 @@ return std::json_stringify(request);
     peer.read_to_end(&mut wire).unwrap();
     assert!(wire.is_empty());
 }
+
+struct AudienceVerifier {
+    secure_only: bool,
+    calls: Arc<AtomicUsize>,
+}
+impl HttpBearerVerifier for AudienceVerifier {
+    fn verify(&mut self, request: HttpBearerRequest<'_>) -> HttpAuthenticationDecision {
+        self.calls.fetch_add(1, Ordering::Relaxed);
+        assert_eq!(request.credential(), TOKEN.as_bytes());
+        assert_eq!(request.transport(), HttpBearerTransport::LoopbackPlaintext);
+        if self.secure_only
+            || request.authority() != "localhost:80"
+            || request.origin() != Some("https://client.test")
+        {
+            return HttpAuthenticationDecision::Forbidden;
+        }
+        HttpAuthenticationDecision::Granted(HttpPrincipal::new("audience-client").unwrap())
+    }
+}
+fn custom_connection(
+    access: HttpAccessPolicy,
+    verifier: Box<dyn HttpBearerVerifier>,
+) -> (NetworkHostV4, i64, TcpStream) {
+    let mut h = NetworkHostV4::new(NetworkLimits::DEFAULT).unwrap();
+    h.set_http_access(access).unwrap();
+    h.set_http_bearer_verifier(verifier).unwrap();
+    h.grant_port(0).unwrap();
+    let listener = int(call(&mut h, r#"{"version":4,"op":"net.listen","port":0}"#).unwrap());
+    let port = int(call(
+        &mut h,
+        &format!(r#"{{"version":4,"op":"net.port","handle":{listener}}}"#),
+    )
+    .unwrap());
+    let peer = TcpStream::connect((Ipv4Addr::LOCALHOST, port as u16)).unwrap();
+    peer.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+    let handle = int(call(
+        &mut h,
+        &format!(r#"{{"version":4,"op":"net.accept","handle":{listener}}}"#),
+    )
+    .unwrap());
+    (h, handle, peer)
+}
+#[test]
+fn provider_can_bind_credentials_to_an_admitted_authority_and_origin() {
+    for (authority, origin, allowed) in [
+        ("localhost:80", Some("https://client.test"), true),
+        ("other.test:80", Some("https://client.test"), false),
+        ("localhost:80", Some("https://other.test"), false),
+        ("localhost:80", None, false),
+    ] {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let access = HttpAccessPolicy::new(
+            &["localhost:80", "other.test:80"],
+            &["https://client.test", "https://other.test"],
+            true,
+        )
+        .unwrap();
+        let (mut h, n, mut peer) = custom_connection(
+            access,
+            Box::new(AudienceVerifier {
+                secure_only: false,
+                calls: calls.clone(),
+            }),
+        );
+        let origin = origin
+            .map(|o| format!("Origin: {o}\r\n"))
+            .unwrap_or_default();
+        let body = if allowed { "x" } else { "" };
+        peer.write_all(format!("POST /safe HTTP/1.1\r\nHost: {authority}\r\n{origin}Content-Length: 1\r\n{}Expect: 100-continue\r\n\r\n{body}",credential()).as_bytes()).unwrap();
+        let result = receive(&mut h, n);
+        if allowed {
+            assert_eq!(
+                field(&result.unwrap(), "principal"),
+                &JsonValue::String("audience-client".into())
+            );
+            h.close_all().unwrap();
+        } else {
+            assert_eq!(result.unwrap_err().code, "authority");
+            let mut wire = Vec::new();
+            peer.read_to_end(&mut wire).unwrap();
+            assert!(wire.starts_with(b"HTTP/1.1 403 Forbidden\r\n"));
+            assert_eq!(h.usage(), (1, 0));
+            h.close_all().unwrap();
+        }
+        assert_eq!(calls.load(Ordering::Relaxed), 1);
+    }
+}
+#[test]
+fn forwarded_headers_cannot_promote_transport_security() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let access = HttpAccessPolicy::new(&["localhost:80"], &["https://client.test"], true).unwrap();
+    let (mut h, n, mut peer) = custom_connection(
+        access,
+        Box::new(AudienceVerifier {
+            secure_only: true,
+            calls: calls.clone(),
+        }),
+    );
+    peer.write_all(format!("POST /safe HTTP/1.1\r\nHost: localhost:80\r\nOrigin: https://client.test\r\nForwarded: proto=https;host=secure.example\r\nX-Forwarded-Proto: https\r\nX-Forwarded-Host: secure.example\r\nContent-Length: 1\r\n{}Expect: 100-continue\r\n\r\n",credential()).as_bytes()).unwrap();
+    assert_eq!(receive(&mut h, n).unwrap_err().code, "authority");
+    let mut wire = Vec::new();
+    peer.read_to_end(&mut wire).unwrap();
+    assert!(wire.starts_with(b"HTTP/1.1 403 Forbidden\r\n"));
+    assert_eq!(calls.load(Ordering::Relaxed), 1);
+    assert_eq!(h.usage(), (1, 0));
+    h.close_all().unwrap();
+}
+struct ExactContext;
+impl HttpBearerVerifier for ExactContext {
+    fn verify(&mut self, request: HttpBearerRequest<'_>) -> HttpAuthenticationDecision {
+        assert_eq!(request.authority(), "LOCALHOST:80");
+        assert_eq!(request.origin(), None);
+        assert_eq!(request.method(), "POST");
+        assert_eq!(request.target(), "/safe?x=%2F");
+        assert_eq!(request.transport(), HttpBearerTransport::LoopbackPlaintext);
+        let debug = format!("{request:?}");
+        for hidden in [TOKEN, "LOCALHOST", "/safe", "https://client.test"] {
+            assert!(!debug.contains(hidden));
+        }
+        HttpAuthenticationDecision::Granted(HttpPrincipal::new("exact-context").unwrap())
+    }
+}
+#[test]
+fn context_preserves_raw_values_and_does_not_infer_a_missing_origin() {
+    let access = HttpAccessPolicy::new(&["localhost:80"], &[], true).unwrap();
+    let (mut h, n, mut peer) = custom_connection(access, Box::new(ExactContext));
+    peer.write_all(format!("POST /safe?x=%2F HTTP/1.1\r\nHost: LOCALHOST:80\r\nReferer: https://client.test/\r\nForwarded: proto=https\r\nContent-Length: 1\r\n{}\r\nx",credential()).as_bytes()).unwrap();
+    let result = receive(&mut h, n).unwrap();
+    assert_eq!(
+        field(&result, "principal"),
+        &JsonValue::String("exact-context".into())
+    );
+    h.close_all().unwrap();
+}

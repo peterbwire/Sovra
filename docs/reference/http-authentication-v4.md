@@ -26,7 +26,7 @@ Duplicate, absent, malformed or oversized credentials refuse without invoking
 the provider. Header grammar/control-byte refusals still happen earlier.
 
 The provider receives a borrowed `HttpBearerRequest` with exact checked method,
-raw target and credential accessors. It receives no body or socket handle. Debug
+raw target, checked Host authority, optional admitted Origin and credential accessors. It receives no body or socket handle. Debug
 output omits credentials and URI values. Its outcomes are:
 
 | Decision | Host behavior |
@@ -43,6 +43,23 @@ and authorize this method/target using its reviewed backend. The interface does
 not choose an equality algorithm, token format, key store or permission model.
 Fixture providers in tests are not production credential verification examples.
 
+## Audience and actual transport context
+
+`authority()` returns the original Host value after configured access admission.
+`origin()` returns the original admitted Origin, or None for explicitly permitted
+absence. Values are not normalized or inferred from Referer, request targets,
+Forwarded or X-Forwarded-* fields. The verifier may bind a verified credential to
+a particular admitted audience even when the outer access policy permits several
+Host/Origin values. These client-supplied values remain forgeable; admission does
+not itself prove credential issuer/audience claims or client identity.
+
+`transport()` returns `HttpBearerTransport::LoopbackPlaintext`, derived from the
+actual owned socket path. An HTTPS Origin or forwarded protocol claim cannot
+promote it to secure transport. A provider requiring a confidential/authenticated
+channel can refuse it before body/Continue. No TLS or proxy trust is implemented.
+The enum is non-exhaustive; future variants require actual qualified host support.
+Debug formatting continues to omit all request context values.
+
 ## Publication, budgets and cleanup
 
 Verification runs before 100 Continue, waiting for/decoding a body, trailer
@@ -53,8 +70,8 @@ is omitted from its header array. Other wire headers remain untrusted metadata;
 an X-Principal header cannot override the outer field. Without a configured
 verifier, the original description/header behavior remains unchanged.
 
-Framework admission precharges `16 * head_field_count + 2 * authorization_value_bytes
-+ method_bytes + target_bytes + 512` from the same HTTP work budget used by head,
+Framework admission precharges `48 * head_field_count + authority_bytes +
+origin_bytes + 2 * authorization_value_bytes + method_bytes + target_bytes + 512` from the same HTTP work budget used by head,
 access and chunk/trailer parsing. This covers bounded framework work, not arbitrary
 provider CPU/I/O. Provider implementations are trusted, synchronous and must
 return promptly. Cancellation and the aggregate accept-to-response deadline are
@@ -72,11 +89,14 @@ still permits raw protocols and is not constrained by this HTTP boundary.
 
 ## Evidence and remaining work
 
-Eight Rust tests cover principal/registration limits, preserved Send/Sync,
+Eleven Rust tests cover principal/registration limits, preserved Send/Sync,
 opaque debug output, malformed/duplicate credential refusal, fixed provider
 outcomes, redacted results, verified Continue, access/shared-work ordering,
 post-provider cancellation/timeout, cleanup and an actual Sovra source consumer.
 The consumer receives its trusted identity without Authorization metadata.
+Additional audience/transport cases verify per-Host/Origin refusal, exact raw
+context, missing Origin preservation and rejection of forged secure forwarding
+claims before body transfer.
 Existing CLI/native tests exercise unchanged default behavior without a provider.
 
 Deployable CLI/native credential backends require a separate reviewed contract,

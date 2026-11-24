@@ -659,7 +659,8 @@ mod http_chunked_v4;
 pub use http_chunked_v4::{HttpChunkedDecoder, HttpChunkedLimits, HttpTrailerLimits};
 mod http_authentication_v4;
 pub use http_authentication_v4::{
-    HttpAuthenticationDecision, HttpBearerRequest, HttpBearerVerifier, HttpPrincipal,
+    HttpAuthenticationDecision, HttpBearerRequest, HttpBearerTransport, HttpBearerVerifier,
+    HttpPrincipal,
 };
 mod http_access_v4;
 pub use http_access_v4::HttpAccessPolicy;

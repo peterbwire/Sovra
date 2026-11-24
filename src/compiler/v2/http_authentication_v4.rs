@@ -28,11 +28,21 @@ impl HttpPrincipal {
         &self.0
     }
 }
+/// Actual accepted socket transport, independent of peer-supplied forwarding headers.
+/// Additional secure transports require separately implemented and qualified host support.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HttpBearerTransport {
+    /// IPv4 loopback TCP without TLS; this is not a confidential/authenticated channel.
+    LoopbackPlaintext,
+}
 /// Borrowed checked head context. Debug output deliberately omits credentials and URI data.
 pub struct HttpBearerRequest<'a> {
     method: &'a str,
     target: &'a str,
     credential: &'a [u8],
+    authority: &'a str,
+    origin: Option<&'a str>,
 }
 impl fmt::Debug for HttpBearerRequest<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -47,6 +57,18 @@ impl HttpBearerRequest<'_> {
     /// Original checked target; no decoding/normalization.
     pub fn target(&self) -> &str {
         self.target
+    }
+    /// Original validated Host authority after configured access admission; no normalization.
+    pub fn authority(&self) -> &str {
+        self.authority
+    }
+    /// Original admitted Origin, or None for explicitly permitted absence. Never inferred.
+    pub fn origin(&self) -> Option<&str> {
+        self.origin
+    }
+    /// Actual host transport. Forwarded/X-Forwarded-Proto headers cannot promote its security.
+    pub fn transport(&self) -> HttpBearerTransport {
+        HttpBearerTransport::LoopbackPlaintext
     }
     /// Borrowed Bearer credential bytes, at most 256; providers must not log or publish them.
     pub fn credential(&self) -> &[u8] {
@@ -89,7 +111,25 @@ impl Verifier {
             .iter()
             .filter(|h| h.name().eq_ignore_ascii_case("authorization"));
         let field = fields.next();
-        let cost = request.headers().len() * 16
+        let authority = request
+            .headers()
+            .iter()
+            .find(|h| h.name().eq_ignore_ascii_case("host"))
+            .map(|h| h.value())
+            .ok_or_else(|| {
+                error(
+                    "authentication_unavailable",
+                    "HTTP authority context unavailable",
+                )
+            })?;
+        let origin = request
+            .headers()
+            .iter()
+            .find(|h| h.name().eq_ignore_ascii_case("origin"))
+            .map(|h| h.value());
+        let cost = request.headers().len() * 48
+            + authority.len()
+            + origin.map_or(0, |value| value.len())
             + field.map_or(0, |h| h.value().len() * 2)
             + request.method().len()
             + request.target().len()
@@ -129,10 +169,23 @@ impl Verifier {
                 "invalid HTTP Bearer credential syntax",
             ));
         }
+        // Access admission already checked Host and any present Origin. Preserve exact wire forms.
+        let authority = std::str::from_utf8(authority).map_err(|_| {
+            error(
+                "authentication_unavailable",
+                "invalid HTTP authority context",
+            )
+        })?;
+        let origin = origin
+            .map(std::str::from_utf8)
+            .transpose()
+            .map_err(|_| error("authentication_unavailable", "invalid HTTP origin context"))?;
         match self.0.verify(HttpBearerRequest {
             method: request.method(),
             target: request.target(),
             credential,
+            authority,
+            origin,
         }) {
             HttpAuthenticationDecision::Granted(principal) => Ok(principal),
             HttpAuthenticationDecision::Unauthenticated => {
