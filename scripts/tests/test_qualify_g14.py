@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 SCRIPT = Path(__file__).resolve().parents[1] / 'qualify-g14.py'
 SPEC = importlib.util.spec_from_file_location('qualify_g14', SCRIPT)
@@ -58,6 +59,104 @@ class QualificationTests(unittest.TestCase):
         original = Q.fingerprint(self.root)
         (self.root / 'new.svr').write_text('new input')
         self.assertNotEqual(original, Q.fingerprint(self.root))
+
+    def test_linked_source_is_refused_with_a_persistent_report(self):
+        outside = self.root.parent / (self.root.name + '-outside')
+        outside.write_text('external source')
+        self.addCleanup(outside.unlink)
+        (self.root / 'linked.svr').symlink_to(outside)
+        report = self.run_case([('never', [sys.executable, '-c', 'print("unexpected")'])])
+        self.assertFalse(report['success'])
+        self.assertEqual(report['runs'], [])
+        self.assertIn('source capture failed', report['failure'])
+
+    def test_missing_tracked_source_is_refused_before_commands(self):
+        subprocess.run(['git', 'add', 'source.svr'], cwd=self.root, check=True)
+        (self.root / 'source.svr').unlink()
+        report = self.run_case([('never', [sys.executable, '-c', 'print("unexpected")'])])
+        self.assertFalse(report['success'])
+        self.assertEqual(report['runs'], [])
+
+    def test_parent_directory_links_are_refused(self):
+        (self.root / 'actual').mkdir()
+        (self.root / 'actual/input.svr').write_text('input')
+        (self.root / 'parent').mkdir()
+        (self.root / 'parent/input.svr').write_text('input')
+        subprocess.run(['git', 'add', 'parent/input.svr'], cwd=self.root, check=True)
+        (self.root / 'parent/input.svr').unlink()
+        (self.root / 'parent').rmdir()
+        (self.root / 'parent').symlink_to(self.root / 'actual', target_is_directory=True)
+        report = self.run_case([])
+        self.assertFalse(report['success'])
+        self.assertIn('source capture failed', report['failure'])
+
+    def test_fifo_input_refuses_without_opening_or_waiting_for_a_writer(self):
+        subprocess.run(['git', 'add', 'source.svr'], cwd=self.root, check=True)
+        (self.root / 'source.svr').unlink()
+        os.mkfifo(self.root / 'source.svr')
+        report = self.run_case([])
+        self.assertFalse(report['success'])
+        self.assertEqual(report['runs'], [])
+
+    def test_directory_substitution_refuses_before_commands(self):
+        subprocess.run(['git', 'add', 'source.svr'], cwd=self.root, check=True)
+        (self.root / 'source.svr').unlink()
+        (self.root / 'source.svr').mkdir()
+        report = self.run_case([])
+        self.assertFalse(report['success'])
+
+    def test_absent_git_checkout_retains_initial_failure_report(self):
+        plain = self.root / 'not-a-checkout'
+        plain.mkdir()
+        # Block Git discovery in the containing checkout using a separate empty Git dir.
+        with mock.patch.dict(os.environ, {'GIT_DIR': str(plain / 'missing-git')}):
+            report = self.run_case([])
+        self.assertFalse(report['success'])
+        self.assertIsNone(report['source_sha256'])
+
+    def test_source_deletion_during_stage_retains_completed_command(self):
+        report = self.run_case([('delete', [sys.executable, '-c', 'from pathlib import Path;Path("source.svr").unlink()'])])
+        self.assertFalse(report['success'])
+        self.assertEqual(report['runs'][0]['exit_code'], 0)
+
+    def test_file_growth_during_capture_invalidates_snapshot(self):
+        actual_stat = Q.os.fstat
+        wanted = (self.root / 'source.svr').stat().st_ino
+        mutated = False
+        def change_after_stat(fd):
+            nonlocal mutated
+            info = actual_stat(fd)
+            if info.st_ino == wanted and not mutated:
+                mutated = True
+                (self.root / 'source.svr').write_text('grown during capture')
+            return info
+        with mock.patch.object(Q.os, 'fstat', side_effect=change_after_stat):
+            with self.assertRaises(Q.SourceInputError):
+                Q.fingerprint(self.root)
+        self.assertTrue(mutated)
+
+    def test_same_content_identity_replacement_refuses(self):
+        actual_open = Q._open_source
+        opened = 0
+        def replace_before_recheck(fd, name):
+            nonlocal opened
+            if name == b'source.svr':
+                opened += 1
+                if opened == 2:
+                    replacement = self.root / 'replacement'
+                    replacement.write_text('original')
+                    replacement.replace(self.root / 'source.svr')
+            return actual_open(fd, name)
+        with mock.patch.object(Q, '_open_source', side_effect=replace_before_recheck):
+            with self.assertRaises(Q.SourceInputError):
+                Q.fingerprint(self.root)
+        self.assertEqual(opened, 2)
+
+    def test_manifest_file_count_and_byte_limits_are_enforced(self):
+        for setting in ['MAX_SOURCE_MANIFEST_BYTES', 'MAX_SOURCE_FILES', 'MAX_SOURCE_FILE_BYTES', 'MAX_SOURCE_BYTES']:
+            with self.subTest(setting=setting), mock.patch.object(Q, setting, 1):
+                with self.assertRaises(Q.SourceInputError):
+                    Q.fingerprint(self.root)
 
     def test_timeout_retains_failure(self):
         report = self.run_case([('timeout', [sys.executable, '-c', 'import time;time.sleep(2)'])], timeout=.05)

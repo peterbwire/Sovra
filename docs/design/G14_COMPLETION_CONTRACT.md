@@ -97,3 +97,9 @@ Node checks. It rejects partial/skipped targets, command failures and source
 drift. CI uploads independent x86_64/ARM64 reports; configured jobs do not count
 as hosted runtime evidence. A passing restricted-profile run does not close
 client authentication, full conformance or production/platform gates.
+
+Qualification source capture now refuses linked parents/files, missing tracked
+inputs, special-file substitution and read-time identity/content changes. It
+bounds manifest/file/aggregate bytes and retains failure reports even before a
+source hash can be established. These tooling checks do not add protocol or
+production-server guarantees.

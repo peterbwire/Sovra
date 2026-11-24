@@ -32,8 +32,19 @@ process group and retains the outcome.
 The source SHA-256 covers Git-tracked and nonignored new repository inputs,
 including documentation, scripts, CI and source; ignored build artifacts and
 Python bytecode do not enter it. Relative paths and executable bits contribute;
-symlinks are hashed as links, not followed. Source changes before/during/after a
+source symlinks and symlinked parent directories refuse. Source changes before/during/after a
 stage invalidate success. Finish source edits before running qualification.
+Initial source-capture failures also retain `success:false`, even before a source
+hash is available. Tracked missing files and nonregular file substitutions refuse.
+Linux capture opens each parent directory and file with no-follow descriptors;
+nonblocking file opens prevent FIFO substitution from waiting for a writer.
+Regular-file identity, size, mode and modification/change timestamps are checked
+around reading and against a guarded path reopen. Replacement or growth refuses.
+The Git manifest is capped at 4 MiB, source count at 10,000, each file at 16 MiB
+and aggregate source bytes at 128 MiB. Reads stop at the admitted byte bounds.
+These checks are not hard preemption of filesystem I/O or an atomic whole-tree
+snapshot against a privileged malicious process.
+
 The report retains exact toolchain version logs and the built CLI SHA-256.
 This is evidence about observed inputs/outputs, not cryptographic attestation
 or protection against a malicious privileged local process.
@@ -55,8 +66,10 @@ Existing v3 host and data CLI/native workflows also run. Native tests delete
 project files, clear the environment and remove Node/PATH availability. The
 existing G13 complete-source suite and IDE host evidence remain separate.
 
-Eight Python regressions test failure retention/stop behavior, absent commands,
-timeouts, source edits/new files, target counting and silent skips. CI runs the
+Eighteen Python regressions test failure retention/stop behavior, absent commands,
+timeouts, source edits/new files, target counting and silent skips, plus linked/
+missing/special inputs, parent links, mid-read mutation/replacement and capture
+limits. CI runs the
 runner separately on Linux x86_64 and ARM64 and uploads reports even on failure.
 Configured CI jobs are not proof of a hosted pass; collect actual uploaded
 results before claiming hosted ARM64 acceptance.

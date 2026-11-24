@@ -11426,3 +11426,16 @@ restricted loopback behavior; authentication, complete HTTP, production and
 additional-platform qualification remain open. Validation uses the runner and
 its failure regressions; exact current results are retained in each report.
 See [qualification scope](G14_QUALIFICATION.md).
+
+
+2026-11-24 G14 qualification source capture: regressions reproduced acceptance
+of linked source and initial missing-input errors without a persisted report.
+Capture now uses Linux no-follow directory/file descriptors, regular-file
+admission, nonblocking opens and bounded manifest/file/aggregate bytes. Descriptor
+metadata and guarded path reopen checks reject read-time mutation/replacement.
+Qualification persists unsuccessful reports before initial fingerprinting.
+Eighteen Python tests exercise links/parent links, missing/FIFO/directory inputs,
+absent Git metadata, mutation/replacement, limits and previous runner failure
+paths. Existing runtime and protocol behavior is unchanged. Re-run the complete
+frozen-source qualifier to retain integrated positive-path evidence; production
+authentication and full HTTP qualification remain open.

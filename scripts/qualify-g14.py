@@ -9,6 +9,7 @@ from pathlib import Path
 import platform
 import re
 import signal
+import stat
 import subprocess
 import sys
 import time
@@ -25,24 +26,94 @@ OVERRIDES = dict(CARGO_BUILD_JOBS='1', CARGO_INCREMENTAL='0',
                  SOVRA_REQUIRE_CLI_EXECUTION='1')
 
 
+MAX_SOURCE_MANIFEST_BYTES = 4 * 1024 * 1024
+MAX_SOURCE_FILES = 10000
+MAX_SOURCE_FILE_BYTES = 16 * 1024 * 1024
+MAX_SOURCE_BYTES = 128 * 1024 * 1024
+
+
+class SourceInputError(Exception):
+    """The source manifest cannot establish an admitted regular-file snapshot."""
+
+
+def _signature(info):
+    return (info.st_dev, info.st_ino, info.st_size, info.st_mode,
+            info.st_mtime_ns, info.st_ctime_ns)
+
+
+def _open_source(root_fd, name):
+    parts = Path(os.fsdecode(name)).parts
+    if not parts or Path(os.fsdecode(name)).is_absolute() or any(p in {'.', '..'} for p in parts):
+        raise SourceInputError('invalid source path')
+    parent = os.dup(root_fd)
+    try:
+        for part in parts[:-1]:
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+            os.close(parent)
+            parent = child
+        if not stat.S_ISREG(os.stat(parts[-1], dir_fd=parent, follow_symlinks=False).st_mode):
+            raise SourceInputError('source input is not a regular file')
+        return os.open(parts[-1], os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW, dir_fd=parent)
+    finally:
+        os.close(parent)
+
+
 def fingerprint(root=ROOT):
-    """Hash tracked and nonignored source inputs, including new files; never follow symlinks."""
-    names = subprocess.check_output(
-        ['git', 'ls-files', '-z', '--cached', '--others', '--exclude-standard'], cwd=root)
+    """Bounded regular-file capture through no-follow directory/file descriptors on Linux."""
+    if sys.platform != 'linux':
+        raise SourceInputError('source capture requires Linux')
+    manifest = subprocess.Popen(
+        ['git', 'ls-files', '-z', '--cached', '--others', '--exclude-standard'],
+        cwd=root, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    try:
+        names = manifest.stdout.read(MAX_SOURCE_MANIFEST_BYTES + 1)
+        if len(names) > MAX_SOURCE_MANIFEST_BYTES:
+            raise SourceInputError('source manifest byte limit exceeded')
+        if manifest.wait(timeout=30) != 0:
+            raise SourceInputError('source manifest requires a readable Git checkout')
+    finally:
+        manifest.stdout.close()
+        if manifest.poll() is None:
+            manifest.kill()
+        manifest.wait()
+    paths = sorted(set(names.split(b'\0')) - {b''})
+    if len(paths) > MAX_SOURCE_FILES:
+        raise SourceInputError('source file-count limit exceeded')
     digest = hashlib.sha256()
-    for name in sorted(set(names.split(b'\0')) - {b''}):
-        path = root / os.fsdecode(name)
-        digest.update(name + b'\0')
-        if not path.exists() and not path.is_symlink():
-            digest.update(b'missing')
-        elif path.is_symlink():
-            digest.update(b'link\0' + os.fsencode(os.readlink(path)))
-        else:
-            digest.update(str(path.stat().st_mode & 0o111).encode() + b'\0')
-            with path.open('rb') as stream:
+    total = 0
+    root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for name in paths:
+            descriptor = _open_source(root_fd, name)
+            with os.fdopen(descriptor, 'rb') as stream:
+                before = os.fstat(stream.fileno())
+                if not stat.S_ISREG(before.st_mode):
+                    raise SourceInputError('source input is not a regular file')
+                if before.st_size > MAX_SOURCE_FILE_BYTES or total + before.st_size > MAX_SOURCE_BYTES:
+                    raise SourceInputError('source byte limit exceeded')
+                digest.update(name + b'\0' + str(before.st_mode & 0o111).encode() + b'\0')
+                size = 0
                 for chunk in iter(lambda: stream.read(65536), b''):
+                    size += len(chunk)
+                    if size > MAX_SOURCE_FILE_BYTES or total + size > MAX_SOURCE_BYTES:
+                        raise SourceInputError('source grew beyond byte limits')
                     digest.update(chunk)
-        digest.update(b'\0')
+                after = os.fstat(stream.fileno())
+                if size != before.st_size or _signature(before) != _signature(after):
+                    raise SourceInputError('source changed during capture')
+                # Reopen through the guarded path to detect replacement/parent-link changes.
+                check_fd = _open_source(root_fd, name)
+                try:
+                    if _signature(os.fstat(check_fd)) != _signature(after):
+                        raise SourceInputError('source identity changed during capture')
+                finally:
+                    os.close(check_fd)
+                total += size
+                digest.update(b'\0')
+    except OSError as exc:
+        raise SourceInputError('source input could not be captured without links') from exc
+    finally:
+        os.close(root_fd)
     return digest.hexdigest()
 
 
@@ -100,7 +171,7 @@ def qualify(root, out, commands, env, timeout=1200):
     report = {'success': False, 'profile': 'experimental Linux loopback HTTP subset',
               'started_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
               'platform': platform.platform(), 'python_version': platform.python_version(),
-              'planned_stages': [name for name, _ in commands], 'source_sha256': fingerprint(root),
+              'planned_stages': [name for name, _ in commands], 'source_sha256': None,
               'runs': [], 'external_gates': ['client authentication/identity authorization',
               'complete HTTP conformance', 'production TLS/concurrency/backpressure/deployment',
               'Windows/macOS runtime and browser/mobile support']}
@@ -108,6 +179,8 @@ def qualify(root, out, commands, env, timeout=1200):
         (out / 'verification.json').write_text(json.dumps(report, indent=2) + '\n')
     save()
     try:
+        report['source_sha256'] = fingerprint(root)
+        save()
         for name, command in commands:
             print('RUN', name, flush=True)
             if fingerprint(root) != report['source_sha256']:
@@ -141,6 +214,8 @@ def qualify(root, out, commands, env, timeout=1200):
             report['success'] = report['source_sha256_end'] == report['source_sha256']
             if not report['success']:
                 report['failure'] = 'source changed after final stage'
+    except SourceInputError as exc:
+        report['failure'] = 'source capture failed: ' + str(exc)
     except (OSError, subprocess.SubprocessError, KeyboardInterrupt) as exc:
         report['failure'] = 'qualification interrupted: ' + type(exc).__name__
     report['finished_utc'] = datetime.datetime.now(datetime.timezone.utc).isoformat()

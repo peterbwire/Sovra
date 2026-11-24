@@ -1187,3 +1187,11 @@ source drift or missing/skipped Rust targets. The checklist now closes the
 implemented restricted loopback lifecycle/client foundation while keeping client
 authentication, full protocol/production and additional-platform gates explicit.
 CI jobs retain x86_64/ARM64 evidence; actual hosted passes require their reports.
+
+
+2026-11-24 G14 qualifier source-capture hardening: bounded no-follow Linux
+directory/file reads now refuse symlinks, missing tracked files and nonregular
+substitutions; read/reopen identity checks reject mutation and replacement.
+Initial capture errors retain unsuccessful reports. Eighteen Python regressions
+cover these cases and existing qualifier failures. Runtime HTTP/authentication
+capabilities are unchanged. See [qualification limits](G14_QUALIFICATION.md).

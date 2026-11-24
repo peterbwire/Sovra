@@ -84,7 +84,8 @@ work to GitHub and open a pull request before starting the next G task. G14 has
 its own review branch. PR #3 is merged into main; PR #4 was closed unmerged.
 The continued G14 review targets main and includes all unmerged G14 work.
 Continue incremental work within that task. `scripts/qualify-g14.py` now retains
-frozen-source Linux loopback HTTP qualification and failure evidence; consult
+frozen-source Linux loopback HTTP qualification and failure evidence, with
+bounded no-follow regular-file source capture and retained initial failures; consult
 `docs/G14_QUALIFICATION.md` for supported scope and remaining production gates.
 
 Current sequencing (2026-11-11): review and qualify the compiler/runtime, shared
