@@ -42,8 +42,9 @@ The network host is a separate explicit adapter from version-three file/process
 hosts. Existing data execution and v3 entry points remain unchanged and install
 no networking. Requests cannot add grants. Check/build/test commands and native
 images gain no authority through this Rust API. [External policy dispatch](network-policy-v4.md)
-now enables explicit CLI/native launch without embedding grants. There is no outbound connect, DNS,
-remote bind, HTTP parser, async scheduler or TLS support in this slice.
+now enables explicit CLI/native launch without embedding grants. [HTTP exchange operations](http-exchange-v4.md) now add one-request framing and
+handler integration. Outbound connect, DNS, remote bind, async scheduling and TLS
+remain outside this slice.
 
 ## Evidence and continuation
 

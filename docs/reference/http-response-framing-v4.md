@@ -61,9 +61,9 @@ deadlines and connection closure independently.
 Tests assert exact binary wire output, HEAD metadata, bodyless statuses, static
 status lines, case-insensitive framing refusal, control/CRLF injection refusal,
 Set-Cookie order, other duplicate refusal, exact lowered limits, full byte-value
-mutations and maximum representation/field boundaries. This is not yet an HTTP
-response path callable from `.svr`; next is request/socket/handler integration
-under the [G14 contract](../design/G14_COMPLETION_CONTRACT.md).
+mutations and maximum representation/field boundaries. The pure renderer is now invoked through [HTTP exchanges](http-exchange-v4.md)
+from actual Sovra CLI/native handlers under the
+[G14 contract](../design/G14_COMPLETION_CONTRACT.md).
 
 ## Primary standards reviewed
 
@@ -82,3 +82,5 @@ and all 600 library tests. Clippy, formatting, exact Rust 1.74.0 and Windows GNU
 all-target compilation pass. Windows runtime/HTTP server acceptance is not
 established. Logs, the targeted report and primary-standard hashes are retained
 under `target/checked-evidence/g14-http-response-framing/`.
+
+[Owned HTTP exchange integration](http-exchange-v4.md) now connects this helper to sockets and real Sovra CLI/native handlers under a bounded one-request policy. Earlier helper-only checkpoint evidence above remains scoped to its original run.

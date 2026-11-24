@@ -271,6 +271,7 @@ Implemented evidence:
 - [x] Load bounded external v3/v4 policies and dispatch explicit CLI/native data execution; prove independent native binary echo after project deletion with no Node/PATH, and preserve v3 authority behavior. See [network policy](reference/network-policy-v4.md).
 - [x] Add a bounded borrowed fixed-length HTTP/1.1 request parser reviewed against RFC 9110/9112, including ambiguous framing/refusal, partial input and raw byte preservation; see [parser scope](reference/http-request-framing-v4.md). Socket integration, response construction and handlers remain open.
 - [x] Add pure bounded final HTTP response construction with renderer-owned framing, HEAD/no-content handling, field injection/override refusal and exact byte/work limits; see [response scope](reference/http-response-framing-v4.md). Socket and handler integration remain open.
+- [x] Integrate one-request HTTP socket ownership and aggregate deadline/I/O policy with checked Sovra handlers; qualify CLI/native GET/HEAD, JSON echo, 404 and recovered handler 500 through an independent HTTP client. See [exchange scope](reference/http-exchange-v4.md). Full protocol/production and additional-platform gates remain open.
 - [ ] Define owned handles, explicit capabilities, partial I/O, lifetime/cleanup,
   cancellation/timeouts, scheduling/concurrency and unsupported-host behavior.
 - [ ] Implement sockets and a bounded Sovra-owned loopback server, then HTTP framing,

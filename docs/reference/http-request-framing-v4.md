@@ -78,3 +78,5 @@ formatting, exact Rust 1.74.0 and Windows GNU all-target compilation pass. This
 is not Windows runtime or HTTP server acceptance. Logs, the targeted report
 and primary-standard hashes are retained under
 `target/checked-evidence/g14-http-request-framing/`.
+
+[Owned HTTP exchange integration](http-exchange-v4.md) now connects this helper to sockets and real Sovra CLI/native handlers under a bounded one-request policy. Earlier helper-only checkpoint evidence above remains scoped to its original run.

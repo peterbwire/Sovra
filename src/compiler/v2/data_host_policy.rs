@@ -116,6 +116,7 @@ fn number(value: &J) -> Result<u64, HostError> {
 fn network_policy(fields: &[(String, J)]) -> Result<NetworkHostV4, HostError> {
     let mut limits = NetworkLimits::DEFAULT;
     let mut ports = Vec::new();
+    let mut http = super::HttpExchangeLimits::DEFAULT;
     for (key, value) in fields {
         match key.as_str() {
             "version" => {}
@@ -131,6 +132,45 @@ fn network_policy(fields: &[(String, J)]) -> Result<NetworkHostV4, HostError> {
                         return Err(error("duplicate network port grant"));
                     }
                     ports.push(port);
+                }
+            }
+            "http" => {
+                let entries = match value {
+                    J::Object(entries) if entries.len() <= 8 => entries,
+                    _ => return Err(error("HTTP limits must be a bounded object")),
+                };
+                for (key, value) in entries {
+                    let n = number(value)?;
+                    if key == "milliseconds" {
+                        http.milliseconds = n;
+                        continue;
+                    }
+                    let n = usize::try_from(n).map_err(|_| error("HTTP limit overflow"))?;
+                    match key.as_str() {
+                        "io_operations" => http.io_operations = n,
+                        "head_bytes" => {
+                            http.request.head_bytes = n;
+                            http.response.head_bytes = n;
+                        }
+                        "line_bytes" => {
+                            http.request.line_bytes = n;
+                            http.response.line_bytes = n;
+                        }
+                        "headers" => {
+                            http.request.headers = n;
+                            http.response.headers = n;
+                        }
+                        "body_bytes" => {
+                            http.request.body_bytes = n;
+                            http.response.body_bytes = n;
+                        }
+                        "response_bytes" => http.response.output_bytes = n,
+                        "work" => {
+                            http.request.work = n;
+                            http.response.work = n;
+                        }
+                        _ => return Err(error("unknown HTTP limit")),
+                    }
                 }
             }
             "limits" => {
@@ -162,6 +202,7 @@ fn network_policy(fields: &[(String, J)]) -> Result<NetworkHostV4, HostError> {
         }
     }
     let mut host = NetworkHostV4::new(limits)?;
+    host.set_http_limits(http)?;
     for port in ports {
         host.grant_port(port)?;
     }

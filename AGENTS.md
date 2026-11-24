@@ -42,17 +42,19 @@ and 16 Node scripts, including exact Rust 1.74.0 and Clippy. Subsequent IDE-only
 changes pass all 16 Node scripts and all six actual VS Code 1.106.0 host modes,
 including generic packages and restricted workspaces. G13 is complete for the
 documented experimental Linux profile. Additional-host/runtime/release acceptance
-remains separate. G14 now has a Rust-only owned loopback socket foundation,
+remains separate. G14 now has an owned Rust loopback socket host,
 with explicit port grants, bounded nonblocking I/O and independent TCP-client
 tests. An explicit owned version-four network host now lets checked `.svr` data
 programs bind/accept/read/write/close, with scoped token custody and cleanup on
 VM success/failure. Bounded external v3/v4 policy loading now enables explicit
 CLI/native loopback byte servers with no embedded grants, project or Node startup
 dependency. A pure borrowed fixed-length HTTP/1.1 request parser now validates
-framing, Host/field syntax, partial input and lowerable limits. It is not wired
-to socket dispatch yet. Pure bounded response construction now owns framing,
-HEAD/bodyless status rules and field injection refusal. Socket/Sovra-handler
-integration and chunked/full protocol support remain open. Continue under `docs/design/G14_COMPLETION_CONTRACT.md`. Consult
+framing, Host/field syntax, partial input and lowerable limits. Bounded response
+construction owns framing, HEAD/bodyless rules and field injection refusal.
+`http.receive`/`http.respond` now wire these to execution-owned sockets with
+aggregate deadlines and one-request state. A real Sovra HTTP/JSON example passes
+independent CLI/native client acceptance. Chunked/full protocol, production
+server controls and wider qualification remain open. Continue under `docs/design/G14_COMPLETION_CONTRACT.md`. Consult
 `docs/G13_QUALIFICATION.md` and `docs/reference/generic-formatting.md` for current
 evidence and remaining gates. Historical checkpoints below do not reopen these
 implemented slices or establish G13/release/platform completion.

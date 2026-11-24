@@ -23,7 +23,7 @@ impl HttpRequestLimits {
         body_bytes: 1024 * 1024,
         work: 2 * 1024 * 1024,
     };
-    fn validate(self) -> Result<(), HttpRequestError> {
+    pub(super) fn validate(self) -> Result<(), HttpRequestError> {
         if self.head_bytes > Self::DEFAULT.head_bytes
             || self.line_bytes > Self::DEFAULT.line_bytes
             || self.headers > Self::DEFAULT.headers

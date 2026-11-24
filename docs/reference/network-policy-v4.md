@@ -19,7 +19,8 @@ combine grants. Source requests cannot add or widen authority.
 }
 ```
 
-Only `version`, optional `listen_ports` and optional `limits` are accepted.
+Only `version`, optional `listen_ports`, optional `limits` and the separately
+defined [HTTP exchange limits](http-exchange-v4.md) object `http` are accepted.
 Port grants are distinct Ints in 0–65535, at most sixteen. Zero grants only
 OS-selected ephemeral ports, not arbitrary explicit port numbers. An absent or
 empty grant list denies all listens. Limits are nonnegative Ints and may only
@@ -56,9 +57,9 @@ Real tests start Sovra CLI/native byte servers and use an independent binary TCP
 client. Native launch is tested after project deletion, environment clearing and
 unavailable Node/PATH. Missing grants/policy, port conflicts and policy options
 on non-run commands refuse. Existing v3 source/native authority tests also pass.
-This is bounded loopback byte serving, not HTTP, TLS, remote networking, async
-scheduling or production deployment. Aggregate request/connection policies and
-protocol framing remain G14 work under the
+[Restricted HTTP exchanges](http-exchange-v4.md) now add framing and Sovra
+handlers under aggregate policy. Full protocol, TLS, remote networking, async
+scheduling and production deployment remain G14 work under the
 [completion contract](../design/G14_COMPLETION_CONTRACT.md).
 
 Targeted qualification passes 741 unique Rust tests (600 library, 77 CLI,

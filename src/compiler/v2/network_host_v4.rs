@@ -39,7 +39,11 @@ fn token() -> Result<i64, HostError> {
 #[derive(Debug)]
 enum Owner {
     Listener(LoopbackListener),
-    Stream(LoopbackStream),
+    Stream {
+        stream: LoopbackStream,
+        accepted: std::time::Instant,
+    },
+    Http(super::http_exchange_v4::HttpConnection),
 }
 /// Mutable trusted execution scope. Tokens alias one owner and never duplicate sockets.
 /// Closing invalidates all token aliases; tokens are never reused in this process.
@@ -48,6 +52,7 @@ pub struct NetworkHostV4 {
     network: LoopbackNetwork,
     owners: BTreeMap<i64, Owner>,
     limits: NetworkLimits,
+    http: super::HttpExchangeLimits,
 }
 impl NetworkHostV4 {
     /// Start a denied host with only lowerable socket limits.
@@ -56,7 +61,20 @@ impl NetworkHostV4 {
             network: LoopbackNetwork::new(limits)?,
             owners: BTreeMap::new(),
             limits,
+            http: super::HttpExchangeLimits::DEFAULT,
         })
+    }
+    /// Narrow aggregate HTTP policy before any socket owners are issued.
+    pub fn set_http_limits(&mut self, limits: super::HttpExchangeLimits) -> Result<(), HostError> {
+        limits.validate()?;
+        if !self.owners.is_empty() {
+            return Err(error(
+                "policy",
+                "HTTP limits must be configured before socket creation",
+            ));
+        }
+        self.http = limits;
+        Ok(())
     }
     /// Explicit trusted exact-port authority; request data cannot create grants.
     pub fn grant_port(&mut self, port: u16) -> Result<(), HostError> {
@@ -74,7 +92,7 @@ impl NetworkHostV4 {
     ) -> Result<Result<J, HostError>, E> {
         checkpoint()?;
         let fields = match request {
-            J::Object(fields) if fields.len() <= 5 => fields,
+            J::Object(fields) if fields.len() <= 6 => fields,
             _ => return Ok(Err(error("input", "bounded request object required"))),
         };
         let get = |name: &str| {
@@ -94,9 +112,12 @@ impl NetworkHostV4 {
             };
             let allowed: &[&str] = match op {
                 "net.listen" => &["version", "op", "port"],
-                "net.port" | "net.accept" | "net.close" => &["version", "op", "handle"],
+                "net.port" | "net.accept" | "net.close" | "http.receive" => {
+                    &["version", "op", "handle"]
+                }
                 "net.read" => &["version", "op", "handle", "maximum"],
                 "net.write" => &["version", "op", "handle", "data"],
+                "http.respond" => &["version", "op", "handle", "status", "headers", "body"],
                 _ => {
                     return Err(error(
                         "unsupported",
@@ -147,9 +168,81 @@ impl NetworkHostV4 {
                     owner.close();
                     Ok(J::Null)
                 }
-                Some(Owner::Stream(owner)) => owner.close().map(|_| J::Null),
+                Some(Owner::Stream { stream, .. }) => stream.close().map(|_| J::Null),
+                Some(Owner::Http(owner)) => owner.close().map(|_| J::Null),
                 None => Err(error("input", "stale or foreign network handle")),
             });
+        }
+        if op == "http.receive" {
+            if !matches!(self.owners.get(&handle), Some(Owner::Stream { .. })) {
+                return Ok(Err(error(
+                    "input",
+                    "HTTP receive requires a raw stream owner",
+                )));
+            }
+            let Some(Owner::Stream { stream, accepted }) = self.owners.remove(&handle) else {
+                unreachable!()
+            };
+            return Ok(super::http_exchange_v4::receive(
+                stream,
+                accepted,
+                self.limits,
+                self.http,
+                checkpoint,
+            )?
+            .map(|(owner, request)| {
+                self.owners.insert(handle, Owner::Http(owner));
+                request
+            }));
+        }
+        if op == "http.respond" {
+            if !matches!(self.owners.get(&handle), Some(Owner::Http(_))) {
+                return Ok(Err(error(
+                    "input",
+                    "HTTP response requires one parsed request",
+                )));
+            }
+            let setup = (|| {
+                let status = match get("status")? {
+                    J::Int(n) => {
+                        u16::try_from(*n).map_err(|_| error("input", "HTTP status must fit u16"))?
+                    }
+                    _ => return Err(error("input", "HTTP status must be Int")),
+                };
+                let items = match get("headers")? {
+                    J::Array(items) if items.len() <= self.http.response.headers => items,
+                    _ => return Err(error("input", "bounded HTTP header array required")),
+                };
+                let mut headers = Vec::new();
+                for item in items {
+                    let pair = match item {
+                        J::Array(pair) if pair.len() == 2 => pair,
+                        _ => {
+                            return Err(error(
+                                "input",
+                                "HTTP headers must be name/value String pairs",
+                            ))
+                        }
+                    };
+                    let (J::String(name), J::String(value)) = (&pair[0], &pair[1]) else {
+                        return Err(error("input", "HTTP header Strings required"));
+                    };
+                    headers.push(super::HttpResponseHeader {
+                        name,
+                        value: value.as_bytes(),
+                    });
+                }
+                let body =
+                    super::http_exchange_v4::decode(get("body")?, self.http.response.body_bytes)?;
+                Ok((status, headers, body))
+            })();
+            let Some(Owner::Http(owner)) = self.owners.remove(&handle) else {
+                unreachable!()
+            };
+            return match setup {
+                Ok((status, headers, body)) => owner.respond(status, &headers, &body, checkpoint),
+                Err(e) => Ok(Err(e)),
+            };
         }
         let owner = match self.owners.get_mut(&handle) {
             Some(owner) => owner,
@@ -166,11 +259,17 @@ impl NetworkHostV4 {
                 };
                 let accepted = owner.accept(&mut checkpoint)?;
                 Ok(accepted.map(|owner| {
-                    self.owners.insert(handle, Owner::Stream(owner));
+                    self.owners.insert(
+                        handle,
+                        Owner::Stream {
+                            stream: owner,
+                            accepted: std::time::Instant::now(),
+                        },
+                    );
                     J::Int(handle)
                 }))
             }
-            ("net.read", Owner::Stream(owner)) => {
+            ("net.read", Owner::Stream { stream: owner, .. }) => {
                 let maximum = match get("maximum") {
                     Ok(J::Int(n)) => usize::try_from(*n).ok(),
                     _ => None,
@@ -185,7 +284,7 @@ impl NetworkHostV4 {
                         NetworkRead::Data(bytes) => encode(&bytes),
                     }))
             }
-            ("net.write", Owner::Stream(owner)) => {
+            ("net.write", Owner::Stream { stream: owner, .. }) => {
                 let bytes = match get("data").and_then(|value| decode(value, self.limits.bytes)) {
                     Ok(bytes) => bytes,
                     Err(e) => return Ok(Err(e)),
@@ -202,12 +301,15 @@ impl NetworkHostV4 {
     pub fn close_all(&mut self) -> Result<(), HostError> {
         let mut first = None;
         for (_, owner) in std::mem::take(&mut self.owners) {
-            if let Owner::Stream(stream) = owner {
-                if let Err(mut e) = stream.close() {
-                    e.code = "cleanup";
-                    if first.is_none() {
-                        first = Some(e);
-                    }
+            let closed = match owner {
+                Owner::Stream { stream, .. } => stream.close(),
+                Owner::Http(owner) => owner.close(),
+                Owner::Listener(_) => Ok(()),
+            };
+            if let Err(mut e) = closed {
+                e.code = "cleanup";
+                if first.is_none() {
+                    first = Some(e);
                 }
             }
         }

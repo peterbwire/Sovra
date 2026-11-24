@@ -1,0 +1,84 @@
+// Bounded demonstration: five connections, one HTTP request per connection.
+struct Reply<T> { status: Int, body: T }
+fn field(value: std::JsonValue, key: String) -> std::JsonValue {
+    match value {
+        std::JsonValue::Object(items) => {
+            let found = std::map_get(items, key);
+            match found {
+                std::Option::Some(item) => { return item; },
+                std::Option::None() => { return std::JsonValue::Null(); }
+            }
+        },
+        std::JsonValue::Null() => { return std::JsonValue::Null(); },
+        std::JsonValue::Bool(item) => { return std::JsonValue::Null(); },
+        std::JsonValue::Int(item) => { return std::JsonValue::Null(); },
+        std::JsonValue::Float(item) => { return std::JsonValue::Null(); },
+        std::JsonValue::String(item) => { return std::JsonValue::Null(); },
+        std::JsonValue::Array(items) => { return std::JsonValue::Null(); }
+    }
+}
+fn text(value: std::JsonValue) -> String {
+    match value {
+        std::JsonValue::String(item) => { return item; },
+        std::JsonValue::Null() => { return ""; },
+        std::JsonValue::Bool(item) => { return ""; },
+        std::JsonValue::Int(item) => { return ""; },
+        std::JsonValue::Float(item) => { return ""; },
+        std::JsonValue::Array(items) => { return ""; },
+        std::JsonValue::Object(items) => { return ""; }
+    }
+}
+fn handler(request: std::JsonValue) -> std::Result<Reply<String>, std::Error> {
+    let target = text(field(request, "target"));
+    if target == "/health" {
+        return std::Result::<Reply<String>, std::Error>::Ok(Reply::<String>{status: 200, body: "{\"ok\":true}"});
+    }
+    if target == "/echo" {
+        let bytes = std::bytes_from_base64(text(field(request, "body")))?;
+        let input = std::bytes_to_utf8(bytes)?;
+        let value = std::json_parse(input)?;
+        let output = std::json_stringify(value)?;
+        return std::Result::<Reply<String>, std::Error>::Ok(Reply::<String>{status: 200, body: output});
+    }
+    if target == "/failure" { let invalid = std::json_parse("{")?; }
+    return std::Result::<Reply<String>, std::Error>::Ok(Reply::<String>{status: 404, body: "{\"error\":\"not_found\"}"});
+}
+fn call(input: String) -> std::Result<std::JsonValue, std::Error> {
+    let request = std::json_parse(input)?;
+    return std::host_call(request);
+}
+fn respond(handle: String, reply: Reply<String>) -> std::Result<Bool, std::Error> {
+    let status = std::json_stringify(std::JsonValue::Int(reply.status))?;
+    let bytes = std::bytes_from_text(reply.body)?;
+    let encoded = std::bytes_to_base64(bytes)?;
+    let body = std::json_stringify(std::JsonValue::String(encoded))?;
+    let sent = call("{\"version\":4,\"op\":\"http.respond\",\"handle\":" + handle + ",\"status\":" + status + ",\"headers\":[[\"Content-Type\",\"application/json\"]],\"body\":" + body + "}")?;
+    return std::Result::<Bool, std::Error>::Ok(true);
+}
+fn serve(count: Int) -> std::Result<Bool, std::Error> {
+    let listener = call("{\"version\":4,\"op\":\"net.listen\",\"port\":47123}")?;
+    let listener_id = std::json_stringify(listener)?;
+    let mut served = 0;
+    while (served < count) {
+        let stream = call("{\"version\":4,\"op\":\"net.accept\",\"handle\":" + listener_id + "}")?;
+        let handle = std::json_stringify(stream)?;
+        let request = call("{\"version\":4,\"op\":\"http.receive\",\"handle\":" + handle + "}")?;
+        let outcome = handler(request);
+        match outcome {
+            std::Result::Ok(reply) => { let sent = respond(handle, reply)?; },
+            std::Result::Err(error) => {
+                let failure = Reply::<String>{status: 500, body: "{\"error\":\"handler\"}"};
+                let sent = respond(handle, failure)?;
+            }
+        }
+        served = served + 1;
+    }
+    return std::Result::<Bool, std::Error>::Ok(true);
+}
+fn main() {
+    let result = serve(5);
+    match result {
+        std::Result::Ok(done) => { if done == false { let failed = 1 / 0; } },
+        std::Result::Err(error) => { let failed = 1 / 0; }
+    }
+}

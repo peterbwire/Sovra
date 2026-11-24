@@ -4,8 +4,10 @@ Status: active implementation. The trusted Rust embedding foundation now
 provides version-four requests through checked `.svr` data execution with owned
 execution-scope handles. Explicit external policies now enable CLI/native
 loopback byte serving. A pure bounded fixed-length HTTP request parser is now
-implemented, along with bounded final-response rendering. Socket HTTP dispatch,
-handlers, full transfer coding and G14 qualification remain open.
+implemented, along with bounded final-response rendering and one-request owned
+HTTP socket dispatch. Real Sovra handlers pass independent CLI/native HTTP/JSON
+acceptance. Full transfer coding, production server controls and G14 qualification
+remain open.
 G13's experimental Linux foundation remains complete under its documented scope.
 Task Manager feature work remains paused.
 

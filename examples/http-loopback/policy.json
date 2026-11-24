@@ -1,0 +1,6 @@
+{
+  "version": 4,
+  "listen_ports": [47123],
+  "limits": { "listeners": 1, "streams": 1, "bytes": 4096, "milliseconds": 5000 },
+  "http": { "milliseconds": 5000, "io_operations": 512, "head_bytes": 4096, "body_bytes": 65536, "response_bytes": 69632 }
+}
