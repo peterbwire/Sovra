@@ -1,0 +1,29 @@
+fn fail<T>() -> std::Result<T,std::Error> {
+    return std::Result::<T,std::Error>::Err(std::Error {
+        code: "parse",
+        message: "invalid input",
+        offset: std::Option::<Int>::Some(7)
+    });
+}
+
+fn inspect() -> Bool {
+    let result = fail::<Int>();
+    match result {
+        std::Result::Ok(value) => { return false; },
+        std::Result::Err(error) => {
+            let offset = error.offset;
+            match offset {
+                std::Option::None() => { return false; },
+                std::Option::Some(position) => {
+                    return error.code == "parse" && error.message == "invalid input" && position == 7;
+                }
+            }
+        }
+    }
+}
+
+fn main() {
+    if inspect() == false {
+        let failed = 1 / 0;
+    }
+}

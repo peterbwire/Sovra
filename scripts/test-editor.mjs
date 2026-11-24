@@ -27,6 +27,8 @@ try {
         assert.equal(response.status, 200);
         return response.json();
     };
+    assert.equal((await request({ action: 'check', source: 'fn main() {}', experimentalData: true })).status, 400);
+    assert.equal((await request({ action: 'run', source: 'fn main() {}', hostPolicy: 'policy.json' })).status, 400);
     const valid = 'fn main() { print("Hello, editor! λ😀") }';
     const checked = await compile('check', valid);
     assert.equal(checked.status, 0);

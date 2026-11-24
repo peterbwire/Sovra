@@ -12,7 +12,7 @@ pub(super) fn depth_message() -> String {
 
 // Borrow-only traversal: reject caller-built trees before recursive analysis or
 // cloning. Ownership and recursive destruction remain the caller's responsibility.
-pub(super) fn check_program_depth(program: &Program) -> Result<(), Span> {
+pub(crate) fn check_program_depth(program: &Program) -> Result<(), Span> {
     for function in program
         .functions
         .iter()
@@ -122,7 +122,7 @@ pub(super) fn check_program_depth(program: &Program) -> Result<(), Span> {
 }
 // Scan iteratively before any recursive parsing. Strings/comments are already
 // tokenized, so delimiter text inside them does not consume nesting depth.
-pub(super) fn check_nesting(tokens: &[Token], include_blocks: bool) -> Result<(), Span> {
+pub(crate) fn check_nesting(tokens: &[Token], include_blocks: bool) -> Result<(), Span> {
     let mut parentheses = 0usize;
     let mut blocks = 0usize;
     let mut brackets = 0usize;

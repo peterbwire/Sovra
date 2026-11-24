@@ -54,6 +54,7 @@ export async function startEditor({ compiler = resolve('target/debug', process.p
             let input;
             try { input = JSON.parse(decoder.decode(Buffer.concat(chunks))); }
             catch { return send(400, { error: 'Invalid UTF-8 JSON' }); }
+            if (input && (Object.hasOwn(input, 'experimentalData') || Object.hasOwn(input, 'hostPolicy'))) return send(400, { error: 'Data/host package profiles require explicit CLI commands' });
             const commands = { check: ['check', '--format', 'json'], ir: ['build', '--emit', 'ir'], js: ['build', '--emit', 'js'], run: ['run'] };
             if (!Object.hasOwn(commands, input?.action) || typeof input.source !== 'string' || /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(input.source)) return send(400, { error: 'Invalid source or action' });
             // Reserve before asynchronous filesystem work so concurrent requests cannot overlap.

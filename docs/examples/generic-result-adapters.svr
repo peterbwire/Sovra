@@ -1,0 +1,46 @@
+// Include the explicit standard_result_adapters.svr functions before this consumer.
+fn checked_number(value: std::ParsedInt) -> std::Option<Int> {
+    let number = adapt_parsed_int(value)?;
+    return std::Option::<Int>::Some(number + 1);
+}
+fn main() {
+    let missing = checked_number(std::parse_int("not a number"));
+    match missing {
+        std::Option::Some(number) => { let bad = 1 / 0; },
+        std::Option::None() => {}
+    }
+    let found = checked_number(std::parse_int("7"));
+    match found {
+        std::Option::Some(number) => { if number != 8 { let bad = 1 / 0; } },
+        std::Option::None() => { let bad = 1 / 0; }
+    }
+    let split = adapt_split_once(std::split_once("left,right", ","));
+    match split {
+        std::Option::Some(parts) => { if parts[0] != "left" { let bad = 1 / 0; } },
+        std::Option::None() => { let bad = 1 / 0; }
+    }
+    if std::len("é") != 2 { let bad = 1 / 0; }
+    if std::lines_unique("a\nb") {} else { let bad = 1 / 0; }
+    let escaped = std::escape_terminal("a\n");
+    if escaped != "a\\u{000A}" { let bad = 1 / 0; }
+    let numbers: [Int] = [1, 2];
+    if std::array_len(numbers) != 2 { let bad = 1 / 0; }
+    if std::to_string(numbers) != "[1, 2]" { let bad = 1 / 0; }
+    let appended = std::array_append(numbers, 3);
+    let combined = std::array_concat(appended, numbers);
+    let selected = std::array_slice(combined, 1, 4);
+    if std::to_string(selected) != "[2, 3, 1]" { let bad = 1 / 0; }
+    let floats: [Float] = [];
+    let widened = std::array_append(floats, 1);
+    let extra: [Int] = [2];
+    let joined = std::array_concat(widened, extra);
+    if joined[1] != 2.0 { let bad = 1 / 0; }
+    let loaded = adapt_text_read(std::TextRead { ok: false, text: "ignored", error: "denied" });
+    match loaded {
+        std::Result::Ok(text) => { let bad = 1 / 0; },
+        std::Result::Err(error) => {
+            if error.code != "text_read_failed" { let bad = 1 / 0; }
+            if error.message != "denied" { let bad = 1 / 0; }
+        }
+    }
+}

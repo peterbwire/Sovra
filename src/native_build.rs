@@ -37,6 +37,46 @@ pub(crate) fn build_v2(
     build_image(&image, output)
 }
 
+pub(crate) fn build_generic(
+    program: &crate::compiler::v2::CompiledGenericSource,
+    output: &Path,
+) -> Result<PathBuf, String> {
+    refuse_existing(output)?;
+    let image = program.encode_generic_native_image()?;
+    crate::compiler::v2::decode_generic_native_image(&image)?;
+    build_image(&image, output)
+}
+
+pub(crate) fn build_generic_package(
+    program: &crate::compiler::v2::CompiledGenericPackage,
+    output: &Path,
+) -> Result<PathBuf, String> {
+    refuse_existing(output)?;
+    let image = program.encode_generic_package_native_image()?;
+    crate::compiler::v2::decode_generic_package_native_image(&image)?;
+    build_image(&image, output)
+}
+
+pub(crate) fn build_generic_collection_package(
+    program: &crate::compiler::v2::CompiledGenericPackage,
+    output: &Path,
+) -> Result<PathBuf, String> {
+    refuse_existing(output)?;
+    let image = program.encode_generic_collection_package_native_image()?;
+    crate::compiler::v2::decode_generic_collection_package_native_image(&image)?;
+    build_image(&image, output)
+}
+
+pub(crate) fn build_generic_data_package(
+    program: &crate::compiler::v2::CompiledGenericPackage,
+    output: &Path,
+) -> Result<PathBuf, String> {
+    refuse_existing(output)?;
+    let image = program.encode_generic_data_package_native_image()?;
+    crate::compiler::v2::decode_generic_data_package_native_image(&image)?;
+    build_image(&image, output)
+}
+
 fn build_image(image: &[u8], output: &Path) -> Result<PathBuf, String> {
     let runtime = discover_runtime()?;
     let parent = output

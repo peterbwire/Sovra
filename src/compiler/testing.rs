@@ -39,7 +39,7 @@ pub struct TestReport {
     pub target: String,
     /// Whether the input was classified as a package directory.
     pub package: bool,
-    /// Compilation/configuration diagnostics; no tests run when errors exist.
+    /// Compilation/configuration diagnostics; discovery/preflight errors prevent execution.
     pub diagnostics: Diagnostics,
     /// Sequential outcomes in source order.
     pub tests: Vec<TestOutcome>,

@@ -1,0 +1,25 @@
+fn roundtrip() -> std::Result<Bool, std::Error> {
+    let bytes = std::bytes_from_text("Sovra λ 🦀")?;
+    let hex = std::bytes_to_hex(bytes)?;
+    let decoded = std::bytes_from_hex(hex)?;
+    let base64 = std::bytes_to_base64(decoded)?;
+    let restored = std::bytes_from_base64(base64)?;
+    let text = std::bytes_to_utf8(restored)?;
+    let array = std::bytes_to_array(restored)?;
+    let copied = std::bytes_from_array(array)?;
+    return std::Result::<Bool, std::Error>::Ok(bytes == copied && text == "Sovra λ 🦀");
+}
+fn verify() {
+    let outcome = roundtrip();
+    match outcome {
+        std::Result::Ok(ok) => { if ok==false { let failure = 1 / 0; } },
+        std::Result::Err(error) => { let failure = 1 / 0; }
+    }
+    let json = std::json_parse("{\"value\":1.0,\"items\":[true,null,\"λ\"]}");
+    match json {
+        std::Result::Ok(value) => { let encoded = std::json_stringify(value); match encoded { std::Result::Ok(text) => { if text != "{\"value\":1.0,\"items\":[true,null,\"λ\"]}" { let failure = 1 / 0; } }, std::Result::Err(error) => { let failure = 1 / 0; } } },
+        std::Result::Err(error) => { let failure = 1 / 0; }
+    }
+}
+fn main() { verify(); }
+fn test_roundtrip() { verify(); }

@@ -6,7 +6,7 @@ import { join, resolve, dirname, isAbsolute } from 'node:path';
 import { FrameReader, frame } from './transport.mjs';
 import { decodeEvidence } from './symbols.mjs';
 import { decodePackageNavigation } from './package-navigation.mjs';
-import { canonicalFile, hostPath, workspaceRoots, nearestPackage, decodeContext, overlayFrame, packageDiagnostics } from './packages.mjs';
+import { canonicalFile, hostPath, workspaceRoots, nearestPackage, decodeContext, decodeGenericTaskContext, overlayFrame, packageDiagnostics } from './packages.mjs';
 
 const configuredCompiler = process.argv[2] || process.env.SOVRA_COMPILER || 'svr';
 const compiler = /[/\\]/.test(configuredCompiler) ? resolve(configuredCompiler) : configuredCompiler;
@@ -17,7 +17,7 @@ const LIMIT = 512 * 1024;
 const TOTAL = 4 * 1024 * 1024;
 const zero = { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } };
 let initialized = false, shutdown = false, active, pumping = false, exiting = false;
-let roots = Promise.resolve([]), workspaceMode = false, packageSequence = 0, experimentalV2 = false;
+let roots = Promise.resolve([]), workspaceMode = false, packageSequence = 0, experimentalV2 = false, experimentalGenerics = false, genericPackageTasks = false, genericPackageDiagnostics = false;
 const send = value => {
     if (exiting) return;
     if (process.stdout.writableLength > 4 * 1024 * 1024) return stop(1);
@@ -100,9 +100,9 @@ async function checkPackage(doc) {
     if (!file) return false;
     const root = await nearestPackage(file, await roots);
     if (!root) return false;
-    const context = await compilerReport(doc, ['check', '--format', 'json', '--package-context', root], root);
-    const entries = decodeContext(context, root);
-    if (!entries.has(file)) return false;
+    const context = await compilerReport(doc, ['check', ...(genericPackageDiagnostics ? ['--experimental-generics'] : []), '--format', 'json', '--package-context', root], root);
+    const entries = genericPackageDiagnostics ? decodeGenericTaskContext(context, root) : decodeContext(context, root);
+    if (!entries.has(file)) { if (genericPackageDiagnostics) throw new Error('Source is not registered in the generic package'); return false; }
     const snapshot = [...documents.values()];
     const members = new Map();
     for (const member of snapshot) {
@@ -113,10 +113,10 @@ async function checkPackage(doc) {
     }
     const id = packageSequence = (packageSequence + 1) >>> 0;
     const input = overlayFrame(id, members);
-    const report = await compilerReport(doc, ['check', '--format', 'json', '--overlays-stdin', root], root, input);
-    const grouped = packageDiagnostics(report, root, id, entries, members, doc, position);
+    const report = await compilerReport(doc, ['check', ...(genericPackageDiagnostics ? ['--experimental-generics'] : []), '--format', 'json', '--overlays-stdin', root], root, input);
+    const grouped = packageDiagnostics(report, root, id, entries, members, doc, position, genericPackageDiagnostics ? 'experimental-generics' : undefined);
     const navigation = report.success ? await decodePackageNavigation(report.package_symbols, entries, members) : undefined;
-    const local = report.success && entries.size === 1 && members.size === 1;
+    const local = !genericPackageDiagnostics && report.success && entries.size === 1 && members.size === 1;
     if (!doc.cancelled && documents.get(doc.uri) === doc && !shutdown && snapshot.every(d => documents.get(d.uri) === d)) {
         for (const [member, diagnostics] of grouped) { clearTimeout(member.timer); member.ready = false; publish(member, diagnostics); member.evidence = navigation?.get(member); if (!local || member !== doc) completeSymbols(member); }
     }
@@ -142,7 +142,7 @@ async function check(doc) {
         const source = join(directory, 'main.svr');
         await writeFile(source, doc.text, { mode: 0o600 });
         if (doc.cancelled || shutdown) return;
-        const report = await compilerReport(doc, experimentalV2 ? ['check', '--experimental-v2', '--format', 'json', '--symbols', source] : ['check', '--format', 'json', '--symbols', source], directory);
+        const report = await compilerReport(doc, experimentalGenerics ? ['check', '--experimental-generics', '--format', 'json', '--symbols', source] : experimentalV2 ? ['check', '--experimental-v2', '--format', 'json', '--symbols', source] : ['check', '--format', 'json', '--symbols', source], directory);
         if (report.schema_version !== 1 || report.kind !== 'source' || !Array.isArray(report.diagnostics)) throw new Error('Unsupported compiler report');
         const bytes = Buffer.from(doc.text, 'utf8');
         const diagnostics = report.diagnostics.map(item => ({
@@ -179,12 +179,12 @@ async function taskTarget(doc, control) {
     const file = await canonicalFile(doc.uri);
     if (!file) throw new Error('Task source must exist on disk');
     const standalone = { schema_version: 1, package: false, target: file, cwd: dirname(file), sources: [file], manifests: [] };
-    if (experimentalV2) return standalone;
+    if (experimentalV2 || (experimentalGenerics && !genericPackageTasks)) return standalone;
     const root = await nearestPackage(file, await roots);
     if (!root) return standalone;
-    const report = await compilerReport(control, ['check', '--format', 'json', '--package-context', root], root);
-    const entries = decodeContext(report, root);
-    if (!entries.has(file)) return standalone;
+    const report = await compilerReport(control, ['check', ...(genericPackageTasks ? ['--experimental-generics'] : []), '--format', 'json', '--package-context', root], root);
+    const entries = genericPackageTasks ? decodeGenericTaskContext(report, root) : decodeContext(report, root);
+    if (!entries.has(file)) { if (genericPackageTasks) throw new Error('Source is not registered in the selected generic package'); return standalone; }
     const paths = report.package_context.manifests;
     if (!Array.isArray(paths) || !paths.length || paths.length > 1024) throw new Error('Compiler package task context unavailable');
     const manifests = new Set();
@@ -226,7 +226,7 @@ async function formatDocument(doc, control, id) {
         const source = join(directory, 'main.svr');
         await writeFile(source, doc.text, { mode: 0o600 });
         if (control.cancelled || documents.get(doc.uri) !== doc || shutdown) throw new Error('Document changed');
-        const text = await compilerReport(control, ['fmt', ...(experimentalV2 ? ['--experimental-v2'] : []), source], directory, undefined, true);
+        const text = await compilerReport(control, ['fmt', ...(experimentalGenerics ? ['--experimental-generics'] : experimentalV2 ? ['--experimental-v2'] : []), source], directory, undefined, true);
         if (control.cancelled || documents.get(doc.uri) !== doc || shutdown) throw new Error('Document changed');
         if (!scalar(text)) throw new Error('Formatter returned invalid Unicode');
         const lines = doc.text.split(/\r\n|\r|\n/);
@@ -270,12 +270,24 @@ function receive(message) {
     if (method === 'exit') return stop(shutdown ? 0 : 1);
     if (method === 'initialize' && !initialized && id !== undefined) {
         if (Array.isArray(params?.workspaceFolders) && params.workspaceFolders.length > 16) return error(id, -32602, 'At most 16 workspace folders supported');
+        if (params?.initializationOptions?.experimentalData !== undefined || params?.initializationOptions?.hostPolicy !== undefined) return error(id, -32602, 'Data/host package profiles require explicit CLI commands; this language server does not grant host authority');
         if (params?.initializationOptions?.experimentalV2 !== undefined && typeof params.initializationOptions.experimentalV2 !== 'boolean') return error(id, -32602, 'experimentalV2 must be boolean');
+        if (params?.initializationOptions?.experimentalGenerics !== undefined && typeof params.initializationOptions.experimentalGenerics !== 'boolean') return error(id, -32602, 'experimentalGenerics must be boolean');
+        if (params?.initializationOptions?.experimentalV2 === true && params?.initializationOptions?.experimentalGenerics === true) return error(id, -32602, 'Choose one experimental compiler mode');
+        const packageTasks = params?.initializationOptions?.experimentalGenericPackageTasks;
+        if (packageTasks !== undefined && typeof packageTasks !== 'boolean') return error(id, -32602, 'experimentalGenericPackageTasks must be boolean');
+        if (packageTasks === true && params?.initializationOptions?.experimentalGenerics !== true) return error(id, -32602, 'Generic package tasks require experimentalGenerics');
+        const packageDiagnostics = params?.initializationOptions?.experimentalGenericPackageDiagnostics;
+        if (packageDiagnostics !== undefined && typeof packageDiagnostics !== 'boolean') return error(id, -32602, 'experimentalGenericPackageDiagnostics must be boolean');
+        if (packageDiagnostics === true && params?.initializationOptions?.experimentalGenerics !== true) return error(id, -32602, 'Generic package diagnostics require experimentalGenerics');
+        genericPackageDiagnostics = packageDiagnostics === true;
+        genericPackageTasks = packageTasks === true;
+        experimentalGenerics = params?.initializationOptions?.experimentalGenerics === true;
         experimentalV2 = params?.initializationOptions?.experimentalV2 === true;
-        workspaceMode = !experimentalV2 && ((Array.isArray(params?.workspaceFolders) && params.workspaceFolders.length > 0) || typeof params?.rootUri === 'string');
+        workspaceMode = !experimentalV2 && (!experimentalGenerics || genericPackageDiagnostics) && ((Array.isArray(params?.workspaceFolders) && params.workspaceFolders.length > 0) || typeof params?.rootUri === 'string');
         roots = workspaceRoots(params).catch(() => []);
         initialized = true;
-        return send({ id, result: { capabilities: { positionEncoding: 'utf-16', textDocumentSync: { openClose: true, change: 1 }, hoverProvider: true, definitionProvider: true, documentSymbolProvider: true, documentFormattingProvider: true, completionProvider: { resolveProvider: false }, experimental: { sovraTaskTarget: true, sovraPipeline: experimentalV2 ? 'v2-standalone' : 'legacy' } }, serverInfo: { name: 'sovra-lsp', version: '0.3.0' } } });
+        return send({ id, result: { capabilities: { positionEncoding: 'utf-16', textDocumentSync: { openClose: true, change: 1 }, hoverProvider: true, definitionProvider: true, documentSymbolProvider: true, documentFormattingProvider: true, completionProvider: { resolveProvider: false }, experimental: { sovraTaskTarget: true, sovraGenericPackageTasks: genericPackageTasks, sovraGenericPackageDiagnostics: genericPackageDiagnostics, sovraPipeline: genericPackageDiagnostics ? 'generics-package-diagnostics' : experimentalGenerics ? 'generics-standalone' : experimentalV2 ? 'v2-standalone' : 'legacy' } }, serverInfo: { name: 'sovra-lsp', version: '0.3.0' } } });
     }
     if (!initialized) { if (id !== undefined) error(id, -32002, 'Server not initialized'); return; }
     if (shutdown) { if (id !== undefined) error(id, -32600, 'Server has shut down'); return; }
@@ -307,10 +319,10 @@ function receive(message) {
         return;
     }
     if (method === 'workspace/didChangeWatchedFiles' || method === 'textDocument/didSave') { if (workspaceMode) refreshWorkspace(); return; }
-    if (method === 'textDocument/formatting' && id !== undefined) return requestDocumentAction(id, params, formatDocument, true);
+    if (method === 'textDocument/formatting' && id !== undefined) { return requestDocumentAction(id, params, formatDocument, true); }
     if (method === 'sovra/taskTarget' && id !== undefined) return requestDocumentAction(id, params, taskTarget);
     if (method === 'textDocument/completion' && id !== undefined) {
-        const words = experimentalV2 ? ['fn', 'let', 'mut', 'return', 'if', 'else', 'while', 'mod', 'enum', 'match', 'type', 'struct', 'export', 'true', 'false', 'Int', 'Float', 'Bool', 'String', 'Unit'] : ['fn', 'let', 'mut', 'return', 'if', 'else', 'while', 'mod', 'export', 'use', 'true', 'false', 'Int', 'Float', 'Bool', 'String', 'Unit'];
+        const words = experimentalGenerics ? ['fn', 'let', 'mut', 'return', 'if', 'else', 'while', 'enum', 'match', 'type', 'struct', 'export', 'true', 'false', 'Int', 'Float', 'Bool', 'String', 'Unit'] : experimentalV2 ? ['fn', 'let', 'mut', 'return', 'if', 'else', 'while', 'mod', 'enum', 'match', 'type', 'struct', 'export', 'true', 'false', 'Int', 'Float', 'Bool', 'String', 'Unit'] : ['fn', 'let', 'mut', 'return', 'if', 'else', 'while', 'mod', 'export', 'use', 'true', 'false', 'Int', 'Float', 'Bool', 'String', 'Unit'];
         return send({ id, result: documents.has(params?.textDocument?.uri) ? words.map(label => ({ label, kind: 14, detail: 'Sovra keyword/type (basic suggestion)' })) : [] });
     }
     if (id !== undefined && ['textDocument/hover', 'textDocument/definition', 'textDocument/documentSymbol'].includes(method)) {

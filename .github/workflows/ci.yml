@@ -232,6 +232,37 @@ jobs:
           path: target/depth-probe/results-*.json
           if-no-files-found: warn
 
+  g13-evidence:
+    name: G13 supported Linux profile evidence (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - uses: dtolnay/rust-toolchain@1.74.0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Retain focused data, host, native and tooling qualification
+        run: python scripts/qualify-g13.py --node
+      - name: Upload exact-source G13 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sovra-g13-${{ matrix.os }}-evidence
+          path: target/checked-evidence/g13-closure/
+          if-no-files-found: error
+
   msrv:
     name: Minimum Rust 1.74
     runs-on: ubuntu-latest

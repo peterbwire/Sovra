@@ -49,6 +49,15 @@ impl CapturedRootSource {
 /// not source parsing, lock verification or an atomic filesystem snapshot. The
 /// source reader requires supported Linux/procfs hosts and refuses elsewhere.
 pub fn capture_root_source(root: impl AsRef<Path>) -> Result<CapturedRootSource, Diagnostics> {
+    capture_root_source_with_source_limit(root, FrontendLimits::DEFAULT.max_source_bytes)
+}
+/// Capture the same guarded root entry under a caller-selected byte ceiling.
+/// The ceiling may only reduce existing frontend admission; no weaker read path
+/// or dependency/module fallback is selected, including when the ceiling is zero.
+pub fn capture_root_source_with_source_limit(
+    root: impl AsRef<Path>,
+    max_source_bytes: usize,
+) -> Result<CapturedRootSource, Diagnostics> {
     let (inventory, manifests) = inventory::capture_inventory(root.as_ref())?;
     let package = inventory
         .graph
@@ -65,7 +74,7 @@ pub fn capture_root_source(root: impl AsRef<Path>) -> Result<CapturedRootSource,
     }
     let (source, _) = source_units::read_snapshot(
         &inventory.sources[0],
-        FrontendLimits::DEFAULT.max_source_bytes,
+        max_source_bytes.min(FrontendLimits::DEFAULT.max_source_bytes),
     )?;
     Ok(CapturedRootSource {
         inventory,

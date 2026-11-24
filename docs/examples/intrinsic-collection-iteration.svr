@@ -1,0 +1,19 @@
+fn values<K:std::Key,V>(map:std::Map<K,V>)->[V]{
+    return std::map_values(map);
+}
+fn main()->Bool{
+    let empty:std::Map<String,Int>=std::map_new();
+    let counts=std::map_insert(std::map_insert(empty,"requests",7),"errors",3);
+    let keys=std::map_keys(counts);
+    let numbers=values::<String,Int>(counts);
+    let mut i=0;
+    let mut total=0;
+    while i<std::array_len(numbers){
+        total=total+numbers[i];
+        i=i+1;
+    }
+    let members:std::Set<Bool>=std::set_new();
+    let flags=std::set_values(std::set_insert(std::set_insert(members,true),false));
+    return total==10 && keys[0]=="requests" && keys[1]=="errors"
+        && flags[0]==true && flags[1]==false;
+}

@@ -41,6 +41,13 @@ export function decodeContext(report, root) {
     if (report?.schema_version !== 1 || report.kind !== 'project' || report.scope !== 'package_graph' || report.source_check !== false || report.target !== root || report.success !== true || !Array.isArray(report.diagnostics) || report.diagnostics.length || c?.schema_version !== 1 || (!pathString(c.root) || hostPath(c.root) !== root) || !Array.isArray(c.entries) || !c.entries.length || c.entries.length > 1024 || !c.entries.every(pathString) || new Set(c.entries.map(hostPath)).size !== c.entries.length) throw new Error('Compiler package context unavailable');
     return new Set(c.entries.map(hostPath));
 }
+// Version two is deliberately separate from legacy entry-only metadata.
+export function decodeGenericTaskContext(report, root) {
+    const c = report?.package_context;
+    const paths = list => Array.isArray(list) && list.length > 0 && list.length <= 1024 && list.every(pathString) && new Set(list.map(hostPath)).size === list.length;
+    if (report?.schema_version !== 1 || report.kind !== 'project' || report.scope !== 'package_graph' || report.source_check !== false || report.profile !== 'experimental-generics' || report.target !== root || report.success !== true || !Array.isArray(report.diagnostics) || report.diagnostics.length || c?.schema_version !== 2 || !pathString(c.root) || hostPath(c.root) !== root || !paths(c.sources) || !paths(c.manifests) || Buffer.byteLength(JSON.stringify(report)) > 1024 * 1024) throw new Error('Compiler generic package task context unavailable');
+    return new Set(c.sources.map(hostPath));
+}
 export function overlayFrame(id, members) {
     if (members.size > 32) throw new Error('Package overlay buffer limit exceeded');
     const word = n => { const b = Buffer.alloc(4); b.writeUInt32BE(n); return b; };
@@ -56,8 +63,9 @@ export function overlayFrame(id, members) {
     }
     return Buffer.concat(pieces);
 }
-export function packageDiagnostics(report, root, id, entries, members, owner, position) {
+export function packageDiagnostics(report, root, id, entries, members, owner, position, profile) {
     if (report?.schema_version !== 1 || report.kind !== 'project' || report.target !== root || typeof report.success !== 'boolean' || report.overlay_request?.schema_version !== 1 || report.overlay_request.request_id !== id || !Array.isArray(report.diagnostics) || report.diagnostics.length > 256) throw new Error('Unsupported package check report');
+    if (report.profile !== profile) throw new Error('Unsupported package diagnostic profile');
     const grouped = new Map([...members.values()].map(doc => [doc, []]));
     const zero = { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } };
     let errors = 0, closed;
@@ -71,6 +79,7 @@ export function packageDiagnostics(report, root, id, entries, members, owner, po
             doc = members.get(hostPath(location.file));
             if (!doc) { closed ||= `Package diagnostic in closed source ${location.file}: ${item.code}: ${item.message}`; continue; }
             const bytes = Buffer.from(doc.text);
+            if (location.end > bytes.length || [location.start, location.end].some(i => i < bytes.length && (bytes[i] & 0xc0) === 0x80)) throw new Error('Invalid package diagnostic byte boundary');
             range = { start: position(bytes, location.start), end: position(bytes, location.end) };
         }
         grouped.get(doc).push({ range, severity: item.severity === 'warning' ? 2 : 1, source: 'sovra', code: item.code, message: item.message });

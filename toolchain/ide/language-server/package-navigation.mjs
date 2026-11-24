@@ -62,6 +62,26 @@ export async function decodePackageNavigation(meta, entries, members) {
         if (r.definition === null) { if (!string(r.signature)) throw new Error('Invalid builtin signature'); }
         else if (!integer(r.definition) || r.definition >= meta.declarations.length || own(r, 'signature')) throw new Error('Invalid checked target index');
     }
+    const locals = meta.locals ?? [], localReferences = meta.local_references ?? [];
+    if (own(meta, 'locals') !== own(meta, 'local_references') || !Array.isArray(locals) || locals.length > 8192 || !Array.isArray(localReferences) || localReferences.length > 8192) throw new Error('Invalid package local tables');
+    function ownerOf(item) {
+        if (!integer(item.owner) || item.owner >= meta.declarations.length) throw new Error('Invalid local function owner');
+        const owner = meta.declarations[item.owner];
+        if (owner.kind !== 12 || owner.file !== item.file || item.start < owner.start || item.end > owner.end) throw new Error('Local outside its function owner');
+    }
+    for (const item of locals) {
+        span(item, false); ownerOf(item);
+        if (!['local', 'parameter'].includes(item.kind) || !string(item.name) || !string(item.signature) || item.name_start !== item.start || item.name_end !== item.end) throw new Error('Invalid package local declaration');
+        const file = files[item.file];
+        if (new TextDecoder('utf-8', { fatal: true }).decode(file.bytes.subarray(item.start, item.end)) !== item.name) throw new Error('Local name/source mismatch');
+    }
+    for (const item of localReferences) {
+        span(item, false); ownerOf(item);
+        if (!integer(item.definition) || item.definition >= locals.length) throw new Error('Invalid package local reference');
+        const target = locals[item.definition];
+        if (target.file !== item.file || target.owner !== item.owner) throw new Error('Local reference crosses function ownership');
+        if (new TextDecoder('utf-8', { fatal: true }).decode(files[item.file].bytes.subarray(item.start, item.end)) !== target.name) throw new Error('Local reference/source mismatch');
+    }
     for (const f of files) f.positions = positionsFor(f.bytes, f.offsets);
     const range = (file, start, end) => ({ start: file.positions.get(start), end: file.positions.get(end) });
     const declarations = meta.declarations.map(d => ({ ...d, uri: files[d.file].uri, range: range(files[d.file], d.start, d.end), selectionRange: range(files[d.file], d.name_start, d.name_end) }));
@@ -70,6 +90,18 @@ export async function decodePackageNavigation(meta, entries, members) {
     for (const r of meta.references) {
         const file = files[r.file]; if (!file.doc) continue;
         output.get(file.doc).references.push({ ...r, declaration: r.definition === null ? undefined : declarations[r.definition], range: range(file, r.start, r.end) });
+    }
+    const localIndices = new Map();
+    for (const [i, d] of locals.entries()) {
+        const file = files[d.file]; if (!file.doc) continue;
+        const evidence = output.get(file.doc);
+        localIndices.set(i, evidence.locals.length);
+        evidence.locals.push({ ...d, range: range(file, d.start, d.end), selectionRange: range(file, d.start, d.end) });
+    }
+    for (const r of localReferences) {
+        const file = files[r.file]; if (!file.doc) continue;
+        if (!localIndices.has(r.definition)) throw new Error('Missing local destination');
+        output.get(file.doc).localReferences.push({ ...r, definition: localIndices.get(r.definition), range: range(file, r.start, r.end) });
     }
     return output;
 }

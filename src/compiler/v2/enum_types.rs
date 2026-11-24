@@ -149,6 +149,12 @@ impl EnumId {
         self.ordinal
     }
 }
+/// Sealed record identity scoped to one immutable checked environment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct RuntimeRecordId {
+    environment: u64,
+    ordinal: usize,
+}
 /// A flat payload-type node scoped to one immutable checked environment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EnumTypeId {
@@ -227,6 +233,32 @@ struct ModuleTypes {
     known: HashMap<String, Type>,
 }
 impl CheckedEnumTypes {
+    /// Resolve a canonical checked record name; caller text alone cannot forge an ID.
+    pub fn find_record(&self, name: &str) -> Option<RuntimeRecordId> {
+        // HashMap iteration order stays fixed for the lifetime of these immutable facts.
+        // IDs are environment-local and never serialized or shared across fresh checks.
+        self.0
+            .record_fields
+            .keys()
+            .position(|n| n == name)
+            .map(|ordinal| RuntimeRecordId {
+                environment: self.0.environment,
+                ordinal,
+            })
+    }
+    pub(super) fn record_schema(
+        &self,
+        id: RuntimeRecordId,
+    ) -> Option<(&str, &HashMap<String, Type>)> {
+        if id.environment != self.0.environment {
+            return None;
+        }
+        self.0
+            .record_fields
+            .iter()
+            .nth(id.ordinal)
+            .map(|(name, fields)| (name.as_str(), fields))
+    }
     pub(super) fn body_named_types(&self) -> &HashMap<String, Type> {
         self.1.as_ref().map_or(&self.0.known, |scope| &scope.known)
     }

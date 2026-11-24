@@ -532,21 +532,24 @@ pub(super) fn build(args: &[String]) -> ExitCode {
 }
 
 pub(super) fn lock(args: &[String]) -> ExitCode {
+    lock_selected(args, "--experimental-v2")
+}
+pub(super) fn lock_selected(args: &[String], selector: &str) -> ExitCode {
     if args
         .iter()
         .take_while(|arg| arg.as_str() != "--")
         .any(|arg| arg == "--help" || arg == "-h")
     {
-        println!("Usage: svr lock --experimental-v2 [--check] <package-directory>");
+        println!("Usage: svr lock {selector} [--check] <package-directory>");
         return ExitCode::SUCCESS;
     }
     let (mut selected, mut check, mut path, mut positional) = (false, false, None, false);
     for arg in args {
         if !positional && arg == "--" {
             positional = true;
-        } else if !positional && arg == "--experimental-v2" {
+        } else if !positional && arg == selector {
             if selected {
-                return usage("--experimental-v2 may appear only once");
+                return usage(&format!("{selector} may appear only once"));
             }
             selected = true;
         } else if !positional && arg == "--check" {
@@ -563,7 +566,13 @@ pub(super) fn lock(args: &[String]) -> ExitCode {
     let Some(path) = path.filter(|path| selected && Path::new(path).is_dir()) else {
         return usage("experimental lock requires a package directory");
     };
-    let result = if check {
+    let result = if selector == "--experimental-generics" {
+        if check {
+            compiler::project::packages::check_captured_source_lock(path)
+        } else {
+            compiler::project::packages::write_captured_source_lock(path)
+        }
+    } else if check {
         compiler::project::packages::check_root_source_lock(path)
     } else {
         compiler::project::packages::write_root_source_lock(path)

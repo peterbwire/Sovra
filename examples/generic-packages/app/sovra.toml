@@ -1,0 +1,6 @@
+[project]
+name = "generic-package-consumer"
+entry = "main.svr"
+
+[dependencies.helpers]
+path = "../helpers"

@@ -1,0 +1,13 @@
+// Explicit collection compiler/VM library profile only; CLI/native remain gated.
+fn main() -> Bool {
+    let empty: std::Map<String, Int> = std::map_new();
+    let first = std::map_insert(empty, "first", 1);
+    let both = std::map_insert(first, "second", 2);
+    let replaced = std::map_insert(both, "first", 3);
+    let reverse = std::map_insert(std::map_insert(empty, "second", 2), "first", 3);
+    let set: std::Set<String> = std::set_new();
+    let once = std::set_insert(set, "first");
+    let twice = std::set_insert(once, "first");
+    return replaced == reverse && std::map_len(first) == 1
+        && std::map_len(replaced) == 2 && std::set_len(twice) == 1;
+}

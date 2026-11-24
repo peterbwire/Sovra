@@ -1,5 +1,852 @@
 # Development log
 
+## 2026-11-18: C1 nonempty collection insertion
+
+Added exact typed insertion builtins, private flat map-entry nodes, immutable map replacement and set duplicate retention. Result planning preflights every copied descendant before output creation; shared VM work meters key scans, planning and copying. Both VM and snapshot equality now compare associations/membership independently of order. Real source tests cover 64 oracle histories, recursive values, type/resource refusals and published insertion source. Lookup/removal/iteration and native/CLI qualification remain open. See [insertion contract](reference/generic-collection-insertion-v2.md).
+
+## 2026-11-18: C1 initial source collection operations
+
+Added contextual typed empty Map/Set creation and strict length builtins through all source/body/concrete/layout/IR/VM stages of an explicit package profile. Distinct flat collection kinds preserve snapshots, generic calls, compound values, equality and propagation. Existing global VM budgets/control apply, with exact empty-container and Int-result charges. The new IR admission marker requires explicit execution and prevents old native words from encoding even unused collection annotations. Nonempty operations and CLI/native qualification remain open. See [operation contract and runnable library example](reference/generic-collection-operations-v2.md).
+
+## 2026-11-18: C1 opaque collection layout graphs
+
+Added explicit Map/Set shapes to the bounded checked layout graph through an opt-in planner. Existing type keys preserve constructor/argument identity, recursive value edges close normally, and expanding recursion consumes the same combined instantiation budget. Actual checked layouts now bind typed storage without reinterpreting another table's indexes. Construction and propagation-IR lowering explicitly refuse collection-bearing graphs; old planner/CLI/native profiles remain unchanged. See [layout graph contract](reference/generic-collection-layout-graphs-v2.md).
+
+## 2026-11-16: C1 intrinsic collection source semantics
+
+Added sealed compiler-owned collection syntax/definition categories and an explicit package semantic checker profile registering Map/Set. Real source annotations now validate arity, bounds, aliases, nested types and source visibility through existing core proofs and cumulative budgets. Opaque literals/fields remain refused; concrete forwarding rechecks before the executable layout gate refuses publication. Default compiler/CLI/native profiles are preserved. See [semantic scope and remaining execution work](reference/generic-collection-types-v2.md).
+
+## 2026-11-16: C1 checked opaque collection layout plans
+
+Added distinct compiler-owned Map/Set plan constructors with retained concrete argument proofs, primitive key constraints, finite type comparison and storage factories derived from those arguments. Wrong-kind and whole-container materialization refusals remain atomic. Existing user records and native feature words are unchanged; source intrinsics remain refused pending executable layout/IR/VM qualification. See [plan scope and contract](reference/generic-collection-layouts-v2.md).
+
+## 2026-11-16: C1 generic package-owned map storage
+
+Added typed ordered maps consuming generic snapshots without converting or guessing declaration ownership. New/get/insert/remove/snapshot/iteration/equality retain exact value proof and bounded comparison profiles. Aggregate result admission covers every copied descendant, including updated map plus removed value, before any entry copying. Tests include real multi-file package values, owner/type refusal, resource boundaries and 1,296 oracle histories. See [storage contract](reference/generic-collection-maps-v2.md). Source/layout/IR/VM/native qualification remains open.
+
+## 2026-11-16: C1 generic package-owner value bridge
+
+Added proof-carrying snapshots captured only from their own generic VM outcomes, with bounded subtree selection, exact semantic type tokens, key-domain inspection and structural equality. Package declaration owners, aliases and phantom generic arguments remain significant. Copies atomically admit existing generic node/label units before allocation. No foreign-table or name-based value constructor is exposed. See [bridge scope and costs](reference/generic-collection-values-v2.md); collection storage/source/IR/VM/native admission remains open.
+
+## 2026-11-16: C1 sealed checked-record owners
+
+Added checked-environment record IDs and an exact typed constructor, preserving ownership through copied/extracted values. Opaque maps now accept sealed record leaves and transitive enum payload records; name-only records remain refused. Record association comparison charges each field-name candidate search. Existing legacy public Value and name-only record events remain unchanged. See [ownership and cost contracts](reference/runtime-record-owners-v2.md). Generic collection compiler/backend integration remains open.
+
+## 2026-11-16: C1 nominal enum map values
+
+Extended opaque map leaves with sealed checked enum IDs, preserving environment ownership even for empty maps/arrays. Bounded ingress recounts all wrappers, owned type/variant labels and payload descendants before any result copying. Record payloads remain refused transitively until record-owner evidence exists. Tests cover ownership, atomic event boundaries, payload work and recursive enum snapshots. See [checked enum leaves](reference/runtime-maps-v2.md#checked-enum-value-leaves).
+
+## 2026-11-16: C1 opaque typed map foundation
+
+Added private ordered maps with exact primitive/array value ingress, retained empty-map type descriptors, association equality and full descendant costs before copying. Removal admits the updated map and removed value together. Shared finite work covers key scans, bounded ingress, planning, copying and value comparisons. Nominal values and source/IR/VM/native integration remain open. See [API and cost table](reference/runtime-maps-v2.md).
+
+## 2026-11-16: C1 opaque runtime set foundation
+
+Added private homogeneous primitive-key sets with ordered snapshots, missing-key Options, membership equality and complete node/text admission before copying. A finite shared helper-work allowance covers scans, comparisons and result copies. No existing CLI, VM value, feature word or legacy event changes. See [API costs and remaining integration](reference/runtime-sets-v2.md).
+
+## 2026-11-16: C1 source reference collections
+
+Added the snapshot collections package, an independent consumer and regression coverage for ordering, logical equality, snapshots, malformed records, Key bounds and VM limits. Package-wide explicit body type arguments now have a finite 4096 allowance; standalone/per-list defaults are preserved. See [package API and limitations](../stdlib/snapshot-collections/README.md). Intrinsic C1 and G13 remain open.
+
+## 2026-11-15: G13 E2 host-free Rust execution of generic IR
+
+Added a real Rust executor for sealed generic IR from zero-argument roots, with
+iterative invocation frames and private flat owned value arenas. The current
+body profile executes calls/recursion, branches/loops/short-circuiting, primitive
+arithmetic/equality/String operations, arrays/records/enums, payload matching,
+field/index snapshots and mutable local/indexed replacement. Arena compaction
+preserves cached subtree intervals and independent snapshots across repeated
+writes; declaration-order record equality ignores physical initializer order.
+Returned, overwritten and failed deep values clean up without recursive Rust
+value destruction. Borrowed result inspection retains the original checked IR.
+
+All frames share existing instruction/materialization/control fuel plus explicit
+work, active-local and active-operand bounds; depth remains in 1..=256. Defaults
+are finite and do not alter older API/CLI policies. Existing logical wrapper,
+String/nominal-label, snapshot, zero-cost widening/move/overwrite/return accounting
+is preserved. Bounds and checked Int arithmetic refuse; runtime Float behavior
+preserves the earlier IEEE contract. Cancellation/zero elapsed control refuse
+before entry allocation. The API grants no host services or unchecked external
+arguments and never returns partial success or falls back to another engine.
+
+All 326 generic integration tests across 45 targets and 10 focused generic unit
+tests passed (336 targeted tests), including 9 new production-runtime regressions.
+Tests cover actual factorial/loops/short-circuit execution, compounds, enum payloads,
+parent/callee snapshot isolation, repeated replacement, 2,000-level copy/equality/
+inspection/drop, exact/one-under shared policy and cooperative/frame refusals.
+Strict all-target/all-feature Clippy, rustfmt, whitespace and documentation checks
+passed (276 Markdown files / 1097 local links).
+Verification: `target/checked-evidence/g13-generic-runtime-verification.json`.
+Changes remain local/unpushed; no current full-suite/cross-platform qualification
+is claimed. Source/program/package/CLI and native/JavaScript integration, validated
+external argument ingress, standard Option/Result and structured errors remain
+open. G13 E2 stays incomplete; Task Manager remains paused.
+
+## 2026-11-15: G13 E2 typed generic instruction/control-flow lowering
+
+Added owned typed stack IR for every concrete function instance, covering exact
+constants/Unit, binding snapshots, local/indexed replacement, explicit conversions,
+primitive/structural operations, arrays, nominal constructors/fields/indexes,
+concrete calls, branches, loops, match dispatch and returns. Iterative expression/
+statement lowering preserves source evaluation order, short-circuit RHS skipping,
+loop re-evaluation and one match scrutinee snapshot. Labels resolve to function-
+local instruction addresses; match targets begin with their exact tag/payload bind.
+A terminal sentinel detects missing exits rather than falling out of a function.
+
+All function/slot/callee tables and instruction structures are checked before
+reachable typed CFG validation. Canonical persistent stacks require matching
+layout sequences at joins, including equal-height/different-type rejection,
+without copying full stacks per instruction. Returns consume exactly one result.
+Unreachable code retains sealed source/type facts and receives structural checks.
+Finite function/instruction/slot/operand/label/target/pending-frame/stack-node/depth/
+work allowances admit fan-out and call-map storage before allocation. Refusal
+publishes no partial IR and has no legacy/execution fallback. Source spans and
+immutable literal payloads retain their original owners.
+
+All 317 generic integration tests across 44 targets and 10 focused generic unit
+tests passed (327 targeted tests), including 8 new integration and 2 new private
+negative regressions. An independent scalar-only test probe verifies loop totals,
+short-circuit skipped failures and recursive factorial; it is not a production VM.
+Strict all-target/all-feature Clippy, rustfmt, whitespace and documentation checks
+passed (275 Markdown files / 1092 local links).
+Verification: `target/checked-evidence/g13-generic-ir-verification.json`.
+Changes remain local/unpushed; no current full-suite/cross-platform qualification
+is claimed. Production generic runtime/backend execution, value/resource policy,
+source/program/package/CLI integration and structured errors remain open. G13 E2
+stays incomplete; Task Manager remains paused.
+
+## 2026-11-15: G13 E2 nominal constructor/field/match plans
+
+Added sealed instance-specific plans linking nominal source operations to exact
+logical layouts. Record operands preserve source evaluation order while naming
+declaration-order slots and retaining explicit source/target conversion edges.
+Enum tags/payloads keep nullary/Unit shape. Field reads retain the original
+receiver and exact record slot/result layout. Source operands must belong to the
+selected arena and precede their consuming expression; no conversions are inferred.
+
+Match plans retain one source scrutinee read, immutable payload destinations and
+source-order arms plus exhaustive tag-to-arm dispatch. Arm ranges are contiguous,
+bounded and source-contained, including nested facts; stale ranges cannot absorb
+statements after an arm. Nested matches and parent-local replacement retain
+separate scrutinee identities. Plans include unreachable operations and are sparse
+metadata, not an executable instruction stream or jump table. Original lexical/
+return-flow proofs remain retained. All instances/plans/fields/operands/arms/tag
+entries and source/range processing work consume cumulative finite allowances;
+coverage storage is admitted before allocation and refusal returns no partial plan.
+
+All 309 generic integration tests across 43 targets and 8 focused generic unit
+tests passed (317 targeted tests), including 8 new integration and 2 new private
+negative regressions. Strict all-target/all-feature Clippy, rustfmt, whitespace
+and documentation checks passed (274 Markdown files / 1087 local links).
+Verification: `target/checked-evidence/g13-generic-construction-verification.json`.
+Changes remain local/unpushed; no current full-suite/cross-platform qualification
+is claimed. Executable generic IR/control-flow lowering, backend/runtime value
+allocation/snapshot/bounds behavior, package linking and structured errors remain
+open. G13 E2 stays incomplete; Task Manager remains paused.
+
+## 2026-11-15: G13 E2 finite logical runtime layouts
+
+Added sealed backend-neutral primitive/array/record/enum layout graphs from decoded
+concrete generic proofs. Instance type arguments (including phantoms), value
+parameters, results, bindings and expressions map into one exact normalized table.
+Record slots and enum tags/payloads preserve declaration order, nominal identity
+and nullary/Unit shape. Original source/alias provenance and arena-owned lookups
+remain retained. Register-before-expansion closes recursive records/enums through
+finite indexed edges without allocating recursive values or choosing a native ABI.
+
+Function instances and newly discovered nominal type instances share the approved
+1,024 standalone / 4,096 package-profile cap. Expanding nominal recursion refuses
+on finite instance/depth/work admission, including signatures producing little
+code. Record/member/edge/reference, generated substitution/key and exact linear
+lookup work budgets remain cumulative. Independent input/member arena limits are
+checked before temporary depth/mapping allocations, including alias-discarded
+nodes. Every failure returns no partial or unresolved layout table and no fallback.
+
+All 301 generic integration tests across 42 targets and 6 focused generic unit
+tests passed (307 targeted tests), including 9 new layout regressions. Strict
+all-target/all-feature Clippy, rustfmt, whitespace and documentation checks passed
+(273 Markdown files / 1082 local links).
+Verification: `target/checked-evidence/g13-generic-layouts-verification.json`.
+Changes remain local/unpushed; no current full-suite/cross-platform qualification
+is claimed. Constructor/field/match execution plans, executable generic lowering/
+backends, runtime allocation/snapshot/bounds behavior, package linking and structured
+errors remain open. G13 E2 stays incomplete; Task Manager remains paused.
+
+## 2026-11-15: G13 E2 decoded generic literal payloads
+
+Added sealed source-backed primitive payload tables for the complete concrete
+generic graph. Exact original expression ranges are relexed through the shared
+lexer and must contain one literal with balanced grouping/trivia only. Int range,
+finite Float bits, Bool and decoded UTF-8 values retain original source identities;
+contextual conversions remain explicit. Lexer diagnostic locations translate back
+to original multiline/Unicode function sources. No new literal syntax, Unit
+literal, expression evaluation or executable backend path is introduced.
+
+Original function instances share immutable literal facts/String payloads. Unique
+source facts, instance references, source bytes/tokens including EOF, retained
+decoded UTF-8 bytes and work have cumulative limits, with independent fragment and
+grouping caps. Every reference is checked against its concrete expression type.
+Unreachable literals remain included and foreign/nonliteral ID lookup refuses.
+All failures return no partial decoded graph.
+
+All 292 generic integration tests across 41 targets and 6 focused generic unit
+tests passed (298 targeted tests), including 8 new integration and 2 new private
+source-shape/diagnostic regressions. Strict all-target/all-feature Clippy, rustfmt,
+whitespace and documentation checks passed (272 Markdown files / 1077 local links).
+Verification: `target/checked-evidence/g13-generic-literals-verification.json`.
+Changes remain local/unpushed; no current full-suite/cross-platform qualification
+is claimed. Runtime layouts, constructor/match plans, executable lowering/backend
+integration, package linking and structured errors remain open. G13 E2 stays
+incomplete; Task Manager remains paused.
+
+## 2026-11-15: G13 E2 concrete generic body rechecking
+
+Added sealed concrete signature/binding/expression type tables for every instance
+in a finite specialization graph. Exact original source/table/body owners remain
+retained; lookup selects an instance before using a symbolic binding/expression ID.
+The new stage rechecks primitive operations, explicit conversions, array contexts,
+mutable replacement, concrete call targets, nominal fields/constructors, enum
+payloads/matches and return contexts. Function/nominal Key constraints are checked
+again. Recursive callees use prebuilt concrete signatures; no recursive body pass
+or execution fallback is introduced. Original lexical/return-flow proofs remain
+sealed and source/control-flow shape stays unchanged.
+
+Found and fixed a concrete-substitution boundary for parameter-independent fields
+whose aliases discard type arguments: symbolic arenas can retain unused foreign
+declaration owners. Bounded original-root projection removes only unreachable
+nodes before exact-owner substitution, preserves provenance and charges its copies
+against shared type/node/edge/work limits. Reachable foreign parameters still
+refuse. Final substituted graphs must be fully concrete. Temporary member and
+projection contexts share cumulative graph admission; independent substitution/
+comparison profiles remain active.
+
+All 284 generic integration tests across 40 targets and 3 focused consistency
+unit tests passed (287 targeted tests), including 12 new integration and 3 private
+negative regressions. Strict all-target/all-feature Clippy, rustfmt, whitespace and
+documentation checks passed (271 Markdown files / 1072 local links).
+Verification: `target/checked-evidence/g13-generic-concrete-bodies-verification.json`.
+Changes remain local/unpushed; no current full-suite/cross-platform qualification
+is claimed. Literal decoding, nominal/runtime layouts, executable lowering/backend
+integration, package linking and structured propagation remain open. G13 E2 stays
+incomplete; Task Manager remains paused.
+
+## 2026-11-15: G13 E2 finite concrete generic call discovery
+
+Added a bounded nongeneric root syntax adapter sharing original-source header/
+annotation/body admission and distinct empty parameter ownership. The original
+explicit-generic parser remains strict. Checked plain main can seed this library
+pipeline; generic main and public generic Program compilation remain unavailable.
+
+Added sealed finite concrete function-call closure discovery from checked symbolic
+bodies. Caller-owned substitutions retain source/alias provenance and reject any
+remaining symbolic nodes. Exact normalized argument vectors preserve nominal
+heads/order and deduplicate aliases. Instances register before traversal so direct
+and mutual recursion close; expanding recursion refuses on finite instance/type/
+work limits without partial results or fallback. All source calls, including
+unreachable ones, are visited. Duplicate candidates consume cumulative generated
+argument/type/key/work allowances before reuse; cache lookup equality is metered.
+Defaults retain the approved 1,024 standalone / 4,096 explicit package-profile
+instance caps, including the root. This API does not load/link package sources.
+
+All 272 generic tests across 39 targets passed, including 10 new discovery/root
+adapter regressions, plus strict all-target/all-feature Clippy, rustfmt, whitespace
+and documentation checks (270 Markdown files / 1067 local links).
+Verification: `target/checked-evidence/g13-generic-specialization-verification.json`.
+Changes remain local/unpushed. No current full-suite or cross-platform qualification
+is claimed. Concrete signature/body operation rechecking, nominal/runtime layouts,
+executable lowering/backend integration and structured propagation remain open.
+G13 E2 stays incomplete; Task Manager remains paused.
+
+## 2026-11-15: G13 E2 symbolic generic match bodies
+
+Integrated original-token matches with active lexical scrutinee lookup, one
+checked read, exhaustive nominal coverage and exact substituted payload contexts.
+Immutable arena-owned payload IDs stay isolated to each arm; ordinary shadowing,
+parent mutable locals, nested matches/calls and all-arm return coverage are checked.
+All unreachable/unused arm bodies are inspected. Private flat parser overlays
+preserve Program grammar and drain temporary arm ASTs iteratively. Payload graphs,
+ASTs, bindings, scope copies and work share cumulative body budgets; per-match
+header/arm and per-payload limits remain finite. Standalone header proofs retain
+their narrower contract through a shared private coverage checker.
+
+All 262 generic tests across 38 targets, 27 parser tests and 26 formatter/typed-array
+regressions passed (315 targeted tests), plus strict all-target/all-feature Clippy,
+rustfmt, whitespace and documentation checks (269 Markdown files / 1062 local links).
+Verification: `target/checked-evidence/g13-generic-match-bodies-verification.json`.
+Changes remain local/unpushed. No current full-suite or cross-platform qualification
+is claimed. Finite specialization, executable generic lowering/runtime/backend
+integration and structured error propagation remain open; G13 E2 stays incomplete.
+
+## 2026-11-15: G13 E2 exhaustive generic enum pattern headers
+
+Added sealed standalone pattern/type coverage for an explicitly selected checked
+enum binding, including exact arena/name/nominal checks, every-variant coverage
+and substituted payload types. Nullary/Unit patterns remain distinct. Source/header
+syntax and cumulative/per-payload graph/work quotas bound admission; temporary
+ordinary arm ASTs drain iteratively and are not published as checked bodies.
+Active match-site scope, arm typing/return coverage and runtime plans stay open.
+All 252 focused generic tests across 37 targets passed, plus strict Clippy,
+rustfmt, whitespace and documentation checks (268 Markdown files / 1057 local links).
+Verification: `target/checked-evidence/g13-generic-enum-patterns-verification.json`.
+Changes remain local/unpushed; no current full-suite qualification claimed.
+
+## 2026-11-15: G13 E2 explicit symbolic enum construction
+
+Added original-source `Enum::<T>::Variant(...)` with checked nominal arguments,
+variant ownership, zero/one payload shape and contextual payload substitution.
+Nullary and Unit payloads stay distinct. Shared nominal-head checks preserve
+record behavior; flat Enum facts keep original variant/type/value ranges and IDs.
+Enum count, shared input/generated/payload-context and body work/comparison
+ledgers remain cumulative. Match plans, specialization and execution stay open.
+All 245 generic tests across 36 targets, 27 parser tests and 26 formatter/typed-array
+regressions passed (298 targeted tests total), plus strict Clippy, rustfmt, whitespace
+and documentation checks (267 Markdown files / 1052 local links).
+Verification: `target/checked-evidence/g13-generic-enum-construction-verification.json`.
+Changes remain local/unpushed; no current full-suite qualification claimed.
+
+## 2026-11-15: G13 E2 explicit symbolic record construction
+
+Added original-source `Record::<T>{...}` syntax in the private generic adapter,
+validated nominal type heads and complete unique/known field coverage, and
+substituted contextual field checking. Flat Record facts retain source initializer
+order, declaration indices, value arena IDs and conversions. Constructor type
+views share the existing function source without text rewriting. Constructor
+count, shared explicit-input/generated ledgers, field substitution and body
+comparison/work budgets apply cumulatively. Runtime/layout integration stays open.
+All 236 generic tests across 35 targets, 27 parser tests and 26 formatter/typed-array
+regressions passed (289 targeted tests total), plus strict Clippy, rustfmt, whitespace and documentation
+checks (266 Markdown files / 1046 local links). Grouped record literals retain
+original head metadata and compose with source-backed generic calls.
+Verification: `target/checked-evidence/g13-generic-record-construction-verification.json`.
+Changes remain local/unpushed; no current full-suite qualification claimed.
+
+## 2026-11-15: G13 E2 source-backed symbolic generic body calls
+
+Connected original explicit root call ASTs and type-list metadata to caller-scoped
+argument checking, callee/bound matching, signature substitution and contextual
+value matching. Added flat Call facts with arena-owned values and cumulative
+call/input/generated ledgers plus shared body work/comparison admission. Nested
+calls, contextual arrays and recursion are symbolic only. Active value shadowing,
+unused/unreachable errors and original source provenance remain checked. Private
+index probes roll metadata back, enforce depth and clean discarded ASTs iteratively.
+Public Program/CLI behavior, specialization and execution remain unchanged/open.
+All 227 generic tests across 34 targets, 27 parser tests and 26 formatter/typed-array
+regressions passed (280 targeted tests total), plus strict Clippy, rustfmt, whitespace
+and documentation checks (265 Markdown files / 1040 local links).
+Verification: `target/checked-evidence/g13-generic-body-calls-verification.json`.
+Changes remain local/unpushed; no current full-suite qualification claimed.
+
+## 2026-11-15: G13 E2 symbolic body arena identity
+
+Added private arena ownership to binding/expression IDs and checked lookup paths,
+preventing interchange between separate checks of one signature. Body clones
+retain identity, and value matching rejects cross-arena expressions. Atomic
+compare/exchange refuses exhausted IDs without wrap/reuse. This prepares separate
+call-source arenas without introducing runtime handles or executable calls.
+All 216 generic tests across 33 targets plus the isolated arena-exhaustion unit
+test passed (217 focused tests), along with strict Clippy, rustfmt, whitespace and documentation
+checks (264 Markdown files / 1034 local links).
+Verification: `target/checked-evidence/g13-generic-arena-identities-verification.json`.
+Changes remain local/unpushed; no current full-suite qualification claimed.
+
+## 2026-11-15: G13 E2 original-token call value expressions
+
+Added a private original-token expression prefix adapter and exact range checking
+for call envelope values. Parsed ASTs retain original call coordinates without
+source/token rewriting. Postparse root/node/edge/work admission and existing
+source/token/parser bounds apply; shared AST cleanup drains iteratively.
+Caller-scope typing, source-call facts, nested generic expressions and execution stay open.
+All 214 generic tests across 33 targets and 52 parser/legacy regressions passed
+(266 targeted tests total), plus strict Clippy, rustfmt, whitespace and documentation checks
+(263 Markdown files / 1028 local links). Added a local postparse operator guard
+for assignment-like forms accepted by the legacy raw expression parser.
+Verification: `target/checked-evidence/g13-generic-call-expressions-verification.json`.
+Changes remain local/unpushed; no current full-suite qualification claimed.
+
+## 2026-11-15: G13 E2 source-backed generic call envelopes
+
+Added explicit generic call envelope parsing with original callee/type/value
+ranges, qualified path syntax, grammar-checked types and opaque balanced value
+fragments. Type nodes relocate into original call coordinates without text edits
+and feed existing caller-scope checking. Whole-call/name/value/depth and type-list
+limits remain independent. Body expression/call integration and execution stay open.
+All 208 focused tests across 32 generic targets passed, plus strict Clippy, rustfmt, whitespace
+and documentation checks (262 Markdown files / 1023 local links).
+Verification: `target/checked-evidence/g13-generic-call-syntax-verification.json`.
+Changes remain local/unpushed; no current full-suite qualification claimed.
+
+## 2026-11-15: G13 E2 generic value-argument type matching
+
+Added sealed matching of supplied caller expression IDs against substituted
+callee parameters, retaining original body/argument IDs and explicit scalar
+widening. Caller/body/expression owners and exact value counts are checked.
+Cumulative/per-comparison pairs/edges/work refuse exhaustion without type
+decisions. This is compatibility evidence, not source-call association or execution.
+All 201 focused tests across 31 generic targets passed, plus strict Clippy, rustfmt, whitespace
+and documentation checks (261 Markdown files / 1018 local links).
+Verification: `target/checked-evidence/g13-generic-call-values-verification.json`.
+Changes remain local/unpushed; no current full-suite qualification claimed.
+
+## 2026-11-15: G13 E2 bounded callee signature substitution
+
+Added sealed signature instantiation after caller/callee type matching. Exact
+parameter substitution preserves caller/nominal identity and per-node argument,
+callee and alias provenance. Total/per-type node/edge/work/depth admission and
+annotation counts bound flat graph copies. Implicit Unit remains distinct.
+Value matching, checked body calls, concrete body rechecking and execution stay open.
+All 195 focused tests across 30 generic targets passed, plus strict Clippy, rustfmt, whitespace
+and documentation checks (260 Markdown files / 1013 local links).
+Verification: `target/checked-evidence/g13-generic-signature-instantiation-verification.json`.
+Changes remain local/unpushed; no current full-suite qualification claimed.
+
+## 2026-11-15: G13 E2 generic callee type matching
+
+Added sealed type-parameter matching for root caller/callee signatures with exact
+table/environment/caller-scope identity checks, explicit arity and expanded Key
+proofs. Matching work and binding count have independent limits. Foreign owners
+and partial mappings are refused. Signature/value matching, module visibility,
+body call facts, specialization and execution remain open.
+All 188 focused tests across 29 generic targets passed, plus strict Clippy, rustfmt, whitespace
+and documentation checks (259 Markdown files / 1008 local links).
+Verification: `target/checked-evidence/g13-generic-call-binding-verification.json`.
+Changes remain local/unpushed; no current full-suite qualification claimed.
+
+## 2026-11-15: G13 E2 caller-scope explicit type arguments
+
+Added sealed caller-scoped type-argument checking against complete definitions,
+including names, type-head arities, aliases and declared Key constraints. Original
+list ranges and caller identities survive admitted syntax subarena copying.
+Cumulative input/copy/generated/work limits complement per-argument expansion
+caps. Callee count/bounds/value matching, call facts and execution remain open.
+All 182 focused tests across 28 generic targets passed, plus strict Clippy, rustfmt, whitespace
+and documentation checks (258 Markdown files / 1003 local links).
+Verification: `target/checked-evidence/g13-generic-argument-checking-verification.json`.
+Changes remain local/unpushed; no current full-suite qualification claimed.
+
+## 2026-11-15: G13 E2 explicit type-argument list syntax
+
+Added source-owned `::<T,E>` parsing with a shared flat type arena and ordered
+argument roots. Existing grammar and original coordinates are retained; source,
+token, node, edge, name, depth and argument budgets apply across the list.
+This is syntax only: callee/type binding, arity/bounds, call facts, specialization
+and execution remain open. Existing generic CLI strictness is preserved.
+All 176 focused tests across 27 generic targets passed, plus strict Clippy, rustfmt, whitespace
+and documentation checks (257 Markdown files / 998 local links).
+Verification: `target/checked-evidence/g13-generic-type-arguments-verification.json`.
+Changes remain local/unpushed; no current full-suite qualification claimed.
+
+## 2026-11-15: G13 E2 composite record field substitution
+
+Added composite array/nominal field substitution with validated environment,
+nominal/parameter ownership and postorder argument mapping. Added independent
+field node/edge/work/depth caps and cumulative generated-node/edge body ledgers.
+Composed types retain per-node input sources; `node_source` resolves each origin
+without confusing receiver and declaration fragments. Calls/execution stay open.
+All 170 focused tests across 26 generic targets passed, plus strict Clippy,
+rustfmt, whitespace and documentation checks (256 Markdown files / 993 local links).
+Verification: `target/checked-evidence/g13-generic-field-substitution-verification.json`.
+Changes remain local/unpushed; no current full-suite qualification claimed.
+
+## 2026-11-15: G13 E2 direct field-parameter projection
+
+Added direct record-parameter field reads through validated receiver argument
+projection, preserving caller parameter IDs, source/provenance and shared arenas.
+Nominal identity, parameter ownership and argument ordinal are verified. No
+composite substitution arena is generated. Field writes remain disallowed by
+existing language semantics; composite fields/calls/execution remain open.
+All 164 focused tests across 25 generic targets passed, plus strict Clippy, rustfmt, whitespace
+and documentation checks (255 Markdown files / 987 local links).
+Verification: `target/checked-evidence/g13-generic-field-arguments-verification.json`.
+Changes remain local/unpushed; no current full-suite qualification claimed.
+
+## 2026-11-15: G13 E2 parameter-independent symbolic record fields
+
+Added checked record field reads preserving nominal/receiver/field identity and
+original ranges. Bounded iterative reachable-type inspection refuses fields
+requiring record parameter substitution, even for concrete receiver arguments.
+Concrete array and chained record fields compose with existing checks. No runtime
+layout, field writes, record construction or generic execution is introduced.
+All 158 focused tests across 24 generic targets passed, plus strict Clippy,
+rustfmt, whitespace and documentation checks (254 Markdown files / 982 local links).
+Verification: `target/checked-evidence/g13-generic-field-bodies-verification.json`.
+Changes remain local/unpushed; no current full-suite qualification claimed.
+
+## 2026-11-15: G13 E2 context-typed symbolic arrays
+
+Added nested/empty array literals using expected types from typed locals, returns
+and direct/indexed assignments. Items retain source order and explicit scalar
+widening; existing aggregate values are not coerced. Context projection shares
+validated immutable type owners and creates no synthetic arena. Typed local
+annotations now check before initializers without changing value binding scope.
+Inferred array literals, generic calls and executable integration remain open.
+All 153 focused tests across 23 generic targets passed, plus strict Clippy, rustfmt, whitespace
+and documentation checks (253 Markdown files / 977 local links).
+Verification: `target/checked-evidence/g13-generic-array-literals-verification.json`.
+Changes remain local/unpushed; no current full-suite qualification claimed.
+
+## 2026-11-15: G13 E2 symbolic indexed assignment
+
+Added direct mutable array element replacement with concrete Int indexes, exact
+element types and explicit scalar widening. Retained source/binding/operand
+identity without fabricating element reads. Immutable/nested targets and invalid
+replacements remain refused, including unreachable writes. Runtime snapshot
+ownership, bounds and generic execution remain future integration.
+All 147 focused tests across 22 generic targets passed, plus strict Clippy, rustfmt, whitespace
+and documentation checks (252 Markdown files / 971 local links).
+Verification: `target/checked-evidence/g13-generic-index-assignment-verification.json`.
+Changes remain local/unpushed; no current full-suite qualification claimed.
+
+## 2026-11-15: G13 E2 read-only symbolic indexing
+
+Added array reads with concrete Int indexes and exact element types, including
+opaque parameters, nested arrays and transparent aliases. A private validated-edge
+projection shares immutable arenas and preserves original owners/provenance.
+Existing expression/comparison/work budgets remain active. No bounds proof, array
+construction, indexed mutation or generic execution is introduced.
+All 141 focused tests across 21 generic targets passed, plus strict Clippy, rustfmt, whitespace
+and documentation checks (251 Markdown files / 964 local links).
+Verification: `target/checked-evidence/g13-generic-index-bodies-verification.json`.
+Changes remain local/unpushed; no current full-suite qualification claimed.
+
+## 2026-11-15: G13 E2 symbolic while loops
+
+Added concrete-Bool while typing, loop-local scopes, fixed outer assignment
+identity and conservative return coverage. False/unreachable bodies are checked.
+Heap-worklist traversal visits loop bodies once; flat ranges preserve structure
+without runtime execution. Scope copies consume work admission before allocation.
+Calls, specialization, backedge lowering and generic execution remain open.
+All 135 focused tests across 20 generic targets passed, plus strict Clippy, rustfmt, whitespace
+and documentation checks (250 Markdown files / 959 local links).
+Verification: `target/checked-evidence/g13-generic-loop-bodies-verification.json`.
+Changes remain local/unpushed; no current full-suite qualification claimed.
+
+## 2026-11-15: G13 E2 symbolic conditionals
+
+Added concrete-Bool `if`/`else` checking, branch-local scope restoration, fixed
+parent assignment identity and conservative all-path return coverage. Every
+branch is checked, including literal-dead and unreachable branches. Traversal
+uses a heap worklist; branch facts are flat ranges, and scope copies consume
+semantic work admission before allocation. Loops/calls/execution remain open.
+All 129 focused tests across 19 generic targets passed, plus strict Clippy, rustfmt, whitespace
+and documentation checks (249 Markdown files / 952 local links). Identifier
+conditions use existing parentheses to disambiguate record literal syntax.
+Verification: `target/checked-evidence/g13-generic-conditional-bodies-verification.json`.
+Changes remain local/unpushed; no current full-suite qualification claimed.
+
+## 2026-11-15: G13 E2 symbolic expression statements
+
+Added discarded-result statements for existing checked expressions, retaining
+source/type/binding identity without conversions or fabricated locals. Non-Unit
+return coverage remains mandatory; unreachable and discarded expressions are
+fully checked. Calls, control flow, specialization and execution remain open.
+All 123 focused tests across 18 generic targets passed, plus strict Clippy, formatting,
+whitespace and documentation checks (248 Markdown files / 947 local links).
+Verification: `target/checked-evidence/g13-generic-expression-statements-verification.json`.
+Changes remain local/unpushed; no current full-suite qualification claimed.
+
+## 2026-11-15: G13 E2 mutable symbolic locals
+
+Added inferred/explicit `let mut` and direct local assignment with fixed symbolic
+types, retained binding/target ranges and explicit Int-to-Float replacement
+conversion. Parameters and ordinary locals remain immutable. Shadowing and
+unreachable errors remain checked; aggregate targets remain refused. No runtime
+reference/storage or snapshot ownership changes. Generic execution stays open.
+All 118 focused tests across 17 generic targets passed; strict Clippy, rustfmt, whitespace and
+documentation checks (247 Markdown files / 942 local links) passed.
+Verification: `target/checked-evidence/g13-generic-mutable-bodies-verification.json`.
+Changes remain local/unpushed; no current full-suite qualification claimed.
+
+## 2026-11-15: G13 E2 concrete String symbolic expressions
+
+Added concrete String concatenation and lexical ordering with source-owned
+operands and cumulative expression/work budgets. Transparent aliases qualify;
+opaque parameters and implicit formatting do not. No concatenation allocation
+or evaluation occurs. Existing runtime allocation admission must be preserved
+when generic execution is added. Calls, controls and specialization remain open.
+All 112 focused tests across 16 generic targets passed, plus strict all-target/
+all-feature Clippy, rustfmt, whitespace and documentation checks (246 Markdown
+files / 935 local links).
+Verification: `target/checked-evidence/g13-generic-string-bodies-verification.json`.
+Changes remain local/unpushed; no current full-suite qualification claimed.
+
+## 2026-11-15: G13 E2 Boolean symbolic body expressions
+
+Added bounded concrete Bool `&&`/`||` typing with original operand identity and
+source spans. Both operands must check even when runtime short-circuiting would
+skip one. Transparent Bool aliases qualify; opaque Key parameters do not.
+Executable short-circuit lowering and generic execution remain open.
+All 107 focused tests across 15 generic targets passed. Documentation targets:
+245 Markdown files / 929 local links.
+Verification: `target/checked-evidence/g13-generic-logical-bodies-verification.json`.
+Changes remain local and unpushed; no current full-suite claim.
+
+## 2026-11-15: G13 E2 concrete numeric symbolic expressions
+
+Added concrete Int/Float arithmetic and ordering to symbolic generic bodies,
+including explicit mixed-operand conversions and cumulative work/expression
+admission. Opaque parameters remain refused. This stage does not evaluate or
+lower arithmetic; runtime error checks and generic execution remain open.
+All 101 focused tests across 14 generic targets passed; strict Clippy, rustfmt,
+whitespace and documentation checks (244 Markdown files / 922 local links) passed.
+Results are recorded in `target/checked-evidence/g13-generic-numeric-bodies-verification.json`.
+No current full-suite qualification is claimed. Changes remain local/unpushed.
+
+## 2026-11-15: G13 E2 explicit immutable generic local annotations
+
+- Extended the symbolic body profile with explicit immutable local types, including
+  generic applications and transparent aliases. Checked names/arity/Key bounds
+  under function-local parameter ownership and compared initializer types before
+  introducing shadowing bindings. Concrete scalar widening is an explicit let edge;
+  binding types retain the declared expected type.
+- Added a private original-token local-type grammar adapter. Public legacy Program
+  parsing and existing block parsing remain strict. Adjacent type-end/assignment
+  >= handling preserves exact type ranges without changing expression comparisons.
+  Extended annotations are independently parsed/resolved before any proof publishes.
+- Added cumulative annotation count/source/token/node/edge/name/generated budgets,
+  remaining per-fragment/expansion caps and shared body work/comparison admission.
+  Preserved full-source fragment and separate inner alias provenance in errors.
+- Validation: 94 focused generic tests plus 26 parser, 16 v2 formatter and 10 legacy
+  typed-array tests passed (146 targeted tests total). Strict all-target/all-feature
+  Clippy, rustfmt and documentation links passed. The previous 1,300-test full-suite
+  baseline was not rerun for this slice.
+- Mutation, calls, controls, aggregate construction/access/coercions, concrete
+  specialization and generic execution remain open, alongside other G13 phases.
+- Evidence: `target/checked-evidence/g13-generic-local-annotations-verification.json`.
+
+## 2026-11-15: G13 E2 initial symbolic copy/return/equality bodies
+
+- Checked every body in a complete signature table under an explicit initial
+  profile: value reads/literals, inferred immutable locals, returns and structural
+  equality. Opaque types remain identity-based; existing concrete scalar numeric
+  widening is retained as explicit context metadata rather than assumed for T.
+- Parsed original body token suffixes without synthetic programs/source rewriting.
+  Retained flat sealed source-owned statement/expression/binding facts, preserving
+  initializer-before-shadowing resolution, Unit fallthrough/void-return distinction
+  and return coverage. Unreachable statements are still checked.
+- Added cumulative source/token/postparse-AST/fact/binding/text/type-comparison/work
+  admission, independent comparison caps and iterative AST inspection/cleanup.
+  Literal ranges/finiteness are checked. Unsupported constructs fail completely.
+- Validation: 87 focused generic tests, strict all-target/all-feature Clippy,
+  rustfmt and documentation links passed. The previous 1,300-test full-suite
+  baseline was not rerun for this slice.
+- This is symbolic evidence for the copy/equality profile, not concrete executable
+  IR or specialization. Calls, aggregate conversions/construction, controls,
+  mutation/typed locals, matches and remaining G13 phases stay open. Generic CLI
+  execution remains blocked.
+- Evidence: `target/checked-evidence/g13-generic-copy-bodies-verification.json`.
+
+## 2026-11-15: G13 E2 exact type equivalence and normalized keys
+
+- Added iterative expanded-root comparison with memoized node pairs, preserving
+  nominal registry/parameter-owner identities and ordered arguments. Alias-erased
+  roots compare independently of arena indices, sharing, provenance or unused nodes.
+- Added deterministic left-to-right structural interning for exact in-process
+  type keys. Key equality uses complete structure/IDs, not hashes alone; visited
+  input nodes, canonical nodes/edges, pending frames and work are independently
+  admitted. Shared immutable nodes avoid copying index/output payloads.
+- Keys are not persistent/native codecs, body/type-validity proofs or code
+  specialization results. Runtime ownership and generic source refusal stay intact.
+- Validation: 77 focused generic tests, strict all-target/all-feature Clippy,
+  rustfmt and documentation links. The prior 1,300-test full-suite baseline was
+  not rerun. Tests cover equal indices with unequal types, alias/DAG equivalence,
+  foreign owners, exact/one-under caps and deep iterative array handling.
+- Symbolic body checking, call plans, specialization and remaining G13 phases
+  stay open. Evidence: `target/checked-evidence/g13-type-equivalence-verification.json`.
+
+## 2026-11-15: G13 E2 sealed generic signature checking
+
+- Checked every supplied root generic function parameter/return annotation against
+  complete checked type definitions. Retained symbolic expanded types and original
+  scope identities, with no fabricated annotation node for implicit Unit.
+- Rejected duplicate functions, builtin conflicts, primitive-name type parameters
+  and generic main (entry has no explicit generic-argument selection). Assigned
+  owner-scoped function IDs only after complete table success; foreign IDs refuse.
+- Added cumulative function/value/metadata/source/name/generated-node/edge/work
+  admission and remaining per-annotation expansion caps. Signature proofs retain
+  the full checked type context; annotation-use arrays now share immutable storage.
+- Validation: 69 focused generic tests, strict all-target/all-feature Clippy,
+  rustfmt and documentation links passed. The previous 1,300-test full-suite
+  baseline was not rerun for this slice.
+- Bodies remain explicitly opaque and may contain invalid statements/calls. This
+  is not checked function body/IR or generic execution evidence. Body checking,
+  specialization and remaining G13 library/host/package phases stay open.
+- Evidence: `target/checked-evidence/g13-generic-signatures-verification.json`.
+
+## 2026-11-15: G13 E2 complete type-definition annotation checking
+
+- Required exactly one original alias/record/enum definition per registered type,
+  including unused definitions. Matched category/parameter owners and published
+  sealed checked definitions in registry order, with independent retained owners.
+- Symbolically expanded every field/payload annotation and checked names, arities
+  and Key constraints. Empty enums refuse; nullary and Unit payloads remain
+  distinct. Nominal recursive references are retained without layout unfolding.
+- Enforced cumulative declaration/member/metadata/source/name/generated-node/
+  edge/work ledgers in addition to remaining per-annotation expansion caps.
+  Preserved full-source member ranges and inner alias provenance in bounded errors.
+- Validation: 62 focused generic tests, strict all-target/all-feature Clippy,
+  rustfmt and documentation links. The prior 1,300-test full-suite baseline was
+  not rerun for this slice. Tests cover unused invalid definitions, wrong owners,
+  complete coverage, exact/one-under quotas and nominal-head capture avoidance.
+- This is type-definition annotation checking, not function/body checking, runtime
+  layout/constructors/matching or specialization. Generic source execution and
+  remaining G13 phases stay open.
+- Evidence: `target/checked-evidence/g13-generic-declarations-verification.json`.
+
+## 2026-11-15: G13 E2 prepared transparent alias expansion
+
+- Attached every alias target to its exact registered parameter owner. Validated
+  target names/arity, rejected direct/indirect/nested/growing cycles iteratively,
+  and symbolically checked all alias targets before environment publication.
+- Added bounded identity-based substitution into immutable compiler type DAGs.
+  Expanded arguments now prove Key through transparent aliases; unproven symbolic
+  bounds refuse even if one concrete use could succeed. Nominal heads remain
+  intact, aliases disappear and original input/target provenance is retained.
+- Admitted referenced/resolved target metadata and cumulative generated validation
+  work/nodes/edges. Dependency, expansion and substituted structural depth have
+  fixed ceilings. Unused eager arguments remain charged; no drop refund/fallback.
+- Kept the public header-only resolver's alias-bound refusal. Internal head-only
+  traversal returns no public checked proof and is followed by expanded checking.
+- Runtime value ownership, constructors/IR/execution and default generic refusal
+  are unchanged. Complete record/enum/function/body checking and specialization
+  remain open, alongside the remaining G13 library/host/package phases.
+- Validation: 53 focused generic tests, strict all-target/all-feature Clippy,
+  rustfmt and documentation links passed. The previous 1,300-test full-suite
+  baseline was not rerun for this slice.
+- Hashes: `target/checked-evidence/g13-generic-alias-expansion-verification.json`.
+
+## 2026-11-15: G13 E2 bounded annotation name/arity/bound resolution
+
+- Indexed source-owned root generic alias/record/enum headers with registry-owned
+  IDs, immutable parameter owners and duplicate/primitive conflict refusal.
+- Resolved complete annotation arenas into primitive/parameter/declared/array
+  structures, rejecting unknown heads and wrong arities. Initial Key proof accepts
+  existing Int/Bool/String and explicitly constrained symbolic parameters; arrays,
+  Float/Unit and nominal compound types refuse. Unexpanded alias arguments return
+  an explicit expansion-required refusal rather than an assumed Key proof.
+- Added independent registry declaration/parameter/name/source admission plus
+  resolved node/edge/work caps. Shared metadata avoids deep copies. IDs cannot
+  wrap; foreign registry IDs refuse. Error variants distinguish source contexts.
+- Validation: 44 focused generic tests, strict all-target/all-feature Clippy,
+  rustfmt and documentation links passed. The prior 1,300-test full-suite baseline
+  was not rerun for this slice.
+- This is annotation resolution only, not complete declaration/signature/body
+  checking. Alias expansion/cycles, nongeneric/module/package contexts, Byte,
+  substitution/specialization and remaining G13 phases stay open.
+- Evidence: `target/checked-evidence/g13-generic-type-resolution-verification.json`.
+
+## 2026-11-15: G13 E2 generic function header attachment
+
+- Attached one type-parameter owner across explicit value-parameter and return
+  annotation syntax. Retained source-order value names, declaration/name ranges,
+  export intent, omitted return intent and original body source without copying it.
+- Added cumulative header name/source/node/edge/use ledgers, independent value
+  parameter admission and separate body token/depth limits with fixed ceiling 128.
+  Body delimiter scanning is iterative and retains no invented semantic facts.
+- Bodies are explicitly opaque: lexically valid balanced text may contain invalid
+  statements/unknown names. This API is not checked function syntax or execution
+  evidence. Missing annotations, duplicate values, malformed/truncated/extra input,
+  applied type parameters and body quota exhaustion refuse completely.
+- Validation: 37 focused generic grammar/ownership/attachment tests, strict
+  all-target/all-feature Clippy, rustfmt and documentation links passed. The prior
+  1,300-test full-suite baseline was not rerun for this slice.
+- Root attachment profiles now cover aliases, records, enums and function headers.
+  Semantic name/arity/bounds/body checking, specialization and remaining G13 phases
+  stay open; default source checking still refuses generic executable programs.
+- Evidence: `target/checked-evidence/g13-generic-function-attachment-verification.json`.
+
+## 2026-11-15: G13 E2 generic enum attachment
+
+- Added root generic enum syntax with one parameter owner across nullary and
+  single-payload variants. Retained original declaration/variant/payload ranges,
+  export intent and full-source span/error mapping. Unit payloads remain distinct
+  from nullary variants; foreign identities and nullary payload lookups refuse.
+- Enforced cumulative variant/name/source/type-node/type-edge/use ledgers with
+  independent parameter/annotation profiles. Nullary names/records remain charged.
+  Duplicate, malformed, tuple/named/empty-payload and truncated forms refuse.
+- Validation: 31 focused generic syntax/ownership/alias/record/enum tests, strict
+  all-target/all-feature Clippy, rustfmt and documentation links. The previous
+  1,300-test full-suite baseline was not rerun for this slice.
+- This is syntax attachment. Function attachment, semantic type/constructor/match
+  checking, bounds, substitution/specialization and remaining G13 phases stay open.
+  Empty raw enums may parse; executable checking still requires inhabited enums.
+- Evidence: `target/checked-evidence/g13-generic-enum-attachment-verification.json`.
+
+## 2026-11-15: G13 E2 generic record attachment
+
+- Attached one source-owned generic parameter list across all record field type
+  annotations. Retained original declaration/name/field ranges, export intent and
+  full-source mapping for fragment nodes/errors. Other record owners' IDs refuse.
+- Added record-wide field/node/edge/name/source/use ledgers in addition to existing
+  fragment profiles. Remaining allowances cap each field before parsing/copying;
+  subsequent fields cannot reset quotas. Nested generic commas remain inside types.
+- Empty records/trailing commas follow existing record syntax. Duplicate fields,
+  malformed/truncated/extra input and parameter applications refuse completely.
+- Validation: 25 focused generic grammar/ownership/alias/record tests, strict
+  all-target/all-feature Clippy, rustfmt and documentation links. The previous
+  1,300-test full-suite baseline was not rerun for this slice.
+- Syntax attachment does not establish semantic arity/bounds, layout, constructors,
+  field access or specialization. Generic function/enum attachment and remaining
+  G13 phases stay open; default source execution stays strict.
+- Evidence: `target/checked-evidence/g13-generic-record-attachment-verification.json`.
+
+## 2026-11-15: G13 E2 generic alias declaration attachment
+
+- Added complete root generic alias syntax with source-owned declaration/name
+  ranges, an attached parameter owner and bound target annotation occurrences.
+  Generic aliases with equal written parameter names retain distinct identities.
+- Retained exact fragment ranges and translated errors/lookup spans to original
+  full-source byte/line/column coordinates. Adjacent parameter terminator/assignment
+  syntax is handled in this declaration grammar without changing comparison lexing.
+- Admitted full/fragment source bytes and alias/parameter/target copied names
+  cumulatively before copying. Independent fragment limits and parameter-use
+  quotas remain in force. Malformed, extra and unsupported forms publish no
+  partial successful declaration.
+- Validation: 19 focused generic grammar/ownership/attachment tests, strict
+  all-target/all-feature Clippy, rustfmt and documentation links passed. The prior
+  1,300-test full-suite baseline was not rerun for this slice.
+- This is syntax attachment only. Function/record/enum attachment, alias resolution,
+  semantic arity/bounds, specialization, errors and remaining G13 phases stay open.
+- Evidence: `target/checked-evidence/g13-generic-alias-attachment-verification.json`.
+
+## 2026-11-14: G13 E2 parameter ownership and annotation binding
+
+- Added bounded source-owned `<T,K:std::Key>` lists with distinct owner-scoped
+  parameter identities, original name/bound ranges and source-order ordinals.
+  Duplicate names, unsupported bounds/defaults and malformed lists refuse.
+- Bound exact unqualified parameter occurrences in admitted annotation arenas;
+  qualified names remain separate and applying arguments to a parameter refuses.
+  Tables retain both immutable owners without copying entire metadata arenas.
+- Shared lexer admission preserves source/token (including EOF) boundaries.
+  Parameter records/names and per-annotation uses have independent finite limits.
+  Owner allocation uses checked compare/exchange compatible with Rust 1.74;
+  exhaustion cannot wrap. Actual MSRV qualification remains separate.
+- This does not enable generic declaration bodies or executable generic programs.
+  Semantic arity/bounds, substitution/specialization, Option/Result and remaining
+  G13 library/host/package phases stay open.
+- Validation: 12 focused grammar/ownership/binding tests, strict all-target/
+  all-feature Clippy, rustfmt and documentation links passed. The previous
+  1,300-test full-suite baseline was not rerun for this slice.
+- Evidence: `target/checked-evidence/g13-generic-parameters-verification.json`.
+
+## 2026-11-14: G13 full checkpoint regression and E2 type grammar
+
+- Requalified commit `3a3f1d9`: 1,294 Rust tests across all 99 Cargo targets
+  passed in sequential batches. A monolithic build exhausted disk at link time;
+  only rebuildable generated test binaries were released between batches.
+- Added the approved E2 `Name<T,E>`/`[T]` grammar as an additive source-owned
+  v2 Rust API with an immutable postorder arena and original spans. Pending
+  parents, nodes, edges, copied names, tokens (including EOF), input bytes and
+  fixed depth are independently admitted. No partially parsed success escapes.
+- Malformed/empty/trailing forms and exact/one-under limits have regressions.
+  Existing source checking/CLI still refuse unsupported generic programs.
+- Final qualification passed 1,300 tests across all 100 Cargo targets, zero
+  failures/ignored tests, in sequential batches against the updated Rust source.
+  Strict all-target/all-feature Clippy, rustfmt and documentation links passed.
+- This is syntax preparation. Generic declaration/type checking, specialization,
+  Option/Result/propagation, Map/Set, binary/JSON, filesystem/time/process work and
+  E1 package/backend qualification remain open. G13 is not complete.
+- Evidence: `target/checked-evidence/g13-generic-type-syntax-verification.json`.
+
 ## 2026-11-14: G13 explicit enum header navigation
 
 - Projected direct enum parameter/return annotations through each checked
@@ -9457,3 +10304,982 @@ full-suite runs to make room for runtime fixtures. Source, production binaries,
 installed tools and retained evidence were preserved. Linux execution is verified;
 other-host/installer/IDE/package-formatter gates remain open. Consolidated hashes:
 `target/checked-evidence/g13-v2-formatter-verification.json`.
+
+## 2026-11-15 — G13 E2 complete standalone generic source pipeline
+
+Added `compile_generic_source` and `execute_generic_source` as opt-in Rust APIs.
+Complete admitted files retain their original source and declaration slices;
+all definitions, signatures and symbolic bodies are checked before reachable
+specialization, concrete rechecking, literal/layout/operation planning and typed
+IR lowering. Nongeneric helper calls now share the checked body pipeline,
+including ordinary recursion and calls from generic functions. Generic callees
+still require explicit arguments; shadowing and cumulative admission remain
+strict. Whole-file primary errors preserve nested fragment/alias provenance.
+
+Collection bounds original input and aggregate retained source, declarations,
+tokens, names, parameters, members, annotation graphs/uses and work. No stage
+budget resets per declaration. The scanner recognizes the lexer's identifier
+representation of `enum`; strings and line comments do not affect brace matching.
+Unknown top-level contexts refuse without partial successful compilation.
+
+Verification: 340 distinct generic integration tests across 46 targets passed
+(the family run included the initial 12 source cases; the final source run passed
+all 14), plus 10 focused generic unit tests. Strict all-target/all-feature Clippy,
+formatting, documentation links and diff whitespace checks passed. Source tests
+cover forward declarations, recursion, strict generic calls, unused-body refusal,
+original-file diagnostics, UTF-8 boundaries, exact cumulative quotas, unsupported
+contexts and runtime exhaustion. Full repository tests and other-platform
+qualification were not rerun. Evidence:
+`target/checked-evidence/g13-generic-source-verification.json`.
+
+Changes remain local and unpushed. CLI/package/native/JavaScript/tooling
+integration, standard Option/Result and propagation, and later G13 phases remain
+open; Task Manager behavior is unchanged.
+
+## 2026-11-15 — G13 E2 explicit standalone generic CLI
+
+Added `svr check/run --experimental-generics SOURCE.svr` over the sealed complete
+source pipeline. Check compiles all admitted declarations and bodies without
+execution; optional human/JSON output uses existing report conventions. Run
+requires parameterless Unit main and uses the host-free generic VM with finite
+instruction/materialization/work/frame/storage policy plus a 30-second cooperative
+elapsed limit. Inputs use existing bounded UTF-8 reading with a 4 MiB ceiling.
+No standard/host service or program-argument authority is granted.
+
+Thin command routing explicitly refuses mixed modes, unsupported flags, packages,
+permissions and unavailable build/test modes. Generic errors have bounded messages
+and original-file primary locations when available (E3123 compile/entry, E3124
+runtime). Existing source-read codes remain intact. Added a documented real generic
+record/enum/function example consumed directly by subprocess tests. Updated the
+existing exact check-help assertion for the new command line.
+
+Verification: all 137 selected integration regressions passed: CLI 77, existing
+v2 check 7, v2 packages 9, v2 run 14, new generic CLI 16, and generic source 14.
+The first regression run caught only the expected help snapshot change; the final
+complete selected run passed. Strict all-target/all-feature Clippy, formatting,
+documentation links (278 Markdown files, 1112 local links) and diff whitespace
+checks passed. Full repository tests and other-platform qualification were not
+rerun. Evidence: `target/checked-evidence/g13-generic-cli-verification.json`.
+
+Changes remain local/unpushed. Package linking, native/JavaScript and tooling
+integration, standard Option/Result and propagation and later G13 library phases
+remain open. Task Manager behavior remains unchanged.
+
+## 2026-11-15 — G13 E2 standalone generic native packaging
+
+Added `build --experimental-generics --emit exe --output PATH SOURCE.svr` through
+the existing staged offline host-native linker and atomic no-overwrite publisher.
+The separate private generic source-image family validates exact header/version/
+model/features/length/UTF-8 and a 1 MiB embedded-source ceiling, then repeats
+complete bounded compilation and Unit-main admission at startup. Generic command
+entry and finite runtime policy are now shared between CLI execution and native
+images. The runner dispatches generic images separately and refuses all runtime
+arguments. No host authority or caller-selected policy is embedded.
+
+This is an executable bundling the Rust VM and original checked source, not direct
+machine-code lowering of generic operations. It removes Node.js/compiler/source
+runtime requirements while retaining startup compilation. CLI parsing requires
+explicit exe/output options, refuses unsupported backends/permissions/mixed modes
+and respects the option delimiter for generic build help. Updated the exact build
+help regression and linked native scope from the current references/checklist.
+
+Verification: 139 selected integration tests passed across seven targets:
+77 ordinary CLI, 7 existing v2 IR/build, 16 generic CLI, 14 generic source,
+9 plain-v2 native image, 10 generic image and 6 generic native CLI tests. The
+native CLI target passed its five initial tests including actual offline release
+linking; its subsequently added delimiter case passed separately. The executable
+ran after deleting the original source and with an empty PATH, emitted no output,
+refused arguments and left no staging directory. Existing output/source bytes
+were preserved on refusal. Header tampering, every image prefix, exact source
+limits, semantic rechecking, finite-loop/runtime refusal and legacy/plain-v2 image
+separation passed. Strict all-target/all-feature Clippy, formatting, documentation
+links (279 Markdown files, 1122 local links) and diff whitespace checks passed.
+Full repository tests, installed-payload and other-platform execution qualification
+were not rerun. Evidence: `target/checked-evidence/g13-generic-native-verification.json`.
+
+Changes remain local/unpushed. Package linking, JavaScript/tooling integration,
+standard Option/Result and propagation, later G13 library phases and exact-host
+qualification remain open. Task Manager behavior remains unchanged.
+
+## 2026-11-15 — G13 E2 guarded generic root packages and locks
+
+Generic check/run/native build now accept guarded single-entry root package
+captures and optional `--locked`. Added generic source-lock generation/checking
+through the existing guarded version-one lock machinery and shared selector-aware
+lock parser. Existing v2/default lock paths remain intact. Compilation consumes
+the captured original entry bytes and canonical filename, without rereading source
+paths. Lock verification precedes compilation, execution and output creation;
+unsupported dependencies/registered modules still refuse without entry-only
+fallback. Unregistered source files are not compiled.
+
+Added `capture_root_source_with_source_limit` to reduce existing guarded entry
+admission without changing `capture_root_source` defaults. Generic commands select
+4 MiB before entry copying; zero never selects unlimited reads. Compiler/runtime
+profiles stay finite and unchanged. Project JSON keeps canonical source provenance
+and null global locations. Corrected the earlier experimental diagnostic collision:
+generic runtime errors now use E3125; existing package-shape E3124 and lock E4165
+retain their meanings. Updated current references and tests, preserving historical
+checkpoint records. Generic package-host support remains Linux/procfs only.
+
+Verification: all 125 selected integration tests passed: 77 ordinary CLI, 8 existing
+v2 lock, 9 existing v2 package, 16 generic CLI and 15 new generic package tests.
+Coverage includes exact reduced capture limits, 4 MiB refusal, canonical locations,
+missing/stale/malformed locks, unchanged lock bytes, invalid bodies despite valid
+fingerprints, symlink refusal, unavailable dependency/module/import contexts and
+lock refusal before creating output parents. A real locked package built offline;
+its executable ran successfully with source, manifest and lock removed and an empty
+PATH. Strict all-target/all-feature Clippy, formatting, documentation links
+(280 Markdown files, 1132 local links) and diff whitespace checks passed. Full
+repository tests, installed-runtime and other-host qualification were not rerun.
+Evidence: `target/checked-evidence/g13-generic-package-verification.json`.
+
+Changes remain local/unpushed. This closes root-project integration only, not
+reusable dependency/module linking or the package ecosystem. JavaScript/tooling,
+standard Option/Result and propagation, later G13 libraries and platform/release
+qualification remain open. Task Manager behavior remains unchanged.
+
+## 2026-11-15 — G13 E2 qualified standard Option/Result
+
+Complete generic source compilation now adds compiler-owned nominal std::Option<T>
+and std::Result<T,E> definitions. Qualified constructors and exhaustive match
+qualifiers use canonical registered names; ordinary user Option/Result names stay
+available and distinct. Immutable standard tags and fixed synthetic declaration
+fragments preserve provenance without forging user spans. Raw registration APIs
+remain explicit. Standard definitions consume registry/definition/member/source/
+annotation/work allowances, while source syntax usage still describes user input.
+Qualified nominal label bytes are charged under existing VM materialization policy.
+
+Standard wrappers pass through symbolic/concrete checking, aliases, generic
+functions, nested owned snapshots, layouts, lowering and host-free execution.
+Payload arity, exact wrapped type identities, Key bounds, exhaustive coverage and
+immutable bindings remain strict. Unit Some is distinct from nullary None.
+No existing builtin return type changes. std::Error, adapters and postfix ? remain
+open, alongside dependency/module/JavaScript/tooling and later G13 library work.
+
+Generic native images now advertise feature word 3 (base bit 1 plus standard-enum
+bit 2). The decoder retains word 1 under its prior standard-free environment and
+rejects unsupported combinations; old images cannot gain the new names merely by
+changing embedded source. Format version/header size and source bounds remain
+unchanged. Legacy and plain-v2 image families remain separate.
+
+Verification: 382 distinct generic integration tests across 50 targets passed,
+plus 10 focused generic unit tests. The family run passed 376 tests across 49
+non-linking targets, including the initial 10 standard cases; the final focused
+run superseded that standard target with 14 passing cases. Two further command/
+native tests passed: the exact documented standard example checks/runs, and a real
+locked package executable runs after removing source, manifest and lock with an
+empty PATH. Expensive prior generic native/package targets were excluded from the
+family run; the new locked-standard native proof covered that path once. Strict
+all-target/all-feature Clippy, formatting, documentation links (281 Markdown files,
+1141 local links) and diff whitespace checks passed. Full repository tests,
+installed-runtime and other-platform qualification were not rerun. Evidence:
+`target/checked-evidence/g13-generic-standard-verification.json`.
+
+Changes remain local/unpushed. G13 E2 and G13 remain incomplete; Task Manager
+behavior remains unchanged.
+
+## 2026-11-15 — G13 E2 structured std::Error
+
+Added the compiler-owned nongeneric std::Error record with code/message String
+fields and offset std::Option<Int>. A private fixed-template record parser adapter
+provides an empty parameter owner and immutable standard-error marker; public
+generic record parsing remains strict and user Error<T> remains available.
+Canonical names and synthetic provenance stay separate from user source. The
+definition consumes existing semantic-stage admission, including unused metadata.
+
+Qualified construction validates original head tokens, admits a zero-argument
+nominal type under per-input/cumulative source/token/node/name/depth/work limits,
+and shares the existing nominal expansion/identity checker. Existing record field
+coverage/type checks, initialization order, access, equality and owned snapshots
+apply. Generic Result<T,std::Error> payloads and optional offsets execute through
+symbolic/concrete checking, layouts, lowering and VM policy. Materialization
+charges qualified nominal and field labels. No builtin return type or exception
+behavior changes; general nongeneric user records remain outside this profile.
+
+New native images use feature word 7 (base source, standard enums, standard Error).
+Decoding retains word 1 without standards and word 3 with enums only; word 5 and
+unknown combinations refuse. Prior images cannot gain Error via source tampering
+alone. Header version/size, source ceilings, fixed policy and other image families
+are unchanged.
+
+Verification: 391 selected integration tests across 51 targets passed, plus 10
+focused generic unit tests. The non-linking generic family passed 389 cases
+across 50 targets, including nine new structured-error cases. Two further command/
+native cases passed: the exact documented example checks/runs, and a real locked
+native package runs after removing source/manifest/lock with an empty PATH. Older
+expensive native/package/std CLI targets were excluded from the family run; the
+new structured-error native proof exercised the path once. Exact constructor
+syntax caps, materialization refusal, namespace/provenance separation, aliases,
+grouped/commented heads, owned snapshots and old native feature profiles passed.
+Strict all-target/all-feature Clippy, formatting, documentation links (282 Markdown
+files, 1152 local links) and diff whitespace checks passed. Full repository tests,
+installed-runtime and other-platform qualification were not rerun. Evidence:
+`target/checked-evidence/g13-generic-error-verification.json`.
+
+Changes remain local/unpushed. Explicit adapters, postfix propagation, dependency/
+module linking, JavaScript/tooling and later G13 libraries and qualification remain
+open. G13 E2/G13 are incomplete; Task Manager behavior remains unchanged.
+
+## 2026-11-15 — G13 E2 sealed symbolic propagation compatibility
+
+Added `plan_generic_propagations` over existing immutable checked body operands.
+Opaque function/body/expression and environment ownership, compiler-owned standard
+wrapper identity and explicit enclosing return contracts are required. Successful
+payload types may differ from the caller's success type; Result error types must
+match exactly after alias expansion, without numeric/nominal/parameter conversion.
+User lookalikes, incompatible wrappers, repeated sites and foreign owners refuse.
+
+Complete plans retain original bodies, operand identities, source-aware type
+refusals, standard declaration/variant identities, success/failure type projections
+and the exact caller return wrapper. Sites, retained contexts, comparison pairs/
+edges and work share finite whole-batch admission. Projections retain admitted
+immutable arenas rather than copying type graphs. Failure publishes no partial
+plans or unlimited fallback. Empty batches may succeed without allowance.
+
+This is a Rust planning API only. It does not parse source question marks, recheck
+concrete substitutions, allocate payload snapshots, insert early returns or emit
+executable control flow. Source `?` remains refused in all existing native feature
+profiles. Parser/body/concrete/lowering/runtime/native integration, explicit
+adapters and remaining G13 work stay open; no executable propagation is claimed.
+
+Verification: 58 distinct selected integration regressions passed across five
+targets: structured Error 9, generic native images 10, source 14, standard enums
+14 and propagation 11. The combined run included the initial 10 propagation cases;
+the final focused run superseded that target with all 11 passing cases. Coverage
+includes differing success payloads, exact generic/structured error types, aliases,
+foreign tables and same-signature foreign arenas, duplicates, exact cumulative
+quota boundaries, original source retention, correct function/span refusal and
+continued source/image question-mark refusal. Strict all-target/all-feature Clippy,
+formatting, documentation links (283 Markdown files, 1158 local links) and diff
+whitespace checks passed. Full repository tests and actual native/package/platform
+qualification were not rerun for this additive metadata-only slice. Evidence:
+`target/checked-evidence/g13-generic-propagation-verification.json`.
+
+Changes remain local/unpushed. G13 E2/G13 are incomplete; Task Manager behavior
+remains unchanged.
+
+## 2026-11-15 — G13 E2 original-source postfix syntax capture
+
+Added `parse_generic_propagation_block` for exactly one complete block, returning
+owned original source and operand/question/result ranges in parser application
+order. Private lexer/parser selection admits postfix markers, nested/chained
+suffixes, generic calls, branches/loops/matches and original Unicode/CRLF trivia.
+The temporary AST is dropped privately; no unwrapped public legacy AST or new
+public AST shape is published. Ordinary lexer diagnostics, parser defaults,
+checked source, CLI and native profiles remain strict about question marks.
+
+Speculative indexed assignment rewinds marker capture with explicit-call facts;
+valid expression statements cannot duplicate sites. Unsupported assignment targets
+refuse in the new mode. Exact marker/token coverage uses a bounded index, refusing
+duplicate or missing original questions, including markers in opaque type lists.
+Input bytes/tokens and marker bookkeeping are admitted before capture, with finite
+source/token/site/chain/work profiles and existing nesting guards. Syntax-only
+capture can retain unresolved/primitive operands without claiming type validity.
+
+Verification: 138 selected integration tests passed across seven targets: 77 CLI,
+7 generic call syntax, 10 generic match bodies, 12 new propagation syntax, 11
+propagation compatibility, 14 generic source and 7 program syntax. All 27 parser
+and 7 lexer unit tests passed. New cases cover exact original nested/chained
+ranges, speculative rollback, control/record contexts, strings/comments/Unicode/
+CRLF, malformed/type-position markers, exact resource boundaries, deep/long-chain
+refusal, raw legacy token-stream refusal and every UTF-8 prefix of a small input.
+Strict all-target/all-feature Clippy, formatting, documentation links (284 Markdown
+files, 1165 local links) and diff whitespace checks passed. Full repository tests
+and actual native/package/platform qualification were not rerun for this syntax-
+only slice. Evidence:
+`target/checked-evidence/g13-generic-propagation-syntax-verification.json`.
+
+This does not connect source question marks to typed body operands, concrete
+substitution checking, snapshot/return control flow or executable native features.
+Those integrations, explicit adapters and remaining G13 work remain open. Changes
+remain local/unpushed; G13 E2/G13 are incomplete and Task Manager is unchanged.
+
+## 2026-11-15 — G13 E2 opt-in checked symbolic postfix bodies
+
+Added `parse_generic_propagation_function` for strict generic/plain headers with
+opaque postfix-capable bodies, and `check_generic_propagation_bodies` for complete
+symbolic checking. Original markers bind to active body-owned operands and emit
+postorder Propagate facts with successful types, exact failure compatibility and
+caller return wrappers. Shared body-independent GenericPropagationTypes avoid
+self-owning body cycles and reuse the earlier planner's compatibility algorithm.
+No original source is rewritten or masked, and public legacy AST shapes remain
+unchanged.
+
+Checking covers parameters/locals, aliases, calls, contextual conversions, fields,
+indexes/indexed assignment, branches, loops, matches, grouping/chains and all
+unused/unreachable code. Group-aware source ownership preserves base and extracted
+ranges. Question failures retain primary token and nested operand/function
+provenance. Header parsing alone remains explicitly opaque, never body authority.
+
+Admission is cumulative across functions: virtual nodes count toward AST/expression
+budgets and the 128-node expression ceiling. Error-type comparisons consume both
+propagation and existing body/per-comparison allowances; shared work is capped
+before compatibility checking. Marker coverage is exact, and every site must bind
+before successful publication. The ordinary strict checker remains unchanged.
+
+Question-bearing tables explicitly refuse specialization, including unused
+question-bearing functions. Concrete rechecking and IR lowering also have explicit
+unavailable cases. Zero-site opt-in bodies can use the old pipeline. Full source,
+CLI and native feature profiles remain strict; no executable propagation feature
+or fallback is enabled.
+
+Verification: 427 distinct generic integration cases passed across 53 targets,
+plus 10 focused generic unit tests. The family run passed 425 cases, including the
+initial 13 body cases; the final focused run superseded that target with all 15
+passing cases. Tests cover generics/aliases/scopes/grouped calls, strict errors,
+invalid unreachable code, exact shared quota boundaries, indexed assignment,
+virtual depth, question/operand provenance, header strictness and downstream
+refusal. Strict all-target/all-feature Clippy, formatting, documentation links
+(285 Markdown files, 1173 local links) and diff whitespace checks passed. Older
+expensive native/package/standard/error CLI targets were excluded from the family
+run. Full repository tests and actual native/package/platform qualification were
+not rerun. Evidence:
+`target/checked-evidence/g13-generic-propagation-body-verification.json`.
+
+Changes remain local/unpushed. Concrete/layout/early-return/runtime/native
+integration, explicit adapters, dependency/module/JavaScript/tooling and later
+G13 work remain open. G13 E2/G13 are incomplete; Task Manager is unchanged.
+
+## 2026-11-15 — G13 E2 explicit concrete propagation rechecking
+
+Added opt-in finite propagation specialization and concrete rechecking APIs while
+ordinary entry points retain explicit refusal. Existing exact keys, recursive
+reuse, bounds/depth and generated graph admission remain shared. Concrete checking
+reconstructs each site's standard wrapper, closed success/error/return contexts
+and variant identities from actual instance types, then independently substitutes
+and checks the original symbolic descriptors. Original operand/question ownership
+is validated and retained per concrete instance; stale metadata is refused rather
+than repaired.
+
+ConcreteGenericBody now retains closed ConcreteGenericPropagation facts. Repeated
+specializations of one source site consume separate site/context allowances.
+Propagation and ordinary concrete budgets share retained type facts, descriptor
+generation, comparisons and work. Independent comparison work applies to the
+comparison itself, including in symbolic checking, rather than unrelated site
+bookkeeping. Existing literal decoding and logical/nominal layouts preserve
+source ranges adjacent to questions without source rewriting.
+
+IR lowering now has a whole-source-table PropagationUnavailable gate, including
+when all questions are in unreachable functions; local unavailable-operation
+checks remain. Default source/CLI/native profiles 1/3/7 still refuse question
+marks. Zero-site source tables retain ordinary execution. No early-return
+instruction or runtime payload operation is authorized by this metadata slice.
+
+Verification: all 441 generic integration tests across 54 non-linking targets
+passed, plus all 12 focused generic unit tests. Fourteen new integration cases
+cover distinct closed instances, recursion reuse, aliases, structured errors,
+chained sites, exact propagation/concrete budget boundaries, independent comparison
+work, literal/layout retention and the unconditional IR gate. Two test-only fault
+injections verify rejection of stale symbolic payload descriptors and cyclic
+operand identities, without adding a production mutation API. Strict all-target/
+all-feature Clippy, formatting, documentation links (286 Markdown files, 1181
+local links) and diff whitespace checks passed. Expensive native/package/standard/
+error CLI targets were excluded from the generic run. Full repository tests and
+actual native/package/platform qualification were not rerun. Evidence:
+`target/checked-evidence/g13-generic-propagation-concrete-verification.json`.
+
+Changes remain local/unpushed. Propagation operation layouts, early-return
+control flow, payload snapshots/fuel/temporary cleanup, executable source/native
+integration, adapters and remaining G13 work remain open. G13 E2/G13 are incomplete;
+Task Manager is unchanged.
+
+## G13 E2 propagation operation layouts (2026-11-15)
+
+Added `plan_generic_propagation_layouts` and an immutable retained layout owner.
+Each concrete question site has input/extraction/return layouts, success/failure
+tags and an optional exact failure payload. The planner checks mapped types and
+standard wrapper variant shapes under shared instance/plan/work/comparison
+allowances. Different input and caller success types remain valid. Internal
+fault tests cover coherent mapping swaps and injected Option failure payloads.
+
+Validation: 446 generic integration tests across 54 targets; generic library
+unit tests, strict all-target/all-feature Clippy, formatting, documentation links
+and whitespace checks recorded in local evidence. The four existing real-native/
+package/standard-CLI/error-CLI targets were excluded from the generic run. Full
+repository and native/platform qualification were not rerun. Evidence:
+`target/checked-evidence/g13-generic-propagation-layout-verification.json`.
+
+Changes remain local/unpushed. Early-return control flow, payload cleanup and
+runtime fuel, executable source/native integration, adapters and remaining G13
+work remain open. Executable postfix propagation, E2 and G13 remain incomplete.
+Task Manager is unchanged.
+
+## G13 E2 inspection-only propagation IR (2026-11-15)
+
+Added `lower_generic_propagation_ir` over sealed propagation layout plans. Its
+separate `CheckedGenericPropagationIr` owner exposes instructions/layouts/usage
+for inspection without providing the VM's executable IR type. Each question
+emits exactly one `Propagate` after its operand. Success retains pending operands;
+failure specifies return-wrapper reconstruction and terminal current-frame
+cleanup. Structural validation independently verifies standard identities,
+wrapper/payload/tag contracts and the enclosing result; typed validation checks
+successful continuation and joins. Construction and IR quotas remain shared and
+bounded. Mapping admission and both control outcomes are charged.
+
+Ordinary IR lowering stays strict for every question-bearing source table. The
+VM has both a pre-dispatch source-table refusal and a defensive opcode refusal.
+Tests cover specialization, nested questions, pending arithmetic operands,
+short-circuit/loop/match joins, unreachable questions, exact quota boundaries,
+corrupted mappings/tags/payloads and VM gating. Passed 452 generic integration
+tests across 54 targets and 17 generic unit tests. Validation results and source/log
+hashes are in `target/checked-evidence/g13-generic-propagation-ir-verification.json`.
+The generic run excludes the four existing real-native/package/standard-CLI/
+error-CLI targets. Full repository tests and actual native/platform qualification
+were not rerun for this inspection-only slice.
+
+Changes remain local/unpushed. Runtime payload extraction/reconstruction,
+current-frame operand/local cleanup and fuel tests are next. Executable
+source/native integration, adapters and remaining G13 contract work remain open.
+E2/G13 are incomplete; Task Manager is unchanged.
+
+## G13 E2 explicit propagation VM (2026-11-15)
+
+Added `execute_generic_propagation_ir` for the separate checked early-return IR
+owner. It uses the existing VM and shared policy with explicit propagation
+admission; ordinary `execute_generic_ir` retains the source-table gate. Success
+copies the selected payload with snapshot fuel. Failure copies any error payload,
+builds the enclosing result wrapper and returns from only the current frame.
+Pending operands and local slots are released with corrected active counts.
+Early-failure cleanup admits slot/value-node work and cancellation checks before
+frame destruction; cumulative materialization is never refunded. Existing normal
+returns share the return-delivery path without changing their work charges.
+
+Tests cover owned snapshots, distinct caller success types, structured errors,
+Unit versus nullary payloads, chains, short circuits, repeated early-return
+cleanup, recursive propagation and caller handling, cancellation and exact shared
+work/instruction/node/text limits with question-site error ranges. Passed 461
+generic integration tests across 54 targets and 17 generic unit tests. Strict
+all-target/all-feature Clippy, format, documentation links and diff
+checks are recorded in local evidence:
+`target/checked-evidence/g13-generic-propagation-vm-verification.json`.
+The generic family excludes the four existing real-native/package/standard-CLI/
+error-CLI targets. Full repository tests and actual native/platform qualification
+were not rerun for this library-only slice.
+
+Changes remain local/unpushed. Full-source/CLI/native-image propagation integration,
+explicit standard-library adapters and remaining E2/G13 contract work remain open.
+E2/G13 are incomplete; Task Manager is unchanged.
+
+## G13 E2 complete-source propagation (2026-11-15)
+
+Added `compile_generic_propagation_source` with explicit whole-source and
+propagation-stage limits. The existing collector lexes original question tokens
+only in this profile; headers/type declarations retain strict parsers. Every
+symbolic body is checked, including unused functions. Finite specialization,
+concrete rechecking, operation planning and early-return IR compose without
+rewriting source. `CompiledGenericSource` privately retains the explicit
+propagation proof, and `execute_generic_source` selects its VM path from that
+proof. Compiler/runtime errors retain full-file mappings through concrete
+specializations and Unicode source origins.
+
+Source testing exposed missing nominal label accounting in reconstructed failure
+wrappers from the preceding VM slice. Propagation now uses the same label
+calculation as ordinary enum constructors, charging those bytes and retaining the
+correct value footprint. A regression compares propagated and explicitly
+constructed failure footprints. No materialization allowances are refunded.
+
+Tests cover complete files, aliases/generic specialization, original Unicode
+ranges, exact question-site runtime failures, unused-body errors, strict
+headers/types, independent shared stage limits and native-profile refusal.
+Native encoding refuses this new profile even for zero-question files; existing
+source/native profiles and image feature words remain unchanged. Passed 468
+generic integration tests across 54 targets and 17 generic unit tests. Strict
+Clippy, format, documentation links and diff checks are recorded in
+`target/checked-evidence/g13-generic-propagation-source-verification.json`.
+The generic family excludes the four existing real-native/package/standard-CLI/
+error-CLI targets. Full repository tests and actual native/platform qualification
+were not rerun for this library-only slice.
+
+Changes remain local/unpushed. CLI/package/native-image integration, explicit
+standard-library adapters and remaining E2/G13 contract work remain open.
+E2/G13 are incomplete; Task Manager is unchanged.
+
+## G13 E2 propagation CLI/package/native qualification (2026-11-16)
+
+The existing `--experimental-generics` source/root-package commands now select
+complete-source propagation compilation. Existing locked-package capture,
+authority, dependency/module restrictions and parameterless Unit main contract
+remain active. Native encoding selects feature word 15 for propagation profiles;
+startup decoding repeats bounded complete-source checking and explicit VM execution.
+Historical words 1/3/7 retain strict profiles; unknown/partial combinations refuse.
+Tests cover downgrade refusal, tampered source, old images and complete round trips.
+
+Added a documented executable propagation example and three command tests covering
+source check/run, original question diagnostics, failed-build nonpublication and a
+real locked Linux package native build. Its executable ran successfully after
+removing source/manifest/lock and with empty PATH, produced no output, rejected
+arguments and left no staging directories. This is a Rust host executable embedding
+source and VM startup checking, not direct Sovra machine-code lowering.
+
+Validation: 469 generic integration tests across 54 targets, three additional
+propagation command/native tests and 17 generic unit tests passed. Strict
+all-target/all-feature Clippy, format, documentation links and diff checks passed.
+The four existing real-native/package/standard-CLI/error-CLI targets were excluded
+from the family run; the new propagation CLI target ran separately including its
+real native link. Full repository tests and other-host qualification were not
+rerun. Evidence:
+`target/checked-evidence/g13-generic-propagation-cli-verification.json`.
+
+Changes remain local/unpushed. Explicit standard-library adapters, remaining
+E2/G13 contract work and exact other-host qualification remain open. E2/G13 are
+incomplete; Task Manager is unchanged.
+
+## G13 E2 explicit legacy standard-result adapters (2026-11-16)
+
+Added immutable compiler-owned std::InputLine/TextRead/TextWrite/SplitOnce/ParsedInt
+schemas in an explicit adapter source profile. A unit test compares every field
+against the existing core standard record contract. Qualified construction checks
+original tokens, exact nominal identity, field coverage/types and zero type
+parameters; the existing std::Error constructor path now shares that validation.
+Ordinary source and historical image environments remain unchanged.
+
+Added reusable ordinary Sovra adapter functions in
+`src/compiler/v2/standard_result_adapters.svr`, exported as
+`STANDARD_RESULT_ADAPTER_SOURCE`. Consumers explicitly include the source; nothing
+is implicitly converted or injected. Option conversions preserve absence flags and
+empty successes; split preserves both parts. Text adapters retain exact failure
+messages with explicit stable codes and absent offsets; successful writes carry
+Unit. Existing builtin return types and host authority are unchanged. This slice
+adapts provided record values; generic builtin-call bridging remains open.
+
+Experimental CLI compilation now selects the adapter environment. Native feature
+word 31 repeats its bounded source checking at startup; words 1/3/7/15 retain their
+prior environments and unknown/partial combinations refuse. Runtime payloads
+already copy all of src, including the included Sovra adapter source.
+
+Validation: 475 generic integration tests across 55 targets, three additional
+command/native tests and 18 generic unit tests passed. A real locked Linux native
+adapter consumer ran after removing source/manifest/lock and with empty PATH,
+rejected arguments and left no staging directories. Strict all-target/all-feature
+Clippy, formatting, documentation links and diff checks passed. The four older
+real-native/package/standard-CLI/error-CLI targets were excluded from the family
+run; the updated propagation CLI target ran separately including its real link.
+Full repository tests, installed payload execution and other-host qualification
+were not rerun. Evidence:
+`target/checked-evidence/g13-generic-result-adapters-verification.json`.
+
+Changes remain local/unpushed. Existing builtin-call bridging, remaining E2/G13
+contract work and other-host qualification remain open. E2/G13 are incomplete;
+Task Manager is unchanged.
+
+## G13 E2 host-free standard builtin bridging (2026-11-16)
+
+Added checked std::parse_int/std::split_once calls in an explicit builtin source
+profile. Exact qualified names, String arity/types and absent type arguments are
+validated symbolically; result types require immutable std::ParsedInt/SplitOnce
+schemas. Shared call/argument/type-generation/work quotas apply across all bodies.
+Concrete rechecking verifies argument types and nominal identities. IR validates
+standard field layouts and typed argument stacks independently. Builtin facts do
+not create fictitious Sovra call-graph instances.
+
+The VM reuses the existing strict decimal parser and first-delimiter semantics.
+Scanning, copied strings, scalar/result nodes and nominal labels consume shared
+instruction/work/materialization/control policy. String allocation follows
+admission. Split conservatively admits checked `(input+1)*(delimiter+1)` byte-work
+before searching; checkpoints surround scans/copies. Errors retain original call
+ranges and do not fall back to legacy/host execution.
+
+Experimental CLI now selects the builtin profile; native feature word 63 repeats
+bounded startup checking. Historical words 1/3/7/15/31 retain previous environments.
+The updated explicit adapter consumer executes actual parsing/splitting and ?.
+No host I/O, filesystem, console, process or network operation is enabled.
+
+Validation: 483 generic integration tests across 56 targets, three additional
+command/native tests and 19 generic unit tests passed. A real locked Linux native
+consumer ran with source/manifest/lock removed and empty PATH, rejected arguments
+and left no staging directories. Tests cover decimal grammar/overflow parity,
+Unicode/empty/absent/first splits, generic adapter/question composition, invalid
+unused calls, old-profile downgrade refusal, exact shared budgets, conservative
+scan refusal and corrupted IR argument/result checks. Strict all-target/all-feature
+Clippy, format, documentation links and diff checks passed. The four older native/
+package/standard-CLI/error-CLI targets were excluded from the family; the propagation
+CLI target ran separately with a real link. Full repository tests, installed payload
+execution and other-host qualification were not rerun. Evidence:
+`target/checked-evidence/g13-generic-builtin-calls-verification.json`.
+
+Changes remain local/unpushed. Other builtin bridging, remaining E2/G13 contract
+work and other-host qualification remain open. E2/G13 are incomplete; Task Manager
+is unchanged.
+
+## G13 E2 checked String standard calls (2026-11-16)
+
+Added explicit String utility source compilation and experimental command support
+for std::len/lines_unique/escape_terminal. Byte length retains existing UTF-8 byte
+semantics; uniqueness preserves exact LF/terminal-line/CR behavior; terminal
+escaping reuses the existing uppercase control formatter. String arguments and
+primitive results are independently checked symbolically, concretely and in IR.
+Shared call/argument quotas apply even in unused functions.
+
+The VM admits line scanning/comparison work and borrowed ordered-set entries
+under cumulative node/work/control limits. Temporary nodes are not refunded.
+Escaping computes exact output bytes and admits work/node/text allowances before
+formatting. Byte-length conversion is checked. Host I/O remains disabled.
+Native feature 127 preserves this environment at startup; older words and source
+APIs retain their previous environments.
+
+Validation covers Unicode byte lengths, exact line cases, controls/backslashes,
+empty values, generic composition, old-profile refusal, exact budgets and
+corrupted primitive result/return layouts. The generic family passed 489 tests
+across 57 targets; generic unit checks passed 20 tests. Three command/native tests, strict all-target/all-feature Clippy, formatting,
+documentation links and diff checks passed. The locked Linux native consumer ran
+with source/manifest/lock removed and empty PATH. Evidence:
+`target/checked-evidence/g13-generic-string-builtins-verification.json`.
+An initial concurrent unit/native attempt exhausted workspace disk; eight generated
+passing-test executables were removed, preserving source and evidence logs, and
+affected checks were rerun sequentially. The four older real-native/package/
+standard-CLI/error-CLI targets were excluded from the family; the updated propagation
+CLI target runs separately with a real locked Linux native consumer. Full repository,
+installed-payload and other-host qualification were not rerun.
+
+Changes remain local/unpushed. Polymorphic to_string, array/host builtin bridging
+and remaining E2/G13 requirements remain open. E2/G13 are incomplete; Task Manager
+is unchanged.
+
+## G13 E2 polymorphic display and array length (2026-11-16)
+
+Added explicit value builtin compilation and experimental command support for
+std::to_string and std::array_len. Display accepts any checked value, including an
+opaque generic parameter; length requires a real array, including [T]. Symbolic,
+concrete and typed IR checks preserve these contracts. Primitive output types,
+call/argument quotas and checked Int length conversion remain explicit.
+
+Added two-pass iterative formatting over flat owned values. The first pass admits
+traversal work and computes exact output bytes. Output and conservative 4*N+1
+pending-task storage are admitted before emission allocation. The second pass
+uses shared work/control checks and verifies the preflight size. Primitive/array
+and versioned nominal display conventions are preserved; record fields use checked
+declaration slots. Formatting is not serialization or terminal escaping. A 200-node
+runtime recursive record chain verifies that formatting does not recurse through
+user value depth. Temporary allowances are cumulative and not refunded.
+
+Native feature 255 retains this profile at bounded startup checking; older words
+and source APIs retain their previous environments. A real locked Linux native
+consumer executed array length and display after project files were removed and
+with empty PATH. Host I/O and array append/concat/slice remain gated.
+
+Validation: 496 generic integration tests across 58 targets, three additional
+command/native tests and 21 generic unit tests passed. Exact shared limits,
+compound/primitive/enum/record display, generic arrays, old-profile downgrade and
+corrupted IR operand/result contracts are covered. Strict checks and source/log
+hashes are recorded in
+`target/checked-evidence/g13-generic-value-builtins-verification.json`.
+Unused generated executable artifacts were removed before qualification to retain
+workspace disk headroom; source and evidence logs were preserved. The four older
+real-native/package/standard-CLI/error-CLI targets were excluded from the family;
+the propagation CLI target ran separately with a real link. Full repository,
+installed-payload and other-host qualification were not rerun.
+
+Changes remain local/unpushed. Append/concat/slice, host builtin bridging and
+remaining E2/G13 contract requirements remain open. E2/G13 are incomplete;
+Task Manager is unchanged.
+
+## G13 E2 array growth and slicing (2026-11-16)
+
+Added explicit array source compilation and experimental commands for
+std::array_append/array_concat/array_slice. The typed first array determines the
+result; dependent argument contexts retain generic/nominal identities. Symbolic
+checking, concrete rechecking and typed IR independently validate types. Append/
+concat support existing Int-to-Float widening through structural array layers,
+with explicit right conversion layouts in IR. Narrowing and nominal type-argument
+conversion refuse. Slices preserve half-open Int bounds, including empty edges.
+
+The VM performs bounded flat snapshot conversion and whole-result node/text plus
+temporary-slot preflight before result allocation. All selected children are owned
+snapshots; later source mutations do not alter results. Conversion plans and copies
+share existing node/text/work/control budgets without refunds. Growth reuses the
+core maximum array length; invalid bounds retain original call spans.
+
+Native feature 511 repeats bounded startup checking; older feature words and APIs
+retain previous environments. The locked Linux native consumer executed all three
+operations and numeric widening after removing project inputs and with empty PATH.
+Arguments were refused and staging was cleaned. No host I/O was added.
+
+Validation: 504 generic integration tests across 59 targets, three additional
+command/native tests and 22 generic unit tests passed. Coverage includes nested
+numeric widening and empty arrays, generic nominal elements, owned snapshots,
+negative/reversed/extreme bounds, exact work/node/text/instruction limits,
+conversion-target/operand corruption and native downgrade refusal. Strict
+all-target/all-feature Clippy, format, documentation links and diff checks passed.
+Generated test executables were released as needed for disk headroom; source and
+passing logs were retained. The four older native/package/standard-CLI/error-CLI
+targets were excluded from the family; propagation CLI ran separately with its
+real native link. Full repository, installed-payload and other-host qualification
+were not rerun. Evidence:
+`target/checked-evidence/g13-generic-array-builtins-verification.json`.
+
+Changes remain local/unpushed. Remaining E2 integration criteria, host-service
+boundaries and remaining G13 contract work stay open. E2/G13 are incomplete;
+Task Manager is unchanged.
+
+## G13 E2 explicit generic editor integration (2026-11-16)
+
+Added restricted user setting sovra.experimentalGenerics and explicit LSP
+initialization selection, mutually exclusive with experimentalV2. Generic buffers
+use check --experimental-generics --format json without unsupported symbols.
+Compiler checking preserves original UTF-16 editor ranges and existing bounded
+snapshot/job/generation behavior; no source runs during diagnostics. Generic
+workspace buffers and task targets remain standalone, even under broken manifests.
+Capabilities correctly disable generic navigation/formatting; keyword suggestions
+remain static. Unsupported IR/JS tasks launch no compiler. Check/Run save the
+selected source and pass the correct generic flag under existing trust checks.
+
+Real editor testing exposed the missing contributed sovra task-type declaration;
+it is now declared. Generic unsupported-task notifications return without waiting
+for UI dismissal. The optional host harness accepts a cached executable and adds
+a generic fixture, preserving existing host modes. Product task manager code is
+unchanged.
+
+Validation: seven compiler/LSP/symbol/VSIX-admission regression scripts passed,
+including generic, legacy, v2, package and navigation cases. Actual cached VS Code
+1.106.0 Linux acceptance passed for both the new generic workflow and existing v2
+workflow. The generic fixture verifies unsaved Unicode diagnostics, source saving,
+Check/Run process arguments/status under an invalid manifest, unavailable
+format/navigation and IR/JS nonlaunch. JS syntax, documentation links and diff
+checks passed. Default sandbox denied Node subprocess creation (also affecting the
+existing baseline); local integration tests were rerun with subprocess permissions.
+No Rust behavior changed, so compiler/native family suites were not rerun. Packaged
+VSIX installation, other-host execution and generic package overlays are not
+qualified by this slice. Evidence:
+`target/checked-evidence/g13-generic-ide-verification.json`.
+
+Updated the E2 checklist summary to reflect implemented errors/propagation rather
+than historical syntax-only status. Changes remain local/unpushed. Dependency/
+module linking, JavaScript integration, generic navigation/formatting, package
+editor overlays and remaining E2/G13 requirements stay open. E2/G13 are incomplete;
+Task Manager is unchanged.
+
+## G13 E2 checked generic root symbols (2026-11-16)
+
+Added generic_source_symbols over sealed complete original source, with independent
+count/string/JSON/work limits. Functions, records, enums and aliases retain checked
+whole/name spans, kinds and source headers; injected standard definitions and all
+unprojected references are omitted. Names are verified against their original
+source slices. Header scanning, full declaration provenance comparisons and escaped
+JSON emission are admitted before work/allocation. Optional quota/provenance refusal
+returns only an unavailable empty envelope, preserving successful compilation.
+
+Standalone check --experimental-generics --format json --symbols now emits this
+evidence; duplicate, human-only, package, Run and Build combinations refuse. Failed
+compilation publishes no symbols. Generic editor mode requests the facts and enables
+root outlines and hover at declaration names. Go to Definition and call/type/local
+reference navigation remain unavailable. Invalid/unavailable snapshots clear facts;
+formatting and package-overlay gates remain unchanged. No native feature changed.
+
+Validation: 510 generic integration tests across 60 targets and 22 generic unit
+tests passed. Eight compiler/LSP/symbol/VSIX-admission regression scripts passed,
+including fresh generic JSON and optional-unavailability checks. Actual cached
+VS Code 1.106.0 Linux acceptance passed with declaration outlines/hover, unsaved
+Unicode ranges, continued Check/Run and reference/format refusal. Strict Clippy,
+Rust formatting, JavaScript syntax, documentation links and diff checks passed.
+Full family rerun followed the provenance-work admission regression. Generated
+executables were released for disk headroom while preserving source/logs. The four
+older native/package/standard-CLI/error-CLI targets and real propagation native
+link were excluded; native execution, packaged VSIX installation and other-host
+qualification were not rerun. Node integration tests used local subprocess
+permissions as required by this environment. Evidence:
+`target/checked-evidence/g13-generic-symbols-verification.json`.
+
+Changes remain local/unpushed. Checked call/type/local reference projection,
+generic formatting, package editor overlays, dependency/module/JavaScript linking
+and remaining E2/G13 requirements stay open. E2/G13 are incomplete; Task Manager
+is unchanged.
+
+## G13 E2 checked direct call navigation (2026-11-16)
+
+Symbolic call facts now retain the exact original callee identifier token after
+resolution, with grouping/token validation under shared body work. Optional source
+symbol projection uses checked caller/callee identities and owner-validated source
+function mappings to emit definition indices. It visits original symbolic bodies,
+including unused/recursive calls, once rather than duplicating specialization
+instances. Type/function name collisions, comments/strings and value shadowing
+cannot substitute a target. Independent max_references plus shared work/JSON caps
+remain fail closed for the complete optional batch.
+
+Generic editor mode enables Go to Definition and declared-signature hover at
+these direct calls. Root outlines/hover and Check/Run are preserved. Local/type-use
+references, generic formatting and package overlays remain unavailable. Native
+format and runtime instruction behavior are unchanged. An existing complete Call
+pattern test was updated to verify the new retained span instead of ignoring it.
+
+Validation: 515 generic integration tests across 61 targets and 22 generic unit
+tests passed. Eight compiler/LSP/symbol/VSIX-admission regression scripts passed;
+actual cached VS Code 1.106.0 Linux acceptance verified call definition/hover,
+continued declaration outlines/Check/Run and unsupported formatting refusal.
+Coverage includes exact generic/plain/grouped/recursive/unused call spans, source
+sites shared by multiple specializations, type/function collisions, shadowing,
+non-code text, reference quotas and UTF-16 ranges after Unicode. Strict all-target/
+all-feature Clippy, formatting, JS syntax, documentation links and diff checks
+passed. Generated executables were released for disk headroom with logs/source
+preserved. Older native/package/standard-CLI/error-CLI and real propagation native
+link targets were excluded; native execution, packaged VSIX installation and
+other-host qualification were not rerun. Node tests used local subprocess
+permissions. Evidence:
+`target/checked-evidence/g13-generic-call-navigation-verification.json`.
+
+Changes remain local/unpushed. Local/type-use reference projection, generic
+formatting, package overlays, dependency/module/JavaScript integration and
+remaining E2/G13 requirements remain open. E2/G13 are incomplete; Task Manager
+is unchanged.
+
+### 2026-11-16 — Generic local binding navigation
+
+Retain bounded checked read/write binding identities and project original parameter, local and match-payload definitions for optional generic editor navigation. Hover reports role/name; inferred type display remains open. Task Manager unchanged.
+
+### 2026-11-16 — Checked generic local type hover
+
+Parameter/local/match-payload hover now renders retained symbolic types, arrays and ordered nominal arguments, transparently expanding aliases. Shared work/string/task limits refuse the full optional evidence envelope on exhaustion. Execution and Task Manager behavior unchanged.
+
+Validation: 520 generic integration tests across 61 targets, 22 generic unit tests, eight compiler/editor Node regression scripts, real cached Linux VS Code 1.106.0, strict all-target/all-feature Clippy, formatting and documentation links passed. Native execution, packaged VSIX installation and other hosts were not rerun. Local evidence: `target/checked-evidence/g13-generic-type-hover-verification.json`.
+
+### 2026-11-16 — Generic function-header type navigation
+
+Optional generic symbols now link checked parameter/return annotation names to user records, enums and aliases, preserving written alias and type/function namespace identities. Shared reference/work/byte limits discard incomplete evidence. Broader type contexts remain open. Runtime and Task Manager unchanged.
+
+Validation: 522 generic integration tests across 61 targets, 22 generic unit tests, eight compiler/editor Node regression scripts, actual Linux VS Code 1.106.0, strict all-target/all-feature Clippy, formatting, documentation links and diff checks passed. Native execution, packaged VSIX installation and other hosts were not rerun. Local evidence: `target/checked-evidence/g13-generic-type-navigation-verification.json`.
+
+### 2026-11-16 — Generic source/package test command
+
+`svr test --experimental-generics [--locked] [--format human|json]` now runs nongeneric parameterless Unit `test_` roots without invoking main. Every selected specialization is checked before any run, suites have finite count/source allowances, runtime failures continue with fresh VM state, and package capture/lock failures use empty test reports. Dependency/module linking remains open. No editor polish or Task Manager changes.
+
+Validation: 546 integration tests across 63 generic/package targets, 22 generic unit tests, eight compiler/editor regression scripts, independent source CLI report consumption, strict all-target/all-feature Clippy, formatting and documentation/diff checks passed. The package regression built and executed its native output after removing input sources. Real VS Code, other hosts, full-repository tests and packaged VSIX installation were not rerun. Evidence: `target/checked-evidence/g13-generic-testing-verification.json`. Changes remain local.
+
+### 2026-11-16 — Versioned linker input capture
+
+Add immutable syntax-independent graph capture across registered modules and local dependencies, preserving canonical package ownership, original per-file bytes and exact manifests. Reduced source count/aggregate/per-file quotas retain guarded read safeguards. Captured graph locks reuse the strict existing schema and match parsed-source locks. Generic import linking and CLI enablement remain open; capture/lock success does not authorize execution. No editor or Task Manager changes.
+
+Validation: 55 affected package/generic integration tests across seven targets, 41 package unit tests (including guarded-source regressions), strict all-target/all-feature Clippy, formatting and documentation/diff checks passed. Existing generic package dependency/module refusals remain tested. Native build, the full generic/repository suites, editor hosts and other platforms were not rerun for this input-only API slice. Evidence: `target/checked-evidence/g13-package-graph-capture-verification.json`.
+
+### 2026-11-16 — Generic package declaration ownership and import visibility
+
+Add table-owned source/declaration identities over captured graph bytes, original module/root declaration spans, duplicate namespace refusal and direct dependency module imports scoped to the declaring file. Explicit lookup preserves private/export boundaries and refuses foreign table IDs. Cumulative syntax/import quotas apply across files. This is declaration/visibility metadata, not semantic checking or executable linking; CLI dependencies/modules remain refused. No editor or Task Manager changes.
+
+Validation: 62 affected generic/package integration tests across eight targets, 41 package unit tests, 22 generic unit tests, strict all-target/all-feature Clippy, formatting and documentation/diff checks passed. Coverage includes canonical owners with matching display names, separate namespaces, foreign table IDs, file-scoped imports, private/export boundaries, original Unicode/CRLF spans and exact cumulative declaration/import admission. Native output, full-repository/generic integration suites, editor hosts and other platforms were not rerun for this declaration-only API. Evidence: `target/checked-evidence/g13-generic-package-bindings-verification.json`.
+
+### 2026-11-16 — Semantic generic package types and signatures
+
+Add package-aware lookup to the existing generic registry and reuse transparent alias, declaration and signature checking across captured source scopes. Same-spelled nominal/function declarations retain distinct owners, aliases use definition imports, and private/unimported types or invalid arity/Key bounds refuse. Semantic admission is cumulative across the graph. All flat body profiles reject package-scoped signatures until executable contexts are linked. CLI dependencies/modules and native feature contracts remain unchanged. No editor or Task Manager work.
+
+Validation: 561 generic/package integration tests across 65 targets passed sequentially, including source-removal native package execution; 22 generic and 41 package unit tests, eight compiler/editor Node scripts, strict all-target/all-feature Clippy, formatting and documentation/diff checks passed. The first parallel-build-style family invocation exhausted workspace disk while linking; only rebuildable test executables were removed and final per-target compilation/execution completed successfully. No source or prior verification records were removed. Real editor hosts, other platforms, full-repository tests and packaged VSIX installation were not rerun. Evidence: `target/checked-evidence/g13-generic-package-types-verification.json`.
+
+### 2026-11-16 — Source-aware generic package bodies and calls
+
+Add an explicit package body profile that binds qualified/unqualified calls and nominal constructors/patterns through per-source visibility and canonical IDs. Every original body is checked under shared limits, with source-owned diagnostics; flat body profiles remain gated. Existing explicit specialization/IR/VM stages execute imported generic calls, transitive helpers, remote records, enums/matches and standard propagation in tests. CLI dependency/module enablement, selected-root compilation and package native-image integration remain open. No editor or Task Manager work.
+
+Validation: 569 generic/package integration tests across 66 targets passed sequentially, including the existing single-entry locked package native executable after removing inputs. The eight new package-body tests explicitly execute cross-package generic calls, transitive helpers, remote records/enums and propagation through checked Rust stages; callee identities are independently compared with source visibility lookup. Another targeted run verified the final strengthened assertions. Also passed: 22 generic unit tests, 41 package unit tests, eight compiler/editor Node scripts, strict all-target/all-feature Clippy, formatting and documentation/diff checks. New multi-file native execution, real editor hosts, other platforms, full-repository tests and packaged VSIX installation were not claimed. Evidence: `target/checked-evidence/g13-generic-package-bodies-verification.json`.
+
+### 2026-11-16 — Owned generic package compilation and CLI graph consumers
+
+Add selected-root compilation over retained source/type/body proofs through bounded specialization, concrete checking, layouts and IR, with original-file runtime diagnostics. Generic package Check/Run and Lock now consume registered local dependency/module graphs and verify locks against the same captured bytes before compilation. Source mutation/removal does not alter compiled execution. Multi-file Test/native Build remain explicit refusals without output side effects; single-entry paths/native feature words remain unchanged. No editor or Task Manager work.
+
+Validation: 577 generic/package integration tests across 67 targets passed sequentially, including the existing single-entry locked native executable after input removal. The final selected-root target passed all eight API/CLI tests, covering snapshot execution after deletion, dependency-file Unicode runtime locations, public range rejection, locked graph priority and explicit multi-file Test/Build gates. Also passed: 22 generic unit tests, 41 package unit tests, eight compiler/editor Node scripts, independent consumption of the runnable generic example from an unrelated temporary cwd, strict all-target/all-feature Clippy, formatting and documentation/diff checks. New multi-file native execution, real editor hosts, other platforms and full-repository tests were not claimed. Evidence: `target/checked-evidence/g13-generic-package-compilation-verification.json`.
+
+### 2026-11-16 — Shared-snapshot generic package test suites
+
+Generic package Test now consumes registered module/dependency graphs after lock verification, discovers only source-order root-entry Unit `test_` functions, and preflights every selected specialization before execution. Replay shares immutable frontend/body proofs with bounded two-pass instance reservations and fresh VM state/policy; runtime outcomes retain original dependency-file locations. Dependency/module test functions and main are not auto-invoked. Standalone source suites remain separate; multi-file native Build remains gated. Runnable package example includes two consumer tests. No editor or Task Manager work.
+
+Validation: 585 generic/package integration tests across 68 targets passed sequentially, including the existing single-entry locked native executable after source removal. The final eight package-suite tests verify all-root preflight, exact count/two-pass instance admission, fresh per-test instruction allowance, immutable execution after source deletion, root-only discovery, unused dependency rejection and locked report priority. Another targeted run covered the final strengthened runtime assertions. Also passed: 22 generic and 41 package unit tests, eight compiler/editor Node scripts, independent consumption of the two-test published example from an unrelated cwd, strict all-target/all-feature Clippy, formatting and documentation/diff checks. New multi-file native execution, real editor hosts, other platforms and full-repository tests were not claimed. Evidence: `target/checked-evidence/g13-generic-package-testing-verification.json`.
+
+### 2026-11-16 — Source-backed generic package native builds
+
+Add a distinct SVRGP version-one source/topology image with strict structural/resource admission and full in-memory semantic rechecking. Embedded package inputs carry logical locations and cannot yield guarded filesystem capture authority. Locked generic native Build now embeds registered graphs; runners reject arguments and retain finite host-free policy without reading original projects. Source-only/single-entry builds retain the old SVRG2 image contract. A native generic record/propagation consumer runs after project deletion with no usable PATH and ignores conflicting logical-path files. Existing builder publication/cleanup is reused. No editor or Task Manager changes.
+
+Validation: 596 generic/package integration tests across 70 targets passed sequentially, including old single-entry native output and a locked registered-graph native consumer. A final ten-test codec run additionally includes byte-corruption panic checks (the family run included the earlier nine codec cases). The graph executable ran after deleting its project, from another cwd with empty environment and nonexistent PATH; conflicting logical-path files were ignored and arguments refused. Also passed: 22 generic unit tests, 41 package unit tests, eight compiler/editor Node scripts, strict all-target/all-feature Clippy, formatting and documentation/diff checks. Other-host runtime/native execution, real editor hosts and full-repository/release qualification were not claimed. Evidence: `target/checked-evidence/g13-generic-package-native-verification.json`.
+
+2026-11-18 membership checkpoint: the explicit collection package profile now
+checks and executes `std::map_contains` and `std::set_contains` with exact key
+types, primitive Bool results and shared metered key searches. See
+[collection operations](reference/generic-collection-operations-v2.md).
+Value lookup/Option ownership, removal, iteration, formatting and CLI/native
+qualification remain open; C1/G13 are incomplete.
+
+2026-11-18 typed lookup checkpoint: the explicit collection package profile now
+checks and executes `std::map_get` and `std::set_get`, deriving sealed standard
+Option result types from checked payload ownership. Missing keys produce real
+None values; present values copy complete independent snapshots. The whole
+wrapper/payload node and text cost is admitted before output copying. See
+[typed collection lookup](reference/generic-collection-lookup-v2.md).
+Removal, iteration, formatting and CLI/native qualification remain open;
+C1/G13 are incomplete.
+
+2026-11-19 typed removal checkpoint: the explicit collection package profile now
+checks and executes `std::map_remove` and `std::set_remove`, returning Some(updated
+collection) on a hit and None on a miss. Surviving entries keep their order and
+full ownership; remove/reinsert appends. Whole Option/container/descendant node
+and text costs are admitted before copying. See
+[typed collection removal](reference/generic-collection-removal-v2.md).
+Source iteration, formatting and CLI/native qualification remain open;
+C1/G13 are incomplete.
+
+2026-11-19 iteration snapshot checkpoint: the explicit collection package profile
+now checks and executes `std::map_keys`, `std::map_values` and `std::set_values`,
+returning exact typed insertion-order arrays with independent complete copies.
+Generated array proofs and whole-result node/text/copy work remain bounded; see
+[collection iteration snapshots](reference/generic-collection-iteration-v2.md).
+Map entry-pair snapshots, formatting, CLI/native admission and consolidated
+backend/host/resource qualification remain open; C1/G13 are incomplete.
+
+2026-11-19 public entry snapshot checkpoint: the explicit collection package
+profile now checks and executes `std::map_entries` as insertion-order arrays of
+sealed `std::MapEntry<K,V>` records with public key/value fields. Actual record
+wrappers and all descendant/label copies are admitted together; typed ownership,
+Key bounds and source/default-profile/native gates remain explicit. See
+[public map entries](reference/generic-collection-entries-v2.md).
+Collection formatting, CLI/native admission and consolidated backend/host/resource
+qualification remain open; C1/G13 are incomplete.
+
+2026-11-19 collection display checkpoint: explicit collection package execution
+now formats maps/sets and nested values in insertion order with checked private
+entry ownership and exact two-pass output sizing. Existing temporary-task/node,
+text, work and cooperative controls remain active; raw String/scalar and public
+record display conventions remain unchanged. See
+[collection display](reference/generic-collection-display-v2.md).
+CLI/native admission and consolidated backend/host/resource qualification remain
+open; C1/G13 are incomplete.
+
+2026-11-19 collection image checkpoint: separate explicit encoding/decoding and
+execution APIs now admit exact package feature word 1023, rechecking all embedded
+collection source with finite compiler/VM policies and memory-only ownership.
+Word 511 and the ordinary compiler/encoder/decoder remain strict; feature flips,
+source errors and resource refusal never select a fallback. See
+[collection package images](reference/generic-collection-native-images-v2.md).
+Installed CLI/native backend/runtime dispatch and generated-executable launch
+qualification remain open, along with consolidated backend/host/resource gates;
+C1/G13 are incomplete.
+
+2026-11-19 collection command/launch checkpoint: `--experimental-generics
+--experimental-collections` now opts package Check/Run/Test/native Build into
+collection semantics and exact word-1023 runner dispatch. Collection suites retain
+all-root preflight and finite fresh per-test VM policies. Single-entry packages
+use the new package profile; default and word-511 paths remain unchanged. See
+[collection CLI/native workflow](reference/generic-collection-cli-v2.md).
+Linux collection launch, 71 generic integration targets, all 600 library tests
+and eight IDE scripts pass. Byte-key/additional-host integration and
+E2/D1/H1/H2/Q1 completion remain open. G13 is incomplete.
+
+2026-11-19 D1 byte-runtime checkpoint: explicit Rust checked Byte/immutable Bytes
+APIs now provide typed scalar conversion, complete buffer/array snapshots,
+index/slice/concat, strict lowercase-hex/standard-base64/UTF-8 codecs and original
+input offsets. Packed physical bytes retain one logical Byte node each; whole
+outputs and finite helper work/cooperative controls are admitted explicitly. See
+[byte runtime foundation](reference/runtime-bytes-v2.md).
+Source type/layout/IR/VM and Result-wrapper integration, Byte keys, CLI/native
+admission and JSON remain open; this does not complete D1 or G13.
+
+2026-11-19 compiler data-type checkpoint: the explicit data package semantic API
+now registers sealed zero-argument std::Byte/std::Bytes headers, checks Byte Key
+bounds through aliases/calls/concrete forwarding and preserves exact primitive,
+buffer, phantom and imported ownership. Empty parameter scopes are explicitly
+validated against registered headers. See
+[compiler data annotations](reference/generic-data-types-v2.md).
+Default/collection-only APIs still reject data annotations; actual data layouts
+explicitly refuse. Source operations, owned Result costs, runtime Byte keys,
+CLI/native data admission and JSON remain open; D1/G13 are incomplete.
+
+2026-11-19 data layout checkpoint: the explicit data layout planner now publishes
+closed Byte/Bytes metadata with exact declaration identities, a sealed Byte edge
+inside Bytes, canonical alias interning and bounded recursive/phantom collection
+graphs. Existing construction and IR paths reject data-bearing tables independently;
+Byte storage plans refuse instead of selecting Int keys. See
+[checked data layout graphs](reference/generic-data-layouts-v2.md).
+Checked byte operations, owned Result/error admission, runtime Byte keys, CLI/native
+data profiles and JSON remain open; D1/G13 are incomplete.

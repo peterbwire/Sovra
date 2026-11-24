@@ -51,7 +51,7 @@ fn mark(span: Span, tokens: &[Token], before: &mut BTreeSet<usize>, after: &mut 
         .map_or(span.end, |token| token.span.end);
     after.insert(end);
 }
-fn core(
+pub(super) fn core(
     statement: &Statement,
     tokens: &[Token],
     before: &mut BTreeSet<usize>,

@@ -9,6 +9,29 @@ use crate::compiler::resources::FrontendLimits;
 #[derive(Debug, Default)]
 pub struct Parser;
 
+pub(crate) type PropagationBlockPrefix = (
+    Vec<Statement>,
+    usize,
+    Vec<(usize, Span)>,
+    GenericMatches,
+    Vec<super::v2::GenericPropagationSyntaxSite>,
+);
+
+pub(crate) type GenericBlockPrefix = (Vec<Statement>, usize, Vec<(usize, Span)>, GenericMatches);
+
+// Flat private overlay: markers never leave the generic checker as value expressions.
+#[derive(Debug, Default)]
+pub(crate) struct GenericMatches(pub Vec<super::v2::MatchStatementSyntax>);
+impl Drop for GenericMatches {
+    fn drop(&mut self) {
+        for syntax in &mut self.0 {
+            for arm in &mut syntax.arms {
+                super::v2::generic_copy_bodies::drop_body(std::mem::take(&mut arm.body));
+            }
+        }
+    }
+}
+
 impl Parser {
     /// Construct a parser.
     pub const fn new() -> Self {
@@ -61,18 +84,64 @@ impl Parser {
         tokens: &[Token],
         max_diagnostics: usize,
     ) -> Result<(Vec<Statement>, usize), Diagnostics> {
+        self.parse_block_prefix_mode(tokens, max_diagnostics, false, None)
+            .map(|(body, used, _, _, _)| (body, used))
+    }
+    // Versioned generic body adapter: local types and explicit call ranges are extended.
+    // Public Program grammar stays strict; consumers must validate every annotation/call.
+    pub(crate) fn parse_generic_block_prefix(
+        &self,
+        tokens: &[Token],
+        max_diagnostics: usize,
+    ) -> Result<GenericBlockPrefix, Diagnostics> {
+        self.parse_block_prefix_mode(tokens, max_diagnostics, true, None)
+            .map(|(body, used, calls, matches, _)| (body, used, calls, matches))
+    }
+    // Never exposed as a public legacy AST: callers must retain every marker.
+    pub(crate) fn parse_propagation_block_prefix(
+        &self,
+        tokens: &[Token],
+        max_diagnostics: usize,
+        max_sites: usize,
+        max_chain: usize,
+    ) -> Result<PropagationBlockPrefix, Diagnostics> {
+        self.parse_block_prefix_mode(tokens, max_diagnostics, true, Some((max_sites, max_chain)))
+    }
+    fn parse_block_prefix_mode(
+        &self,
+        tokens: &[Token],
+        max_diagnostics: usize,
+        generic_local_types: bool,
+        propagation: Option<(usize, usize)>,
+    ) -> Result<PropagationBlockPrefix, Diagnostics> {
         let mut parser = TokenParser {
             tokens,
             position: 0,
             diagnostics: Diagnostics::new(),
             depth_exceeded: false,
             statement_depth: 0,
+            generic_local_types,
+            generic_calls: Vec::new(),
+            generic_matches: GenericMatches::default(),
+            propagation: propagation.map(|(sites, chain)| PropagationCapture {
+                sites: Vec::new(),
+                max_sites: sites,
+                max_chain: chain,
+            }),
             max_diagnostics: max_diagnostics.max(1),
         };
         let body = parser.block();
         if parser.diagnostics.is_empty() {
             if let Some(body) = body {
-                return Ok((body, parser.position));
+                return Ok((
+                    body,
+                    parser.position,
+                    parser.generic_calls,
+                    parser.generic_matches,
+                    parser
+                        .propagation
+                        .map_or_else(Vec::new, |capture| capture.sites),
+                ));
             }
         }
         Err(parser.diagnostics)
@@ -90,6 +159,10 @@ impl Parser {
             diagnostics: Diagnostics::new(),
             depth_exceeded: false,
             statement_depth: 0,
+            generic_local_types: false,
+            generic_calls: Vec::new(),
+            generic_matches: GenericMatches::default(),
+            propagation: None,
             max_diagnostics: max_diagnostics.max(1),
         };
         let header = parser.function_header();
@@ -112,6 +185,10 @@ impl Parser {
             diagnostics: Diagnostics::new(),
             depth_exceeded: false,
             statement_depth: 0,
+            generic_local_types: false,
+            generic_calls: Vec::new(),
+            generic_matches: GenericMatches::default(),
+            propagation: None,
             max_diagnostics: max_diagnostics.max(1),
         };
         let condition = if parser.consume_punctuation('(') {
@@ -128,6 +205,35 @@ impl Parser {
         }
         Err(parser.diagnostics)
     }
+    // Original-token expression suffix for admitted generic call value ranges.
+    // Public Program grammar is unchanged; the caller verifies the exact boundary.
+    pub(crate) fn parse_expression_prefix(
+        &self,
+        tokens: &[Token],
+        max_diagnostics: usize,
+    ) -> Result<(Expression, usize), Diagnostics> {
+        let mut parser = TokenParser {
+            tokens,
+            position: 0,
+            diagnostics: Diagnostics::new(),
+            depth_exceeded: false,
+            statement_depth: 0,
+            generic_local_types: false,
+            generic_calls: Vec::new(),
+            generic_matches: GenericMatches::default(),
+            propagation: None,
+            max_diagnostics: max_diagnostics.max(1),
+        };
+        let expression = parser.expression();
+        if parser.diagnostics.is_empty() {
+            if let Some(expression) = expression {
+                return Ok((expression, parser.position));
+            }
+        } else if let Some(expression) = expression {
+            expression.drop_iterative();
+        }
+        Err(parser.diagnostics)
+    }
     pub(crate) fn parse_statement_prefix(
         &self,
         tokens: &[Token],
@@ -139,6 +245,10 @@ impl Parser {
             diagnostics: Diagnostics::new(),
             depth_exceeded: false,
             statement_depth: 0,
+            generic_local_types: false,
+            generic_calls: Vec::new(),
+            generic_matches: GenericMatches::default(),
+            propagation: None,
             max_diagnostics: max_diagnostics.max(1),
         };
         let statement = parser.statement();
@@ -183,6 +293,10 @@ impl Parser {
             diagnostics: Diagnostics::new(),
             depth_exceeded: false,
             statement_depth: 0,
+            generic_local_types: false,
+            generic_calls: Vec::new(),
+            generic_matches: GenericMatches::default(),
+            propagation: None,
             max_diagnostics,
         };
         if let Err(span) = super::limits::check_nesting(tokens, true) {
@@ -198,12 +312,22 @@ impl Parser {
     }
 }
 
+struct PropagationCapture {
+    sites: Vec<super::v2::GenericPropagationSyntaxSite>,
+    max_sites: usize,
+    max_chain: usize,
+}
+
 struct TokenParser<'a> {
     tokens: &'a [Token],
     position: usize,
     diagnostics: Diagnostics,
     depth_exceeded: bool,
     statement_depth: usize,
+    generic_local_types: bool,
+    generic_calls: Vec<(usize, Span)>,
+    generic_matches: GenericMatches,
+    propagation: Option<PropagationCapture>,
     max_diagnostics: usize,
 }
 
@@ -449,22 +573,118 @@ impl<'a> TokenParser<'a> {
         statement
     }
 
+    fn generic_match_statement(&mut self) -> Option<Statement> {
+        use super::v2::{MatchArmSyntax, MatchStatementSyntax};
+        let start = self.peek().span;
+        self.position += 1;
+        let scrutinee_span = self.peek().span;
+        let scrutinee = self.expect_identifier("match scrutinee")?;
+        self.expect_punctuation('{')?;
+        // Install the owner before parsing bodies so errors clean all completed arms.
+        let index = self.generic_matches.0.len();
+        self.generic_matches.0.push(MatchStatementSyntax {
+            scrutinee,
+            scrutinee_span,
+            arms: Vec::new(),
+            span: start,
+        });
+        while !self.check_punctuation('}') && !self.at_eof() {
+            let first = self.peek().span;
+            let mut enum_name = self.expect_identifier("enum pattern head")?;
+            if !self.consume_operator("::") {
+                self.expect_operator("::");
+                return None;
+            }
+            let mut variant_name = self.expect_identifier("enum variant")?;
+            while self.consume_operator("::") {
+                enum_name.push_str("::");
+                enum_name.push_str(&variant_name);
+                variant_name = self.expect_identifier("enum variant")?;
+            }
+            self.expect_punctuation('(')?;
+            let (binding, binding_span) = if self.check_punctuation(')') {
+                (None, None)
+            } else {
+                let span = self.peek().span;
+                let name = self.expect_identifier("payload binding")?;
+                if name == "_" {
+                    self.error("E2010", "wildcard bindings are unavailable");
+                    return None;
+                }
+                (Some(name), Some(span))
+            };
+            self.expect_punctuation(')')?;
+            if !self.consume_operator("=>") {
+                self.expect_operator("=>");
+                return None;
+            }
+            let body = self.block()?;
+            let span = Span {
+                end: self.previous().span.end,
+                ..first
+            };
+            self.generic_matches.0[index].arms.push(MatchArmSyntax {
+                enum_name,
+                variant_name,
+                binding,
+                binding_span,
+                body,
+                span,
+            });
+            if self.check_punctuation('}') {
+                break;
+            }
+            self.expect_punctuation(',')?;
+        }
+        let end = self.expect_punctuation('}')?;
+        let span = Span {
+            end: end.end,
+            ..start
+        };
+        self.generic_matches.0[index].span = span;
+        Some(Statement::Expression(Expression {
+            kind: ExpressionKind::Identifier("match".into()),
+            span,
+        }))
+    }
+
     fn statement_inner(&mut self) -> Option<Statement> {
+        if self.generic_local_types
+            && matches!(&self.peek().kind, TokenKind::Identifier(name) if name == "match")
+            && matches!(
+                self.tokens.get(self.position + 1).map(|t| &t.kind),
+                Some(TokenKind::Identifier(_))
+            )
+            && self.tokens.get(self.position + 2).map(|t| &t.kind)
+                == Some(&TokenKind::Punctuation('{'))
+        {
+            return self.generic_match_statement();
+        }
         if self.consume_keyword("let") {
             let start = self.previous().span;
             let is_mutable = self.consume_keyword("mut");
             let name = self.expect_identifier("binding name")?;
             let mut type_span = None;
+            let mut assignment_consumed = false;
             let type_name = if self.consume_punctuation(':') {
-                let mut span = self.peek().span;
-                let name = self.expect_type_name()?;
-                span.end = self.previous().span.end;
-                type_span = Some(span);
-                Some(name)
+                if self.generic_local_types {
+                    let (name, span, consumed) = self.generic_local_annotation()?;
+                    type_span = Some(span);
+                    assignment_consumed = consumed;
+                    Some(name)
+                } else {
+                    let mut span = self.peek().span;
+                    let name = self.expect_type_name()?;
+                    span.end = self.previous().span.end;
+                    type_span = Some(span);
+                    Some(name)
+                }
             } else {
                 None
             };
-            self.expect_operator("=");
+            if !assignment_consumed {
+                self.expect_operator("=");
+            }
             let value = self.expression()?;
             self.consume_punctuation(';');
             return Some(Statement::Let {
@@ -574,6 +794,11 @@ impl<'a> TokenParser<'a> {
 
     fn assignment_target(&mut self) -> Option<Expression> {
         let start = self.position;
+        let generic_calls = self.generic_calls.len();
+        let propagation_sites = self
+            .propagation
+            .as_ref()
+            .map_or(0, |capture| capture.sites.len());
         let token = self.peek().clone();
         let mut expression = match token.kind {
             TokenKind::Identifier(name) => {
@@ -586,7 +811,16 @@ impl<'a> TokenParser<'a> {
             _ => return None,
         };
         while self.consume_punctuation('[') {
+            let delimiter = self.previous().span;
             let index = self.expression()?;
+            if !self.check_depth(
+                1 + expression_depth(&expression).max(expression_depth(&index)),
+                delimiter,
+            ) {
+                expression.drop_iterative();
+                index.drop_iterative();
+                return None;
+            }
             self.expect_punctuation(']');
             expression = Expression {
                 span: Span {
@@ -601,6 +835,11 @@ impl<'a> TokenParser<'a> {
         }
         if !matches!(self.peek().kind, TokenKind::Operator("=")) {
             self.position = start;
+            self.generic_calls.truncate(generic_calls);
+            if let Some(capture) = &mut self.propagation {
+                capture.sites.truncate(propagation_sites);
+            }
+            expression.drop_iterative();
             return None;
         }
         Some(expression)
@@ -628,6 +867,10 @@ impl<'a> TokenParser<'a> {
     fn binary_expression(&mut self, minimum_precedence: u8) -> Option<Expression> {
         let mut left = self.primary()?;
         while let TokenKind::Operator(operator) = &self.peek().kind {
+            if self.propagation.is_some() && *operator == "=" {
+                self.error("E2001", "assignment requires a supported statement target");
+                return None;
+            }
             let precedence = precedence(operator);
             if precedence < minimum_precedence {
                 break;
@@ -717,7 +960,20 @@ impl<'a> TokenParser<'a> {
                 self.advance();
                 let expression = self.expression();
                 self.expect_punctuation(')');
-                expression?.kind
+                let expression = expression?;
+                if self.generic_local_types
+                    && matches!(expression.kind, ExpressionKind::StructLiteral { .. })
+                {
+                    if let Some((start, _)) = self
+                        .generic_calls
+                        .iter_mut()
+                        .rev()
+                        .find(|(start, _)| *start == expression.span.start)
+                    {
+                        *start = token.span.start;
+                    }
+                }
+                expression.kind
             }
             TokenKind::Punctuation('[') => {
                 self.advance();
@@ -750,6 +1006,63 @@ impl<'a> TokenParser<'a> {
             },
         };
         while self.consume_operator("::") {
+            if self.generic_local_types && matches!(self.peek().kind, TokenKind::Operator("<")) {
+                if !matches!(
+                    expression.kind,
+                    ExpressionKind::Identifier(_) | ExpressionKind::QualifiedName { .. }
+                ) {
+                    self.error("E2001", "explicit generic call requires a named callee");
+                    return None;
+                }
+                let mut range = self.previous().span;
+                self.advance();
+                let mut depth = 1;
+                while depth != 0 {
+                    match self.peek().kind {
+                        TokenKind::Operator("<") => {
+                            depth += 1;
+                            if depth > super::limits::MAX_STRUCTURAL_DEPTH {
+                                self.depth_error(self.peek().span);
+                                return None;
+                            }
+                        }
+                        TokenKind::Operator(">") => depth -= 1,
+                        TokenKind::Eof => {
+                            self.error("E2001", "unterminated explicit generic call arguments");
+                            return None;
+                        }
+                        _ => {}
+                    }
+                    range.end = self.advance().span.end;
+                }
+                self.generic_calls.push((expression.span.start, range));
+                expression.span.end = range.end;
+                if self.consume_operator("::") {
+                    let variant = self.expect_identifier("enum variant name")?;
+                    expression.kind = ExpressionKind::QualifiedName {
+                        path: match expression.kind {
+                            ExpressionKind::Identifier(name) => vec![name, variant],
+                            ExpressionKind::QualifiedName { mut path } => {
+                                path.push(variant);
+                                path
+                            }
+                            _ => unreachable!(),
+                        },
+                    };
+                    expression.span.end = self.previous().span.end;
+                    if !self.check_punctuation('(') {
+                        self.error("E2001", "enum variant constructors require parentheses");
+                        return None;
+                    }
+                } else if !self.check_punctuation('(') && !self.check_punctuation('{') {
+                    self.error(
+                        "E2001",
+                        "expected call, record or enum values after explicit generic types",
+                    );
+                    return None;
+                }
+                break;
+            }
             let name = self.expect_identifier("module member name")?;
             expression.kind = ExpressionKind::QualifiedName {
                 path: match expression.kind {
@@ -801,7 +1114,35 @@ impl<'a> TokenParser<'a> {
             expression.kind = ExpressionKind::StructLiteral { type_name, fields };
             expression.span.end = self.previous().span.end;
         }
+        let mut propagation_chain = 0usize;
         loop {
+            if self.propagation.is_some() && self.check_punctuation('?') {
+                let question = self.peek().span;
+                let capture = self
+                    .propagation
+                    .as_ref()
+                    .expect("selected propagation capture");
+                if capture.sites.len() >= capture.max_sites
+                    || propagation_chain >= capture.max_chain
+                {
+                    self.error("E1003", "propagation syntax site/chain allowance exceeded");
+                    return None;
+                }
+                self.advance();
+                let operand = expression.span;
+                expression.span.end = question.end;
+                self.propagation
+                    .as_mut()
+                    .expect("selected propagation capture")
+                    .sites
+                    .push(super::v2::GenericPropagationSyntaxSite {
+                        operand,
+                        question,
+                        expression: expression.span,
+                    });
+                propagation_chain += 1;
+                continue;
+            }
             if self.consume_punctuation('.') {
                 if !self.check_depth(1 + expression_depth(&expression), self.previous().span) {
                     return None;
@@ -928,6 +1269,58 @@ impl<'a> TokenParser<'a> {
         }
     }
 
+    fn generic_local_annotation(&mut self) -> Option<(String, Span, bool)> {
+        let mut name = String::new();
+        let mut assigned = false;
+        let span = self.generic_local_type(1, &mut name, &mut assigned)?;
+        Some((name, span, assigned))
+    }
+    fn generic_local_type(
+        &mut self,
+        depth: usize,
+        out: &mut String,
+        assigned: &mut bool,
+    ) -> Option<Span> {
+        if depth > super::limits::MAX_STRUCTURAL_DEPTH {
+            self.depth_error(self.peek().span);
+            return None;
+        }
+        let mut span = self.peek().span;
+        if self.consume_punctuation('[') {
+            out.push('[');
+            self.generic_local_type(depth + 1, out, assigned)?;
+            span.end = self.expect_punctuation(']')?.end;
+            out.push(']');
+            return Some(span);
+        }
+        out.push_str(&self.expect_identifier("type name")?);
+        while self.consume_operator("::") {
+            out.push_str("::");
+            out.push_str(&self.expect_identifier("type member name")?);
+        }
+        span.end = self.previous().span.end;
+        if self.consume_operator("<") {
+            out.push('<');
+            loop {
+                self.generic_local_type(depth + 1, out, assigned)?;
+                if self.consume_operator(">") {
+                    span.end = self.previous().span.end;
+                    out.push('>');
+                    break;
+                }
+                if matches!(self.peek().kind, TokenKind::Operator(">=")) && depth == 1 {
+                    let token = self.advance();
+                    span.end = token.span.start + 1;
+                    out.push('>');
+                    *assigned = true;
+                    break;
+                }
+                self.expect_punctuation(',')?;
+                out.push(',');
+            }
+        }
+        Some(span)
+    }
     fn expect_type_name(&mut self) -> Option<String> {
         let mut arrays = 0;
         while self.consume_punctuation('[') {
@@ -1622,5 +2015,31 @@ mod tests {
             .parse_source("let value = 1")
             .expect_err("source should fail");
         assert_eq!(diagnostics.items[0].code, "E2000");
+    }
+}
+
+#[cfg(test)]
+mod generic_call_adapter_tests {
+    use super::*;
+    #[test]
+    fn speculative_index_fallback_keeps_one_original_call_range_and_legacy_stays_strict() {
+        let source = "{xs[index::<T>()];}";
+        let tokens = Lexer::new().tokenize(source).unwrap();
+        let (body, used, calls, _matches) = Parser::new()
+            .parse_generic_block_prefix(&tokens, 8)
+            .unwrap();
+        assert_eq!(body.len(), 1);
+        assert_eq!(used, tokens.len() - 1);
+        assert_eq!(calls.len(), 1);
+        assert_eq!(&source[calls[0].1.start..calls[0].1.end], "::<T>");
+        for statement in body {
+            if let Statement::Expression(expression) = statement {
+                expression.drop_iterative();
+            }
+        }
+        assert!(Parser::new().parse_block_prefix(&tokens, 8).is_err());
+        assert!(Parser::new()
+            .parse_source("fn main(){identity::<Int>(1);}")
+            .is_err());
     }
 }

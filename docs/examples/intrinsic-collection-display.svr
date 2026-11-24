@@ -1,0 +1,12 @@
+fn show<T>(value:T)->String{
+    return std::to_string(value);
+}
+fn main()->Bool{
+    let empty:std::Map<String,Int>=std::map_new();
+    let counts=std::map_insert(std::map_insert(empty,"requests",7),"errors",3);
+    let members:std::Set<String>=std::set_new();
+    let flags=std::set_insert(std::set_insert(members,"λ"),"😀");
+    return show::<std::Map<String,Int>>(counts)=="std::Map { requests: 7, errors: 3 }"
+        && std::to_string(flags)=="std::Set { λ, 😀 }"
+        && std::to_string(empty)=="std::Map { }";
+}

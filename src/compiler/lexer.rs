@@ -73,6 +73,23 @@ impl Lexer {
         source: &str,
         limits: FrontendLimits,
     ) -> Result<Vec<Token>, (Diagnostics, Option<LexLimitKind>)> {
+        self.tokenize_mode(source, limits, false)
+    }
+    // Private syntax-only propagation admission; ordinary lexer diagnostics stay strict.
+    pub(crate) fn tokenize_propagation(
+        &self,
+        source: &str,
+        limits: FrontendLimits,
+    ) -> Result<Vec<Token>, Diagnostics> {
+        self.tokenize_mode(source, limits, true)
+            .map_err(|(diagnostics, _)| diagnostics)
+    }
+    fn tokenize_mode(
+        &self,
+        source: &str,
+        limits: FrontendLimits,
+        propagation: bool,
+    ) -> Result<Vec<Token>, (Diagnostics, Option<LexLimitKind>)> {
         let mut scanner = Scanner::new(source);
         if source.len() > limits.max_source_bytes {
             scanner.resource_error(format!(
@@ -125,7 +142,7 @@ impl Lexer {
                 }
             } else if let Some(operator) = scanner.operator() {
                 TokenKind::Operator(operator)
-            } else if "{}()[],:.;".contains(character) {
+            } else if "{}()[],:.;".contains(character) || (propagation && character == '?') {
                 scanner.advance();
                 TokenKind::Punctuation(character)
             } else {

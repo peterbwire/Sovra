@@ -230,8 +230,10 @@ fn spacing(previous: Option<&TokenKind>, current: &TokenKind) -> bool {
     let Some(previous) = previous else {
         return false;
     };
-    if matches!(current, P(')' | ']' | ',' | ';' | ':' | '.') | O("::"))
-        || matches!(previous, P('(' | '[' | '.') | O("::"))
+    if matches!(
+        current,
+        P(')' | ']' | ',' | ';' | ':' | '.' | '?') | O("::")
+    ) || matches!(previous, P('(' | '[' | '.') | O("::"))
     {
         return false;
     }

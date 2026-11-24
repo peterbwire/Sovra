@@ -16,7 +16,13 @@ const directories = readdirSync(examples, { withFileTypes: true }).filter(entry 
 assert.deepEqual(catalog.examples.map(entry => entry.directory).sort(), directories, 'Every example directory needs one classification');
 assert.deepEqual([...catalog.internal_tools].sort(), readdirSync(examples).filter(name => name.endsWith('.rs')).sort());
 for (const tool of catalog.internal_tools) assert.ok(existsSync(join(examples, tool)));
-const kinds = new Set(['executable', 'executable-package', 'host-component', 'checker-only', 'proposal']);
+const kinds = new Set(['executable', 'executable-package', 'host-component', 'checker-only', 'proposal', 'experimental']);
+const profiles = {
+    v2: ['--experimental-v2'],
+    generics: ['--experimental-generics'],
+    collections: ['--experimental-generics', '--experimental-collections'],
+    data: ['--experimental-generics', '--experimental-data'],
+};
 const scratch = mkdtempSync(join(tmpdir(), 'sovra-example-catalog-'));
 const results = [];
 function run(binary, args) {
@@ -30,6 +36,24 @@ try {
         const directory = join(examples, entry.directory);
         const target = entry.entry ? resolve(directory, entry.entry) : directory;
         assert.ok(!relative(directory, target).startsWith('..') && existsSync(target));
+        if (entry.supported_hosts) {
+            assert.ok(Array.isArray(entry.supported_hosts) && entry.supported_hosts.every(host => ['linux', 'win32', 'darwin'].includes(host)));
+            if (!entry.supported_hosts.includes(process.platform)) {
+                results.push({ directory: entry.directory, kind: entry.kind, checked: false, executed: false, unsupported_host: process.platform });
+                continue;
+            }
+        }
+        if (entry.kind === 'experimental') {
+            assert.ok(Object.hasOwn(profiles, entry.profile));
+            assert.ok(['run', 'test', 'none'].includes(entry.execution));
+            const flags = profiles[entry.profile];
+            const verb = entry.execution === 'test' ? 'test' : 'check';
+            const report = JSON.parse(run(compiler, [verb, ...flags, '--format', 'json', target]));
+            assert.equal(report.success, true);
+            if (entry.execution === 'run') run(compiler, ['run', ...flags, target]);
+            results.push({ directory: entry.directory, kind: entry.kind, profile: entry.profile, checked: true, executed: entry.execution !== 'none', engines: entry.execution === 'none' ? [] : ['rust-vm'] });
+            continue;
+        }
         const args = ['check', '--format', 'json'];
         if (entry.kind === 'checker-only') args.push('--service-calls');
         const report = JSON.parse(run(compiler, [...args, target]));

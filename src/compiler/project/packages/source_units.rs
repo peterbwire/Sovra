@@ -289,7 +289,11 @@ fn read_guarded_with(
     before_open();
     // Linux UAPI values, restricted to the supported architectures above.
     const O_NONBLOCK: i32 = 0o4000;
-    const O_NOFOLLOW: i32 = 0o400000;
+    const O_NOFOLLOW: i32 = if cfg!(target_arch = "aarch64") {
+        0o100000
+    } else {
+        0o400000
+    };
     let file = OpenOptions::new()
         .read(true)
         .custom_flags(O_NONBLOCK | O_NOFOLLOW)

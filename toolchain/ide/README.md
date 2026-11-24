@@ -10,6 +10,12 @@ For opt-in enum/match diagnostics, formatting and source tasks, see
 checked evidence. Enum/variant outline and constructor/match variant definitions
 are also available; package overlays and broader type/field navigation remain open. Both modes support compiler-owned document formatting.
 
+For generic functions/types, Option/Result/? diagnostics and standalone Check/Run,
+see [generic editor mode](../../docs/reference/generic-ide-v2.md). Set
+`"sovra.experimentalGenerics": true`, disable `experimentalV2`, and restart the
+server. Checked declaration outlines and direct-call definition/hover are available. Type-use navigation outside function headers,
+formatting, IR/JS tasks and package targeting remain unavailable. This mode does not run code while diagnosing edits.
+
 ## VS Code
 
 Requires VS Code 1.90+, Node.js **22+** and a built/installed Sovra compiler.
@@ -224,3 +230,7 @@ run tasks with spaces in source paths. A separate restricted workspace verifies
 that compiler diagnostics remain disabled. JSON results are written under
 `target/ide/`. Windows/macOS VS Code hosts and other editor clients remain
 unverified locally. These are local tests, not Marketplace publication.
+
+See [checked generic local navigation](../../docs/reference/generic-local-navigation-v2.md) for parameter/local/payload definitions and checked type hover.
+
+See [checked function-header type navigation](../../docs/reference/generic-type-navigation-v2.md) for record/enum/alias annotation definitions and hover; other type contexts remain open.

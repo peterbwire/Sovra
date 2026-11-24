@@ -1330,9 +1330,26 @@ mod tests {
 }
 
 mod root_source;
-pub use root_source::{capture_root_source, CapturedRootSource};
+pub use root_source::{
+    capture_root_source, capture_root_source_with_source_limit, CapturedRootSource,
+};
 
 pub use locks::{
     check_root_source_lock, generate_root_source_lock, verify_existing_root_source_lock,
     verify_root_source_lock, write_root_source_lock,
 };
+
+mod captured_sources;
+pub use captured_sources::{
+    capture_package_sources, CapturedPackageSource, CapturedPackageSources, PackageCaptureLimits,
+};
+pub use locks::{
+    generate_captured_source_lock, verify_captured_source_lock,
+    verify_existing_captured_source_lock,
+};
+
+pub(crate) fn generic_package_error(path: &Path, span: Span, message: String) -> Diagnostics {
+    error("E3124", message, Some((path, span)))
+}
+
+pub use locks::{check_captured_source_lock, write_captured_source_lock};

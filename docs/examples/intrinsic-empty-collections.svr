@@ -1,0 +1,10 @@
+// Qualified through the explicit collection compiler/VM library profile only.
+// The ordinary CLI and native image profiles do not yet admit these operations.
+fn verify() -> Bool {
+    let map: std::Map<String, Int> = std::map_new();
+    let set: std::Set<String> = std::set_new();
+    return std::map_len(map) == 0 && std::set_len(set) == 0;
+}
+fn main() {
+    if (verify() == false) { let failure = 1 / 0; }
+}

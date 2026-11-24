@@ -7,6 +7,9 @@ svr fmt [--check | --write] [--] SOURCE.svr
 svr fmt --package [--check | --write] [--] DIRECTORY
 ```
 
+[Explicit generic/data formatting](generic-formatting.md) uses
+`--experimental-generics`, including postfix `?` and package selection.
+
 Default mode prints formatted source without modifying the input. `--check`
 prints no source and exits 1 if formatting is needed, otherwise 0. `--write`
 replaces changed files and reports paths on stderr; unchanged timestamps remain.

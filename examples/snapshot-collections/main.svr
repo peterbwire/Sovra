@@ -1,0 +1,31 @@
+use collections::maps;
+use collections::sets;
+
+fn check_collections() -> std::Result<Bool, std::Error> {
+    let empty = collections::maps::map_new::<String, Int>();
+    let first = collections::maps::map_insert::<String, Int>(empty, "first", 1)?;
+    let second = collections::maps::map_insert::<String, Int>(first, "second", 2)?;
+    let replaced = collections::maps::map_insert::<String, Int>(second, "first", 3)?;
+    let keys = collections::maps::map_keys::<String, Int>(replaced)?;
+    let values = collections::maps::map_values::<String, Int>(replaced)?;
+    let empty_set = collections::sets::set_new::<Int>();
+    let once = collections::sets::set_insert::<Int>(empty_set, 7)?;
+    let twice = collections::sets::set_insert::<Int>(once, 7)?;
+    let count = collections::sets::set_len::<Int>(twice)?;
+    return std::Result::<Bool, std::Error>::Ok(keys[0] == "first" && keys[1] == "second" && values[0] == 3 && values[1] == 2 && count == 1);
+}
+
+fn passed(result: std::Result<Bool, std::Error>) -> Bool {
+    match result {
+        std::Result::Ok(value) => { return value; },
+        std::Result::Err(error) => { return false; }
+    }
+}
+
+fn main() {
+    if (passed(check_collections()) == false) { let failed = 1 / 0; }
+}
+
+fn test_collection_consumer() {
+    if (passed(check_collections()) == false) { let failed = 1 / 0; }
+}

@@ -113,6 +113,7 @@ enum Node {
     String(String),
     Array(Vec<usize>),
     Record {
+        owner: Option<super::RuntimeRecordId>,
         name: String,
         fields: Vec<(String, usize)>,
     },
@@ -177,6 +178,7 @@ impl RuntimeValueV2 {
         }
         let root = nodes.len();
         nodes.push(Node::Record {
+            owner: None,
             name: name.to_owned(),
             fields: labels,
         });
@@ -536,6 +538,7 @@ impl RuntimeValueV2 {
                 Work::Record(r) => {
                     let children = results.split_off(results.len() - r.fields.len());
                     Node::Record {
+                        owner: None,
                         name: r.type_name.clone(),
                         fields: r
                             .fields
@@ -614,10 +617,98 @@ impl RuntimeValueV2 {
         let (mut nodes, roots) = Self::merge(values)?;
         let root = nodes.len();
         nodes.push(Node::Record {
+            owner: None,
             name: name.into(),
             fields: labels.into_iter().map(str::to_owned).zip(roots).collect(),
         });
         Ok(Self { nodes, root })
+    }
+    /// Construct a sealed record from checked schema evidence with exact field types.
+    /// Children transfer; only wrapper/type/field labels consume new materialization.
+    /// Validation and transfer work use the caller's finite shared collection allowance.
+    pub fn checked_record(
+        env: &CheckedEnumTypes,
+        id: super::RuntimeRecordId,
+        fields: Vec<(&str, Self)>,
+        fuel: &mut RuntimeValueFuel,
+        work: &mut super::RuntimeSetWork,
+    ) -> Result<Self, super::RuntimeMapError> {
+        use super::{RuntimeMapError, RuntimeSetError};
+        let (name, schema) = env.record_schema(id).ok_or(RuntimeMapError::ValueType)?;
+        if fields.len() != schema.len() {
+            return Err(RuntimeMapError::ValueType);
+        }
+        let mut seen = HashSet::new();
+        let mut text = name.len() as u64;
+        let mut total = 1usize;
+        for (label, value) in &fields {
+            work.charge(
+                1u64.checked_add(label.len() as u64)
+                    .ok_or(RuntimeSetError::Capacity)?,
+            )?;
+            if !seen.insert(*label) {
+                return Err(RuntimeMapError::ValueType);
+            }
+            let ty = schema.get(*label).ok_or(RuntimeMapError::ValueType)?;
+            value.collection_check_type(env, ty, work)?;
+            // Validate transitive ownership, including legacy enum payloads.
+            work.charge(1)?;
+            value.collection_enum_size(value.root, work)?;
+            total = total
+                .checked_add(value.nodes.len())
+                .ok_or(RuntimeSetError::Capacity)?;
+            text = text
+                .checked_add(label.len() as u64)
+                .ok_or(RuntimeSetError::Capacity)?;
+        }
+        fuel.preflight(1, text)?;
+        work.charge(
+            (total as u64)
+                .checked_add(text)
+                .ok_or(RuntimeSetError::Capacity)?,
+        )?;
+        fuel.admit(1, text)?;
+        let (labels, values): (Vec<_>, Vec<_>) = fields.into_iter().unzip();
+        let (mut nodes, roots) = Self::merge(values)?;
+        let root = nodes.len();
+        nodes.push(Node::Record {
+            owner: Some(id),
+            name: name.to_owned(),
+            fields: labels.into_iter().map(str::to_owned).zip(roots).collect(),
+        });
+        Ok(Self { nodes, root })
+    }
+    fn collection_check_type(
+        &self,
+        env: &CheckedEnumTypes,
+        expected: &Type,
+        work: &mut super::RuntimeSetWork,
+    ) -> Result<(), super::RuntimeMapError> {
+        use super::RuntimeMapError;
+        let mut pending = vec![(self.root, expected)];
+        while let Some((index, ty)) = pending.pop() {
+            work.charge(1)?;
+            match (ty, &self.nodes[index]) {
+                (Type::Unit, Node::Unit)
+                | (Type::Int, Node::Int(_))
+                | (Type::Float, Node::Float(_))
+                | (Type::Bool, Node::Bool(_))
+                | (Type::String, Node::String(_)) => {}
+                (Type::Array(item), Node::Array(values)) => {
+                    work.charge(values.len() as u64)?;
+                    pending.extend(values.iter().map(|index| (*index, item.as_ref())));
+                }
+                (Type::Named(name), Node::Enum { id, .. }) if env.find(name) == Some(*id) => {}
+                (
+                    Type::Named(name),
+                    Node::Record {
+                        owner: Some(id), ..
+                    },
+                ) if env.find_record(name) == Some(*id) => {}
+                _ => return Err(RuntimeMapError::ValueType),
+            }
+        }
+        Ok(())
     }
     /// Materialize one nominal enum wrapper and owned labels, transferring the existing payload.
     /// Complete payload type validation precedes admission; numeric widening costs zero as in v1.
@@ -711,11 +802,14 @@ impl RuntimeValueV2 {
                         let Node::Record {
                             name: actual,
                             fields,
+                            owner,
                         } = node
                         else {
                             return Err(RuntimeValueError::TypeMismatch);
                         };
-                        if actual != name {
+                        if actual != name
+                            || owner.is_some_and(|id| Some(id) != env.find_record(name))
+                        {
                             return Err(RuntimeValueError::TypeMismatch);
                         }
                         let schema = env
@@ -765,6 +859,136 @@ impl RuntimeValueV2 {
         }
         self.snapshot_at(payload.ok_or(RuntimeValueError::PayloadArity)?, fuel)
     }
+    // Collection ingress is exact and bounded; nominal records require sealed owners.
+    pub(super) fn collection_shape(
+        &self,
+        ty: super::RuntimeMapValueType,
+        work: &mut super::RuntimeSetWork,
+    ) -> Result<(u64, u64), super::RuntimeMapError> {
+        use super::{RuntimeMapError, RuntimeMapPrimitive as P, RuntimeSetError};
+        let mut pending = vec![(self.root, ty.array_depth())];
+        let (mut nodes, mut text) = (0u64, 0u64);
+        while let Some((index, depth)) = pending.pop() {
+            work.charge(1)?;
+            nodes = nodes.checked_add(1).ok_or(RuntimeSetError::Capacity)?;
+            let node = &self.nodes[index];
+            if depth > 0 {
+                let Node::Array(items) = node else {
+                    return Err(RuntimeMapError::ValueType);
+                };
+                work.charge(items.len() as u64)?;
+                pending.extend(items.iter().map(|i| (*i, depth - 1)));
+            } else {
+                match (ty.leaf(), node) {
+                    (P::Unit, Node::Unit)
+                    | (P::Int, Node::Int(_))
+                    | (P::Float, Node::Float(_))
+                    | (P::Bool, Node::Bool(_)) => {}
+                    (P::String, Node::String(value)) => {
+                        text = text
+                            .checked_add(value.len() as u64)
+                            .ok_or(RuntimeSetError::Capacity)?;
+                    }
+                    (
+                        P::Record(expected),
+                        Node::Record {
+                            owner: Some(actual),
+                            ..
+                        },
+                    ) if expected == *actual => {
+                        let (owned_nodes, owned_text) = self.collection_enum_size(index, work)?;
+                        nodes = nodes
+                            .checked_add(owned_nodes - 1)
+                            .ok_or(RuntimeSetError::Capacity)?;
+                        text = text
+                            .checked_add(owned_text)
+                            .ok_or(RuntimeSetError::Capacity)?;
+                    }
+                    (P::Enum(expected), Node::Enum { id, .. }) if expected == *id => {
+                        // Root constructor already sealed enum shape/identity. Recount every
+                        // descendant under work before copying; reject legacy named records.
+                        let (payload_nodes, payload_text) =
+                            self.collection_enum_size(index, work)?;
+                        nodes = nodes
+                            .checked_add(payload_nodes - 1)
+                            .ok_or(RuntimeSetError::Capacity)?;
+                        text = text
+                            .checked_add(payload_text)
+                            .ok_or(RuntimeSetError::Capacity)?;
+                    }
+                    _ => return Err(RuntimeMapError::ValueType),
+                }
+            }
+        }
+        Ok((nodes, text))
+    }
+    fn collection_enum_size(
+        &self,
+        root: usize,
+        work: &mut super::RuntimeSetWork,
+    ) -> Result<(u64, u64), super::RuntimeMapError> {
+        use super::{RuntimeMapError, RuntimeSetError};
+        let mut pending = vec![root];
+        let (mut nodes, mut text) = (0u64, 0u64);
+        while let Some(index) = pending.pop() {
+            // The enclosing shape check already charged and checked the root.
+            if index != root {
+                work.charge(1)?;
+            }
+            nodes = nodes.checked_add(1).ok_or(RuntimeSetError::Capacity)?;
+            let owned = match &self.nodes[index] {
+                Node::Unit | Node::Bool(_) | Node::Int(_) | Node::Float(_) => 0,
+                Node::String(value) => value.len() as u64,
+                Node::Array(items) => {
+                    work.charge(items.len() as u64)?;
+                    pending.extend(items);
+                    0
+                }
+                Node::Enum {
+                    name,
+                    label,
+                    payload,
+                    ..
+                } => {
+                    if let Some(child) = payload {
+                        work.charge(1)?;
+                        pending.push(*child);
+                    }
+                    (name.len() as u64)
+                        .checked_add(label.len() as u64)
+                        .ok_or(RuntimeSetError::Capacity)?
+                }
+                Node::Record {
+                    owner: Some(_),
+                    name,
+                    fields,
+                } => {
+                    let mut bytes = name.len() as u64;
+                    for (label, child) in fields {
+                        work.charge(
+                            1u64.checked_add(label.len() as u64)
+                                .ok_or(RuntimeSetError::Capacity)?,
+                        )?;
+                        bytes = bytes
+                            .checked_add(label.len() as u64)
+                            .ok_or(RuntimeSetError::Capacity)?;
+                        pending.push(*child);
+                    }
+                    bytes
+                }
+                Node::Record { owner: None, .. } => return Err(RuntimeMapError::ValueType),
+            };
+            text = text.checked_add(owned).ok_or(RuntimeSetError::Capacity)?;
+        }
+        Ok((nodes, text))
+    }
+    // Callers must atomically admit the complete collection result before using this.
+    pub(super) fn collection_copy_admitted(&self) -> Self {
+        Self {
+            nodes: self.nodes.clone(),
+            root: self.root,
+        }
+    }
     /// Full owned snapshot, admitted atomically before label/payload copying.
     pub fn snapshot(&self, fuel: &mut RuntimeValueFuel) -> Result<Self, RuntimeValueError> {
         let size = self.logical_footprint()?;
@@ -787,6 +1011,13 @@ impl RuntimeValueV2 {
             *items.get(index).ok_or(RuntimeValueError::MissingMember)?,
             fuel,
         )
+    }
+    /// Root record owner from checked construction; legacy/name-only records return None.
+    pub fn record_owner(&self) -> Option<super::RuntimeRecordId> {
+        match &self.nodes[self.root] {
+            Node::Record { owner, .. } => *owner,
+            _ => None,
+        }
     }
     /// Snapshot one record field after validating its label.
     pub fn field_snapshot(
@@ -893,7 +1124,12 @@ impl RuntimeValueV2 {
             let ids = results.split_off(results.len() - children.len());
             let node = match source {
                 Node::Array(_) => Node::Array(ids),
-                Node::Record { name, fields } => Node::Record {
+                Node::Record {
+                    owner,
+                    name,
+                    fields,
+                } => Node::Record {
+                    owner: *owner,
                     name: name.clone(),
                     fields: fields.iter().map(|(n, _)| n.clone()).zip(ids).collect(),
                 },
@@ -939,7 +1175,7 @@ impl RuntimeValueV2 {
                     pending.extend(items);
                     (0, add(2, separators(items.len())?)?)
                 }
-                Node::Record { name, fields } => {
+                Node::Record { name, fields, .. } => {
                     let mut text = bytes(name)?;
                     let mut display = add(add(text, 5)?, separators(fields.len())?)?;
                     for (label, value) in fields {
@@ -1006,7 +1242,7 @@ impl RuntimeValueV2 {
                             }
                         }
                     }
-                    Node::Record { name, fields } => {
+                    Node::Record { name, fields, .. } => {
                         text.push_str(name);
                         text.push_str(" { ");
                         pending.push(Work::Text(" }"));
@@ -1041,6 +1277,21 @@ impl RuntimeValueV2 {
     }
     /// Structural snapshot equality, with exact enum identity/variant and legacy numeric rules.
     pub fn structurally_equal(&self, other: &Self) -> bool {
+        self.compare_values(other, None).unwrap_or(false)
+    }
+    // Caller admits the linear node/text comparison; charge record field searches additionally.
+    pub(super) fn collection_equal_admitted(
+        &self,
+        other: &Self,
+        work: &mut super::RuntimeSetWork,
+    ) -> Result<bool, super::RuntimeSetError> {
+        self.compare_values(other, Some(work))
+    }
+    fn compare_values(
+        &self,
+        other: &Self,
+        mut work: Option<&mut super::RuntimeSetWork>,
+    ) -> Result<bool, super::RuntimeSetError> {
         let mut pending = vec![(self.root, other.root)];
         while let Some((a, b)) = pending.pop() {
             match (&self.nodes[a], &other.nodes[b]) {
@@ -1054,14 +1305,35 @@ impl RuntimeValueV2 {
                 (Node::Array(a), Node::Array(b)) if a.len() == b.len() => {
                     pending.extend(a.iter().copied().zip(b.iter().copied()))
                 }
-                (Node::Record { name: a, fields: x }, Node::Record { name: b, fields: y })
-                    if a == b && x.len() == y.len() =>
-                {
+                (
+                    Node::Record {
+                        owner: oa,
+                        name: a,
+                        fields: x,
+                    },
+                    Node::Record {
+                        owner: ob,
+                        name: b,
+                        fields: y,
+                    },
+                ) if oa == ob && a == b && x.len() == y.len() => {
                     for (name, value) in x {
-                        let Some((_, other)) = y.iter().find(|(n, _)| n == name) else {
-                            return false;
-                        };
-                        pending.push((*value, *other));
+                        let mut found = None;
+                        for (label, child) in y {
+                            if let Some(w) = work.as_deref_mut() {
+                                let cost = 1u64
+                                    .checked_add(name.len() as u64)
+                                    .and_then(|n| n.checked_add(label.len() as u64))
+                                    .ok_or(super::RuntimeSetError::Capacity)?;
+                                w.charge(cost)?;
+                            }
+                            if name == label {
+                                found = Some(*child);
+                                break;
+                            }
+                        }
+                        let Some(other) = found else { return Ok(false) };
+                        pending.push((*value, other));
                     }
                 }
                 (
@@ -1080,12 +1352,12 @@ impl RuntimeValueV2 {
                 ) if a == b && x == y => match (p, q) {
                     (Some(a), Some(b)) => pending.push((*a, *b)),
                     (None, None) => {}
-                    _ => return false,
+                    _ => return Ok(false),
                 },
-                _ => return false,
+                _ => return Ok(false),
             }
         }
-        true
+        Ok(true)
     }
 }
 fn length(n: usize) -> Result<(), RuntimeValueError> {

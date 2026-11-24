@@ -544,3 +544,27 @@ using this same version-one report. Module source errors retain module filenames
 and zero-based locations. Partial scanner success cannot mask registered source
 errors. Context/overlay modes remain explicitly unavailable for registered graphs;
 see the [CLI contract](registered-package-cli.md).
+
+
+[Explicit standalone generic checks](generic-cli-v2.md) reuse this report with
+E3123 for generic compilation/entry refusal and mapped original-file primary
+locations, or null when unavailable. They do not publish symbols. Runtime E3125
+errors are human-only under generic `run`.
+
+
+[Generic root-package checks](generic-packages-v2.md) use kind `project` with
+canonical entry-owned primary spans. Existing package E3124 and lock E4165 errors
+retain their provenance. Generic runtime errors now use E3125 to avoid the earlier
+experimental E3124 collision; runtime generic reports remain human-only.
+
+Generic mode has a separate [package-task context](generic-package-tasks.md):
+`check --experimental-generics --format json --package-context DIRECTORY` returns
+explicit profile metadata with context schema two and registered `sources`. It
+does not validate or execute source; legacy context schema one is unchanged.
+
+[Unsaved generic package diagnostics](generic-package-diagnostics.md) use
+`check --experimental-generics --format json --overlays-stdin DIRECTORY`. The
+version-one overlay framing is reused with an explicit generic profile in the
+response. Optional [generic package function navigation](generic-package-navigation.md)
+uses the fingerprinted `package_symbols` envelope; it does not use legacy AST
+bindings.

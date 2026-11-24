@@ -1,0 +1,6 @@
+[project]
+name = "intrinsic-collection-consumer"
+entry = "main.svr"
+
+[dependencies.helpers]
+path = "../../generic-packages/helpers"

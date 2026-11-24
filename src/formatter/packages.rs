@@ -1,6 +1,6 @@
 //! Bounded package graph formatting with preflight and staged publication.
 
-use super::{files::Snapshot, format_source, Failure, Mode};
+use super::{files::Snapshot, Failure, Mode, Profile};
 use crate::compiler::{diagnostics::terminal_message, project::packages};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -66,14 +66,33 @@ impl Selection {
     }
 }
 
-pub(super) fn execute(root: &Path, mode: Mode, experimental: bool) -> Result<bool, Failure> {
-    execute_with(root, mode, experimental, |_| Ok(()))
+pub(super) fn execute(root: &Path, mode: Mode, profile: Profile) -> Result<bool, Failure> {
+    execute_profile(root, mode, profile, |_| Ok(()))
 }
 
+#[cfg(test)]
 fn execute_with(
     root: &Path,
     mode: Mode,
     experimental: bool,
+    checkpoint: impl FnMut(usize) -> Result<(), String>,
+) -> Result<bool, Failure> {
+    execute_profile(
+        root,
+        mode,
+        if experimental {
+            Profile::V2
+        } else {
+            Profile::Legacy
+        },
+        checkpoint,
+    )
+}
+
+fn execute_profile(
+    root: &Path,
+    mode: Mode,
+    profile: Profile,
     mut checkpoint: impl FnMut(usize) -> Result<(), String>,
 ) -> Result<bool, Failure> {
     if mode == Mode::Write && !cfg!(any(windows, target_os = "linux")) {
@@ -109,12 +128,7 @@ fn execute_with(
     for path in entries {
         let snapshot = Snapshot::read(&path).map_err(|e| at(&path, e.into()))?;
         charge(&mut input_bytes, snapshot.text.len(), MAX_INPUT_BYTES)?;
-        let output = if experimental {
-            super::v2::format_source(&snapshot.text)
-        } else {
-            format_source(&snapshot.text)
-        }
-        .map_err(|e| at(&path, e))?;
+        let output = profile.format(&snapshot.text).map_err(|e| at(&path, e))?;
         charge(&mut output_bytes, output.len(), MAX_OUTPUT_BYTES)?;
         if mode == Mode::Write {
             snapshot.writable().map_err(|e| at(&path, e.into()))?;

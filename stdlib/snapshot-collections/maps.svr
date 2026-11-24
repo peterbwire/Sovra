@@ -1,0 +1,148 @@
+mod maps {
+    export struct Entry<K: std::Key, V> { key: K, value: V }
+    export struct SnapshotMap<K: std::Key, V> { entries: [Entry<K, V>] }
+    export struct Removal<K: std::Key, V> { map: SnapshotMap<K, V>, value: V }
+
+    fn invalid() -> std::Error {
+        return std::Error { code: "invalid_snapshot_map", message: "map contains duplicate keys", offset: std::Option::<Int>::None() };
+    }
+
+    fn capacity() -> std::Error {
+        return std::Error { code: "collection_capacity", message: "collection length exceeds representation ceiling", offset: std::Option::<Int>::None() };
+    }
+
+    fn validate<K: std::Key, V>(map: SnapshotMap<K, V>) -> std::Result<Bool, std::Error> {
+        let entries = map.entries;
+        let mut i = 0;
+        while i < std::array_len(entries) {
+            let mut j = i + 1;
+            while j < std::array_len(entries) {
+                if (entries[i].key == entries[j].key) {
+                    return std::Result::<Bool, std::Error>::Err(invalid());
+                }
+                j = j + 1;
+            }
+            i = i + 1;
+        }
+        return std::Result::<Bool, std::Error>::Ok(true);
+    }
+
+    fn position<K: std::Key, V>(entries: [Entry<K, V>], key: K) -> std::Option<Int> {
+        let mut i = 0;
+        while i < std::array_len(entries) {
+            if (entries[i].key == key) { return std::Option::<Int>::Some(i); }
+            i = i + 1;
+        }
+        return std::Option::<Int>::None();
+    }
+
+    export fn map_new<K: std::Key, V>() -> SnapshotMap<K, V> {
+        return SnapshotMap::<K, V> { entries: [] };
+    }
+
+    export fn map_len<K: std::Key, V>(map: SnapshotMap<K, V>) -> std::Result<Int, std::Error> {
+        validate::<K, V>(map)?;
+        return std::Result::<Int, std::Error>::Ok(std::array_len(map.entries));
+    }
+
+    export fn map_contains<K: std::Key, V>(map: SnapshotMap<K, V>, key: K) -> std::Result<Bool, std::Error> {
+        validate::<K, V>(map)?;
+        let found = position::<K, V>(map.entries, key);
+        match found {
+            std::Option::Some(index) => { return std::Result::<Bool, std::Error>::Ok(true); },
+            std::Option::None() => { return std::Result::<Bool, std::Error>::Ok(false); }
+        }
+    }
+
+    export fn map_get<K: std::Key, V>(map: SnapshotMap<K, V>, key: K) -> std::Result<std::Option<V>, std::Error> {
+        validate::<K, V>(map)?;
+        let entries = map.entries;
+        let found = position::<K, V>(entries, key);
+        match found {
+            std::Option::Some(index) => { return std::Result::<std::Option<V>, std::Error>::Ok(std::Option::<V>::Some(entries[index].value)); },
+            std::Option::None() => { return std::Result::<std::Option<V>, std::Error>::Ok(std::Option::<V>::None()); }
+        }
+    }
+
+    export fn map_insert<K: std::Key, V>(map: SnapshotMap<K, V>, key: K, value: V) -> std::Result<SnapshotMap<K, V>, std::Error> {
+        validate::<K, V>(map)?;
+        let mut entries = map.entries;
+        let found = position::<K, V>(entries, key);
+        match found {
+            std::Option::Some(index) => {
+                entries[index] = Entry::<K, V> { key: key, value: value };
+                return std::Result::<SnapshotMap<K, V>, std::Error>::Ok(SnapshotMap::<K, V> { entries: entries });
+            },
+            std::Option::None() => {
+                if (std::array_len(entries) >= 4294967295) { return std::Result::<SnapshotMap<K, V>, std::Error>::Err(capacity()); }
+                let grown = std::array_append(entries, Entry::<K, V> { key: key, value: value });
+                return std::Result::<SnapshotMap<K, V>, std::Error>::Ok(SnapshotMap::<K, V> { entries: grown });
+            }
+        }
+    }
+
+    export fn map_remove<K: std::Key, V>(map: SnapshotMap<K, V>, key: K) -> std::Result<std::Option<Removal<K, V>>, std::Error> {
+        validate::<K, V>(map)?;
+        let entries = map.entries;
+        let found = position::<K, V>(entries, key);
+        match found {
+            std::Option::Some(index) => {
+                let before = std::array_slice(entries, 0, index);
+                let after = std::array_slice(entries, index + 1, std::array_len(entries));
+                let updated = SnapshotMap::<K, V> { entries: std::array_concat(before, after) };
+                let removed = Removal::<K, V> { map: updated, value: entries[index].value };
+                return std::Result::<std::Option<Removal<K, V>>, std::Error>::Ok(std::Option::<Removal<K, V>>::Some(removed));
+            },
+            std::Option::None() => { return std::Result::<std::Option<Removal<K, V>>, std::Error>::Ok(std::Option::<Removal<K, V>>::None()); }
+        }
+    }
+
+    export fn map_entries<K: std::Key, V>(map: SnapshotMap<K, V>) -> std::Result<[Entry<K, V>], std::Error> {
+        validate::<K, V>(map)?;
+        return std::Result::<[Entry<K, V>], std::Error>::Ok(map.entries);
+    }
+
+    export fn map_keys<K: std::Key, V>(map: SnapshotMap<K, V>) -> std::Result<[K], std::Error> {
+        validate::<K, V>(map)?;
+        let entries = map.entries;
+        let mut keys: [K] = [];
+        let mut i = 0;
+        while i < std::array_len(entries) {
+            keys = std::array_append(keys, entries[i].key);
+            i = i + 1;
+        }
+        return std::Result::<[K], std::Error>::Ok(keys);
+    }
+
+    export fn map_values<K: std::Key, V>(map: SnapshotMap<K, V>) -> std::Result<[V], std::Error> {
+        validate::<K, V>(map)?;
+        let entries = map.entries;
+        let mut values: [V] = [];
+        let mut i = 0;
+        while i < std::array_len(entries) {
+            values = std::array_append(values, entries[i].value);
+            i = i + 1;
+        }
+        return std::Result::<[V], std::Error>::Ok(values);
+    }
+
+    export fn map_equal<K: std::Key, V>(left: SnapshotMap<K, V>, right: SnapshotMap<K, V>) -> std::Result<Bool, std::Error> {
+        validate::<K, V>(left)?;
+        validate::<K, V>(right)?;
+        let a = left.entries;
+        let b = right.entries;
+        if (std::array_len(a) != std::array_len(b)) { return std::Result::<Bool, std::Error>::Ok(false); }
+        let mut i = 0;
+        while i < std::array_len(a) {
+            let found = position::<K, V>(b, a[i].key);
+            match found {
+                std::Option::Some(index) => {
+                    if (a[i].value != b[index].value) { return std::Result::<Bool, std::Error>::Ok(false); }
+                },
+                std::Option::None() => { return std::Result::<Bool, std::Error>::Ok(false); }
+            }
+            i = i + 1;
+        }
+        return std::Result::<Bool, std::Error>::Ok(true);
+    }
+}

@@ -313,3 +313,60 @@ mod tests {
         );
     }
 }
+
+fn expected_captured(inputs: &super::CapturedPackageSources) -> Result<Value, Diagnostics> {
+    let sources: Vec<_> = inputs
+        .sources()
+        .iter()
+        .map(|unit| (unit.source_index(), unit.source()))
+        .collect();
+    expected_parts(inputs.inventory(), inputs.manifests(), &sources)
+}
+/// Generate the existing version-one lock from syntax-independent graph snapshots.
+/// No parsing, rereads, checking, execution or publication occurs.
+pub fn generate_captured_source_lock(
+    inputs: &super::CapturedPackageSources,
+) -> Result<SourceLock, Diagnostics> {
+    let output = json::canonical(&expected_captured(inputs)?).map_err(problem)?;
+    json::parse(&output).map_err(problem)?;
+    Ok(SourceLock { text: output })
+}
+/// Verify exact graph/manifests/source bytes; malformed/stale locks have no fallback.
+pub fn verify_captured_source_lock(
+    inputs: &super::CapturedPackageSources,
+    lock: &str,
+) -> Result<(), Diagnostics> {
+    let actual = json::parse(lock).map_err(problem)?;
+    if actual != expected_captured(inputs)? {
+        return Err(problem(
+            "lock does not match captured graph and input bytes",
+        ));
+    }
+    Ok(())
+}
+/// Guardedly read and verify an existing root lock against these same snapshots.
+/// Never rereads sources or manifests, rewrites locks or authorizes compilation.
+pub fn verify_existing_captured_source_lock(
+    inputs: &super::CapturedPackageSources,
+) -> Result<(), Diagnostics> {
+    let lock = super::source_units::read_guarded(
+        &inputs.root().join("sovra.lock"),
+        inputs.root(),
+        MAX_LOCK_BYTES,
+    )
+    .map_err(|_| problem("cannot capture lock: missing, unsafe, unreadable or over budget"))?;
+    verify_captured_source_lock(inputs, &lock)
+}
+
+/// Capture every registered graph source and publish its compatible lock atomically.
+/// This fingerprints bytes without parsing, checking or executing source.
+pub fn write_captured_source_lock(root: impl AsRef<Path>) -> Result<(), Diagnostics> {
+    let inputs = super::capture_package_sources(root, super::PackageCaptureLimits::DEFAULT)?;
+    let lock = generate_captured_source_lock(&inputs)?;
+    publication::publish(inputs.root(), lock.as_str()).map_err(problem)
+}
+/// Verify the existing graph lock against newly captured bytes without writes.
+pub fn check_captured_source_lock(root: impl AsRef<Path>) -> Result<(), Diagnostics> {
+    let inputs = super::capture_package_sources(root, super::PackageCaptureLimits::DEFAULT)?;
+    verify_existing_captured_source_lock(&inputs)
+}

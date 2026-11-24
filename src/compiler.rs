@@ -13,6 +13,7 @@ pub mod interpreter;
 pub mod ir;
 pub mod lexer;
 mod limits;
+pub(crate) use limits::{check_nesting, check_program_depth};
 pub mod native_image;
 pub mod parser;
 pub mod project;

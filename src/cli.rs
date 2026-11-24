@@ -20,6 +20,7 @@ macro_rules! cli_error {
 }
 
 mod extended;
+mod generics;
 
 /// The version of the Sovra toolchain exposed by the CLI.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -105,6 +106,13 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
         if args
             .iter()
             .take_while(|a| a.as_str() != "--")
+            .any(|a| a == "--experimental-generics")
+        {
+            return extended::lock_selected(args, "--experimental-generics");
+        }
+        if args
+            .iter()
+            .take_while(|a| a.as_str() != "--")
             .any(|a| a == "--experimental-v2")
         {
             return extended::lock(args);
@@ -124,7 +132,7 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
             && args
                 .iter()
                 .take_while(|a| a.as_str() != "--")
-                .any(|a| a == "--experimental-v2"))
+                .any(|a| matches!(a.as_str(), "--experimental-v2" | "--experimental-generics")))
     {
         args.iter()
             .take_while(|arg| arg.as_str() != "--")
@@ -142,9 +150,15 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
             );
             println!("  Run root-level parameterless Unit test_ functions; stdin is unavailable.");
             println!("       svr test --experimental-v2 [--locked] [--format human|json] <source.svr|package-directory>");
-            println!("  Experimental v2: finite per-test/suite limits, no stdin/filesystem hosts.");
+            println!("       svr test --experimental-generics [--locked] [--format human|json] <source.svr|package-directory>");
+            println!(
+                "  Experimental tests: finite per-test/suite limits, no stdin/filesystem hosts."
+            );
         } else if command == "build" {
             println!("Usage: svr build [--locked] [--emit ir|js] <source.svr|package-directory>");
+            println!(
+                "       svr build --experimental-generics [--locked] --emit exe --output PATH <source.svr|package-directory>"
+            );
             println!("       svr build --emit exe --output PATH <source.svr|package-directory>");
             println!("  exe: host-native output; Rust/Cargo and a host linker are build-time requirements.");
             println!(
@@ -154,18 +168,26 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
         } else if command == "check" {
             println!("Usage: svr check [--format human|json] [--service-calls] [--symbols] <source.svr|project-directory>");
             println!("       svr check --format json --overlays-stdin <package-directory>");
+            println!("       svr check --experimental-generics [--locked] [--format human|json] [--symbols] <source.svr|package-directory>");
             println!("       svr check --experimental-v2 [--locked] [--format human|json] [--symbols] <source.svr|package-directory>");
             println!("  --experimental-v2 Opt-in single-entry source/package enum/match checking only; no execution.");
             println!("  --service-calls  Experimental project-only contract checks; incomplete coverage fails.");
             println!("  --symbols        Opt-in checked symbol/type evidence for successful standalone JSON checks.");
             println!("  --overlays-stdin Framed unsaved package buffers; requires JSON, never executes or writes source.");
-            println!("  --package-context Resolve canonical entry paths only; JSON, no source validation.");
-            println!("  --locked         Verify sovra.lock; requires --executable-package or --experimental-v2 package mode.");
+            println!("  --package-context Resolve canonical paths (generic mode includes registered sources); JSON, no source validation.");
+            println!("  --host-policy PATH  Explicit version-three grants for data-package run; native grants are supplied only at launch.");
+            println!("  --experimental-data  Enable checked Byte/Bytes/codecs in --experimental-generics package commands.");
+            println!("  --experimental-collections  Enable Map/Set in --experimental-generics package check/run/test/build.");
+            println!("  --locked         Verify sovra.lock; requires --executable-package, --experimental-v2 or --experimental-generics package mode.");
             println!("  --executable-package Compile all package sources and linked IR; never execute them.");
         } else {
             println!(
                 "Usage: svr run [--locked] <source.svr|package-directory> [-- <program-arg>...]"
             );
+            println!(
+                "       svr run --experimental-generics [--locked] <source.svr|package-directory>"
+            );
+            println!("  Generic mode: source/root package, parameterless Unit main, finite host-free VM; no program arguments.");
             println!("       svr run --experimental-v2 [--locked] [--allow-stdin] [--allow-files] <source.svr|package-directory> [-- <program-arg>...]");
             println!("  Experimental v2 uses finite VM limits and captured output; stdin/filesystem services require explicit grants.");
             println!("  --allow-stdin   Grant bounded process line input (experimental run only).");
@@ -177,6 +199,14 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
     if help_requested {
         println!("{command} is planned for a future Sovra milestone.");
         return ExitCode::SUCCESS;
+    }
+
+    if args
+        .iter()
+        .take_while(|a| a.as_str() != "--")
+        .any(|a| a == "--experimental-generics")
+    {
+        return generics::command(command, args);
     }
 
     if command == "new" {

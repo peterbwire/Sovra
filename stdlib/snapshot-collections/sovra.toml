@@ -1,0 +1,7 @@
+[project]
+name = "sovra-snapshot-collections"
+entry = "main.svr"
+
+[modules]
+maps = "maps.svr"
+sets = "sets.svr"
