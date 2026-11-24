@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 TARGETS = [
     'network_v4', 'network_host_v4', 'network_policy_v4', 'network_cli_v4',
     'http_request_v4', 'http_response_v4', 'http_chunked_v4', 'http_trailers_v4',
-    'http_access_v4', 'http_exchange_v4', 'http_server_v4', 'host_v3', 'generic_data_cli_v2',
+    'http_access_v4', 'http_authentication_v4', 'http_exchange_v4', 'http_server_v4', 'host_v3', 'generic_data_cli_v2',
 ]
 NODE = ['test-compiler-security', 'test-language-tests', 'test-example-catalog', 'check-doc-links']
 OVERRIDES = dict(CARGO_BUILD_JOBS='1', CARGO_INCREMENTAL='0',

@@ -11439,3 +11439,19 @@ absent Git metadata, mutation/replacement, limits and previous runner failure
 paths. Existing runtime and protocol behavior is unchanged. Re-run the complete
 frozen-source qualifier to retain integrated positive-path evidence; production
 authentication and full HTTP qualification remain open.
+
+
+2026-11-24 G14 trusted Bearer-verifier boundary: added a Send/Sync Rust embedding
+interface with bounded checked credential context, validated public principals,
+fixed 401/403/503 decisions and opaque debug formatting. Installation requires
+HTTP access policy and no live sockets. Verification runs before body/Continue
+with shared framework work and cancellation/deadline checkpoints before/after
+the trusted callback. Successful descriptions omit Authorization and publish a
+separate principal field; failures never publish an HTTP owner. Eight tests
+exercise malformed credentials, provider outcomes, redaction, real Sovra source,
+verified Continue, policy/work ordering and post-provider controls/cleanup.
+Boxed optional access policy keeps host size bounded and preserves its public
+API. The G14 qualifier now includes this target. CLI/native credential backends,
+secure transport, reviewed cryptography/storage and identity permissions remain
+open; no credential scheme or secrets are embedded.
+See [authentication boundary scope](reference/http-authentication-v4.md).

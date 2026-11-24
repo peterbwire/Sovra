@@ -179,13 +179,20 @@ impl HttpConnection {
             "unsupported" => 501,
             "expectation" => 417,
             "authority" => 403,
+            "authentication" => 401,
+            "authentication_unavailable" => 503,
             _ => 400,
         };
         // Empty automatic error bodies are safe for HEAD even before method proof.
+        let challenge = [HttpResponseHeader {
+            name: "WWW-Authenticate",
+            value: b"Bearer realm=\"Sovra\"",
+        }];
+        let headers: &[HttpResponseHeader<'_>] = if status == 401 { &challenge } else { &[] };
         if let Ok(wire) = render_http_response(
             status,
             HttpResponseContext::Standard,
-            &[],
+            headers,
             b"",
             self.limits.response,
         ) {
@@ -201,6 +208,7 @@ pub(super) fn receive<E>(
     socket: NetworkLimits,
     limits: HttpExchangeLimits,
     access: Option<&super::HttpAccessPolicy>,
+    verifier: Option<&mut super::http_authentication_v4::Verifier>,
     mut checkpoint: impl FnMut() -> Result<(), E>,
 ) -> Result<Result<(HttpConnection, J), HostError>, E> {
     let mut connection = HttpConnection {
@@ -257,6 +265,28 @@ pub(super) fn receive<E>(
             return Ok(Err(e));
         }
     }
+    let principal = if let Some(verifier) = verifier {
+        if let Err(e) = flatten(
+            checked(connection.started, connection.milliseconds, &mut checkpoint).map(|_| Ok(())),
+        )? {
+            return Ok(Err(e));
+        }
+        let outcome = verifier.authenticate(&head.request, &mut head.work);
+        if let Err(e) = flatten(
+            checked(connection.started, connection.milliseconds, &mut checkpoint).map(|_| Ok(())),
+        )? {
+            return Ok(Err(e));
+        }
+        match outcome {
+            Ok(principal) => Some(principal),
+            Err(e) => {
+                connection.reject(e.code, &mut checkpoint)?;
+                return Ok(Err(e));
+            }
+        }
+    } else {
+        None
+    };
     let body = match receive_body(
         &mut connection,
         &buffer[head.bytes..],
@@ -271,7 +301,7 @@ pub(super) fn receive<E>(
             return Ok(Err(e));
         }
     };
-    let value = match describe(&head.request, &body, &mut || {
+    let value = match describe(&head.request, &body, principal.as_ref(), &mut || {
         checked(connection.started, connection.milliseconds, &mut checkpoint)
     }) {
         Ok(Ok(value)) => value,
@@ -415,12 +445,16 @@ pub(super) fn decode(value: &J, maximum: usize) -> Result<Vec<u8>, HostError> {
 fn describe<E>(
     request: &HttpRequest<'_>,
     body: &[u8],
+    principal: Option<&super::HttpPrincipal>,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<Result<J, HostError>, E> {
     checkpoint()?;
     let mut headers = Vec::new();
     for field in request.headers() {
         checkpoint()?;
+        if principal.is_some() && field.name().eq_ignore_ascii_case("authorization") {
+            continue;
+        }
         let value = match encode(field.value()) {
             Ok(v) => v,
             Err(e) => return Ok(Err(e)),
@@ -435,10 +469,14 @@ fn describe<E>(
         Err(e) => return Ok(Err(e)),
     };
     checkpoint()?;
-    Ok(Ok(J::Object(vec![
+    let mut description = vec![
         ("method".into(), J::String(request.method().into())),
         ("target".into(), J::String(request.target().into())),
         ("headers".into(), J::Array(headers)),
         ("body".into(), J::String(body)),
-    ])))
+    ];
+    if let Some(principal) = principal {
+        description.push(("principal".into(), J::String(principal.name().into())));
+    }
+    Ok(Ok(J::Object(description)))
 }

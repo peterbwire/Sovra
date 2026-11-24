@@ -142,3 +142,7 @@ Clippy, exact Rust 1.74.0, Windows GNU all-target compilation and formatting pas
 This is targeted Linux G14 evidence; client authentication, full HTTP conformance,
 production and Windows runtime qualification remain open. Local evidence:
 `target/checked-evidence/g14-http-request-access/verification.json`.
+
+The [trusted Bearer-verifier boundary](http-authentication-v4.md) is a separate
+Rust embedding facility after access checks. Host/Origin/request lists themselves
+still do not authenticate clients; CLI/native credential backends remain open.

@@ -129,3 +129,8 @@ work. The example enables it; absent policy preserves existing HTTP behavior.
 Configured [method/target grants](http-access-v4.md#optional-exact-method-and-target-grants)
 now narrow HTTP access before Continue/body handling, with exact raw-target
 matching and shared work. They do not implement application authentication.
+
+Trusted Rust embedding callers may now install the [Bearer-verifier boundary](http-authentication-v4.md).
+It runs after access policy and before body/Continue, publishes a validated public
+principal and removes Authorization from the returned header array on success.
+CLI/native launches retain their existing no-provider behavior.

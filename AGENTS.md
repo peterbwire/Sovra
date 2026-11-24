@@ -65,7 +65,10 @@ Explicit optional HTTP Host/Origin access policies now check exact grants before
 `docs/reference/http-access-v4.md`. Policies without this object retain prior behavior. Optional paired exact
 method/raw-target lists now further narrow access before Continue/body handling;
 query/escape/case variants do not select a normalization fallback.
-Trailer integrity/application access, authentication, full protocol, production
+A trusted Rust Bearer-verifier boundary now runs before body/Continue, returns
+validated public principals and redacts Authorization from handler descriptions;
+see `docs/reference/http-authentication-v4.md`. CLI/native credential backends
+remain unimplemented. Trailer integrity/application access, full protocol, production
 server controls and wider qualification remain open. Continue under `docs/design/G14_COMPLETION_CONTRACT.md`. Consult
 `docs/G13_QUALIFICATION.md` and `docs/reference/generic-formatting.md` for current
 evidence and remaining gates. Historical checkpoints below do not reopen these

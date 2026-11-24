@@ -280,6 +280,7 @@ Implemented evidence:
 - [x] Define and exercise unique owned handles, explicit capabilities, partial I/O, scoped cleanup, cancellation/deadlines and unsupported-host refusal for the documented Linux profile. Scheduling/concurrency remain separate.
 - [x] Implement the documented restricted Sovra-owned loopback HTTP lifecycle, request/response framing, application routing/JSON and malformed/truncated/oversized refusal; full HTTP conformance remains open.
 - [x] Retain repeatable independent client, port-conflict, partial I/O, disconnect, deadline and cleanup evidence through the [frozen-source G14 qualifier](G14_QUALIFICATION.md), including CLI/native and v3 compatibility. Hosted/additional-platform results must be collected separately.
+- [x] Add a trusted Rust Bearer-verifier embedding boundary with bounded checked credentials, provider outcomes, validated principal publication, Authorization redaction, shared controls and an actual Sovra consumer. See [provider scope](reference/http-authentication-v4.md). No CLI/native credential backend or cryptographic verification is bundled.
 - [ ] Implement client authentication and reviewed per-identity/per-route authorization; existing exact request allowlists do not authenticate clients.
 - [ ] Add reviewed concurrency/backpressure, streaming, TLS and deployment controls
   before claiming production server support. A private Node adapter is insufficient.

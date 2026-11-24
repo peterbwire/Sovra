@@ -15,8 +15,9 @@ separate from headers and never authorize application behavior. Bounded
 unsupported expectations refuse with 417 before body transfer. Optional external
 [Host/Origin access policy](../reference/http-access-v4.md) now admits exact
 request-head grants before Continue/body handling, with optional exact method/
-raw-target lists and shared comparison work; application authentication and
-production qualification remain separate. Trailer integrity/
+raw-target lists and shared comparison work; a trusted [Bearer-verifier embedding boundary](../reference/http-authentication-v4.md)
+now supports pre-body verification, public principal publication and credential
+redaction. CLI/native credential backends and production qualification remain open. Trailer integrity/
 retention, remaining protocol coverage, production server controls and G14 qualification
 remain open.
 G13's experimental Linux foundation remains complete under its documented scope.

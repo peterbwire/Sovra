@@ -1195,3 +1195,13 @@ substitutions; read/reopen identity checks reject mutation and replacement.
 Initial capture errors retain unsuccessful reports. Eighteen Python regressions
 cover these cases and existing qualifier failures. Runtime HTTP/authentication
 capabilities are unchanged. See [qualification limits](G14_QUALIFICATION.md).
+
+
+2026-11-24 G14 trusted authentication boundary: a Rust embedding caller can now
+register a synchronous Bearer verifier before socket creation. The framework
+checks bounded credential syntax, gates body/Continue, maps fixed provider
+outcomes, publishes a validated public principal and redacts Authorization from
+VM descriptions. Eight tests include real Sovra consumption and post-verifier
+controls/cleanup. This is not a CLI/native credential backend or cryptographic
+verification implementation; those deployment gates remain open.
+See [provider contract](reference/http-authentication-v4.md).

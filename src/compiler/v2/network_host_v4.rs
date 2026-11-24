@@ -53,7 +53,8 @@ pub struct NetworkHostV4 {
     owners: BTreeMap<i64, Owner>,
     limits: NetworkLimits,
     http: super::HttpExchangeLimits,
-    http_access: Option<super::HttpAccessPolicy>,
+    http_access: Option<Box<super::HttpAccessPolicy>>,
+    http_verifier: Option<super::http_authentication_v4::Verifier>,
 }
 impl NetworkHostV4 {
     /// Start a denied host with only lowerable socket limits.
@@ -64,6 +65,7 @@ impl NetworkHostV4 {
             limits,
             http: super::HttpExchangeLimits::DEFAULT,
             http_access: None,
+            http_verifier: None,
         })
     }
     /// Narrow aggregate HTTP policy before any socket owners are issued.
@@ -86,7 +88,22 @@ impl NetworkHostV4 {
                 "HTTP access must be configured before socket creation",
             ));
         }
-        self.http_access = Some(policy);
+        self.http_access = Some(Box::new(policy));
+        Ok(())
+    }
+    /// Install a trusted Bearer verifier before creating socket owners, after HTTP access policy.
+    /// No external JSON policy or Sovra source request can register a verifier.
+    pub fn set_http_bearer_verifier(
+        &mut self,
+        verifier: Box<dyn super::HttpBearerVerifier>,
+    ) -> Result<(), HostError> {
+        if !self.owners.is_empty() || self.http_access.is_none() {
+            return Err(error(
+                "policy",
+                "HTTP verifier requires access policy and no live socket owners",
+            ));
+        }
+        self.http_verifier = Some(super::http_authentication_v4::Verifier(verifier));
         Ok(())
     }
     /// Explicit trusted exact-port authority; request data cannot create grants.
@@ -201,7 +218,8 @@ impl NetworkHostV4 {
                 accepted,
                 self.limits,
                 self.http,
-                self.http_access.as_ref(),
+                self.http_access.as_deref(),
+                self.http_verifier.as_mut(),
                 checkpoint,
             )?
             .map(|(owner, request)| {
