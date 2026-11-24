@@ -128,6 +128,21 @@ impl HttpConnection {
         }
         Ok(Ok(()))
     }
+    fn send_continue<E>(
+        &mut self,
+        checkpoint: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Result<(), HostError>, E> {
+        const WIRE: &[u8] = b"HTTP/1.1 100 Continue\r\n\r\n";
+        let response = self.limits.response;
+        if response.head_bytes < WIRE.len()
+            || response.output_bytes < WIRE.len()
+            || response.line_bytes < WIRE.len() - 4
+            || response.work < WIRE.len()
+        {
+            return Ok(Err(error("limit", "interim HTTP response limits exceeded")));
+        }
+        self.write(WIRE, checkpoint)
+    }
     /// Explicit closure still releases the descriptor if shutdown reports an error.
     pub(super) fn close(self) -> Result<(), HostError> {
         self.stream.close()
@@ -162,6 +177,7 @@ impl HttpConnection {
         let status = match code {
             "limit" => 413,
             "unsupported" => 501,
+            "expectation" => 417,
             _ => 400,
         };
         // Empty automatic error bodies are safe for HEAD even before method proof.
@@ -238,6 +254,7 @@ pub(super) fn receive<E>(
         &buffer[head.bytes..],
         head.framing,
         head.work,
+        head.continue_expected,
         &mut checkpoint,
     )? {
         Ok(body) => body,
@@ -271,6 +288,7 @@ fn receive_body<E>(
     initial: &[u8],
     framing: HttpBodyFraming,
     work: usize,
+    continue_expected: bool,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<Result<Vec<u8>, HostError>, E> {
     match framing {
@@ -286,6 +304,11 @@ fn receive_body<E>(
                 return Ok(Err(error("limit", "HTTP body allocation refused")));
             }
             body.extend_from_slice(initial);
+            if continue_expected && body.len() < length {
+                if let Err(e) = connection.send_continue(checkpoint)? {
+                    return Ok(Err(e));
+                }
+            }
             while body.len() < length {
                 match connection.read(length - body.len(), checkpoint)? {
                     Err(e) => return Ok(Err(e)),
@@ -318,6 +341,11 @@ fn receive_body<E>(
                 Ok(done) => done,
                 Err(e) => return Ok(Err(error(e.code, e.message))),
             };
+            if continue_expected && !complete {
+                if let Err(e) = connection.send_continue(checkpoint)? {
+                    return Ok(Err(e));
+                }
+            }
             while !complete {
                 let maximum = limits.wire_bytes.saturating_sub(seen);
                 if maximum == 0 {

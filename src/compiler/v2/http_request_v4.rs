@@ -43,7 +43,7 @@ impl HttpRequestLimits {
 /// Stable refusal category and original zero-based wire offset; no peer text is echoed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HttpRequestError {
-    /// policy, limit, syntax, framing, unsupported or truncated.
+    /// policy, limit, syntax, framing, expectation, unsupported or truncated.
     pub code: &'static str,
     /// Original input byte offset.
     pub offset: usize,
@@ -293,6 +293,7 @@ pub(super) struct HttpRequestHead<'a> {
     pub framing: HttpBodyFraming,
     pub bytes: usize,
     pub work: usize,
+    pub continue_expected: bool,
 }
 /// Internal checked framing decision; never publishes a complete request to source.
 pub(super) fn parse_http_head(
@@ -375,6 +376,7 @@ pub(super) fn parse_http_head(
     let mut chunked = false;
     let mut unsupported = false;
     let mut trailer = false;
+    let mut expect = None;
     loop {
         let at = cursor;
         let Some((field, next)) = line(input, cursor, limits, &mut work)? else {
@@ -515,7 +517,12 @@ pub(super) fn parse_http_head(
                     ));
                 }
             }
-        } else if name.eq_ignore_ascii_case("expect") || name.eq_ignore_ascii_case("upgrade") {
+        } else if name.eq_ignore_ascii_case("expect") {
+            if expect.is_some() {
+                return Err(fail("framing", at, "multiple Expect fields refuse"));
+            }
+            expect = Some(value.eq_ignore_ascii_case(b"100-continue"));
+        } else if name.eq_ignore_ascii_case("upgrade") {
             unsupported = true;
         }
         headers.push(HttpRequestHeader { name, value });
@@ -530,8 +537,16 @@ pub(super) fn parse_http_head(
             "Transfer-Encoding with Content-Length refuses",
         ));
     }
+    if allow_chunked && expect == Some(false) {
+        return Err(fail(
+            "expectation",
+            cursor,
+            "requested expectation is not supported",
+        ));
+    }
     if (transfer && (!allow_chunked || !chunked))
         || (trailer && (!allow_chunked || !chunked))
+        || (!allow_chunked && expect.is_some())
         || unsupported
     {
         return Err(fail(
@@ -554,5 +569,6 @@ pub(super) fn parse_http_head(
         },
         bytes: cursor,
         work,
+        continue_expected: expect == Some(true),
     }))
 }

@@ -679,3 +679,209 @@ fn unfinished_trailers_share_cancellation_and_deadline_cleanup() {
     assert_eq!(host.usage(), (1, 0));
     host.close_all().unwrap();
 }
+
+#[test]
+fn continue_handshake_precedes_body_for_fixed_and_chunked_framing() {
+    for (framing, body) in [
+        ("Content-Length: 2", b"\0\xff".as_slice()),
+        (
+            "Transfer-Encoding: chunked",
+            b"2\r\n\0\xff\r\n0\r\n\r\n".as_slice(),
+        ),
+    ] {
+        let (mut host, stream, mut peer) = connect(1, HttpExchangeLimits::DEFAULT);
+        let head = format!(
+            "POST / HTTP/1.1\r\nHost: localhost\r\n{framing}\r\nExpect: 100-CoNtInUe\r\n\r\n"
+        );
+        let body = body.to_vec();
+        let client = std::thread::spawn(move || {
+            peer.write_all(head.as_bytes()).unwrap();
+            let mut interim = [0u8; 25];
+            peer.read_exact(&mut interim).unwrap();
+            assert_eq!(&interim, b"HTTP/1.1 100 Continue\r\n\r\n");
+            peer.write_all(&body).unwrap();
+            let mut final_wire = Vec::new();
+            peer.read_to_end(&mut final_wire).unwrap();
+            assert!(final_wire.starts_with(b"HTTP/1.1 200 OK\r\n"));
+        });
+        let parsed = call(&mut host, &receive(stream)).unwrap();
+        assert_eq!(field(&parsed, "body"), &JsonValue::String("AP8=".into()));
+        call(&mut host, &response(stream)).unwrap();
+        client.join().unwrap();
+        assert_eq!(host.usage(), (1, 0));
+        host.close_all().unwrap();
+    }
+}
+#[test]
+fn complete_buffered_or_empty_body_omits_interim_response() {
+    for suffix in [
+        "Content-Length: 1\r\n\r\nx",
+        "Content-Length: 0\r\n\r\n",
+        "Transfer-Encoding: chunked\r\n\r\n1\r\nx\r\n0\r\n\r\n",
+    ] {
+        let (mut host, stream, mut peer) = connect(4096, HttpExchangeLimits::DEFAULT);
+        peer.write_all(
+            format!("POST / HTTP/1.1\r\nHost: localhost\r\nExpect: 100-continue\r\n{suffix}")
+                .as_bytes(),
+        )
+        .unwrap();
+        call(&mut host, &receive(stream)).unwrap();
+        call(&mut host, &response(stream)).unwrap();
+        let mut wire = Vec::new();
+        peer.read_to_end(&mut wire).unwrap();
+        assert!(wire.starts_with(b"HTTP/1.1 200 OK\r\n"));
+        host.close_all().unwrap();
+    }
+}
+#[test]
+fn expectation_and_head_refusals_send_final_without_waiting_for_body() {
+    for (fields, code, status) in [
+        (
+            "Content-Length: 1\r\nExpect: unknown\r\n",
+            "expectation",
+            b"417",
+        ),
+        ("Content-Length: 1\r\nExpect: \r\n", "expectation", b"417"),
+        (
+            "Content-Length: 1\r\nExpect: 100-continue, other\r\n",
+            "expectation",
+            b"417",
+        ),
+        (
+            "Content-Length: 1\r\nExpect: 100-continue\r\nExpect: 100-continue\r\n",
+            "framing",
+            b"400",
+        ),
+        (
+            "Content-Length: 1\r\nTransfer-Encoding: chunked\r\nExpect: 100-continue\r\n",
+            "framing",
+            b"400",
+        ),
+        (
+            "Content-Length: 1048577\r\nExpect: 100-continue\r\n",
+            "limit",
+            b"413",
+        ),
+    ] {
+        let (mut host, stream, mut peer) = connect(4096, HttpExchangeLimits::DEFAULT);
+        peer.write_all(format!("POST / HTTP/1.1\r\nHost: localhost\r\n{fields}\r\n").as_bytes())
+            .unwrap();
+        assert_eq!(call(&mut host, &receive(stream)).unwrap_err().code, code);
+        let mut wire = Vec::new();
+        peer.read_to_end(&mut wire).unwrap();
+        assert_eq!(&wire[9..12], status);
+        assert_eq!(host.usage(), (1, 0));
+        assert!(call(&mut host, &response(stream)).is_err());
+        host.close_all().unwrap();
+    }
+}
+#[test]
+fn continue_response_uses_same_io_budget_and_cancellation_control() {
+    let head =
+        b"POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 1\r\nExpect: 100-continue\r\n\r\n";
+    for operations in [1, 2] {
+        let (mut host, stream, mut peer) = connect(
+            4096,
+            HttpExchangeLimits {
+                io_operations: operations,
+                ..HttpExchangeLimits::DEFAULT
+            },
+        );
+        peer.write_all(head).unwrap();
+        assert_eq!(call(&mut host, &receive(stream)).unwrap_err().code, "limit");
+        let mut wire = Vec::new();
+        peer.read_to_end(&mut wire).unwrap();
+        assert_eq!(
+            wire,
+            if operations == 1 {
+                b"".as_slice()
+            } else {
+                b"HTTP/1.1 100 Continue\r\n\r\n".as_slice()
+            }
+        );
+        assert_eq!(host.usage(), (1, 0));
+        host.close_all().unwrap();
+    }
+    let (mut host, stream, mut peer) = connect(4096, HttpExchangeLimits::DEFAULT);
+    peer.write_all(head).unwrap();
+    peer.set_nonblocking(true).unwrap();
+    assert_eq!(
+        host.call(&request(&receive(stream)), || {
+            let mut observed = [0u8; 25];
+            match peer.peek(&mut observed) {
+                Ok(n) if n > 0 => Err("cancel after interim"),
+                Ok(_) => Ok(()),
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => Ok(()),
+                Err(e) => panic!("interim observation failed: {e}"),
+            }
+        })
+        .unwrap_err(),
+        "cancel after interim"
+    );
+    peer.set_nonblocking(false).unwrap();
+    let mut wire = Vec::new();
+    peer.read_to_end(&mut wire).unwrap();
+    assert_eq!(wire, b"HTTP/1.1 100 Continue\r\n\r\n");
+    assert_eq!(host.usage(), (1, 0));
+    host.close_all().unwrap();
+}
+#[test]
+fn continue_does_not_restart_accept_to_response_deadline() {
+    let (mut host, stream, mut peer) = connect(
+        4096,
+        HttpExchangeLimits {
+            milliseconds: 30,
+            ..HttpExchangeLimits::DEFAULT
+        },
+    );
+    peer.write_all(
+        b"POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 1\r\nExpect: 100-continue\r\n\r\n",
+    )
+    .unwrap();
+    assert_eq!(
+        call(&mut host, &receive(stream)).unwrap_err().code,
+        "timeout"
+    );
+    let mut wire = Vec::new();
+    peer.read_to_end(&mut wire).unwrap();
+    assert_eq!(wire, b"HTTP/1.1 100 Continue\r\n\r\n");
+    assert_eq!(host.usage(), (1, 0));
+    host.close_all().unwrap();
+}
+
+#[test]
+fn interim_output_obeys_lowered_response_limits() {
+    for response_limits in [
+        HttpResponseLimits {
+            output_bytes: 0,
+            ..HttpResponseLimits::DEFAULT
+        },
+        HttpResponseLimits {
+            head_bytes: 24,
+            ..HttpResponseLimits::DEFAULT
+        },
+        HttpResponseLimits {
+            line_bytes: 20,
+            ..HttpResponseLimits::DEFAULT
+        },
+        HttpResponseLimits {
+            work: 24,
+            ..HttpResponseLimits::DEFAULT
+        },
+    ] {
+        let (mut host, stream, mut peer) = connect(
+            4096,
+            HttpExchangeLimits {
+                response: response_limits,
+                ..HttpExchangeLimits::DEFAULT
+            },
+        );
+        peer.write_all(b"POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 1\r\nExpect: 100-continue\r\n\r\n").unwrap();
+        assert_eq!(call(&mut host, &receive(stream)).unwrap_err().code, "limit");
+        let mut wire = Vec::new();
+        peer.read_to_end(&mut wire).unwrap();
+        assert!(wire.is_empty());
+        assert_eq!(host.usage(), (1, 0));
+        host.close_all().unwrap();
+    }
+}

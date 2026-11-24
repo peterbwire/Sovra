@@ -78,7 +78,7 @@ handlers through CLI and generated native launches, alongside fixed-length and
 ordinary chunked requests. Native startup removes project files and Node/PATH.
 
 Trailer retention, integrity verification and application access remain separate
-future contracts. Expect, upgrades, CONNECT, other transfer codings/versions,
+future contracts. Other expectation forms, upgrades, CONNECT, other transfer codings/versions,
 Host/origin authorization, authentication, TLS, concurrency/backpressure and
 additional-host runtime qualification remain open under the [G14 contract](../design/G14_COMPLETION_CONTRACT.md).
 

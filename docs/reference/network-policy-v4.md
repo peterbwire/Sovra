@@ -78,3 +78,7 @@ Deadline and I/O counters span the complete exchange; see [chunked scope](http-c
 Trailer sections inherit the head-byte, line-byte and header-count ceilings with
 independent counters, and consume the same encoded-wire/work/deadline/I/O budgets.
 Fields are validated and discarded; see [trailer policy](http-trailers-v4.md).
+
+HTTP interim 100 responses honor output/head/line/work ceilings and consume the
+same aggregate deadline and I/O operation count as request and final response
+processing. No extra grants or policy keys select expectation handling.

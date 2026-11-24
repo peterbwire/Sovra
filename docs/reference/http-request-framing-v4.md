@@ -86,3 +86,7 @@ The HTTP host now uses the same internal checked head validation with a separate
 [bounded incremental chunked decoder](http-chunked-v4.md); `http.receive` supports
 restricted chunked requests through CLI/native Sovra handlers. This does not
 establish full protocol conformance or admit nonempty trailers.
+
+The public borrowed parser continues refusing Expect. The owned HTTP host uses
+the checked head decision for [bounded 100-continue handling](http-expect-v4.md),
+including early 417 for unsupported values before waiting for a request body.

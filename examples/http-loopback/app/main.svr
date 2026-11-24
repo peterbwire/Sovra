@@ -62,21 +62,26 @@ fn serve(count: Int) -> std::Result<Bool, std::Error> {
     while (served < count) {
         let stream = call("{\"version\":4,\"op\":\"net.accept\",\"handle\":" + listener_id + "}")?;
         let handle = std::json_stringify(stream)?;
-        let request = call("{\"version\":4,\"op\":\"http.receive\",\"handle\":" + handle + "}")?;
-        let outcome = handler(request);
-        match outcome {
-            std::Result::Ok(reply) => { let sent = respond(handle, reply)?; },
-            std::Result::Err(error) => {
-                let failure = Reply::<String>{status: 500, body: "{\"error\":\"handler\"}"};
-                let sent = respond(handle, failure)?;
-            }
+        let received = call("{\"version\":4,\"op\":\"http.receive\",\"handle\":" + handle + "}");
+        match received {
+            std::Result::Ok(request) => {
+                let outcome = handler(request);
+                match outcome {
+                    std::Result::Ok(reply) => { let sent = respond(handle, reply)?; },
+                    std::Result::Err(error) => {
+                        let failure = Reply::<String>{status: 500, body: "{\"error\":\"handler\"}"};
+                        let sent = respond(handle, failure)?;
+                    }
+                }
+            },
+            std::Result::Err(error) => { }
         }
         served = served + 1;
     }
     return std::Result::<Bool, std::Error>::Ok(true);
 }
 fn main() {
-    let result = serve(7);
+    let result = serve(9);
     match result {
         std::Result::Ok(done) => { if done == false { let failed = 1 / 0; } },
         std::Result::Err(error) => { let failed = 1 / 0; }

@@ -11346,3 +11346,26 @@ and 18 socket exchange tests. Four Node security/language/catalog/documentation
 checks, strict Clippy, exact Rust 1.74.0, Windows GNU all-target compilation and
 formatting pass. Windows runtime/full HTTP/production qualification remain open.
 Local evidence: `target/checked-evidence/g14-http-trailers/verification.json`.
+
+
+2026-11-24 G14 expectation handling: reviewed RFC 9110 section 10.1.1 and added
+one exact case-insensitive 100-continue expectation to the owned socket host.
+Checked head/framing admission precedes a fixed interim packet; fully buffered
+or empty frames omit it. Unknown expectations receive early bounded 417 and
+close without awaiting a body. Interim writes honor response output/head/line/
+work bounds and existing aggregate I/O/deadline/cancellation controls. The public
+borrowed fixed-length parser and source final-response operation retain their
+contracts. Six socket tests cover fixed/chunked handshake, omission, early
+refusal, output limits, cancellation/I/O exhaustion and timeout. Sovra now
+recovers ordinary per-connection receive errors in its bounded example. Actual
+CLI/native clients wait for 100 before body transfer and exercise 417 without
+sending content, then verify subsequent routes. Next: Host/origin authorization
+and remaining protocol/production qualification under the G14 contract.
+
+Validation: 687 unique Rust tests pass (600 library and 87 HTTP/network/v3-host
+integration tests), including 24 socket exchange tests and independent CLI/native
+100-continue/early-417 clients. Four Node security/language/catalog/documentation
+checks, strict Clippy, exact Rust 1.74.0, Windows GNU all-target compilation and
+formatting pass. This is targeted Linux G14 evidence; Windows runtime, full HTTP
+conformance and production qualification remain open. Local evidence:
+`target/checked-evidence/g14-http-expect/verification.json`.

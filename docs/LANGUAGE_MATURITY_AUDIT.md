@@ -1148,3 +1148,13 @@ routing/authentication/content-processing fields refuse. Independent CLI/native
 clients cover declared trailers; integrity verification and application retention
 remain outside this discard contract. Full protocol/production gates stay open.
 See [trailer scope](reference/http-trailers-v4.md).
+
+
+2026-11-24 G14 expectation checkpoint: checked HTTP heads now permit one
+100-continue expectation; bounded interim output precedes body waits under the
+same deadline/I/O accounting. Unsupported expectations receive early 417;
+duplicate/invalid framing refuses before interim output. The Sovra example
+recovers ordinary receive errors per connection and independent CLI/native
+clients verify headers-only waiting and subsequent requests. Full protocol,
+Host/origin authorization and production gates remain open.
+See [expectation scope](reference/http-expect-v4.md).

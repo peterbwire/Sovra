@@ -58,6 +58,8 @@ decoder now shares HTTP head work and aggregate socket deadlines through
 `http.receive`; independent CLI/native Unicode chunked JSON clients are covered
 (see `docs/reference/http-chunked-v4.md`). Trailer sections now use bounded validated discard without header merging,
 with known security-field refusal (see `docs/reference/http-trailers-v4.md`).
+The host now supports bounded 100-continue with early 417 refusal for unsupported
+expectations and shared deadline/I/O accounting (see `docs/reference/http-expect-v4.md`).
 Trailer integrity/application access, full protocol, production
 server controls and wider qualification remain open. Continue under `docs/design/G14_COMPLETION_CONTRACT.md`. Consult
 `docs/G13_QUALIFICATION.md` and `docs/reference/generic-formatting.md` for current

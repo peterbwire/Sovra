@@ -1,6 +1,6 @@
 # Bounded Sovra HTTP/JSON demonstration
 
-This Linux experimental data-profile example runs seven sequential connections,
+This Linux experimental data-profile example runs nine sequential connections,
 one fixed-length or restricted chunked HTTP/1.1 request per connection, then
 exits. Sovra code owns routing and ordinary Result-based handler recovery. The trusted network host
 owns sockets, framing, deadlines and response validation.
@@ -21,9 +21,23 @@ for method, path, body in [('GET','/health',None), ('HEAD','/health',None),
                            ('POST','/echo',b'{"message":"Sovra"}'),
                            ('POST','/echo',[b'{"chunked":true}']),
                            ('POST','/echo',{'trailers':b'{"trailers":true}'}),
+                           ('POST','/echo',{'expect':'100-continue','payload':b'{"continue":true}'}),
+                           ('POST','/echo',{'expect':'unsupported','payload':b'{"never":true}'}),
                            ('GET','/missing',None), ('GET','/failure',None)]:
     client = http.client.HTTPConnection('127.0.0.1', 47123, timeout=5)
-    if isinstance(body, dict):
+    if isinstance(body, dict) and 'expect' in body:
+        payload = body['payload']
+        client.putrequest(method, path)
+        client.putheader('Content-Length', str(len(payload)))
+        client.putheader('Expect', body['expect'])
+        client.endheaders()
+        if body['expect'] == '100-continue':
+            interim = client.sock.makefile('rb')
+            assert interim.readline(128) == b'HTTP/1.1 100 Continue\r\n'
+            assert interim.readline(128) == b'\r\n'
+            interim.close()
+            client.send(payload)
+    elif isinstance(body, dict):
         payload = body['trailers']
         client.putrequest(method, path)
         client.putheader('Transfer-Encoding', 'chunked')
@@ -40,7 +54,7 @@ for method, path, body in [('GET','/health',None), ('HEAD','/health',None),
 PYTHON
 ```
 
-Expected statuses are 200, 200, 200, 200, 200, 404 and 500. HEAD emits no body but retains
+Expected statuses are 200, 200, 200, 200, 200, 200, 417, 404 and 500. HEAD emits no body but retains
 its representation length. `/echo` parses and reserializes JSON; `/failure`
 deliberately raises an ordinary JSON Result error, which Sovra handles as a
 fixed generic 500 response. Routes use the exact raw target; this demo does not
@@ -65,3 +79,8 @@ authentication and production origin/Host policy remain unimplemented.
 
 Chunked trailers are validated and discarded under [explicit limits](../../docs/reference/http-trailers-v4.md);
 they never override request headers or supply verified integrity metadata.
+
+The host performs a bounded [100-continue handshake](../../docs/reference/http-expect-v4.md).
+Unsupported expectations receive 417 before body transfer. Sovra catches ordinary
+receive failures after host socket cleanup and continues to the next connection;
+VM faults/control cancellation and listener/respond failures still terminate.
