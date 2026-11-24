@@ -44,8 +44,9 @@ including generic packages and restricted workspaces. G13 is complete for the
 documented experimental Linux profile. Additional-host/runtime/release acceptance
 remains separate. G14 now has a Rust-only owned loopback socket foundation,
 with explicit port grants, bounded nonblocking I/O and independent TCP-client
-tests. It does not yet expose source/CLI networking or HTTP. Continue with
-checked network-host integration under `docs/design/G14_COMPLETION_CONTRACT.md`. Consult
+tests. An explicit owned version-four network host now lets checked `.svr` data
+programs bind/accept/read/write/close, with scoped token custody and cleanup on
+VM success/failure. CLI/native network policy and HTTP remain open. Continue under `docs/design/G14_COMPLETION_CONTRACT.md`. Consult
 `docs/G13_QUALIFICATION.md` and `docs/reference/generic-formatting.md` for current
 evidence and remaining gates. Historical checkpoints below do not reopen these
 implemented slices or establish G13/release/platform completion.

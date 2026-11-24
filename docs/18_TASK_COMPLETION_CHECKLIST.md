@@ -267,6 +267,7 @@ Implemented evidence:
 ## G14 — Resources, networking, HTTP and server lifecycle (active, partial)
 
 - [x] Add a trusted Rust loopback socket foundation with exact port grants, unique resource owners, nonblocking bounded I/O, deadlines/cancellation and independent TCP-client tests; see [socket scope](reference/loopback-network-v4.md).
+- [x] Add strict version-four network requests with execution-scoped owned handle custody and explicit Rust checked-data execution; actual `.svr` binary echo and failure cleanup are tested. See [network host](reference/network-host-v4.md). CLI/native network policy and HTTP remain open.
 - [ ] Define owned handles, explicit capabilities, partial I/O, lifetime/cleanup,
   cancellation/timeouts, scheduling/concurrency and unsupported-host behavior.
 - [ ] Implement sockets and a bounded Sovra-owned loopback server, then HTTP framing,

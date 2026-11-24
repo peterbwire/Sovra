@@ -1,7 +1,8 @@
 # G14 resources, networking and HTTP completion contract
 
-Status: active implementation. The first slice is a trusted Rust embedding
-foundation; it does not establish a Sovra socket builtin or HTTP server.
+Status: active implementation. The trusted Rust embedding foundation now
+provides version-four requests through checked `.svr` data execution with owned
+execution-scope handles. CLI/native network policy and HTTP remain open.
 G13's experimental Linux foundation remains complete under its documented scope.
 Task Manager feature work remains paused.
 

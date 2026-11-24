@@ -1,0 +1,255 @@
+//! Execution-scoped JSON requests for trusted loopback socket owners.
+use super::{
+    HostError, JsonValue as J, LoopbackListener, LoopbackNetwork, LoopbackStream, NetworkLimits,
+    NetworkRead, RuntimeBytesLimits, RuntimeBytesV2, RuntimeDataWork, RuntimeValueFuel,
+};
+use crate::compiler::execution::MaterializationLimits;
+use std::{
+    collections::BTreeMap,
+    sync::atomic::{AtomicU64, Ordering},
+};
+fn error(code: &'static str, message: &'static str) -> HostError {
+    HostError {
+        code,
+        message: message.into(),
+    }
+}
+static NEXT_HANDLE: AtomicU64 = AtomicU64::new(1);
+fn token() -> Result<i64, HostError> {
+    let mut current = NEXT_HANDLE.load(Ordering::Acquire);
+    for _ in 0..128 {
+        if current >= i64::MAX as u64 {
+            return Err(error("limit", "network handle space exhausted"));
+        }
+        match NEXT_HANDLE.compare_exchange(
+            current,
+            current + 1,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        ) {
+            Ok(_) => return Ok(current as i64),
+            Err(next) => current = next,
+        }
+    }
+    Err(error(
+        "limit",
+        "network handle admission contention exceeded",
+    ))
+}
+#[derive(Debug)]
+enum Owner {
+    Listener(LoopbackListener),
+    Stream(LoopbackStream),
+}
+/// Mutable trusted execution scope. Tokens alias one owner and never duplicate sockets.
+/// Closing invalidates all token aliases; tokens are never reused in this process.
+#[derive(Debug)]
+pub struct NetworkHostV4 {
+    network: LoopbackNetwork,
+    owners: BTreeMap<i64, Owner>,
+    limits: NetworkLimits,
+}
+impl NetworkHostV4 {
+    /// Start a denied host with only lowerable socket limits.
+    pub fn new(limits: NetworkLimits) -> Result<Self, HostError> {
+        Ok(Self {
+            network: LoopbackNetwork::new(limits)?,
+            owners: BTreeMap::new(),
+            limits,
+        })
+    }
+    /// Explicit trusted exact-port authority; request data cannot create grants.
+    pub fn grant_port(&mut self, port: u16) -> Result<(), HostError> {
+        self.network.grant_port(port)
+    }
+    /// Current listener and stream reservations in this execution scope.
+    pub fn usage(&self) -> (usize, usize) {
+        self.network.usage()
+    }
+    /// Validate and execute a version-four network request, preserving callback errors.
+    pub fn call<E>(
+        &mut self,
+        request: &J,
+        mut checkpoint: impl FnMut() -> Result<(), E>,
+    ) -> Result<Result<J, HostError>, E> {
+        checkpoint()?;
+        let fields = match request {
+            J::Object(fields) if fields.len() <= 5 => fields,
+            _ => return Ok(Err(error("input", "bounded request object required"))),
+        };
+        let get = |name: &str| {
+            fields
+                .iter()
+                .find(|(key, _)| key == name)
+                .map(|(_, v)| v)
+                .ok_or_else(|| error("input", "missing request field"))
+        };
+        let setup = (|| {
+            if !matches!(get("version")?, J::Int(4)) {
+                return Err(error("input", "network request version must be 4"));
+            }
+            let op = match get("op")? {
+                J::String(op) if op.len() <= 32 => op.as_str(),
+                _ => return Err(error("input", "network operation required")),
+            };
+            let allowed: &[&str] = match op {
+                "net.listen" => &["version", "op", "port"],
+                "net.port" | "net.accept" | "net.close" => &["version", "op", "handle"],
+                "net.read" => &["version", "op", "handle", "maximum"],
+                "net.write" => &["version", "op", "handle", "data"],
+                _ => {
+                    return Err(error(
+                        "unsupported",
+                        "unknown version-four network operation",
+                    ))
+                }
+            };
+            if fields.len() != allowed.len() {
+                return Err(error("input", "request field count mismatch"));
+            }
+            for (index, (key, _)) in fields.iter().enumerate() {
+                if !allowed.contains(&key.as_str())
+                    || fields[..index].iter().any(|(other, _)| other == key)
+                {
+                    return Err(error("input", "unknown or duplicate request field"));
+                }
+            }
+            Ok(op)
+        })();
+        let op = match setup {
+            Ok(op) => op,
+            Err(e) => return Ok(Err(e)),
+        };
+        if op == "net.listen" {
+            let port = match get("port").and_then(|v| match v {
+                J::Int(n) => u16::try_from(*n).map_err(|_| error("input", "invalid port")),
+                _ => Err(error("input", "port must be Int")),
+            }) {
+                Ok(port) => port,
+                Err(e) => return Ok(Err(e)),
+            };
+            let handle = match token() {
+                Ok(handle) => handle,
+                Err(e) => return Ok(Err(e)),
+            };
+            return Ok(self.network.listen(port, &mut checkpoint)?.map(|owner| {
+                self.owners.insert(handle, Owner::Listener(owner));
+                J::Int(handle)
+            }));
+        }
+        let handle = match get("handle") {
+            Ok(J::Int(handle)) if *handle > 0 => *handle,
+            _ => return Ok(Err(error("input", "positive handle Int required"))),
+        };
+        if op == "net.close" {
+            return Ok(match self.owners.remove(&handle) {
+                Some(Owner::Listener(owner)) => {
+                    owner.close();
+                    Ok(J::Null)
+                }
+                Some(Owner::Stream(owner)) => owner.close().map(|_| J::Null),
+                None => Err(error("input", "stale or foreign network handle")),
+            });
+        }
+        let owner = match self.owners.get_mut(&handle) {
+            Some(owner) => owner,
+            None => return Ok(Err(error("input", "stale or foreign network handle"))),
+        };
+        match (op, owner) {
+            ("net.port", Owner::Listener(owner)) => {
+                Ok(owner.port().map(|port| J::Int(port.into())))
+            }
+            ("net.accept", Owner::Listener(owner)) => {
+                let handle = match token() {
+                    Ok(handle) => handle,
+                    Err(e) => return Ok(Err(e)),
+                };
+                let accepted = owner.accept(&mut checkpoint)?;
+                Ok(accepted.map(|owner| {
+                    self.owners.insert(handle, Owner::Stream(owner));
+                    J::Int(handle)
+                }))
+            }
+            ("net.read", Owner::Stream(owner)) => {
+                let maximum = match get("maximum") {
+                    Ok(J::Int(n)) => usize::try_from(*n).ok(),
+                    _ => None,
+                };
+                let Some(maximum) = maximum else {
+                    return Ok(Err(error("input", "nonnegative read maximum required")));
+                };
+                Ok(owner
+                    .read(maximum, checkpoint)?
+                    .and_then(|value| match value {
+                        NetworkRead::Eof => Ok(J::Null),
+                        NetworkRead::Data(bytes) => encode(&bytes),
+                    }))
+            }
+            ("net.write", Owner::Stream(owner)) => {
+                let bytes = match get("data").and_then(|value| decode(value, self.limits.bytes)) {
+                    Ok(bytes) => bytes,
+                    Err(e) => return Ok(Err(e)),
+                };
+                Ok(owner.write(&bytes, checkpoint)?.map(|n| J::Int(n as i64)))
+            }
+            _ => Ok(Err(error(
+                "input",
+                "network handle kind does not match operation",
+            ))),
+        }
+    }
+    /// Close every owner, even after an error. First shutdown failure is explicit.
+    pub fn close_all(&mut self) -> Result<(), HostError> {
+        let mut first = None;
+        for (_, owner) in std::mem::take(&mut self.owners) {
+            if let Owner::Stream(stream) = owner {
+                if let Err(mut e) = stream.close() {
+                    e.code = "cleanup";
+                    if first.is_none() {
+                        first = Some(e);
+                    }
+                }
+            }
+        }
+        if let Some(error) = first {
+            Err(error)
+        } else {
+            Ok(())
+        }
+    }
+}
+fn fuel() -> RuntimeValueFuel {
+    RuntimeValueFuel::new(MaterializationLimits {
+        max_value_nodes: Some(131076),
+        max_text_bytes: Some(262144),
+    })
+}
+fn encode(bytes: &[u8]) -> Result<J, HostError> {
+    let mut fuel = fuel();
+    let mut work = RuntimeDataWork::new(4_000_000);
+    let bytes =
+        RuntimeBytesV2::from_slice(bytes, RuntimeBytesLimits::DEFAULT, &mut fuel, &mut work)
+            .map_err(|_| error("limit", "network binary output refused"))?;
+    bytes
+        .to_base64(RuntimeBytesLimits::DEFAULT, &mut fuel, &mut work)
+        .map(J::String)
+        .map_err(|_| error("limit", "network Base64 output refused"))
+}
+fn decode(value: &J, maximum: usize) -> Result<Vec<u8>, HostError> {
+    let text = match value {
+        J::String(text) => text,
+        _ => return Err(error("input", "Base64 String required")),
+    };
+    if text.len() > maximum.saturating_add(2) / 3 * 4 {
+        return Err(error("limit", "network Base64 input limit exceeded"));
+    }
+    let mut fuel = fuel();
+    let mut work = RuntimeDataWork::new(4_000_000);
+    let limits = RuntimeBytesLimits {
+        max_bytes: maximum,
+        ..RuntimeBytesLimits::DEFAULT
+    };
+    RuntimeBytesV2::from_base64(text, limits, &mut fuel, &mut work)
+        .map(|v| v.as_slice().to_vec())
+        .map_err(|_| error("input", "strict bounded Base64 required"))
+}

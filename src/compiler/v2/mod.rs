@@ -655,6 +655,8 @@ pub use generic_package_native::{
 mod runtime_json;
 pub use runtime_json::{parse_json, serialize_json, JsonError, JsonLimits, JsonValue};
 
+mod network_host_v4;
+pub use network_host_v4::NetworkHostV4;
 mod network_v4;
 pub use network_v4::{
     LoopbackListener, LoopbackNetwork, LoopbackStream, NetworkLimits, NetworkRead,
@@ -666,5 +668,9 @@ pub use host_v3::{HostError, HostLimits, HostV3};
 mod host_dates;
 pub use host_dates::{add_date, format_date, parse_date};
 
-pub use generic_package_compile::execute_generic_data_package_with_host;
-pub use generic_runtime::execute_generic_data_ir_with_host;
+pub use generic_package_compile::{
+    execute_generic_data_package_with_host, execute_generic_data_package_with_network_host,
+};
+pub use generic_runtime::{
+    execute_generic_data_ir_with_host, execute_generic_data_ir_with_network_host,
+};
