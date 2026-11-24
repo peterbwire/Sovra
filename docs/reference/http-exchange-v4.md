@@ -81,8 +81,8 @@ or process isolation.
 
 ## Actual application evidence
 
-[The Sovra example](../../examples/http-loopback/README.md) runs six sequential
-connections with GET/HEAD health, fixed-length/chunked Unicode POST JSON echo, a 404 route and a handler Result
+[The Sovra example](../../examples/http-loopback/README.md) runs seven sequential
+connections with GET/HEAD health, fixed-length/chunked/trailer Unicode POST JSON echo, a 404 route and a handler Result
 error recovered as 500. Python's independent `http.client` validates status,
 Content-Type, exact Content-Length/body, HEAD and connection-close behavior.
 Both CLI and native launch pass; native execution is tested after source deletion,
@@ -91,7 +91,7 @@ server or open ports.
 
 This remains a restricted loopback HTTP profile, not full RFC 9112 conformance
 or production deployment. Transfer codings beyond a single chunked coding,
-nonempty trailers/Trailer declarations, Expect, upgrades, CONNECT,
+Expect, upgrades, CONNECT,
 absolute targets and other HTTP versions still refuse. General method/routing,
 Host/origin authorization, concurrency/backpressure, TLS and additional-platform
 qualification remain open under the [G14 contract](../design/G14_COMPLETION_CONTRACT.md).
@@ -113,3 +113,7 @@ example/documentation checks, strict Clippy, exact Rust 1.74.0, Windows GNU
 all-target compilation and formatting pass. Windows runtime and full HTTP
 conformance remain unqualified. Local evidence:
 `target/checked-evidence/g14-http-chunked-serving/verification.json`.
+
+Chunked trailer sections now follow the [bounded validated-discard policy](http-trailers-v4.md).
+Trailer fields never enter the handler header map, and integrity values are not
+verified or exposed. Shared work/deadline/I/O limits include trailer processing.

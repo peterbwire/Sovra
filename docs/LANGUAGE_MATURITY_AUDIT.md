@@ -1139,3 +1139,12 @@ CLI/native clients exercise chunked Unicode JSON, including splits inside UTF-8.
 The public borrowed parser retains its fixed-length contract. Nonempty trailers,
 remaining protocol/production and additional-host gates stay open.
 See [chunked host scope](reference/http-chunked-v4.md).
+
+
+2026-11-24 G14 trailer checkpoint: the HTTP host validates and discards bounded
+chunked trailers under inherited byte/line/count and shared work/deadline/I/O
+limits. No trailer field is merged into the handler header map. Known framing,
+routing/authentication/content-processing fields refuse. Independent CLI/native
+clients cover declared trailers; integrity verification and application retention
+remain outside this discard contract. Full protocol/production gates stay open.
+See [trailer scope](reference/http-trailers-v4.md).

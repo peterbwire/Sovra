@@ -74,3 +74,7 @@ For chunked HTTP input, `http.work` is shared by head validation and incremental
 decoding, `body_bytes` caps decoded content and `line_bytes` also caps chunk-size/
 extension lines. Encoded body bytes/chunks retain fixed 2 MiB/4096 hard ceilings.
 Deadline and I/O counters span the complete exchange; see [chunked scope](http-chunked-v4.md).
+
+Trailer sections inherit the head-byte, line-byte and header-count ceilings with
+independent counters, and consume the same encoded-wire/work/deadline/I/O budgets.
+Fields are validated and discarded; see [trailer policy](http-trailers-v4.md).

@@ -56,7 +56,9 @@ aggregate deadlines and one-request state. A real Sovra HTTP/JSON example passes
 independent CLI/native client acceptance. A bounded incremental chunked-body Rust
 decoder now shares HTTP head work and aggregate socket deadlines through
 `http.receive`; independent CLI/native Unicode chunked JSON clients are covered
-(see `docs/reference/http-chunked-v4.md`). Nonempty trailers, full protocol, production
+(see `docs/reference/http-chunked-v4.md`). Trailer sections now use bounded validated discard without header merging,
+with known security-field refusal (see `docs/reference/http-trailers-v4.md`).
+Trailer integrity/application access, full protocol, production
 server controls and wider qualification remain open. Continue under `docs/design/G14_COMPLETION_CONTRACT.md`. Consult
 `docs/G13_QUALIFICATION.md` and `docs/reference/generic-formatting.md` for current
 evidence and remaining gates. Historical checkpoints below do not reopen these
@@ -72,7 +74,9 @@ evidence, not a substitute for current source and exact-platform verification.
 
 User workflow rule (2026-11-24): at every G-task transition, push the completed
 work to GitHub and open a pull request before starting the next G task. G14 has
-its own review branch/PR; continue incremental work within that task.
+its own review branch. PR #3 is merged into main; PR #4 was closed unmerged.
+The continued G14 review targets main and includes all unmerged G14 work.
+Continue incremental work within that task.
 
 Current sequencing (2026-11-11): review and qualify the compiler/runtime, shared
 UI, developer tooling and Windows packaging before further Task Manager feature

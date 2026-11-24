@@ -8,8 +8,10 @@ implemented, along with bounded final-response rendering and one-request owned
 HTTP socket dispatch. Real Sovra handlers pass independent CLI/native HTTP/JSON
 acceptance. The [incremental chunked decoder](../reference/http-chunked-v4.md)
 now integrates checked head framing, shared HTTP work and socket deadlines;
-CLI/native clients cover chunked Unicode JSON. Nonempty trailers, remaining
-protocol coverage, production server controls and G14 qualification
+CLI/native clients cover chunked Unicode JSON and declared trailers.
+[Bounded validated-discard trailers](../reference/http-trailers-v4.md) remain
+separate from headers and never authorize application behavior. Trailer integrity/
+retention, remaining protocol coverage, production server controls and G14 qualification
 remain open.
 G13's experimental Linux foundation remains complete under its documented scope.
 Task Manager feature work remains paused.

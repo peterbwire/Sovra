@@ -11324,3 +11324,25 @@ example/documentation checks, strict Clippy, exact Rust 1.74.0, Windows GNU
 all-target compilation and formatting pass. Windows runtime and full HTTP
 conformance remain unqualified. Local evidence:
 `target/checked-evidence/g14-http-chunked-serving/verification.json`.
+
+
+2026-11-24 G14 validated-discard trailers: reviewed RFC 9112 section 7.1.2 and
+RFC 9110 section 6.5.1, then added explicit bounded trailer admission while
+preserving the Rust decoder's original empty-only constructor. Socket hosts opt
+into validating/discarding fields without merging request headers or exposing
+integrity metadata. Trailer declarations and actual lines reject malformed or
+known security-sensitive names. Inherited section/line/count limits and shared
+wire/work/deadline/I/O budgets span all feeds; claimed failures close owners.
+Six decoder and four socket cases cover splits, truncation, mutation, limits,
+non-merging, refusal, cancellation and slow progress. Independent Python clients
+exercise declared trailers through CLI/native Sovra JSON handlers alongside
+fixed/chunked requests. Next: broader HTTP protocol and production authorization
+qualification; trailer retention/integrity requires a separate explicit contract.
+See [implemented scope](reference/http-trailers-v4.md).
+
+Validation: 681 unique Rust tests pass (600 library and 81 HTTP/network/v3-host
+integration tests), including independent CLI/native declared-trailer clients
+and 18 socket exchange tests. Four Node security/language/catalog/documentation
+checks, strict Clippy, exact Rust 1.74.0, Windows GNU all-target compilation and
+formatting pass. Windows runtime/full HTTP/production qualification remain open.
+Local evidence: `target/checked-evidence/g14-http-trailers/verification.json`.

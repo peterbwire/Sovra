@@ -1,4 +1,4 @@
-//! Incremental, bounded chunked-body decoding; HTTP head/socket integration is separate.
+//! Incremental bounded chunked-body decoding with explicit validated-discard trailers.
 use super::http_request_v4::token;
 use super::HttpRequestError;
 
@@ -26,6 +26,24 @@ impl HttpChunkedLimits {
         work: 8 * 1024 * 1024,
     };
 }
+/// Independent ceilings for validated trailer fields, which are discarded, never merged.
+#[derive(Debug, Clone, Copy)]
+pub struct HttpTrailerLimits {
+    /// Aggregate trailer-section bytes, including every CRLF and the final CRLF.
+    pub bytes: usize,
+    /// Field line bytes excluding CRLF.
+    pub line_bytes: usize,
+    /// Maximum nonempty field lines.
+    pub fields: usize,
+}
+impl HttpTrailerLimits {
+    /// Hard ceilings; socket hosts inherit lower HTTP head/line/field settings.
+    pub const DEFAULT: Self = Self {
+        bytes: 16384,
+        line_bytes: 8192,
+        fields: 64,
+    };
+}
 #[derive(Debug, Clone, Copy)]
 enum State {
     Size,
@@ -33,12 +51,12 @@ enum State {
     Data(usize),
     DataCr,
     DataLf,
-    FinalCr,
-    FinalLf,
+    Trailer,
+    TrailerLf,
     Done,
 }
 /// Single-use body decoder. No body is exposed until complete validation.
-/// Errors are sticky; nonempty trailers and trailing/pipelined bytes refuse.
+/// Errors are sticky; trailers require explicit discard admission, and trailing bytes refuse.
 #[derive(Debug)]
 pub struct HttpChunkedDecoder {
     limits: HttpChunkedLimits,
@@ -49,6 +67,9 @@ pub struct HttpChunkedDecoder {
     chunks: usize,
     work: usize,
     failure: Option<HttpRequestError>,
+    trailers: Option<HttpTrailerLimits>,
+    trailer_bytes: usize,
+    trailer_fields: usize,
 }
 fn error(code: &'static str, offset: usize, message: &'static str) -> HttpRequestError {
     HttpRequestError {
@@ -82,7 +103,32 @@ impl HttpChunkedDecoder {
             chunks: 0,
             work: limits.work,
             failure: None,
+            trailers: None,
+            trailer_bytes: 0,
+            trailer_fields: 0,
         })
+    }
+    /// Admit bounded, syntax-checked trailer fields for discard only. No fields are exposed
+    /// or merged into headers. Known framing/routing/authentication fields refuse.
+    /// `new` retains its original empty-trailer-only contract.
+    pub fn with_discarded_trailers(
+        limits: HttpChunkedLimits,
+        trailers: HttpTrailerLimits,
+    ) -> Result<Self, HttpRequestError> {
+        let cap = HttpTrailerLimits::DEFAULT;
+        if trailers.bytes > cap.bytes
+            || trailers.line_bytes > cap.line_bytes
+            || trailers.fields > cap.fields
+        {
+            return Err(error(
+                "policy",
+                0,
+                "trailer limits may only narrow defaults",
+            ));
+        }
+        let mut decoder = Self::new(limits)?;
+        decoder.trailers = Some(trailers);
+        Ok(decoder)
     }
     /// Consume only new bytes. Returns true once the final empty trailer line completes.
     /// A later nonempty feed revokes completion; errors never permit body extraction.
@@ -140,7 +186,7 @@ impl HttpChunkedDecoder {
                     let n = size(&self.line, self.wire - self.line.len() - 2)?;
                     self.line.clear();
                     if n == 0 {
-                        State::FinalCr
+                        State::Trailer
                     } else {
                         if self.chunks >= self.limits.chunks {
                             return Err(error("limit", at, "chunk count exceeded"));
@@ -183,21 +229,51 @@ impl HttpChunkedDecoder {
                     }
                     State::Size
                 }
-                State::FinalCr => {
-                    if b != b'\r' {
-                        return Err(error(
-                            "unsupported",
-                            at,
-                            "nonempty trailers are not admitted",
-                        ));
+                State::Trailer => {
+                    self.admit_trailer_byte(at)?;
+                    if b == b'\r' {
+                        State::TrailerLf
+                    } else {
+                        let Some(limits) = self.trailers else {
+                            return Err(error(
+                                "unsupported",
+                                at,
+                                "nonempty trailers are not admitted",
+                            ));
+                        };
+                        if b == b'\n' {
+                            return Err(error("syntax", at, "bare LF in trailer refuses"));
+                        }
+                        if self.line.len() >= limits.line_bytes {
+                            return Err(error("limit", at, "trailer line limit exceeded"));
+                        }
+                        self.line
+                            .try_reserve(1)
+                            .map_err(|_| error("limit", at, "trailer allocation refused"))?;
+                        self.line.push(b);
+                        State::Trailer
                     }
-                    State::FinalLf
                 }
-                State::FinalLf => {
+                State::TrailerLf => {
+                    self.admit_trailer_byte(at)?;
                     if b != b'\n' {
-                        return Err(error("syntax", at, "final CRLF missing"));
+                        return Err(error("syntax", at, "trailer CR must be followed by LF"));
                     }
-                    State::Done
+                    if self.line.is_empty() {
+                        State::Done
+                    } else {
+                        let limits = self
+                            .trailers
+                            .expect("nonempty trailer requires explicit admission");
+                        if self.trailer_fields >= limits.fields {
+                            return Err(error("limit", at, "trailer field count exceeded"));
+                        }
+                        self.charge(self.line.len() * 32, at)?;
+                        validate_trailer(&self.line, self.wire - self.line.len() - 2)?;
+                        self.trailer_fields += 1;
+                        self.line.clear();
+                        State::Trailer
+                    }
                 }
                 State::Done => {
                     return Err(error("framing", at, "trailing or pipelined bytes refuse"))
@@ -205,6 +281,15 @@ impl HttpChunkedDecoder {
             };
         }
         Ok(matches!(self.state, State::Done))
+    }
+    fn admit_trailer_byte(&mut self, at: usize) -> Result<(), HttpRequestError> {
+        if let Some(limits) = self.trailers {
+            if self.trailer_bytes >= limits.bytes {
+                return Err(error("limit", at, "trailer section byte limit exceeded"));
+            }
+        }
+        self.trailer_bytes += 1;
+        Ok(())
     }
     /// Consume ownership and return decoded bytes only after a complete, error-free frame.
     pub fn finish(self) -> Result<Vec<u8>, HttpRequestError> {
@@ -322,4 +407,62 @@ fn size(line: &[u8], offset: usize) -> Result<usize, HttpRequestError> {
         }
     }
     Ok(n)
+}
+
+/// Conservative refusal of known fields affecting framing, routing, authentication or content
+/// processing. All other fields are discarded, never interpreted as authority or verified metadata.
+pub(super) fn trailer_name_allowed(name: &[u8]) -> bool {
+    ![
+        "content-length",
+        "transfer-encoding",
+        "host",
+        "trailer",
+        "connection",
+        "te",
+        "upgrade",
+        "expect",
+        "authorization",
+        "proxy-authorization",
+        "proxy-authenticate",
+        "www-authenticate",
+        "authentication-info",
+        "proxy-authentication-info",
+        "cookie",
+        "set-cookie",
+        "content-type",
+        "content-encoding",
+        "content-range",
+        "range",
+        "if-match",
+        "if-none-match",
+        "if-range",
+        "if-modified-since",
+        "if-unmodified-since",
+        "max-forwards",
+    ]
+    .iter()
+    .any(|field| name.eq_ignore_ascii_case(field.as_bytes()))
+}
+fn validate_trailer(line: &[u8], offset: usize) -> Result<(), HttpRequestError> {
+    let colon = line
+        .iter()
+        .position(|b| *b == b':')
+        .ok_or_else(|| error("syntax", offset, "trailer colon missing"))?;
+    if colon == 0 || !line[..colon].iter().all(|b| token(*b)) {
+        return Err(error("syntax", offset, "invalid trailer field name"));
+    }
+    if !trailer_name_allowed(&line[..colon]) {
+        return Err(error("unsupported", offset, "prohibited trailer field"));
+    }
+    if line[colon + 1..]
+        .iter()
+        .any(|b| (*b < 32 && *b != b'\t') || *b == 127)
+    {
+        return Err(error(
+            "syntax",
+            offset + colon + 1,
+            "control in trailer value",
+        ));
+    }
+    Ok(())
 }

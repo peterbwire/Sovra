@@ -4,9 +4,9 @@ Status: a restricted native Sovra HTTP/JSON demonstration is now implemented on
 Linux through [owned HTTP exchanges](reference/http-exchange-v4.md). Real Sovra
 handlers pass independent CLI/native GET/HEAD, fixed-length/chunked Unicode JSON
 echo, 404 and recovered 500
-acceptance, including native startup without source files or Node. External
+acceptance, including bounded declared-trailer discard and native startup without source files or Node. External
 policies grant exact loopback ports and lowerable aggregate limits. Full HTTP
-protocol coverage, nonempty trailers, production controls and additional hosts
+protocol coverage, trailer integrity/retention, production controls and additional hosts
 remain open under the
 [G14 contract](design/G14_COMPLETION_CONTRACT.md).
 

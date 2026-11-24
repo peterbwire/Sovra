@@ -1,6 +1,6 @@
 # Bounded Sovra HTTP/JSON demonstration
 
-This Linux experimental data-profile example runs six sequential connections,
+This Linux experimental data-profile example runs seven sequential connections,
 one fixed-length or restricted chunked HTTP/1.1 request per connection, then
 exits. Sovra code owns routing and ordinary Result-based handler recovery. The trusted network host
 owns sockets, framing, deadlines and response validation.
@@ -20,9 +20,19 @@ import http.client, json
 for method, path, body in [('GET','/health',None), ('HEAD','/health',None),
                            ('POST','/echo',b'{"message":"Sovra"}'),
                            ('POST','/echo',[b'{"chunked":true}']),
+                           ('POST','/echo',{'trailers':b'{"trailers":true}'}),
                            ('GET','/missing',None), ('GET','/failure',None)]:
     client = http.client.HTTPConnection('127.0.0.1', 47123, timeout=5)
-    client.request(method, path, body, encode_chunked=True)
+    if isinstance(body, dict):
+        payload = body['trailers']
+        client.putrequest(method, path)
+        client.putheader('Transfer-Encoding', 'chunked')
+        client.putheader('Trailer', 'X-Trace')
+        client.endheaders()
+        client.send(('%x\r\n' % len(payload)).encode('ascii') + payload +
+                    b'\r\n0\r\nX-Trace: discarded\r\n\r\n')
+    else:
+        client.request(method, path, body, encode_chunked=True)
     response = client.getresponse()
     data = response.read()
     print(method, path, response.status, data)
@@ -30,7 +40,7 @@ for method, path, body in [('GET','/health',None), ('HEAD','/health',None),
 PYTHON
 ```
 
-Expected statuses are 200, 200, 200, 200, 404 and 500. HEAD emits no body but retains
+Expected statuses are 200, 200, 200, 200, 200, 404 and 500. HEAD emits no body but retains
 its representation length. `/echo` parses and reserializes JSON; `/failure`
 deliberately raises an ordinary JSON Result error, which Sovra handles as a
 fixed generic 500 response. Routes use the exact raw target; this demo does not
@@ -49,6 +59,9 @@ checks this example without running it or opening a listener.
 
 The [HTTP exchange contract](../../docs/reference/http-exchange-v4.md) describes
 bounds and refusal semantics. This is a restricted loopback demo, not a production
-server: nonempty trailers, transfer codings beyond chunked, persistence, upgrades,
+server: trailer integrity/retention, transfer codings beyond chunked, persistence, upgrades,
 TLS, async/concurrent scheduling,
 authentication and production origin/Host policy remain unimplemented.
+
+Chunked trailers are validated and discarded under [explicit limits](../../docs/reference/http-trailers-v4.md);
+they never override request headers or supply verified integrity metadata.

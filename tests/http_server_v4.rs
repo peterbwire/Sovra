@@ -79,12 +79,19 @@ fn client_and_wait(mut server: Command, port: u16) {
     let script = r#"
 import http.client,json,sys,time
 port=int(sys.argv[1]);deadline=time.monotonic()+8
-cases=[('GET','/health',None,200,{'ok':True}),('HEAD','/health',None,200,None),('POST','/echo','{"n":7,"message":"λ😀"}'.encode('utf-8'),200,{'n':7,'message':'λ😀'}),('POST','/echo',[b'{"chunked":"', 'λ😀'.encode('utf-8')[:1], 'λ😀'.encode('utf-8')[1:], b'"}'],200,{'chunked':'λ😀'}),('GET','/missing',None,404,{'error':'not_found'}),('GET','/failure',None,500,{'error':'handler'})]
+cases=[('GET','/health',None,200,{'ok':True}),('HEAD','/health',None,200,None),('POST','/echo','{"n":7,"message":"λ😀"}'.encode('utf-8'),200,{'n':7,'message':'λ😀'}),('POST','/echo',[b'{"chunked":"', 'λ😀'.encode('utf-8')[:1], 'λ😀'.encode('utf-8')[1:], b'"}'],200,{'chunked':'λ😀'}),('POST','/echo',{'trailers':'{"trailers":"λ😀"}'.encode('utf-8')},200,{'trailers':'λ😀'}),('GET','/missing',None,404,{'error':'not_found'}),('GET','/failure',None,500,{'error':'handler'})]
 for index,(method,target,body,status,expected) in enumerate(cases):
  while True:
   connection=http.client.HTTPConnection('127.0.0.1',port,timeout=3)
   try:
-   connection.request(method,target,body=body,encode_chunked=True)
+   if isinstance(body,dict):
+    payload=body['trailers']
+    connection.putrequest(method,target)
+    connection.putheader('Transfer-Encoding','chunked')
+    connection.putheader('Trailer','X-Trace, Content-Digest')
+    connection.endheaders()
+    connection.send(('%x\r\n'%len(payload)).encode('ascii')+payload+b'\r\n0\r\nX-Trace: ignored\r\nContent-Digest: not-verified\r\n\r\n')
+   else:connection.request(method,target,body=body,encode_chunked=True)
    break
   except ConnectionRefusedError:
    connection.close()
@@ -97,7 +104,7 @@ for index,(method,target,body,status,expected) in enumerate(cases):
  if method=='HEAD':assert data==b'' and int(response.getheader('Content-Length'))==len(b'{"ok":true}')
  else:assert int(response.getheader('Content-Length'))==len(data) and json.loads(data)==expected,(target,data)
  connection.close()
-print('Independent HTTP client: GET/HEAD, fixed/chunked Unicode JSON echo, 404, handler 500 and close framing passed')
+print('Independent HTTP client: GET/HEAD, fixed/chunked/trailer Unicode JSON echo, 404, handler 500 and close framing passed')
 "#;
     let client = Command::new("python3")
         .arg("-c")

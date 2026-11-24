@@ -384,7 +384,7 @@ fn chunked_ambiguity_codings_trailers_and_bad_frames_never_publish() {
         ),
         ("Transfer-Encoding: \r\n", "0\r\n\r\n", "unsupported"),
         (
-            "Transfer-Encoding: chunked\r\nTrailer: X-Trailer\r\n",
+            "Transfer-Encoding: chunked\r\nTrailer: Host\r\n",
             "0\r\n\r\n",
             "unsupported",
         ),
@@ -522,6 +522,160 @@ fn chunked_mid_body_cancellation_and_io_exhaustion_revoke_owner() {
     );
     peer.write_all(partial).unwrap();
     assert_eq!(call(&mut host, &receive(stream)).unwrap_err().code, "limit");
+    assert_eq!(host.usage(), (1, 0));
+    host.close_all().unwrap();
+}
+
+#[test]
+fn trailers_are_validated_discarded_and_never_merged_into_request_headers() {
+    for declaration in ["", "Trailer: X-Trace, Content-Digest\r\n"] {
+        let (mut host, stream, mut peer) = connect(1, HttpExchangeLimits::DEFAULT);
+        peer.write_all(format!("POST / HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\nX-Trace: head\r\n{declaration}\r\n1\r\nx\r\n0\r\nX-Trace: tail\r\nX-Other: discarded\r\nContent-Digest: not-verified\r\n\r\n").as_bytes()).unwrap();
+        let value = call(&mut host, &receive(stream)).unwrap();
+        assert_eq!(field(&value, "body"), &JsonValue::String("eA==".into()));
+        let JsonValue::Array(headers) = field(&value, "headers") else {
+            panic!("headers")
+        };
+        let trace: Vec<_> = headers
+            .iter()
+            .filter(|h| field(h, "name") == &JsonValue::String("X-Trace".into()))
+            .collect();
+        assert_eq!(trace.len(), 1);
+        assert_eq!(
+            field(trace[0], "value"),
+            &JsonValue::String("aGVhZA==".into())
+        );
+        assert!(!headers
+            .iter()
+            .any(|h| field(h, "name") == &JsonValue::String("X-Other".into())));
+        call(&mut host, &response(stream)).unwrap();
+        host.close_all().unwrap();
+    }
+}
+#[test]
+fn trailer_declarations_and_fields_refuse_malformed_or_security_sensitive_data() {
+    for (extra, tail, code) in [
+        ("Trailer: Host\r\n", "", "unsupported"),
+        ("Trailer: Authorization\r\n", "", "unsupported"),
+        ("Trailer: X,\r\n", "", "syntax"),
+        ("Trailer: \r\n", "", "syntax"),
+        ("Trailer: X\r\nTrailer: Y\r\n", "", "framing"),
+        ("Trailer: X Y\r\n", "", "syntax"),
+        ("", "X : value\r\n", "syntax"),
+        ("", " X: value\r\n", "syntax"),
+        ("", "Content-Length: 9\r\n", "unsupported"),
+        ("", "Authorization: auth\r\n", "unsupported"),
+        ("", "X: value\r\n", "truncated"),
+    ] {
+        let (mut host, stream, mut peer) = connect(4096, HttpExchangeLimits::DEFAULT);
+        let end = if code == "truncated" { "" } else { "\r\n" };
+        peer.write_all(format!("POST / HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\n{extra}\r\n0\r\n{tail}{end}").as_bytes()).unwrap();
+        peer.shutdown(Shutdown::Write).unwrap();
+        assert_eq!(
+            call(&mut host, &receive(stream)).unwrap_err().code,
+            code,
+            "{extra:?} {tail:?}"
+        );
+        assert_eq!(host.usage(), (1, 0));
+        assert!(call(&mut host, &response(stream)).is_err());
+        host.close_all().unwrap();
+    }
+    let (mut host, stream, mut peer) = connect(4096, HttpExchangeLimits::DEFAULT);
+    peer.write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\nTrailer: X\r\n\r\n")
+        .unwrap();
+    assert_eq!(
+        call(&mut host, &receive(stream)).unwrap_err().code,
+        "unsupported"
+    );
+}
+#[test]
+fn trailer_byte_count_line_count_and_shared_work_limits_revoke_owner() {
+    for (limits, tail) in [
+        (
+            HttpRequestLimits {
+                head_bytes: 100,
+                ..HttpRequestLimits::DEFAULT
+            },
+            format!("X: {}\r\n", "a".repeat(100)),
+        ),
+        (
+            HttpRequestLimits {
+                line_bytes: 32,
+                ..HttpRequestLimits::DEFAULT
+            },
+            format!("X: {}\r\n", "a".repeat(33)),
+        ),
+        (
+            HttpRequestLimits {
+                headers: 2,
+                ..HttpRequestLimits::DEFAULT
+            },
+            "X: a\r\nY: b\r\nZ: c\r\n".into(),
+        ),
+        (
+            HttpRequestLimits {
+                work: 1000,
+                ..HttpRequestLimits::DEFAULT
+            },
+            format!("X: {}\r\n", "a".repeat(20)),
+        ),
+    ] {
+        let (mut host, stream, mut peer) = connect(
+            4096,
+            HttpExchangeLimits {
+                request: limits,
+                ..HttpExchangeLimits::DEFAULT
+            },
+        );
+        peer.write_all(format!("POST / HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n{tail}\r\n").as_bytes()).unwrap();
+        assert_eq!(call(&mut host, &receive(stream)).unwrap_err().code, "limit");
+        assert_eq!(host.usage(), (1, 0));
+        host.close_all().unwrap();
+    }
+}
+
+#[test]
+fn unfinished_trailers_share_cancellation_and_deadline_cleanup() {
+    let partial =
+        b"POST / HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\n\r\n0\r\nX-Trace: ";
+    let (mut host, stream, mut peer) = connect(4096, HttpExchangeLimits::DEFAULT);
+    peer.write_all(partial).unwrap();
+    let mut checks = 0;
+    assert_eq!(
+        host.call(&request(&receive(stream)), || {
+            checks += 1;
+            if checks >= 3 {
+                Err("cancel trailer")
+            } else {
+                Ok(())
+            }
+        })
+        .unwrap_err(),
+        "cancel trailer"
+    );
+    assert_eq!(host.usage(), (1, 0));
+    host.close_all().unwrap();
+    let (mut host, stream, mut peer) = connect(
+        4096,
+        HttpExchangeLimits {
+            milliseconds: 30,
+            ..HttpExchangeLimits::DEFAULT
+        },
+    );
+    peer.write_all(partial).unwrap();
+    let sender = std::thread::spawn(move || {
+        for _ in 0..30 {
+            std::thread::sleep(Duration::from_millis(5));
+            if peer.write_all(b"x").is_err() {
+                break;
+            }
+        }
+    });
+    assert_eq!(
+        call(&mut host, &receive(stream)).unwrap_err().code,
+        "timeout"
+    );
+    sender.join().unwrap();
     assert_eq!(host.usage(), (1, 0));
     host.close_all().unwrap();
 }

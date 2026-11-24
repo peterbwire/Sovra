@@ -374,6 +374,7 @@ pub(super) fn parse_http_head(
     let mut transfer = false;
     let mut chunked = false;
     let mut unsupported = false;
+    let mut trailer = false;
     loop {
         let at = cursor;
         let Some((field, next)) = line(input, cursor, limits, &mut work)? else {
@@ -476,10 +477,45 @@ pub(super) fn parse_http_head(
             }
             transfer = true;
             chunked = value.eq_ignore_ascii_case(b"chunked");
-        } else if name.eq_ignore_ascii_case("expect")
-            || name.eq_ignore_ascii_case("upgrade")
-            || name.eq_ignore_ascii_case("trailer")
-        {
+        } else if name.eq_ignore_ascii_case("trailer") {
+            if trailer {
+                return Err(fail("framing", at, "multiple Trailer declarations refuse"));
+            }
+            trailer = true;
+            charge(&mut work, value.len() * 32, value_at)?;
+            let mut count = 0;
+            for name in value.split(|b| *b == b',') {
+                let begin = name
+                    .iter()
+                    .position(|b| *b != b' ' && *b != b'\t')
+                    .unwrap_or(name.len());
+                let name = &name[begin..];
+                let end = name
+                    .iter()
+                    .rposition(|b| *b != b' ' && *b != b'\t')
+                    .map(|n| n + 1)
+                    .unwrap_or(0);
+                let name = &name[..end];
+                count += 1;
+                if count > limits.headers {
+                    return Err(fail(
+                        "limit",
+                        value_at,
+                        "trailer declaration count exceeded",
+                    ));
+                }
+                if name.is_empty() || !name.iter().all(|b| token(*b)) {
+                    return Err(fail("syntax", value_at, "invalid Trailer declaration"));
+                }
+                if !super::http_chunked_v4::trailer_name_allowed(name) {
+                    return Err(fail(
+                        "unsupported",
+                        value_at,
+                        "prohibited Trailer declaration",
+                    ));
+                }
+            }
+        } else if name.eq_ignore_ascii_case("expect") || name.eq_ignore_ascii_case("upgrade") {
             unsupported = true;
         }
         headers.push(HttpRequestHeader { name, value });
@@ -494,7 +530,10 @@ pub(super) fn parse_http_head(
             "Transfer-Encoding with Content-Length refuses",
         ));
     }
-    if (transfer && (!allow_chunked || !chunked)) || unsupported {
+    if (transfer && (!allow_chunked || !chunked))
+        || (trailer && (!allow_chunked || !chunked))
+        || unsupported
+    {
         return Err(fail(
             "unsupported",
             cursor,

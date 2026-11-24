@@ -20,8 +20,9 @@ Unknown syntactically valid extensions are ignored, as required by section 7.1.1
 The implementation validates token and quoted-string values, quoted-pair escapes,
 BWS separators and original wire offsets. Bare LF, invalid controls, size
 overflow, missing delimiters and trailing/pipelined bytes refuse. Nonempty
-trailers explicitly refuse; they are never merged into request headers. This
-restricted trailer profile does not establish full RFC conformance.
+trailers refuse with the original `new` constructor; the socket host opts into
+[bounded validated-discard trailers](http-trailers-v4.md). No trailer fields are
+merged into request headers. Full RFC conformance remains unqualified.
 
 Trusted callers may only lower the following defaults:
 
@@ -51,7 +52,8 @@ The receiver incrementally finds the head terminator and validates the head once
 An internal checked decision admits either a fixed length or exactly `chunked`.
 Transfer-Encoding with Content-Length, duplicate coding fields, repeated/non-final
 chunked, coding lists/parameters and unsupported codings continue to refuse.
-`Trailer` declarations and nonempty trailers still refuse. No partially decoded
+`Trailer` declarations and nonempty sections now use the explicit
+[discard policy](http-trailers-v4.md), including known security-field refusal. No partially decoded
 body reaches Sovra, and all claimed failures drop the stream.
 
 Head validation and chunk decoding share the existing HTTP `work` budget: only
@@ -73,7 +75,7 @@ native Sovra handlers parse the decoded JSON and return checked responses; nativ
 startup is tested after deleting project files with an empty environment and
 Node/PATH unavailable. Socket tests cover one-byte reads, ignored extensions,
 malformed framing/codings, truncation, shared work/line/body limits, slow body
-input, mid-body cancellation and I/O exhaustion. Production controls, trailers
+input, mid-body cancellation and I/O exhaustion. Trailer retention/integrity verification, production controls
 and full HTTP protocol qualification remain open.
 
 ## Integrated serving validation

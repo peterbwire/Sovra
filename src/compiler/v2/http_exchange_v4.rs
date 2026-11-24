@@ -2,9 +2,9 @@
 use super::http_request_v4::{parse_http_head, HttpBodyFraming};
 use super::{
     render_http_response, HostError, HttpChunkedDecoder, HttpChunkedLimits, HttpRequest,
-    HttpRequestLimits, HttpResponseContext, HttpResponseHeader, HttpResponseLimits, JsonValue as J,
-    LoopbackStream, NetworkLimits, NetworkRead, RuntimeBytesLimits, RuntimeBytesV2,
-    RuntimeDataWork, RuntimeValueFuel,
+    HttpRequestLimits, HttpResponseContext, HttpResponseHeader, HttpResponseLimits,
+    HttpTrailerLimits, JsonValue as J, LoopbackStream, NetworkLimits, NetworkRead,
+    RuntimeBytesLimits, RuntimeBytesV2, RuntimeDataWork, RuntimeValueFuel,
 };
 use crate::compiler::execution::MaterializationLimits;
 use std::time::{Duration, Instant};
@@ -304,7 +304,12 @@ fn receive_body<E>(
                 work,
                 ..HttpChunkedLimits::DEFAULT
             };
-            let mut decoder = match HttpChunkedDecoder::new(limits) {
+            let trailers = HttpTrailerLimits {
+                bytes: connection.limits.request.head_bytes,
+                line_bytes: connection.limits.request.line_bytes,
+                fields: connection.limits.request.headers,
+            };
+            let mut decoder = match HttpChunkedDecoder::with_discarded_trailers(limits, trailers) {
                 Ok(d) => d,
                 Err(e) => return Ok(Err(error(e.code, e.message))),
             };
