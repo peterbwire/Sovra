@@ -4,7 +4,8 @@ Status: a native Sovra HTTP runtime remains planned. The first G14
 [Rust socket owner](reference/loopback-network-v4.md) now provides bounded trusted
 loopback I/O and an explicit Rust-owned host now connects checked source execution;
 External CLI/native policy now supports loopback byte serving; HTTP integration
-remains open under the
+now has a [pure fixed-length request parser](reference/http-request-framing-v4.md);
+response/socket dispatch and actual HTTP handlers remain open under the
 [G14 contract](design/G14_COMPLETION_CONTRACT.md). The unnumbered
 `dogfood/sovra-http-server` now demonstrates a private Node loopback adapter:
 Node owns the socket and calls a Sovra package to choose route responses in

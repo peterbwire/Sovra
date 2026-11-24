@@ -269,6 +269,7 @@ Implemented evidence:
 - [x] Add a trusted Rust loopback socket foundation with exact port grants, unique resource owners, nonblocking bounded I/O, deadlines/cancellation and independent TCP-client tests; see [socket scope](reference/loopback-network-v4.md).
 - [x] Add strict version-four network requests with execution-scoped owned handle custody and explicit Rust checked-data execution; actual `.svr` binary echo and failure cleanup are tested. See [network host](reference/network-host-v4.md). CLI/native network policy is now supported through an external versioned policy; HTTP remains open.
 - [x] Load bounded external v3/v4 policies and dispatch explicit CLI/native data execution; prove independent native binary echo after project deletion with no Node/PATH, and preserve v3 authority behavior. See [network policy](reference/network-policy-v4.md).
+- [x] Add a bounded borrowed fixed-length HTTP/1.1 request parser reviewed against RFC 9110/9112, including ambiguous framing/refusal, partial input and raw byte preservation; see [parser scope](reference/http-request-framing-v4.md). Socket integration, response construction and handlers remain open.
 - [ ] Define owned handles, explicit capabilities, partial I/O, lifetime/cleanup,
   cancellation/timeouts, scheduling/concurrency and unsupported-host behavior.
 - [ ] Implement sockets and a bounded Sovra-owned loopback server, then HTTP framing,

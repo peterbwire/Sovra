@@ -48,7 +48,10 @@ tests. An explicit owned version-four network host now lets checked `.svr` data
 programs bind/accept/read/write/close, with scoped token custody and cleanup on
 VM success/failure. Bounded external v3/v4 policy loading now enables explicit
 CLI/native loopback byte servers with no embedded grants, project or Node startup
-dependency. HTTP remains open. Continue under `docs/design/G14_COMPLETION_CONTRACT.md`. Consult
+dependency. A pure borrowed fixed-length HTTP/1.1 request parser now validates
+framing, Host/field syntax, partial input and lowerable limits. It is not wired
+to socket dispatch yet; response construction, chunked/full protocol support and
+Sovra HTTP handlers remain open. Continue under `docs/design/G14_COMPLETION_CONTRACT.md`. Consult
 `docs/G13_QUALIFICATION.md` and `docs/reference/generic-formatting.md` for current
 evidence and remaining gates. Historical checkpoints below do not reopen these
 implemented slices or establish G13/release/platform completion.
