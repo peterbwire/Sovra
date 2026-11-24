@@ -57,8 +57,9 @@ limits do not establish a Slowloris defense, hard time limit or process isolatio
 Tests cover every partial boundary, opaque binary bodies/field values, exact
 limits, length ambiguities, whitespace/folding/controls, malformed targets and
 Host fields, unsupported contexts, trailing data and deterministic byte mutations.
-The next stages are bounded response construction, socket framing with aggregate
-policy, and actual Sovra handlers with independent HTTP/JSON clients.
+[Bounded response construction](http-response-framing-v4.md) is now implemented.
+The next stages are socket framing with aggregate policy and actual Sovra
+handlers with independent HTTP/JSON clients.
 
 ## Primary standards reviewed
 

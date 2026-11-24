@@ -131,7 +131,7 @@ fn incomplete<'a>(
         Ok(HttpRequestParse::Incomplete { minimum_bytes })
     }
 }
-fn token(b: u8) -> bool {
+pub(super) fn token(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&b)
 }
 fn line<'a>(

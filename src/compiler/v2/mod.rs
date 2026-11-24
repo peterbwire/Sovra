@@ -655,6 +655,11 @@ pub use generic_package_native::{
 mod runtime_json;
 pub use runtime_json::{parse_json, serialize_json, JsonError, JsonLimits, JsonValue};
 
+mod http_response_v4;
+pub use http_response_v4::{
+    render_http_response, HttpResponseContext, HttpResponseError, HttpResponseHeader,
+    HttpResponseLimits,
+};
 mod http_request_v4;
 pub use http_request_v4::{
     parse_http_request, HttpRequest, HttpRequestError, HttpRequestHeader, HttpRequestLimits,
