@@ -290,6 +290,7 @@ Implemented evidence:
 - [x] Add cooperative `net.try_write` with exact partial progress, explicit not-ready output and pre-write cancellation; prove actual send-buffer backpressure and progress on another connection. HTTP scheduling remains open.
 - [x] Extract bounded resumable HTTP head accumulation with retained scan state, sticky failures and body-prefix preservation; existing receive uses it before strict one-time parsing. Yielding HTTP and scheduling remain open.
 - [x] Add `http.poll_head` pending-owner custody with one nonblocking read, retained head/deadline/I/O state and admission-once transition into checked receive. Body/verifier/output phases and fair scheduling remain open.
+- [x] Extract bounded resumable fixed-length HTTP body state with exact/zero lengths, sticky excess refusal, opaque debug and complete-only publication; integrate after authentication. Yielding body phases remain open.
 - [ ] Add reviewed concurrency/backpressure, streaming, TLS and deployment controls
   before claiming production server support. A private Node adapter is insufficient.
 

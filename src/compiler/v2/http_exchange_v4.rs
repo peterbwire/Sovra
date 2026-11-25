@@ -444,32 +444,32 @@ fn receive_body<E>(
 ) -> Result<Result<Vec<u8>, HostError>, E> {
     match framing {
         HttpBodyFraming::Fixed(length) => {
-            if initial.len() > length {
-                return Ok(Err(error(
-                    "framing",
-                    "trailing or pipelined request bytes refuse",
-                )));
+            let mut body = match super::HttpFixedBody::new(length, connection.limits.request) {
+                Ok(body) => body,
+                Err(e) => return Ok(Err(error(e.code, e.message))),
+            };
+            if let Err(e) = body.feed(initial) {
+                return Ok(Err(error(e.code, e.message)));
             }
-            let mut body = Vec::new();
-            if body.try_reserve_exact(length).is_err() {
-                return Ok(Err(error("limit", "HTTP body allocation refused")));
-            }
-            body.extend_from_slice(initial);
-            if continue_expected && body.len() < length {
+            if continue_expected && body.remaining() > 0 {
                 if let Err(e) = connection.send_continue(checkpoint)? {
                     return Ok(Err(e));
                 }
             }
-            while body.len() < length {
-                match connection.read(length - body.len(), checkpoint)? {
+            while body.remaining() > 0 {
+                match connection.read(body.remaining(), checkpoint)? {
                     Err(e) => return Ok(Err(e)),
                     Ok(NetworkRead::Eof) => {
                         return Ok(Err(error("truncated", "HTTP body ended before completion")))
                     }
-                    Ok(NetworkRead::Data(bytes)) => body.extend_from_slice(&bytes),
+                    Ok(NetworkRead::Data(bytes)) => {
+                        if let Err(e) = body.feed(&bytes) {
+                            return Ok(Err(error(e.code, e.message)));
+                        }
+                    }
                 }
             }
-            Ok(Ok(body))
+            Ok(body.finish().map_err(|e| error(e.code, e.message)))
         }
         HttpBodyFraming::Chunked => {
             let limits = HttpChunkedLimits {

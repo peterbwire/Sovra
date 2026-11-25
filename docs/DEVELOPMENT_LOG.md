@@ -11584,3 +11584,19 @@ Focused validation passes 82 tests (ten access, five admission, 11 authenticatio
 all-feature Clippy, exact Rust 1.74.0 all-target check, Windows GNU all-target
 compile, formatting and documentation links. This follow-up does not replace
 full frozen-source/native G14 qualification.
+
+## 2026-11-25: G14 resumable fixed-length body-state foundation
+
+Added bounded `HttpFixedBody` and integrated it into actual fixed-length receive
+after existing parsing/access/authentication. Partial fragments remain private;
+excess refuses without prefix append and sticks through finish, truncation never
+publishes a partial body, and debug output omits payload contents. Tests cover
+all two-part splits, bytewise input, binary data, exact/zero bounds, truncation,
+sticky errors and debug redaction. Socket body handling still waits; persistent
+checked metadata, yielding body/Continue/output phases and scheduling remain open.
+
+Focused validation passes 69 HTTP tests (ten access, five admission, 11
+authentication, 29 exchange and 14 request/body-framing tests), strict all-target/
+all-feature Clippy, exact Rust 1.74.0 all-target check, Windows GNU all-target
+compile, formatting and documentation links. This is focused follow-up evidence,
+not a replacement full frozen-source/native qualification.

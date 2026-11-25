@@ -192,3 +192,27 @@ shared I/O exhaustion, admission-once transitions, prepared-head deadline expiry
 and actual checked Sovra polling/cleanup. Retained head buffers expose only lengths
 and state in debug output, never raw headers or credentials. Fair scheduling, resumable
 body/verifier/output phases and production concurrency remain open.
+
+## Resumable fixed-length body state (2026-11-25)
+
+`HttpFixedBody` owns the declared-length buffer independently of socket progress.
+Construction validates existing request limits and admits length before allocation.
+Each feed retains partial binary data, returns completion and exposes remaining
+bytes. Excess input refuses before any prefix append with a sticky framing error.
+Finishing publishes only a complete body; incomplete finish returns truncated,
+and any prior framing failure remains authoritative. Error offsets are relative
+to the accumulated body. Debug output exposes counts/state, not payload bytes.
+Zero-length bodies complete without input; empty fragments are permitted.
+
+The actual fixed-length receive path now uses this state after existing strict
+head parsing/access/authentication. Continue, bounded reads, aggregate deadlines,
+I/O counts and handler publication ordering remain in place. Reads are bounded by
+remaining body length, and completion moves the payload without another copy.
+Every two-part split and bytewise input, arbitrary binary bytes, exact/zero caps,
+truncation, sticky excess refusal and opaque debug have focused regression tests.
+
+This retains body state for future yielding receive phases; it does not yet expose
+body polling or make the current body loop nonblocking. Chunked/trailer decoding
+already retains incremental decoder state but still waits in the socket loop.
+Persisting checked request metadata and authentication outcome, Continue/output
+state and fair scheduling remain open.

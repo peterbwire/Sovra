@@ -701,3 +701,6 @@ pub use generic_package_compile::{
 pub use generic_runtime::{
     execute_generic_data_ir_with_host, execute_generic_data_ir_with_network_host,
 };
+
+mod http_fixed_body_v4;
+pub use http_fixed_body_v4::HttpFixedBody;

@@ -146,3 +146,9 @@ nonblocking read per successful poll, no handler publication, retained aggregate
 limits and one admission charge across polls/receive. Existing `http.receive`
 consumes pending state through strict validation and can still wait for body or
 verification. See [yielding head preparation](../reference/http-exchange-v4.md#yielding-head-preparation-2026-11-25).
+
+Fixed-length HTTP receive now uses `HttpFixedBody`, retaining bounded binary
+fragments with sticky refusal and complete-only publication. This extracts body
+state after existing authentication, not a yielding body API. Checked metadata,
+verification/interim/final-output state and scheduling remain open. See
+[exchange](../reference/http-exchange-v4.md#resumable-fixed-length-body-state-2026-11-25).

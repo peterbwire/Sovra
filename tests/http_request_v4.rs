@@ -347,3 +347,54 @@ fn resumable_head_limits_and_terminal_errors_are_sticky_without_prefix_copy() {
     assert!(!zero.feed(b"").unwrap());
     assert_eq!(zero.feed(b"x").unwrap_err().code, "limit");
 }
+
+#[test]
+fn fixed_body_resumes_all_splits_without_text_conversion_or_debug_disclosure() {
+    let wire = b"private-body-fixture\0\xff";
+    for split in 0..=wire.len() {
+        let mut body = HttpFixedBody::new(wire.len(), HttpRequestLimits::DEFAULT).unwrap();
+        assert_eq!(body.feed(&wire[..split]).unwrap(), split == wire.len());
+        assert_eq!(body.remaining(), wire.len() - split);
+        assert!(body.feed(&wire[split..]).unwrap());
+        assert!(!format!("{body:?}").contains("private-body-fixture"));
+        assert_eq!(body.finish().unwrap(), wire);
+    }
+}
+
+#[test]
+fn fixed_body_refuses_excess_atomically_and_never_publishes_partial_payload() {
+    let mut body = HttpFixedBody::new(3, HttpRequestLimits::DEFAULT).unwrap();
+    assert!(!body.feed(b"a").unwrap());
+    let error = body.feed(b"bcd").unwrap_err();
+    assert_eq!(error.code, "framing");
+    assert_eq!(body.remaining(), 2);
+    assert_eq!(body.feed(b"bc").unwrap_err(), error);
+    assert_eq!(body.finish().unwrap_err(), error);
+    let mut truncated = HttpFixedBody::new(3, HttpRequestLimits::DEFAULT).unwrap();
+    truncated.feed(b"ab").unwrap();
+    assert_eq!(truncated.finish().unwrap_err().code, "truncated");
+}
+
+#[test]
+fn fixed_body_exact_and_zero_limits_are_independent_of_fragmentation() {
+    let limits = HttpRequestLimits {
+        body_bytes: 3,
+        ..HttpRequestLimits::DEFAULT
+    };
+    assert_eq!(HttpFixedBody::new(4, limits).unwrap_err().code, "limit");
+    let mut body = HttpFixedBody::new(3, limits).unwrap();
+    for byte in b"abc" {
+        body.feed(&[*byte]).unwrap();
+    }
+    assert_eq!(body.finish().unwrap(), b"abc");
+    let mut empty = HttpFixedBody::new(
+        0,
+        HttpRequestLimits {
+            body_bytes: 0,
+            ..limits
+        },
+    )
+    .unwrap();
+    assert!(empty.feed(b"").unwrap());
+    assert_eq!(empty.finish().unwrap(), b"");
+}
