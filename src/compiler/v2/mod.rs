@@ -664,6 +664,8 @@ pub use http_authentication_v4::{
     HttpAuthenticationDecision, HttpBearerControl, HttpBearerRequest, HttpBearerTransport,
     HttpBearerVerifier, HttpPrincipal,
 };
+mod http_admission_v4;
+pub use http_admission_v4::HttpAdmissionPolicy;
 mod http_access_v4;
 pub use http_access_v4::HttpAccessPolicy;
 mod http_exchange_v4;

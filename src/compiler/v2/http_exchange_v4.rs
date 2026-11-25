@@ -87,6 +87,22 @@ fn flatten<T, E>(result: Result<Result<T, HostError>, Stop<E>>) -> Result<Result
     }
 }
 impl HttpConnection {
+    fn new(
+        stream: LoopbackStream,
+        accepted: Instant,
+        socket: NetworkLimits,
+        limits: HttpExchangeLimits,
+    ) -> Self {
+        Self {
+            stream,
+            context: HttpResponseContext::Standard,
+            started: accepted,
+            milliseconds: socket.milliseconds.min(limits.milliseconds),
+            operations: 0,
+            bytes: socket.bytes,
+            limits,
+        }
+    }
     fn admit(&mut self) -> Result<(), HostError> {
         if self.operations >= self.limits.io_operations || self.bytes == 0 {
             return Err(error("limit", "HTTP I/O admission exhausted"));
@@ -179,6 +195,7 @@ impl HttpConnection {
             "unsupported" => 501,
             "expectation" => 417,
             "authority" => 403,
+            "admission" => 429,
             "authentication" => 401,
             "authentication_unavailable" => 503,
             _ => 400,
@@ -188,7 +205,15 @@ impl HttpConnection {
             name: "WWW-Authenticate",
             value: b"Bearer realm=\"Sovra\"",
         }];
-        let headers: &[HttpResponseHeader<'_>] = if status == 401 { &challenge } else { &[] };
+        let no_store = [HttpResponseHeader {
+            name: "Cache-Control",
+            value: b"no-store",
+        }];
+        let headers: &[HttpResponseHeader<'_>] = match status {
+            401 => &challenge,
+            429 => &no_store,
+            _ => &[],
+        };
         if let Ok(wire) = render_http_response(
             status,
             HttpResponseContext::Standard,
@@ -201,6 +226,18 @@ impl HttpConnection {
         Ok(())
     }
 }
+/// Refuse a claimed raw owner without reading a head or invoking any verifier.
+pub(super) fn reject_admission<E>(
+    stream: LoopbackStream,
+    accepted: Instant,
+    socket: NetworkLimits,
+    limits: HttpExchangeLimits,
+    mut checkpoint: impl FnMut() -> Result<(), E>,
+) -> Result<Result<J, HostError>, E> {
+    let mut connection = HttpConnection::new(stream, accepted, socket, limits);
+    connection.reject("admission", &mut checkpoint)?;
+    Ok(Err(error("admission", "HTTP request admission exhausted")))
+}
 /// Consume the raw stream. Refusal/cancellation drops it; success yields one response owner.
 pub(super) fn receive<E>(
     stream: LoopbackStream,
@@ -211,15 +248,7 @@ pub(super) fn receive<E>(
     verifier: Option<&mut super::http_authentication_v4::Verifier>,
     mut checkpoint: impl FnMut() -> Result<(), E>,
 ) -> Result<Result<(HttpConnection, J), HostError>, E> {
-    let mut connection = HttpConnection {
-        stream,
-        context: HttpResponseContext::Standard,
-        started: accepted,
-        milliseconds: socket.milliseconds.min(limits.milliseconds),
-        operations: 0,
-        bytes: socket.bytes,
-        limits,
-    };
+    let mut connection = HttpConnection::new(stream, accepted, socket, limits);
     let mut buffer = Vec::new();
     let mut scan = 0;
     let mut eof = false;

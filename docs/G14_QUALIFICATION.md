@@ -62,7 +62,8 @@ A missing or cfg-disabled target cannot pass qualification.
 The Rust suite includes owned sockets, network host/policy, actual network CLI/
 native clients, fixed/chunked framing, validated-discard trailers, Continue,
 Host/Origin/method/target admission, the trusted Bearer-verifier embedding
-boundary, strict external verifier command protocol/cleanup and independent
+boundary, strict external verifier command protocol/cleanup, aggregate HTTP admission
+(counting/clock boundaries/pre-verifier 429) and independent
 actual authenticated CLI/native HTTP/JSON clients.
 Existing v3 host and data CLI/native workflows also run. Native tests delete
 project files, clear the environment and remove Node/PATH availability. The

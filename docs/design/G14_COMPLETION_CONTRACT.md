@@ -111,3 +111,8 @@ The trusted verifier context now carries admitted raw Host/Origin plus actual
 loopback plaintext transport. Provider audience/channel decisions do not infer
 security from forwarded headers. This enables backend scoping; it does not add
 TLS, trusted proxies or a deployable credential backend.
+
+Optional [aggregate HTTP admission](../reference/http-admission-v4.md) now caps
+attempts per fixed monotonic window across a host domain before parser/verifier
+work, with bounded non-cacheable 429 and owned cleanup. It is not per-identity,
+distributed or OS resource admission; production backpressure/fairness remain open.

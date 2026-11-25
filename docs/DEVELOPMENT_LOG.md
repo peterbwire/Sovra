@@ -11484,3 +11484,16 @@ empty environment, absence of fixture credentials in native bytes and cleanup.
 The fixture backend/key are test-only dependencies. Production credential
 lifecycle, TLS and deployment qualification remain open.
 See [delegation scope](reference/http-command-authentication-v4.md).
+
+
+2026-11-25 G14 fixed-window HTTP admission: added optional external and trusted
+Rust policies with bounded count/window limits and per-domain monotonic state.
+Admission precedes parser/verifier work; failed claimed attempts consume quota,
+while preclaim cancellation and invalid handles do not. State spans listeners
+and survives owner closure. Exhaustion attempts empty non-cacheable 429 under
+remaining output/I/O/deadline controls and drops the raw stream. Three clock
+tests and four policy/socket cases cover exact reset, no idle credits, denial,
+cancellation, output limits and cross-listener counting. Authenticated CLI/native
+consumers now verify a fifth connection gets 429 without a fifth verifier spawn.
+No TCP/OS/per-identity/distributed admission or production fairness is claimed.
+See [bounded scope](reference/http-admission-v4.md).

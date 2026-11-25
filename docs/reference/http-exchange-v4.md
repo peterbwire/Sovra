@@ -134,3 +134,7 @@ Trusted Rust embedding callers may now install the [Bearer-verifier boundary](ht
 It runs after access policy and before body/Continue, publishes a validated public
 principal and removes Authorization from the returned header array on success.
 CLI/native launches retain their existing no-provider behavior.
+
+Optional [fixed-window HTTP admission](http-admission-v4.md) now runs before
+head/parser/verifier work. All listeners share one domain count; failures consume
+admitted attempts and quota refusal closes with best-effort non-cacheable 429.

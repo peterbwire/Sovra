@@ -122,3 +122,7 @@ No production backend is shipped. Credential issuance/storage/rotation/revocatio
 secure transport/TLS, reviewed identity permissions, rate limiting and deployment
 acceptance remain open. In particular, this loopback plaintext profile does not
 fulfill RFC 6750's TLS requirements. See the [G14 contract](../design/G14_COMPLETION_CONTRACT.md).
+
+[Aggregate HTTP attempt admission](http-admission-v4.md) may be configured to
+limit verifier-spawn pressure before parsing/authentication. It is separate from
+backend per-identity quotas and does not provide process isolation or fair scheduling.

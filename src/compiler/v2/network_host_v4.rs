@@ -55,6 +55,7 @@ pub struct NetworkHostV4 {
     http: super::HttpExchangeLimits,
     http_access: Option<Box<super::HttpAccessPolicy>>,
     http_verifier: Option<super::http_authentication_v4::Verifier>,
+    http_admission: Option<Box<super::http_admission_v4::HttpAdmission>>,
 }
 impl NetworkHostV4 {
     /// Start a denied host with only lowerable socket limits.
@@ -66,6 +67,7 @@ impl NetworkHostV4 {
             http: super::HttpExchangeLimits::DEFAULT,
             http_access: None,
             http_verifier: None,
+            http_admission: None,
         })
     }
     /// Narrow aggregate HTTP policy before any socket owners are issued.
@@ -104,6 +106,22 @@ impl NetworkHostV4 {
             ));
         }
         self.http_verifier = Some(super::http_authentication_v4::Verifier(verifier));
+        Ok(())
+    }
+    /// Set optional aggregate HTTP attempt admission before any socket owners are issued.
+    pub fn set_http_admission(
+        &mut self,
+        policy: super::HttpAdmissionPolicy,
+    ) -> Result<(), HostError> {
+        if !self.owners.is_empty() {
+            return Err(error(
+                "policy",
+                "HTTP admission must be configured before socket creation",
+            ));
+        }
+        self.http_admission = Some(Box::new(super::http_admission_v4::HttpAdmission::new(
+            policy,
+        )?));
         Ok(())
     }
     /// Explicit trusted exact-port authority; request data cannot create grants.
@@ -213,6 +231,19 @@ impl NetworkHostV4 {
             let Some(Owner::Stream { stream, accepted }) = self.owners.remove(&handle) else {
                 unreachable!()
             };
+            if !self
+                .http_admission
+                .as_mut()
+                .map_or(true, |limiter| limiter.admit())
+            {
+                return super::http_exchange_v4::reject_admission(
+                    stream,
+                    accepted,
+                    self.limits,
+                    self.http,
+                    checkpoint,
+                );
+            }
             return Ok(super::http_exchange_v4::receive(
                 stream,
                 accepted,

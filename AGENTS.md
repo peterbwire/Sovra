@@ -70,7 +70,9 @@ validated public principals and redacts Authorization from handler descriptions;
 see `docs/reference/http-authentication-v4.md`. An optional external verifier command now delegates authentication for CLI/native
 launches through bounded private owned-process authority and a strict protocol;
 see `docs/reference/http-command-authentication-v4.md`. No production credential
-backend or TLS is bundled. Verifiers now receive admitted Host/Origin and actual
+backend or TLS is bundled. Optional fixed-window HTTP attempt admission now
+limits pre-parser/pre-verifier work across a host domain and returns bounded
+non-cacheable 429; see `docs/reference/http-admission-v4.md`. Verifiers now receive admitted Host/Origin and actual
 loopback plaintext transport context; forwarded headers cannot promote security.
 Trailer integrity/application access, full protocol, production
 server controls and wider qualification remain open. Continue under `docs/design/G14_COMPLETION_CONTRACT.md`. Consult

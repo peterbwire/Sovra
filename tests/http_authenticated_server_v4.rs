@@ -37,7 +37,7 @@ impl Fixture {
             root.join("app/main.svr"),
             include_str!("../examples/http-loopback/app/main.svr")
                 .replace("47123", &port.to_string())
-                .replace("serve(13)", "serve(4)")
+                .replace("serve(13)", "serve(5)")
                 .replace("    if target == \"/health\"", "    if target == \"/identity\" { let output = std::json_stringify(request)?; return std::Result::<Reply<String>, std::Error>::Ok(Reply::<String>{status: 200, body: output}); }\n    if target == \"/health\""),
         )
         .unwrap();
@@ -51,6 +51,7 @@ r=json.load(sys.stdin)
 assert set(r)=={'version','method','target','authority','origin','transport','credential'}
 assert r['version']==1 and r['transport']=='loopback-plaintext' and r['origin'] is None
 assert 'PATH' not in os.environ
+with pathlib.Path('invocations').open('a') as out:out.write('x')
 key=pathlib.Path('key').read_text()
 if not hmac.compare_digest(r['credential'],key):out={'version':1,'decision':'unauthenticated'}
 elif r['method']!='GET' or r['target']!='/identity':out={'version':1,'decision':'forbidden'}
@@ -82,6 +83,13 @@ print(json.dumps(out))
             J::String("/identity".into()),
             J::String("/echo".into()),
         ]);
+        fields.push((
+            "http_admission".into(),
+            J::Object(vec![
+                ("requests".into(), J::Int(4)),
+                ("milliseconds".into(), J::Int(60000)),
+            ]),
+        ));
         fields.push((
             "http_authentication".into(),
             J::Object(vec![
@@ -137,7 +145,7 @@ fn client_and_wait(mut server: Command, port: u16, key: &std::path::Path) {
     let script = r#"
 import http.client,json,sys,time,pathlib
 port=int(sys.argv[1]);secret=pathlib.Path(sys.argv[2]).read_text();deadline=time.monotonic()+8
-cases=[('GET','/identity',secret,200),('POST','/echo','wrong-fixture-token',401),('POST','/echo',secret,403),('GET','/identity',secret,200)]
+cases=[('GET','/identity',secret,200),('POST','/echo','wrong-fixture-token',401),('POST','/echo',secret,403),('GET','/identity',secret,200),('GET','/identity',secret,429)]
 for index,(method,target,token,status) in enumerate(cases):
  while True:
   c=http.client.HTTPConnection('127.0.0.1',port,timeout=3)
@@ -161,8 +169,9 @@ for index,(method,target,token,status) in enumerate(cases):
  else:
   assert body==b''
   if status==401:assert r.getheader('WWW-Authenticate')=='Bearer realm="Sovra"'
+  if status==429:assert r.getheader('Cache-Control')=='no-store'
  c.close()
-print('Independent authenticated HTTP client: valid identity/redaction, wrong credential 401, request permission 403 and continued service')
+print('Independent authenticated HTTP client: valid identity/redaction, wrong credential 401, request permission 403, continued service and pre-verifier 429')
 "#;
     let client = Command::new("python3")
         .arg("-c")
@@ -193,6 +202,11 @@ print('Independent authenticated HTTP client: valid identity/redaction, wrong cr
         output.status.success(),
         "{}",
         String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        std::fs::read_to_string(key.parent().unwrap().join("invocations")).unwrap(),
+        "xxxx",
+        "quota-denied requests must not spawn the verifier"
     );
     let rebound = TcpListener::bind((Ipv4Addr::LOCALHOST, port)).unwrap();
     drop(rebound);

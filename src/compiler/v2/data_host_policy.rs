@@ -119,6 +119,7 @@ fn network_policy(fields: &[(String, J)]) -> Result<NetworkHostV4, HostError> {
     let mut http = super::HttpExchangeLimits::DEFAULT;
     let mut access = None;
     let mut authentication = None;
+    let mut admission = None;
     for (key, value) in fields {
         match key.as_str() {
             "version" => {}
@@ -136,6 +137,7 @@ fn network_policy(fields: &[(String, J)]) -> Result<NetworkHostV4, HostError> {
                     ports.push(port);
                 }
             }
+            "http_admission" => admission = Some(http_admission(value)?),
             "http_authentication" => authentication = Some(http_command(value)?),
             "http_access" => {
                 access = Some(http_access(value)?);
@@ -209,6 +211,9 @@ fn network_policy(fields: &[(String, J)]) -> Result<NetworkHostV4, HostError> {
     }
     let mut host = NetworkHostV4::new(limits)?;
     host.set_http_limits(http)?;
+    if let Some(admission) = admission {
+        host.set_http_admission(admission)?;
+    }
     if let Some(access) = access {
         host.set_http_access(access)?;
     }
@@ -323,4 +328,33 @@ fn http_command(value: &J) -> Result<super::HttpCommandVerifier, HostError> {
         &args.ok_or_else(|| error("HTTP verifier arguments missing"))?,
         milliseconds.ok_or_else(|| error("HTTP verifier duration missing"))?,
     )
+}
+
+fn http_admission(value: &J) -> Result<super::HttpAdmissionPolicy, HostError> {
+    let J::Object(fields) = value else {
+        return Err(error("http_admission must be an object"));
+    };
+    if fields.len() != 2 {
+        return Err(error("http_admission requires requests and milliseconds"));
+    }
+    let mut requests = None;
+    let mut milliseconds = None;
+    for (key, value) in fields {
+        match key.as_str() {
+            "requests" => {
+                requests = Some(
+                    usize::try_from(number(value)?)
+                        .map_err(|_| error("HTTP admission count overflow"))?,
+                )
+            }
+            "milliseconds" => milliseconds = Some(number(value)?),
+            _ => return Err(error("unknown HTTP admission field")),
+        }
+    }
+    let policy = super::HttpAdmissionPolicy {
+        requests: requests.ok_or_else(|| error("HTTP admission requests missing"))?,
+        milliseconds: milliseconds.ok_or_else(|| error("HTTP admission window missing"))?,
+    };
+    policy.validate()?;
+    Ok(policy)
 }

@@ -96,3 +96,8 @@ An optional `http_authentication` object now selects a captured, bounded
 [external verifier command](http-command-authentication-v4.md). It requires
 `http_access` and does not expose v3 process/file endpoints to source. Absence
 retains existing authentication behavior; invalid configuration never falls back.
+
+Optional `http_admission` requires `requests` (0..1024) and `milliseconds`
+(1..60000). It limits attempts across all listeners in one execution domain
+before head/verifier processing. See [fixed-window admission](http-admission-v4.md)
+for failure counting, absent-policy behavior, cleanup and scope limits.

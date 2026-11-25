@@ -1226,3 +1226,13 @@ continued service without embedded credentials, project files or Node startup.
 The test backend is not a shipped production credential system; TLS and reviewed
 credential lifecycle/deployment remain open.
 See [command contract](reference/http-command-authentication-v4.md).
+
+
+2026-11-25 G14 aggregate HTTP admission: optional bounded fixed-window budgets
+now govern attempts across a host domain before head/parser/authentication work.
+Failures consume admitted attempts; listener closure does not replenish credits.
+Exhaustion returns best-effort non-cacheable 429 and drops the owner. Three
+deterministic clock and four policy/socket cases cover bounds/counters/cleanup;
+authenticated CLI/native clients prove denied requests do not spawn verifiers.
+This is aggregate attempt limiting, not per-identity/distributed fairness or
+production DoS protection. See [admission contract](reference/http-admission-v4.md).
