@@ -259,3 +259,19 @@ executable is reused after the project has been removed, with cleared environmen
 and unavailable Node/PATH, demonstrating that the external policy controls launch
 admission rather than a grant embedded in the executable. Default-limit identity,
 redaction, denial and delayed-verifier interleaving checks remain in the fixture.
+
+### Single-job admission through real CLI/native servers (2026-11-25)
+
+The independent fixture also reloads external policy with `max_jobs: 1`. A first
+verifier records its start and waits behind a file gate. While it remains live,
+a second valid request receives an empty final 503 before body transfer, without
+Continue or a second backend invocation. Only then does the client release the
+first verifier; its identity request must succeed. Dropping the held request
+cannot satisfy acceptance. A subsequent identity request proves slot reuse;
+credential/permission refusals and pre-verifier admission 429 remain checked.
+Exactly four backend invocations serve the six-connection single-job run.
+
+Both actual CLI and source-independent native paths retain the default-two,
+configured-one and disabled-zero policy runs against the same application or
+executable. This establishes bounded configured admission/reuse, not a queue,
+readiness-driven pool, per-identity quota or production fairness guarantee.

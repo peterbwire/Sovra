@@ -11885,3 +11885,14 @@ cleanly and release the port. Reuse the same native executable after deleting
 project files and changing only external policy, preserving no-Node/PATH startup.
 This qualifies disabled launch admission for the restricted Linux profile; it does
 not add production credentials, fairness, TLS or broader runtime support.
+
+## 2026-11-25: single-job CLI/native backpressure acceptance
+
+Extend independent authenticated consumers to reload external max_jobs one
+between existing default-two and disabled-zero runs. Hold one recorded verifier
+behind a gate, require a second valid request's pre-body 503 without another
+backend start, then release the original and require its successful identity
+response. A subsequent request proves capacity reuse. Preserve denial/privacy,
+admission-429, exact backend counts, bounded exit and port-rebind checks. Reuse
+the same project-free native executable with cleared environment/no Node/PATH.
+This adds acceptance for bounded admission, not production scheduling guarantees.

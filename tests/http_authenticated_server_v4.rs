@@ -113,7 +113,7 @@ print(json.dumps(out))
         .unwrap();
         Self { root, port }
     }
-    fn disable_jobs(&self) {
+    fn configure_jobs(&self, jobs: u8) {
         let path = self.root.join("policy.json");
         let mut policy = parse_json(&std::fs::read(&path).unwrap(), JsonLimits::DEFAULT).unwrap();
         let J::Object(fields) = &mut policy else {
@@ -127,9 +127,16 @@ print(json.dumps(out))
         else {
             panic!("authentication")
         };
-        authentication.push(("max_jobs".into(), J::Int(0)));
+        authentication.retain(|(key, _)| key != "max_jobs");
+        authentication.push(("max_jobs".into(), J::Int(jobs.into())));
         std::fs::write(path, serialize_json(&policy, JsonLimits::DEFAULT).unwrap()).unwrap();
-        std::fs::remove_file(self.root.join("invocations")).unwrap();
+        for name in ["invocations", "release"] {
+            match std::fs::remove_file(self.root.join(name)) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => panic!("cannot reset verifier fixture: {e}"),
+            }
+        }
     }
     fn cli(&self, action: &str) -> Command {
         let mut command = Command::new(env!("CARGO_BIN_EXE_svr"));
@@ -154,7 +161,7 @@ impl Drop for Process {
         }
     }
 }
-fn client_and_wait(mut server: Command, port: u16, key: &std::path::Path, disabled: bool) {
+fn client_and_wait(mut server: Command, port: u16, key: &std::path::Path, jobs: Option<u8>) {
     let mut process = Process(Some(
         server
             .stdout(Stdio::piped())
@@ -162,7 +169,55 @@ fn client_and_wait(mut server: Command, port: u16, key: &std::path::Path, disabl
             .spawn()
             .unwrap(),
     ));
-    let script = if disabled {
+    let script = if jobs == Some(1) {
+        r#"
+import http.client,socket,json,sys,time,pathlib
+port=int(sys.argv[1]);root=pathlib.Path(sys.argv[2]).parent;secret=pathlib.Path(sys.argv[2]).read_text();deadline=time.monotonic()+8
+slow=http.client.HTTPConnection('127.0.0.1',port,timeout=3)
+while True:
+ try:
+  slow.request('GET','/identity',headers={'Authorization':'Bearer '+secret,'Origin':'https://client.example'})
+  break
+ except ConnectionRefusedError:
+  slow.close();slow=http.client.HTTPConnection('127.0.0.1',port,timeout=3)
+  if time.monotonic()>deadline:raise
+  time.sleep(.02)
+while not root.joinpath('invocations').exists() or root.joinpath('invocations').read_text()!='x':
+ assert time.monotonic()<deadline,'first verifier did not start'
+ time.sleep(.001)
+with socket.create_connection(('127.0.0.1',port),timeout=3) as fast:
+ fast.sendall(('GET /identity HTTP/1.1\r\nHost: 127.0.0.1:'+str(port)+'\r\nAuthorization: Bearer '+secret+'\r\nContent-Length: 100\r\nExpect: 100-continue\r\n\r\n').encode('ascii'))
+ wire=b''
+ while True:
+  part=fast.recv(4096)
+  if not part:break
+  wire+=part
+ assert wire.startswith(b'HTTP/1.1 503 Service Unavailable\r\n'),wire
+ assert wire.endswith(b'\r\n\r\n') and b'100 Continue' not in wire
+ assert secret.encode('ascii') not in wire
+assert root.joinpath('invocations').read_text()=='x','capacity refusal launched another verifier'
+root.joinpath('release').write_text('go')
+r=slow.getresponse();assert r.status==200
+body=r.read();value=json.loads(body);assert value['principal']=='fixture-client'
+assert secret.encode('ascii') not in body
+assert not any(h['name'].lower()=='authorization' for h in value['headers'])
+slow.close()
+for method,target,token,status in [('GET','/identity',secret,200),('POST','/echo','wrong-fixture-token',401),('POST','/echo',secret,403),('GET','/identity',secret,429)]:
+ c=http.client.HTTPConnection('127.0.0.1',port,timeout=3)
+ if status==200:c.request(method,target,headers={'Authorization':'Bearer '+token})
+ else:
+  c.putrequest(method,target);c.putheader('Authorization','Bearer '+token);c.putheader('Content-Length','100');c.putheader('Expect','100-continue');c.endheaders()
+ r=c.getresponse();assert r.status==status,(target,r.status)
+ body=r.read();assert int(r.getheader('Content-Length'))==len(body)
+ assert r.getheader('Connection')=='close'
+ assert secret.encode('ascii') not in body
+ if status==200:assert json.loads(body)['principal']=='fixture-client'
+ else:assert body==b''
+ if status==429:assert r.getheader('Cache-Control')=='no-store'
+ c.close()
+assert root.joinpath('invocations').read_text()=='xxxx'
+"#
+    } else if jobs == Some(0) {
         r#"
 import socket,sys,time,pathlib
 port=int(sys.argv[1]);secret=pathlib.Path(sys.argv[2]).read_text();deadline=time.monotonic()+8
@@ -268,13 +323,13 @@ print('Independent authenticated HTTP client: valid identity/redaction, wrong cr
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    if disabled {
+    if jobs == Some(0) {
         assert!(!key.parent().unwrap().join("invocations").exists());
     } else {
         assert_eq!(
             std::fs::read_to_string(key.parent().unwrap().join("invocations")).unwrap(),
-            "xxxxx",
-            "quota-denied requests must not spawn the verifier"
+            if jobs == Some(1) { "xxxx" } else { "xxxxx" },
+            "capacity/quota-denied requests must not spawn the verifier"
         );
     }
 
@@ -308,15 +363,23 @@ fn cli_delegates_authentication_and_recovers_after_credential_and_permission_ref
         .arg("--host-policy")
         .arg(f.root.join("policy.json"))
         .arg(f.root.join("app"));
-    client_and_wait(server, f.port, &f.root.join("key"), false);
-    f.disable_jobs();
+    client_and_wait(server, f.port, &f.root.join("key"), None);
+    f.configure_jobs(1);
+    let mut single_server = f.cli("run");
+    single_server
+        .arg("--locked")
+        .arg("--host-policy")
+        .arg(f.root.join("policy.json"))
+        .arg(f.root.join("app"));
+    client_and_wait(single_server, f.port, &f.root.join("key"), Some(1));
+    f.configure_jobs(0);
     let mut disabled_server = f.cli("run");
     disabled_server
         .arg("--locked")
         .arg("--host-policy")
         .arg(f.root.join("policy.json"))
         .arg(f.root.join("app"));
-    client_and_wait(disabled_server, f.port, &f.root.join("key"), true);
+    client_and_wait(disabled_server, f.port, &f.root.join("key"), Some(0));
 }
 #[test]
 fn native_delegates_authentication_without_project_node_or_embedded_credentials() {
@@ -356,8 +419,17 @@ fn native_delegates_authentication_without_project_node_or_embedded_credentials(
         .env_clear()
         .env("PATH", "/nonexistent")
         .current_dir(&f.root);
-    client_and_wait(server, f.port, &f.root.join("key"), false);
-    f.disable_jobs();
+    client_and_wait(server, f.port, &f.root.join("key"), None);
+    f.configure_jobs(1);
+    let mut single_server = Command::new(&exe);
+    single_server
+        .arg("--host-policy")
+        .arg(f.root.join("policy.json"))
+        .env_clear()
+        .env("PATH", "/nonexistent")
+        .current_dir(&f.root);
+    client_and_wait(single_server, f.port, &f.root.join("key"), Some(1));
+    f.configure_jobs(0);
     let mut disabled_server = Command::new(&exe);
     disabled_server
         .arg("--host-policy")
@@ -365,5 +437,5 @@ fn native_delegates_authentication_without_project_node_or_embedded_credentials(
         .env_clear()
         .env("PATH", "/nonexistent")
         .current_dir(&f.root);
-    client_and_wait(disabled_server, f.port, &f.root.join("key"), true);
+    client_and_wait(disabled_server, f.port, &f.root.join("key"), Some(0));
 }
