@@ -249,6 +249,45 @@ pub struct LoopbackStream {
     limits: NetworkLimits,
 }
 impl LoopbackStream {
+    /// One nonblocking read attempt. None means not ready, distinct from EOF.
+    /// No sleeping/retry; cancellation is checked before any bytes are consumed.
+    pub fn try_read<E>(
+        &mut self,
+        maximum: usize,
+        mut checkpoint: impl FnMut() -> Result<(), E>,
+    ) -> Result<Result<Option<NetworkRead>, HostError>, E> {
+        if maximum == 0 {
+            return Ok(Err(error("input", "read maximum must be nonzero")));
+        }
+        if maximum > self.limits.bytes {
+            return Ok(Err(error("limit", "network read byte limit exceeded")));
+        }
+        checkpoint()?;
+        if self.limits.milliseconds == 0 {
+            return Ok(Err(error("timeout", "network operation deadline exceeded")));
+        }
+        let mut bytes = Vec::new();
+        if bytes.try_reserve_exact(maximum).is_err() {
+            return Ok(Err(error("limit", "network read allocation refused")));
+        }
+        bytes.resize(maximum, 0);
+        Ok(match self.socket.read(&mut bytes) {
+            Ok(0) => Ok(Some(NetworkRead::Eof)),
+            Ok(n) => {
+                bytes.truncate(n);
+                Ok(Some(NetworkRead::Data(bytes)))
+            }
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
+                ) =>
+            {
+                Ok(None)
+            }
+            Err(e) => Err(io_error(e)),
+        })
+    }
     /// Read one nonempty chunk or EOF. Zero maximum is an input error, not EOF.
     pub fn read<E>(
         &mut self,

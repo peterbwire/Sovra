@@ -445,3 +445,115 @@ fn main()->std::Result<String,std::Error>{{
         drop(TcpListener::bind((Ipv4Addr::LOCALHOST, p)).unwrap());
     }
 }
+
+#[test]
+fn cooperative_reads_yield_to_ready_peer_and_distinguish_eof() {
+    let mut h = host();
+    let (l, p) = listener(&mut h);
+    let accept = format!(r#"{{"version":4,"op":"net.accept","handle":{l}}}"#);
+    let _slow = TcpStream::connect((Ipv4Addr::LOCALHOST, p)).unwrap();
+    let slow = integer(call(&mut h, &accept).unwrap());
+    let mut fast = TcpStream::connect((Ipv4Addr::LOCALHOST, p)).unwrap();
+    let active = integer(call(&mut h, &accept).unwrap());
+    let read = |id, maximum| {
+        format!(r#"{{"version":4,"op":"net.try_read","handle":{id},"maximum":{maximum}}}"#)
+    };
+    let idle = request(r#"{"ready":false,"data":null}"#);
+    for _ in 0..20 {
+        assert_eq!(call(&mut h, &read(slow, 1)).unwrap(), idle);
+    }
+    fast.write_all(&[255]).unwrap();
+    // Use bounded retries because readiness after write is an OS scheduling event.
+    let mut received = idle.clone();
+    for _ in 0..1000 {
+        received = call(&mut h, &read(active, 1)).unwrap();
+        if received != idle {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert_eq!(received, request(r#"{"ready":true,"data":"/w=="}"#));
+    assert_eq!(call(&mut h, &read(slow, 0)).unwrap_err().code, "input");
+    assert_eq!(call(&mut h, &read(slow, 65537)).unwrap_err().code, "limit");
+    fast.shutdown(std::net::Shutdown::Write).unwrap();
+    for _ in 0..1000 {
+        received = call(&mut h, &read(active, 1)).unwrap();
+        if received != idle {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert_eq!(received, request(r#"{"ready":true,"data":null}"#));
+    assert_eq!(h.usage(), (1, 2));
+    h.close_all().unwrap();
+}
+
+#[test]
+fn cancelled_cooperative_read_does_not_consume_queued_byte() {
+    let mut h = host();
+    let (l, p) = listener(&mut h);
+    let mut peer = TcpStream::connect((Ipv4Addr::LOCALHOST, p)).unwrap();
+    let n = integer(
+        call(
+            &mut h,
+            &format!(r#"{{"version":4,"op":"net.accept","handle":{l}}}"#),
+        )
+        .unwrap(),
+    );
+    peer.write_all(b"x").unwrap();
+    let read = request(&format!(
+        r#"{{"version":4,"op":"net.try_read","handle":{n},"maximum":1}}"#
+    ));
+    let mut ticks = 0;
+    assert_eq!(
+        h.call(&read, || {
+            ticks += 1;
+            if ticks == 2 {
+                Err("cancel read")
+            } else {
+                Ok(())
+            }
+        })
+        .unwrap_err(),
+        "cancel read"
+    );
+    // Existing deadline-based read independently proves the byte was not consumed.
+    assert_eq!(
+        call(
+            &mut h,
+            &format!(r#"{{"version":4,"op":"net.read","handle":{n},"maximum":1}}"#)
+        )
+        .unwrap(),
+        JsonValue::String("eA==".into())
+    );
+    h.close_all().unwrap();
+}
+
+#[test]
+fn checked_sovra_cooperative_read_reports_idle_and_cleans_scope() {
+    let mut h = host();
+    let (l, p) = listener(&mut h);
+    let _peer = TcpStream::connect((Ipv4Addr::LOCALHOST, p)).unwrap();
+    let n = integer(
+        call(
+            &mut h,
+            &format!(r#"{{"version":4,"op":"net.accept","handle":{l}}}"#),
+        )
+        .unwrap(),
+    );
+    let source = format!(
+        r#"
+fn main()->std::Result<String,std::Error>{{
+ let request=std::json_parse("{{\"version\":4,\"op\":\"net.try_read\",\"handle\":{n},\"maximum\":16}}")?;
+ let result=std::host_call(request)?;
+ return std::json_stringify(result);
+}}"#
+    );
+    let out = execute(&source, h).unwrap();
+    assert_eq!(out.value().enum_tag(), Some(0));
+    assert_eq!(
+        request(out.value().payload().unwrap().as_str().unwrap()),
+        request(r#"{"ready":false,"data":null}"#)
+    );
+    drop(TcpListener::bind((Ipv4Addr::LOCALHOST, p)).unwrap());
+}

@@ -11514,3 +11514,19 @@ exchange, ten network-host and seven socket-owner tests), strict all-target/
 all-feature Clippy, exact Rust 1.74.0 all-target check, Windows GNU all-target
 compile, formatting, 24 compiler security cases and documentation links pass.
 This is a focused follow-up, not a new full frozen-source G14/native qualification.
+
+## 2026-11-25: G14 cooperative read foundation
+
+Added `LoopbackStream::try_read` and strict version-four `net.try_read` requests:
+one syscall, no waiting/retry, bounded buffer and explicit ready/data result so
+idle is distinct from orderly EOF. Pre-read callback refusal consumes no bytes;
+raw stream ownership remains in scope. Tests exercise idle-peer yielding,
+binary data, EOF, limits, cancellation with queued-byte preservation and an actual
+checked Sovra consumer. HTTP remains sequential; cooperative writes, resumable
+HTTP state and fair scheduling remain open. Linux runtime support is unchanged.
+
+Focused validation passes 48 socket/HTTP integration tests (four admission,
+24 exchange, 13 network-host and seven socket-owner tests), strict all-target/
+all-feature Clippy, exact Rust 1.74.0 all-target check, Windows GNU all-target
+compile, formatting and documentation links. This is follow-up evidence, not a
+new full frozen-source G14/native qualification.

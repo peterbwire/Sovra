@@ -12,6 +12,7 @@ exact ports explicitly. Checked data-profile `.svr` code then uses the existing
 | `net.port` | `handle` (listener token) | Actual bound port Int |
 | `net.accept` | `handle` (listener token) | Positive accepted-stream token Int |
 | `net.try_accept` | `handle` (listener token) | Positive accepted-stream token Int, or Null when not ready |
+| `net.try_read` | `handle` (stream token), `maximum` (positive Int) | Object: `ready` Bool and `data` Base64 String or Null |
 | `net.read` | `handle` (stream token), `maximum` (positive Int) | Strict Base64 String for a nonempty partial chunk; Null for EOF |
 | `net.write` | `handle` (stream token), `data` (strict Base64 String) | Actual partial byte count Int |
 | `net.close` | `handle` (listener or stream token) | Null |
@@ -95,3 +96,28 @@ possible. Read/write and HTTP receive/respond still wait under their existing
 limits. Incremental connection state, readiness/fair scheduling, bounded pending
 queues, slow-client isolation, streaming and shutdown coordination remain open.
 Linux remains the only qualified runtime host.
+
+## Cooperative read foundation (2026-11-25)
+
+`net.try_read` attempts one nonblocking read, without sleeps or retries. The
+result always has exactly `ready` and `data`:
+
+- `{"ready":false,"data":null}`: WouldBlock or Interrupted, no bytes consumed.
+- `{"ready":true,"data":"/w=="}`: a nonempty partial binary chunk in strict Base64.
+- `{"ready":true,"data":null}`: orderly EOF, distinct from idle readiness.
+
+The positive maximum may not exceed the domain byte limit. Allocation is bounded
+by that maximum; each idle attempt drops its temporary buffer. A zero operation
+deadline refuses before reading. The callback is checked before the read syscall;
+there is no post-read cancellation check that hides consumed bytes. Later VM
+materialization failure can still lose an already consumed chunk, as with existing
+`net.read`. Idle, data, EOF and cancellation leave the stream owner in scope for
+explicit close or execution cleanup. EOF does not close the owner's sending half.
+
+A raw client test keeps one connection idle while reading a byte from another,
+then distinguishes EOF; other tests prove cancellation does not consume queued
+data and a real checked Sovra program receives the idle object and releases its
+scope. The operation does not register interest with an OS event loop, promise
+future readiness, add an aggregate connection deadline or make HTTP concurrent.
+Callers must bound polling. Cooperative writes, resumable HTTP state, fairness
+and slow-client scheduling remain open; HTTP receive/respond still wait.

@@ -122,3 +122,9 @@ attempt, explicit idle Null, capacity admission before dequeue and cancellation-
 publication. See [network host](../reference/network-host-v4.md#cooperative-accept-foundation-2026-11-25).
 This does not make HTTP receive/respond incremental or concurrent; connection
 state scheduling and production backpressure remain open.
+
+`net.try_read` now adds one bounded nonblocking read attempt with distinct
+idle/data/EOF results and pre-read cancellation. Tests cover an idle peer yielding
+to a ready connection and checked Sovra consumption. This remains a raw stream
+primitive; cooperative writes, resumable HTTP and fair scheduling are not yet
+implemented. See [network host](../reference/network-host-v4.md#cooperative-read-foundation-2026-11-25).

@@ -286,6 +286,7 @@ Implemented evidence:
 - [x] Add optional per-domain fixed-window HTTP attempt admission before parsing/verifier work, counting failures across listeners and returning bounded non-cacheable 429; qualify CLI/native verifier-spawn avoidance. See [admission scope](reference/http-admission-v4.md). Per-identity/distributed quotas and production scheduling remain open.
 - [ ] Select and qualify reviewed production credential backends, issuance/storage/rotation/revocation and per-identity/per-route permissions; delegated verification does not itself provide those systems.
 - [x] Add cooperative `net.try_accept` with single-syscall idle return, capacity-before-dequeue admission and cancellation-safe ownership; checked Sovra source and socket tests cover the foundation. HTTP scheduling remains open.
+- [x] Add cooperative `net.try_read` with bounded single-syscall reads, distinct idle/data/EOF results and pre-read cancellation; prove idle-peer yielding and checked Sovra consumption. Resumable HTTP and fair scheduling remain open.
 - [ ] Add reviewed concurrency/backpressure, streaming, TLS and deployment controls
   before claiming production server support. A private Node adapter is insufficient.
 

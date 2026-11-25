@@ -163,7 +163,7 @@ impl NetworkHostV4 {
                 "net.port" | "net.accept" | "net.try_accept" | "net.close" | "http.receive" => {
                     &["version", "op", "handle"]
                 }
-                "net.read" => &["version", "op", "handle", "maximum"],
+                "net.read" | "net.try_read" => &["version", "op", "handle", "maximum"],
                 "net.write" => &["version", "op", "handle", "data"],
                 "http.respond" => &["version", "op", "handle", "status", "headers", "body"],
                 _ => {
@@ -349,7 +349,7 @@ impl NetworkHostV4 {
                     J::Int(handle)
                 }))
             }
-            ("net.read", Owner::Stream { stream: owner, .. }) => {
+            ("net.read" | "net.try_read", Owner::Stream { stream: owner, .. }) => {
                 let maximum = match get("maximum") {
                     Ok(J::Int(n)) => usize::try_from(*n).ok(),
                     _ => None,
@@ -357,6 +357,19 @@ impl NetworkHostV4 {
                 let Some(maximum) = maximum else {
                     return Ok(Err(error("input", "nonnegative read maximum required")));
                 };
+                if op == "net.try_read" {
+                    return Ok(owner.try_read(maximum, checkpoint)?.and_then(|value| {
+                        let ready = value.is_some();
+                        let data = match value {
+                            Some(NetworkRead::Data(bytes)) => encode(&bytes)?,
+                            Some(NetworkRead::Eof) | None => J::Null,
+                        };
+                        Ok(J::Object(vec![
+                            ("ready".into(), J::Bool(ready)),
+                            ("data".into(), data),
+                        ]))
+                    }));
+                }
                 Ok(owner
                     .read(maximum, checkpoint)?
                     .and_then(|value| match value {
