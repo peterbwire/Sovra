@@ -375,7 +375,11 @@ fn package_preflight_rejects_a_later_malformed_source_without_writes_or_notices(
         assert!(o.stdout.is_empty());
         let stderr = String::from_utf8_lossy(&o.stderr);
         assert!(!stderr.contains("Formatting needed:") && !stderr.contains("Formatted:"));
-        assert!(stderr.contains(text(&dependency.join("src/main.svr"))));
+        if mode == "--write" && !cfg!(any(windows, target_os = "linux")) {
+            assert!(stderr.contains("qualified only on Windows and Linux"));
+        } else {
+            assert!(stderr.contains(text(&dependency.join("src/main.svr"))));
+        }
         assert_eq!(
             std::fs::read_to_string(root.join("src/main.svr")).unwrap(),
             RAW
@@ -479,11 +483,16 @@ fn module_function_formatting_preserves_syntax_without_enabling_execution() {
         assert_eq!(out.status.code(), Some(1), "{args:?}");
         assert!(!t.0.join("marker").exists());
     }
-    assert!(t
-        .cli(&["fmt", "--experimental-v2", "--write", text(&p)])
-        .status
-        .success());
-    assert_eq!(std::fs::read(&p).unwrap(), formatted.stdout);
+    let written = t.cli(&["fmt", "--experimental-v2", "--write", text(&p)]);
+    if cfg!(any(windows, target_os = "linux")) {
+        assert!(written.status.success());
+        assert_eq!(std::fs::read(&p).unwrap(), formatted.stdout);
+    } else {
+        assert_eq!(written.status.code(), Some(1));
+        assert!(String::from_utf8_lossy(&written.stderr)
+            .contains("qualified only on Windows and Linux"));
+        assert_eq!(std::fs::read(&p).unwrap(), source.as_bytes());
+    }
     assert!(!t.0.join("marker").exists());
 }
 

@@ -11762,3 +11762,16 @@ cannot override it. The regression removes the grant-time executable alias befor
 launch, proving execution does not reopen that pathname. Existing v3 and command
 verifier checks pass. The second local qualification remains interrupted and
 unsuccessful; restart frozen-source qualification after this correction.
+
+## 2026-11-25: ARM64 lock guards and macOS formatter expectations
+
+Hosted ARM64 G13/G14 reports exposed x86-only directory/no-follow bits in guarded
+lock publication. Use the same architecture-specific Linux ABI values already
+used by the handle-rooted host; no-follow/directory checks remain mandatory.
+Hosted macOS tests also incorrectly expected qualified write behavior on an
+unsupported write host. Keep portable check/format assertions and explicitly
+verify write refusal/unchanged bytes on macOS instead of skipping the tests.
+The two existing lock-publication conflict tests and all 16 v2 formatter CLI tests
+pass locally. Hosted ARM64/macOS acceptance still requires fresh CI reports.
+The third local qualification was interrupted and retained as unsuccessful before
+these edits; restart on the corrected source.
