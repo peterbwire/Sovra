@@ -11846,3 +11846,15 @@ programs execute through Node stdin, preserving interpreter/JavaScript output
 assertions and avoiding command-line length limits. This is a test transport
 correction, not an expansion of runtime platform claims. Hosted Windows
 acceptance still requires a fresh run.
+
+## 2026-11-25: verifier startup handoff custody
+
+A trusted verifier could return a newly owned job, then hit a cancellation or
+post-provider failure before PendingVerification existed. The pending-owner
+cleanup guard could not cover that interval. Wrap successful start results in
+temporary owned custody immediately, before checking provider control outcomes,
+post-start deadlines or metadata preparation. Transfer once into pending custody;
+otherwise invoke explicit cancel and preserve the original error. Extend the
+cleanup matrix with both provider-internal and post-return cancellation, each
+with successful/failing cleanup. The expanded regression fails against the prior
+implementation. No scheduling, production identity or platform gate is closed.

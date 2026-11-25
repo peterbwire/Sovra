@@ -496,7 +496,7 @@ fn body_polls_retain_one_verification_and_hide_principal_until_complete() {
 
 #[test]
 fn pending_verifier_cleanup_runs_once_on_every_abandoned_owner_path() {
-    struct Provider(Arc<AtomicUsize>, bool);
+    struct Provider(Arc<AtomicUsize>, bool, Arc<AtomicUsize>, bool);
     struct Job(Arc<AtomicUsize>, bool);
     impl HttpVerificationJob for Job {
         fn poll(&mut self, _: &mut HttpBearerControl<'_>) -> Option<HttpAuthenticationDecision> {
@@ -521,16 +521,29 @@ fn pending_verifier_cleanup_runs_once_on_every_abandoned_owner_path() {
         fn start_verification(
             &mut self,
             _: HttpBearerRequest<'_>,
-            _: &mut HttpBearerControl<'_>,
+            control: &mut HttpBearerControl<'_>,
         ) -> Box<dyn HttpVerificationJob> {
+            self.2.fetch_add(1, Ordering::SeqCst);
+            if self.3 {
+                assert!(!control.check());
+            }
             Box::new(Job(self.0.clone(), self.1))
         }
     }
-    for (mode, cleanup_fails) in ["close", "close_all", "cancel", "timeout", "drop"]
-        .into_iter()
-        .flat_map(|mode| [false, true].map(|fails| (mode, fails)))
+    for (mode, cleanup_fails) in [
+        "close",
+        "close_all",
+        "cancel",
+        "timeout",
+        "drop",
+        "startup_cancel",
+        "startup_control_cancel",
+    ]
+    .into_iter()
+    .flat_map(|mode| [false, true].map(|fails| (mode, fails)))
     {
         let cancelled = Arc::new(AtomicUsize::new(0));
+        let started = Arc::new(AtomicUsize::new(0));
         let mut h = NetworkHostV4::new(NetworkLimits::DEFAULT).unwrap();
         h.set_http_limits(HttpExchangeLimits {
             milliseconds: 1000,
@@ -539,8 +552,13 @@ fn pending_verifier_cleanup_runs_once_on_every_abandoned_owner_path() {
         .unwrap();
         h.set_http_access(HttpAccessPolicy::new(&["localhost"], &[], true).unwrap())
             .unwrap();
-        h.set_http_bearer_verifier(Box::new(Provider(cancelled.clone(), cleanup_fails)))
-            .unwrap();
+        h.set_http_bearer_verifier(Box::new(Provider(
+            cancelled.clone(),
+            cleanup_fails,
+            started.clone(),
+            mode == "startup_control_cancel",
+        )))
+        .unwrap();
         h.grant_port(0).unwrap();
         let l = int(call(&mut h, r#"{"version":4,"op":"net.listen","port":0}"#).unwrap());
         let port = int(call(
@@ -560,6 +578,29 @@ fn pending_verifier_cleanup_runs_once_on_every_abandoned_owner_path() {
         let head_poll = format!(r#"{{"version":4,"op":"http.poll_head","handle":{n}}}"#);
         while call(&mut h, &head_poll).unwrap() == JsonValue::Bool(false) {}
         let body_poll = format!(r#"{{"version":4,"op":"http.poll_body","handle":{n}}}"#);
+        if mode.starts_with("startup") {
+            assert_eq!(
+                h.call(&json(&body_poll), || {
+                    if started.load(Ordering::SeqCst) > 0 {
+                        Err("cancel verifier startup")
+                    } else {
+                        Ok(())
+                    }
+                })
+                .unwrap_err(),
+                "cancel verifier startup"
+            );
+            assert_eq!(cancelled.load(Ordering::SeqCst), 1);
+            assert_eq!(h.usage().1, 0);
+            assert!(call(&mut h, &body_poll).is_err());
+            h.close_all().unwrap();
+            drop(h);
+            assert_eq!(cancelled.load(Ordering::SeqCst), 1);
+            let mut wire = Vec::new();
+            peer.read_to_end(&mut wire).unwrap();
+            assert!(wire.is_empty());
+            continue;
+        }
         assert_eq!(call(&mut h, &body_poll).unwrap(), JsonValue::Bool(false));
         assert_eq!(cancelled.load(Ordering::SeqCst), 0);
         assert_eq!(

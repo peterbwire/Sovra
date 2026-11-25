@@ -514,11 +514,13 @@ pub(super) fn prepare_pending<E>(
                     }
                 }
             };
-            let outcome = verifier.start(
-                &head.request,
-                &mut head.work,
-                &mut super::HttpBearerControl::new(&mut poll),
-            );
+            let outcome = verifier
+                .start(
+                    &head.request,
+                    &mut head.work,
+                    &mut super::HttpBearerControl::new(&mut poll),
+                )
+                .map(StartingVerification::new);
             match stopped {
                 Some(Stop::External(e)) => return Err(e),
                 Some(Stop::Timeout) => {
@@ -529,7 +531,7 @@ pub(super) fn prepare_pending<E>(
                 }
                 None => {}
             }
-            let job = match outcome {
+            let mut job = match outcome {
                 Ok(job) => job,
                 Err(e) => return refuse(connection, e, true, &mut checkpoint),
             };
@@ -556,7 +558,7 @@ pub(super) fn prepare_pending<E>(
                 work: head.work,
                 continue_expected: head.continue_expected,
                 initial: buffer[head.bytes..].to_vec(),
-                job: Some(job),
+                job: job.0.take(),
             }))));
         }
     }
@@ -647,6 +649,20 @@ pub(super) fn prepare_pending<E>(
     }))))
 }
 
+// Own startup work before any post-provider control/metadata operation can fail.
+struct StartingVerification(Option<Box<dyn super::HttpVerificationJob>>);
+impl StartingVerification {
+    fn new(job: Box<dyn super::HttpVerificationJob>) -> Self {
+        Self(Some(job))
+    }
+}
+impl Drop for StartingVerification {
+    fn drop(&mut self) {
+        if let Some(mut job) = self.0.take() {
+            let _ = job.cancel();
+        }
+    }
+}
 /// Original checked metadata and one owned verification job; no credential Debug output.
 pub(super) struct PendingVerification {
     connection: Option<HttpConnection>,

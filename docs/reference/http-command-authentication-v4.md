@@ -226,3 +226,15 @@ are released even when cleanup reports an error. Cancellation before the call
 claims ownership preserves the token and pending job for explicit later cleanup.
 Existing command-job tests continue to check direct-child disappearance and
 capacity release.
+
+### Startup handoff cleanup (2026-11-25)
+
+A newly returned verification job now enters temporary owned custody before the
+host checks provider-reported cancellation, the post-start deadline or metadata
+preparation. Any early return invokes the job's cancel hook once; successful
+handoff transfers custody to the pending HTTP owner without cancellation. Cleanup
+failures do not replace the original callback/deadline error. Trusted job Drop
+remains a required safety fallback and neither startup nor cleanup is hard
+preemptible. Regression cases cover cancellation observed inside provider startup
+and immediately after return, with successful/failing cleanup, empty wire output,
+released stream capacity and unusable abandoned handles.
