@@ -259,7 +259,7 @@ impl PendingHead {
             eof: false,
         })
     }
-    fn ready(&self) -> bool {
+    pub(super) fn ready(&self) -> bool {
         self.eof || self.buffer.complete() || self.buffer.remaining() == 0
     }
     pub(super) fn poll<E>(
@@ -302,12 +302,12 @@ impl PendingHead {
     }
 }
 /// Consume pending head custody; strict validation precedes handler publication.
-pub(super) fn receive_pending<E>(
+pub(super) fn prepare_pending<E>(
     pending: PendingHead,
     access: Option<&super::HttpAccessPolicy>,
     verifier: Option<&mut super::http_authentication_v4::Verifier>,
     mut checkpoint: impl FnMut() -> Result<(), E>,
-) -> Result<Result<(HttpConnection, J), HostError>, E> {
+) -> Result<Result<PendingBody, HostError>, E> {
     let PendingHead {
         mut connection,
         buffer: mut pending,
@@ -400,123 +400,238 @@ pub(super) fn receive_pending<E>(
     } else {
         None
     };
-    let body = match receive_body(
-        &mut connection,
-        &buffer[head.bytes..],
-        head.framing,
-        head.work,
-        head.continue_expected,
-        &mut checkpoint,
-    )? {
+    connection.context = if head.request.method() == "HEAD" {
+        HttpResponseContext::Head
+    } else {
+        HttpResponseContext::Standard
+    };
+    let metadata = match flatten(describe(&head.request, principal.as_ref(), &mut || {
+        checked(connection.started, connection.milliseconds, &mut checkpoint)
+    }))? {
+        Ok(metadata) => metadata,
+        Err(e) => return Ok(Err(e)),
+    };
+    let mut body = match BodyState::new(head.framing, head.work, connection.limits) {
         Ok(body) => body,
         Err(e) => {
             connection.reject(e.code, &mut checkpoint)?;
             return Ok(Err(e));
         }
     };
-    let value = match describe(&head.request, &body, principal.as_ref(), &mut || {
-        checked(connection.started, connection.milliseconds, &mut checkpoint)
-    }) {
-        Ok(Ok(value)) => value,
-        Ok(Err(e)) => return Ok(Err(e)),
-        Err(Stop::External(e)) => return Err(e),
-        Err(Stop::Timeout) => {
-            return Ok(Err(error(
-                "timeout",
-                "aggregate HTTP exchange deadline exceeded",
-            )))
-        }
-    };
-    connection.context = if head.request.method() == "HEAD" {
-        HttpResponseContext::Head
-    } else {
-        HttpResponseContext::Standard
-    };
-    Ok(Ok((connection, value)))
-}
-fn receive_body<E>(
-    connection: &mut HttpConnection,
-    initial: &[u8],
-    framing: HttpBodyFraming,
-    work: usize,
-    continue_expected: bool,
-    checkpoint: &mut impl FnMut() -> Result<(), E>,
-) -> Result<Result<Vec<u8>, HostError>, E> {
-    match framing {
-        HttpBodyFraming::Fixed(length) => {
-            let mut body = match super::HttpFixedBody::new(length, connection.limits.request) {
-                Ok(body) => body,
-                Err(e) => return Ok(Err(error(e.code, e.message))),
-            };
-            if let Err(e) = body.feed(initial) {
-                return Ok(Err(error(e.code, e.message)));
-            }
-            if continue_expected && body.remaining() > 0 {
-                if let Err(e) = connection.send_continue(checkpoint)? {
-                    return Ok(Err(e));
-                }
-            }
-            while body.remaining() > 0 {
-                match connection.read(body.remaining(), checkpoint)? {
-                    Err(e) => return Ok(Err(e)),
-                    Ok(NetworkRead::Eof) => {
-                        return Ok(Err(error("truncated", "HTTP body ended before completion")))
-                    }
-                    Ok(NetworkRead::Data(bytes)) => {
-                        if let Err(e) = body.feed(&bytes) {
-                            return Ok(Err(error(e.code, e.message)));
-                        }
-                    }
-                }
-            }
-            Ok(body.finish().map_err(|e| error(e.code, e.message)))
-        }
-        HttpBodyFraming::Chunked => {
-            let limits = HttpChunkedLimits {
-                body_bytes: connection.limits.request.body_bytes,
-                line_bytes: connection.limits.request.line_bytes,
-                work,
-                ..HttpChunkedLimits::DEFAULT
-            };
-            let trailers = HttpTrailerLimits {
-                bytes: connection.limits.request.head_bytes,
-                line_bytes: connection.limits.request.line_bytes,
-                fields: connection.limits.request.headers,
-            };
-            let mut decoder = match HttpChunkedDecoder::with_discarded_trailers(limits, trailers) {
-                Ok(d) => d,
-                Err(e) => return Ok(Err(error(e.code, e.message))),
-            };
-            let mut seen = initial.len();
-            let mut complete = match decoder.feed(initial) {
-                Ok(done) => done,
-                Err(e) => return Ok(Err(error(e.code, e.message))),
-            };
-            if continue_expected && !complete {
-                if let Err(e) = connection.send_continue(checkpoint)? {
-                    return Ok(Err(e));
-                }
-            }
-            while !complete {
-                let maximum = limits.wire_bytes.saturating_sub(seen);
-                if maximum == 0 {
-                    return Ok(Err(error("limit", "chunked wire limit exceeded")));
-                }
-                match connection.read(maximum, checkpoint)? {
-                    Err(e) => return Ok(Err(e)),
-                    Ok(NetworkRead::Eof) => break,
-                    Ok(NetworkRead::Data(bytes)) => {
-                        seen += bytes.len();
-                        complete = match decoder.feed(&bytes) {
-                            Ok(done) => done,
-                            Err(e) => return Ok(Err(error(e.code, e.message))),
-                        };
-                    }
-                }
-            }
-            Ok(decoder.finish().map_err(|e| error(e.code, e.message)))
+    if let Err(e) = body.feed(&buffer[head.bytes..]) {
+        connection.reject(e.code, &mut checkpoint)?;
+        return Ok(Err(e));
+    }
+    if head.continue_expected && !body.complete() {
+        if let Err(e) = connection.send_continue(&mut checkpoint)? {
+            return Ok(Err(e));
         }
     }
+    Ok(Ok(PendingBody {
+        connection,
+        metadata,
+        body,
+    }))
+}
+
+enum BodyState {
+    Fixed(super::HttpFixedBody),
+    Chunked {
+        decoder: HttpChunkedDecoder,
+        seen: usize,
+        maximum: usize,
+        complete: bool,
+    },
+}
+impl BodyState {
+    fn new(
+        framing: HttpBodyFraming,
+        work: usize,
+        limits: HttpExchangeLimits,
+    ) -> Result<Self, HostError> {
+        match framing {
+            HttpBodyFraming::Fixed(length) => super::HttpFixedBody::new(length, limits.request)
+                .map(Self::Fixed)
+                .map_err(|e| error(e.code, e.message)),
+            HttpBodyFraming::Chunked => {
+                let chunked = HttpChunkedLimits {
+                    body_bytes: limits.request.body_bytes,
+                    line_bytes: limits.request.line_bytes,
+                    work,
+                    ..HttpChunkedLimits::DEFAULT
+                };
+                let trailers = HttpTrailerLimits {
+                    bytes: limits.request.head_bytes,
+                    line_bytes: limits.request.line_bytes,
+                    fields: limits.request.headers,
+                };
+                let decoder = HttpChunkedDecoder::with_discarded_trailers(chunked, trailers)
+                    .map_err(|e| error(e.code, e.message))?;
+                Ok(Self::Chunked {
+                    decoder,
+                    seen: 0,
+                    maximum: chunked.wire_bytes,
+                    complete: false,
+                })
+            }
+        }
+    }
+    fn remaining(&self) -> usize {
+        match self {
+            Self::Fixed(body) => body.remaining(),
+            Self::Chunked { seen, maximum, .. } => maximum.saturating_sub(*seen),
+        }
+    }
+    fn complete(&self) -> bool {
+        match self {
+            Self::Fixed(body) => body.remaining() == 0,
+            Self::Chunked { complete, .. } => *complete,
+        }
+    }
+    fn feed(&mut self, bytes: &[u8]) -> Result<(), HostError> {
+        match self {
+            Self::Fixed(body) => {
+                body.feed(bytes).map_err(|e| error(e.code, e.message))?;
+            }
+            Self::Chunked {
+                decoder,
+                seen,
+                maximum,
+                complete,
+            } => {
+                if bytes.len() > maximum.saturating_sub(*seen) {
+                    return Err(error("limit", "chunked wire limit exceeded"));
+                }
+                *complete = decoder.feed(bytes).map_err(|e| error(e.code, e.message))?;
+                *seen += bytes.len();
+            }
+        }
+        Ok(())
+    }
+    fn finish(self) -> Result<Vec<u8>, HostError> {
+        match self {
+            Self::Fixed(body) => body.finish(),
+            Self::Chunked { decoder, .. } => decoder.finish(),
+        }
+        .map_err(|e| error(e.code, e.message))
+    }
+}
+/// Checked metadata and verifier outcome are private until the body is complete.
+pub(super) struct PendingBody {
+    connection: HttpConnection,
+    metadata: J,
+    body: BodyState,
+}
+impl std::fmt::Debug for PendingBody {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PendingBody").finish_non_exhaustive()
+    }
+}
+impl PendingBody {
+    pub(super) fn close(self) -> Result<(), HostError> {
+        self.connection.close()
+    }
+    pub(super) fn poll<E>(
+        &mut self,
+        checkpoint: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Result<bool, HostError>, E> {
+        let connection = &mut self.connection;
+        if let Err(e) = flatten(
+            checked(connection.started, connection.milliseconds, checkpoint).map(|_| Ok(())),
+        )? {
+            return Ok(Err(e));
+        }
+        if self.body.complete() {
+            return Ok(Ok(true));
+        }
+        if self.body.remaining() == 0 {
+            return Ok(Err(error("limit", "chunked wire limit exceeded")));
+        }
+        if let Err(e) = connection.admit() {
+            return Ok(Err(e));
+        }
+        let (started, milliseconds) = (connection.started, connection.milliseconds);
+        let read = flatten(
+            connection
+                .stream
+                .try_read(self.body.remaining().min(connection.bytes), || {
+                    checked(started, milliseconds, checkpoint)
+                }),
+        )?;
+        match read {
+            Err(e) => return Ok(Err(e)),
+            Ok(None) => {}
+            Ok(Some(NetworkRead::Eof)) => {
+                return Ok(Err(error("truncated", "HTTP body ended before completion")))
+            }
+            Ok(Some(NetworkRead::Data(bytes))) => {
+                if let Err(e) = self.body.feed(&bytes) {
+                    return Ok(Err(e));
+                }
+            }
+        }
+        Ok(Ok(self.body.complete()))
+    }
+}
+pub(super) fn receive_body_pending<E>(
+    mut pending: PendingBody,
+    mut checkpoint: impl FnMut() -> Result<(), E>,
+) -> Result<Result<(HttpConnection, J), HostError>, E> {
+    while !pending.body.complete() {
+        let maximum = pending.body.remaining();
+        if maximum == 0 {
+            pending.connection.reject("limit", &mut checkpoint)?;
+            return Ok(Err(error("limit", "chunked wire limit exceeded")));
+        }
+        match pending.connection.read(maximum, &mut checkpoint)? {
+            Err(e) => {
+                pending.connection.reject(e.code, &mut checkpoint)?;
+                return Ok(Err(e));
+            }
+            Ok(NetworkRead::Eof) => break,
+            Ok(NetworkRead::Data(bytes)) => {
+                if let Err(e) = pending.body.feed(&bytes) {
+                    pending.connection.reject(e.code, &mut checkpoint)?;
+                    return Ok(Err(e));
+                }
+            }
+        }
+    }
+    let body = match pending.body.finish() {
+        Ok(body) => body,
+        Err(e) => {
+            pending.connection.reject(e.code, &mut checkpoint)?;
+            return Ok(Err(e));
+        }
+    };
+    if let Err(e) = flatten(
+        checked(
+            pending.connection.started,
+            pending.connection.milliseconds,
+            &mut checkpoint,
+        )
+        .map(|_| Ok(())),
+    )? {
+        return Ok(Err(e));
+    }
+    let encoded = match encode(&body) {
+        Ok(body) => body,
+        Err(e) => return Ok(Err(e)),
+    };
+    if let Err(e) = flatten(
+        checked(
+            pending.connection.started,
+            pending.connection.milliseconds,
+            &mut checkpoint,
+        )
+        .map(|_| Ok(())),
+    )? {
+        return Ok(Err(e));
+    }
+    if let J::Object(fields) = &mut pending.metadata {
+        fields.push(("body".into(), J::String(encoded)));
+    }
+    Ok(Ok((pending.connection, pending.metadata)))
 }
 fn codec_fuel() -> RuntimeValueFuel {
     RuntimeValueFuel::new(MaterializationLimits {
@@ -557,7 +672,6 @@ pub(super) fn decode(value: &J, maximum: usize) -> Result<Vec<u8>, HostError> {
 }
 fn describe<E>(
     request: &HttpRequest<'_>,
-    body: &[u8],
     principal: Option<&super::HttpPrincipal>,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<Result<J, HostError>, E> {
@@ -577,16 +691,11 @@ fn describe<E>(
             ("value".into(), J::String(value)),
         ]));
     }
-    let body = match encode(body) {
-        Ok(v) => v,
-        Err(e) => return Ok(Err(e)),
-    };
     checkpoint()?;
     let mut description = vec![
         ("method".into(), J::String(request.method().into())),
         ("target".into(), J::String(request.target().into())),
         ("headers".into(), J::Array(headers)),
-        ("body".into(), J::String(body)),
     ];
     if let Some(principal) = principal {
         description.push(("principal".into(), J::String(principal.name().into())));

@@ -452,3 +452,44 @@ fn context_preserves_raw_values_and_does_not_infer_a_missing_origin() {
     );
     h.close_all().unwrap();
 }
+
+#[test]
+fn body_polls_retain_one_verification_and_hide_principal_until_complete() {
+    let (mut h, n, mut peer, calls) = setup(0, false, HttpExchangeLimits::DEFAULT);
+    peer.write_all(head(&credential()).as_bytes()).unwrap();
+    let poll_head = format!(r#"{{"version":4,"op":"http.poll_head","handle":{n}}}"#);
+    let mut ready = false;
+    for _ in 0..100 {
+        ready = call(&mut h, &poll_head).unwrap() == JsonValue::Bool(true);
+        if ready {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert!(ready);
+    let poll = format!(r#"{{"version":4,"op":"http.poll_body","handle":{n}}}"#);
+    for _ in 0..3 {
+        assert_eq!(call(&mut h, &poll).unwrap(), JsonValue::Bool(false));
+    }
+    assert_eq!(calls.load(Ordering::Relaxed), 1);
+    assert!(!format!("{h:?}").contains(TOKEN));
+    assert!(!format!("{h:?}").contains("operator-1"));
+    peer.write_all(b"x").unwrap();
+    for _ in 0..100 {
+        ready = call(&mut h, &poll).unwrap() == JsonValue::Bool(true);
+        if ready {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert!(ready);
+    let value = receive(&mut h, n).unwrap();
+    assert_eq!(calls.load(Ordering::Relaxed), 1);
+    assert_eq!(
+        field(&value, "principal"),
+        &JsonValue::String("operator-1".into())
+    );
+    assert_eq!(field(&value, "body"), &JsonValue::String("eA==".into()));
+    assert!(!format!("{value:?}").contains(TOKEN));
+    h.close_all().unwrap();
+}

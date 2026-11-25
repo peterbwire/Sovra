@@ -291,6 +291,7 @@ Implemented evidence:
 - [x] Extract bounded resumable HTTP head accumulation with retained scan state, sticky failures and body-prefix preservation; existing receive uses it before strict one-time parsing. Yielding HTTP and scheduling remain open.
 - [x] Add `http.poll_head` pending-owner custody with one nonblocking read, retained head/deadline/I/O state and admission-once transition into checked receive. Body/verifier/output phases and fair scheduling remain open.
 - [x] Extract bounded resumable fixed-length HTTP body state with exact/zero lengths, sticky excess refusal, opaque debug and complete-only publication; integrate after authentication. Yielding body phases remain open.
+- [x] Retain owned checked HTTP metadata and verifier outcome with fixed/chunked pending-body custody; add `http.poll_body` with readiness-only publication and one nonblocking read after preparation. Verifier/interim/final-output scheduling remains open.
 - [ ] Add reviewed concurrency/backpressure, streaming, TLS and deployment controls
   before claiming production server support. A private Node adapter is insufficient.
 

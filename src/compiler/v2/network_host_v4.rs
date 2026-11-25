@@ -45,6 +45,7 @@ enum Owner {
     },
     Http(super::http_exchange_v4::HttpConnection),
     PendingHead(Box<super::http_exchange_v4::PendingHead>),
+    PendingBody(Box<super::http_exchange_v4::PendingBody>),
 }
 /// Mutable trusted execution scope. Tokens alias one owner and never duplicate sockets.
 /// Closing invalidates all token aliases; tokens are never reused in this process.
@@ -162,7 +163,7 @@ impl NetworkHostV4 {
             let allowed: &[&str] = match op {
                 "net.listen" => &["version", "op", "port"],
                 "net.port" | "net.accept" | "net.try_accept" | "net.close" | "http.receive"
-                | "http.poll_head" => &["version", "op", "handle"],
+                | "http.poll_head" | "http.poll_body" => &["version", "op", "handle"],
                 "net.read" | "net.try_read" => &["version", "op", "handle", "maximum"],
                 "net.write" | "net.try_write" => &["version", "op", "handle", "data"],
                 "http.respond" => &["version", "op", "handle", "status", "headers", "body"],
@@ -219,8 +220,51 @@ impl NetworkHostV4 {
                 Some(Owner::Stream { stream, .. }) => stream.close().map(|_| J::Null),
                 Some(Owner::Http(owner)) => owner.close().map(|_| J::Null),
                 Some(Owner::PendingHead(owner)) => owner.close().map(|_| J::Null),
+                Some(Owner::PendingBody(owner)) => owner.close().map(|_| J::Null),
                 None => Err(error("input", "stale or foreign network handle")),
             });
+        }
+        if op == "http.poll_body"
+            || (op == "http.receive"
+                && matches!(self.owners.get(&handle), Some(Owner::PendingBody(_))))
+        {
+            if !matches!(self.owners.get(&handle), Some(Owner::PendingBody(_)))
+                && !(op == "http.poll_body"
+                    && matches!(self.owners.get(&handle), Some(Owner::PendingHead(head)) if head.ready()))
+            {
+                return Ok(Err(error(
+                    "input",
+                    "HTTP body poll requires prepared head or pending body",
+                )));
+            }
+            let mut pending = match self.owners.remove(&handle) {
+                Some(Owner::PendingBody(body)) => *body,
+                Some(Owner::PendingHead(head)) => match super::http_exchange_v4::prepare_pending(
+                    *head,
+                    self.http_access.as_deref(),
+                    self.http_verifier.as_mut(),
+                    &mut checkpoint,
+                )? {
+                    Ok(body) => body,
+                    Err(e) => return Ok(Err(e)),
+                },
+                _ => unreachable!(),
+            };
+            if op == "http.poll_body" {
+                return Ok(pending.poll(&mut checkpoint)?.map(|ready| {
+                    self.owners
+                        .insert(handle, Owner::PendingBody(Box::new(pending)));
+                    J::Bool(ready)
+                }));
+            }
+            return Ok(
+                super::http_exchange_v4::receive_body_pending(pending, checkpoint)?.map(
+                    |(owner, request)| {
+                        self.owners.insert(handle, Owner::Http(owner));
+                        request
+                    },
+                ),
+            );
         }
         if op == "http.receive" || op == "http.poll_head" {
             if !matches!(
@@ -267,16 +311,23 @@ impl NetworkHostV4 {
                     J::Bool(ready)
                 }));
             }
-            return Ok(super::http_exchange_v4::receive_pending(
+            let body = match super::http_exchange_v4::prepare_pending(
                 pending,
                 self.http_access.as_deref(),
                 self.http_verifier.as_mut(),
-                checkpoint,
-            )?
-            .map(|(owner, request)| {
-                self.owners.insert(handle, Owner::Http(owner));
-                request
-            }));
+                &mut checkpoint,
+            )? {
+                Ok(body) => body,
+                Err(e) => return Ok(Err(e)),
+            };
+            return Ok(
+                super::http_exchange_v4::receive_body_pending(body, checkpoint)?.map(
+                    |(owner, request)| {
+                        self.owners.insert(handle, Owner::Http(owner));
+                        request
+                    },
+                ),
+            );
         }
         if op == "http.respond" {
             if !matches!(self.owners.get(&handle), Some(Owner::Http(_))) {
@@ -429,6 +480,7 @@ impl NetworkHostV4 {
                 Owner::Stream { stream, .. } => stream.close(),
                 Owner::Http(owner) => owner.close(),
                 Owner::PendingHead(owner) => owner.close(),
+                Owner::PendingBody(owner) => owner.close(),
                 Owner::Listener(_) => Ok(()),
             };
             if let Err(mut e) = closed {

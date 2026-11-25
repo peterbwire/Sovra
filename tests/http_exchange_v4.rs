@@ -1035,3 +1035,120 @@ fn prepared_head_cannot_publish_after_aggregate_deadline_expires() {
     assert_eq!(call(&mut h, &receive(n)).unwrap_err().code, "timeout");
     assert_eq!(h.usage(), (1, 0));
 }
+
+#[test]
+fn body_poll_handles_fixed_and_chunked_fragments_without_publishing_partial_data() {
+    for (framing, first, last) in [
+        ("Content-Length: 3", b"a".as_slice(), b"bc".as_slice()),
+        (
+            "Transfer-Encoding: chunked",
+            b"3\r\na".as_slice(),
+            b"bc\r\n0\r\n\r\n".as_slice(),
+        ),
+    ] {
+        let (mut h, n, mut peer) = connect(65536, HttpExchangeLimits::DEFAULT);
+        let body_poll = format!(r#"{{"version":4,"op":"http.poll_body","handle":{n}}}"#);
+        assert_eq!(call(&mut h, &body_poll).unwrap_err().code, "input");
+        peer.write_all(
+            format!("POST / HTTP/1.1\r\nHost: localhost\r\n{framing}\r\n\r\n").as_bytes(),
+        )
+        .unwrap();
+        let head_poll = format!(r#"{{"version":4,"op":"http.poll_head","handle":{n}}}"#);
+        let mut ready = false;
+        for _ in 0..100 {
+            ready = call(&mut h, &head_poll).unwrap() == JsonValue::Bool(true);
+            if ready {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert!(ready);
+        assert_eq!(call(&mut h, &body_poll).unwrap(), JsonValue::Bool(false));
+        peer.write_all(first).unwrap();
+        assert_eq!(call(&mut h, &body_poll).unwrap(), JsonValue::Bool(false));
+        assert_eq!(
+            call(
+                &mut h,
+                &format!(r#"{{"version":4,"op":"net.read","handle":{n},"maximum":1}}"#)
+            )
+            .unwrap_err()
+            .code,
+            "input"
+        );
+        peer.write_all(last).unwrap();
+        for _ in 0..100 {
+            ready = call(&mut h, &body_poll).unwrap() == JsonValue::Bool(true);
+            if ready {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert!(ready);
+        let result = call(&mut h, &receive(n)).unwrap();
+        assert_eq!(field(&result, "body"), &JsonValue::String("YWJj".into()));
+        assert_eq!(call(&mut h, &body_poll).unwrap_err().code, "input");
+        h.close_all().unwrap();
+    }
+}
+
+#[test]
+fn body_poll_truncated_eof_drops_pending_owner() {
+    let (mut h, n, mut peer) = connect(65536, HttpExchangeLimits::DEFAULT);
+    peer.write_all(b"POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 3\r\n\r\n")
+        .unwrap();
+    let head_poll = format!(r#"{{"version":4,"op":"http.poll_head","handle":{n}}}"#);
+    let mut ready = false;
+    for _ in 0..100 {
+        ready = call(&mut h, &head_poll).unwrap() == JsonValue::Bool(true);
+        if ready {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert!(ready);
+    peer.shutdown(Shutdown::Write).unwrap();
+    let body_poll = format!(r#"{{"version":4,"op":"http.poll_body","handle":{n}}}"#);
+    assert_eq!(call(&mut h, &body_poll).unwrap_err().code, "truncated");
+    assert_eq!(h.usage(), (1, 0));
+}
+
+#[test]
+fn pending_body_cancellation_and_deadline_release_private_state() {
+    for expire in [false, true] {
+        let (mut h, n, mut peer) = connect(65536, HttpExchangeLimits::DEFAULT);
+        peer.write_all(b"POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 3\r\n\r\n")
+            .unwrap();
+        let head_poll = format!(r#"{{"version":4,"op":"http.poll_head","handle":{n}}}"#);
+        let mut ready = false;
+        for _ in 0..100 {
+            ready = call(&mut h, &head_poll).unwrap() == JsonValue::Bool(true);
+            if ready {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert!(ready);
+        let body_poll = format!(r#"{{"version":4,"op":"http.poll_body","handle":{n}}}"#);
+        assert_eq!(call(&mut h, &body_poll).unwrap(), JsonValue::Bool(false));
+        if expire {
+            std::thread::sleep(Duration::from_millis(1100));
+            assert_eq!(call(&mut h, &body_poll).unwrap_err().code, "timeout");
+        } else {
+            let mut ticks = 0;
+            assert_eq!(
+                h.call(&request(&body_poll), || {
+                    ticks += 1;
+                    if ticks == 2 {
+                        Err("cancel body")
+                    } else {
+                        Ok(())
+                    }
+                })
+                .unwrap_err(),
+                "cancel body"
+            );
+        }
+        assert_eq!(h.usage(), (1, 0));
+        h.close_all().unwrap();
+    }
+}

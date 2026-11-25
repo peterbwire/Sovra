@@ -11600,3 +11600,23 @@ authentication, 29 exchange and 14 request/body-framing tests), strict all-targe
 all-feature Clippy, exact Rust 1.74.0 all-target check, Windows GNU all-target
 compile, formatting and documentation links. This is focused follow-up evidence,
 not a replacement full frozen-source/native qualification.
+
+## 2026-11-25: G14 checked metadata and yielding body polling
+
+Added pending-body custody containing owned checked metadata/verifier outcome and
+fixed/chunked body state. `http.poll_body` prepares a ready head once, then reads
+at most one available body fragment per poll; readiness never publishes partial
+payloads or principals. Existing receive consumes pending bodies without repeating
+verification. Shared admission/I/O/deadline, pre-body access/authentication,
+Continue, trailer discard and response custody remain. Pending debug omits all
+metadata. Tests cover fragments, EOF, wrong kinds/raw-I/O exclusion, deadline,
+cancellation, actual Sovra polling/cleanup and exactly one verifier invocation
+across idle polls. Initial verifier/Continue and final output can still wait;
+fair scheduling and production concurrency remain open.
+
+Validation passes 99 tests across nine focused HTTP/network targets, including
+both authenticated/default CLI and independent native servers (project files and
+Node/PATH unavailable), actual Sovra body polling/cleanup and command-verifier
+regressions. Strict all-target/all-feature Clippy, exact Rust 1.74.0 all-target
+check, Windows GNU all-target compile, formatting and documentation links pass.
+This follow-up does not replace complete frozen-source G14 qualification.

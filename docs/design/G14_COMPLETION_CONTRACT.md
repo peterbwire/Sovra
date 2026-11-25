@@ -152,3 +152,11 @@ fragments with sticky refusal and complete-only publication. This extracts body
 state after existing authentication, not a yielding body API. Checked metadata,
 verification/interim/final-output state and scheduling remain open. See
 [exchange](../reference/http-exchange-v4.md#resumable-fixed-length-body-state-2026-11-25).
+
+`http.poll_body` now retains owned checked request metadata, verifier outcome and
+fixed/chunked body decoder state. Polls expose readiness only and preserve the
+shared I/O/deadline and admission state; receive publishes metadata only after
+body completion without re-verification. Initial preparation can still wait for
+verification/Continue, and receive can wait for incomplete bodies. Fair scheduling
+and cooperative verification/output remain open. See
+[body polling](../reference/http-exchange-v4.md#checked-metadata-and-body-polling-2026-11-25).

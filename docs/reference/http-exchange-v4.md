@@ -216,3 +216,36 @@ body polling or make the current body loop nonblocking. Chunked/trailer decoding
 already retains incremental decoder state but still waits in the socket loop.
 Persisting checked request metadata and authentication outcome, Continue/output
 state and fair scheduling remain open.
+
+## Checked metadata and body polling (2026-11-25)
+
+`http.poll_body` requires a ready pending head (created with `http.poll_head`) or
+an existing pending body. Wrong-kind/unprepared owners refuse before consuming
+custody. On the first call it runs existing strict parsing, exact access checks
+and optional verification, owns the checked method/target/header/principal
+metadata, initializes fixed-length or chunked/trailer state and handles bounded
+Continue if needed. This preparation can wait for the trusted verifier or interim
+output under existing controls; it is not an asynchronous verifier/output API.
+
+After preparation each poll performs at most one nonblocking body read and returns
+only Bool readiness. Partial bodies, metadata and principal remain private.
+Ready bodies perform no further read. Idle attempts count against the same I/O
+budget; all phases retain the original accepted timestamp and aggregate deadline.
+Head admission is never recharged by body polling. Raw I/O, head polling and
+respond cannot bypass pending-body custody. Claimed cancellation, timeout,
+truncation or decoding/I/O failure drops the pending owner; body-poll failures may
+close without an HTTP error packet. Explicit close and scope cleanup release it.
+
+`http.receive` accepts pending bodies and finishes the existing handler request
+without parsing or verifying again. It can still wait for incomplete bodies.
+Body encoding and final publication recheck the aggregate deadline. Only complete
+bodies publish the retained metadata and principal. Buffer and pending-body debug
+output omits credentials, payload and identity metadata. Authentication decisions
+are scoped to this bounded exchange, not a continuous revocation service.
+
+Tests cover fragmented fixed/chunked bodies, wrong-kind/raw-I/O exclusion,
+truncation, pending-body cancellation/deadline, actual checked Sovra polling and
+scope cleanup, and repeated idle polls with exactly one verifier invocation.
+Independent CLI/native authenticated and default server regressions remain part
+of validation. Fair scheduling, asynchronous verification/Continue/final output,
+production concurrency and secure deployment remain open.
