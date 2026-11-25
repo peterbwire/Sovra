@@ -188,3 +188,35 @@ fn preclaim_cancellation_does_not_charge_but_claimed_failure_does() {
     assert!(wire.starts_with(b"HTTP/1.1 429"));
     h.close_all().unwrap();
 }
+
+#[test]
+fn head_polls_charge_admission_once_and_receive_does_not_recharge() {
+    let mut h = host(1);
+    let (l, p) = listener(&mut h);
+    let (n, mut peer) = connect(&mut h, l, p);
+    let poll = format!(r#"{{"version":4,"op":"http.poll_head","handle":{n}}}"#);
+    assert_eq!(call(&mut h, &poll).unwrap(), JsonValue::Bool(false));
+    peer.write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
+        .unwrap();
+    let mut ready = false;
+    for _ in 0..100 {
+        ready = call(&mut h, &poll).unwrap() == JsonValue::Bool(true);
+        if ready {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert!(ready);
+    call(&mut h, &receive(n)).unwrap();
+    let (next, _peer) = connect(&mut h, l, p);
+    assert_eq!(
+        call(
+            &mut h,
+            &format!(r#"{{"version":4,"op":"http.poll_head","handle":{next}}}"#)
+        )
+        .unwrap_err()
+        .code,
+        "admission"
+    );
+    h.close_all().unwrap();
+}

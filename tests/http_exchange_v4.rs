@@ -885,3 +885,153 @@ fn interim_output_obeys_lowered_response_limits() {
         host.close_all().unwrap();
     }
 }
+
+#[test]
+fn yielding_head_preserves_fragments_custody_and_single_attempt_charge() {
+    let (mut h, n, mut peer) = connect(65536, HttpExchangeLimits::DEFAULT);
+    let poll = format!(r#"{{"version":4,"op":"http.poll_head","handle":{n}}}"#);
+    assert_eq!(call(&mut h, &poll).unwrap(), JsonValue::Bool(false));
+    assert_eq!(h.usage(), (1, 1));
+    peer.write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\n")
+        .unwrap();
+    assert_eq!(call(&mut h, &poll).unwrap(), JsonValue::Bool(false));
+    // Raw I/O and response operations cannot bypass the pending HTTP state.
+    assert_eq!(
+        call(
+            &mut h,
+            &format!(r#"{{"version":4,"op":"net.read","handle":{n},"maximum":1}}"#)
+        )
+        .unwrap_err()
+        .code,
+        "input"
+    );
+    peer.write_all(b"\r\n").unwrap();
+    let mut ready = false;
+    for _ in 0..100 {
+        ready = call(&mut h, &poll).unwrap() == JsonValue::Bool(true);
+        if ready {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert!(ready);
+    assert_eq!(call(&mut h, &poll).unwrap(), JsonValue::Bool(true));
+    let received = call(
+        &mut h,
+        &format!(r#"{{"version":4,"op":"http.receive","handle":{n}}}"#),
+    )
+    .unwrap();
+    assert!(matches!(received, JsonValue::Object(_)));
+    assert_eq!(call(&mut h, &poll).unwrap_err().code, "input");
+    h.close_all().unwrap();
+    assert_eq!(h.usage(), (0, 0));
+}
+
+#[test]
+fn yielding_head_idle_attempts_share_io_limit_and_cancelled_claim_drops_owner() {
+    let (mut h, n, _peer) = connect(
+        65536,
+        HttpExchangeLimits {
+            io_operations: 1,
+            ..HttpExchangeLimits::DEFAULT
+        },
+    );
+    let poll = format!(r#"{{"version":4,"op":"http.poll_head","handle":{n}}}"#);
+    assert_eq!(call(&mut h, &poll).unwrap(), JsonValue::Bool(false));
+    assert_eq!(call(&mut h, &poll).unwrap_err().code, "limit");
+    assert_eq!(h.usage(), (1, 0));
+    let (mut h, n, _peer) = connect(65536, HttpExchangeLimits::DEFAULT);
+    let poll = request(&format!(
+        r#"{{"version":4,"op":"http.poll_head","handle":{n}}}"#
+    ));
+    let mut ticks = 0;
+    assert_eq!(
+        h.call(&poll, || {
+            ticks += 1;
+            if ticks == 2 {
+                Err("cancel claimed head")
+            } else {
+                Ok(())
+            }
+        })
+        .unwrap_err(),
+        "cancel claimed head"
+    );
+    assert_eq!(h.usage(), (1, 0));
+}
+
+#[test]
+fn yielding_head_readiness_is_not_validation_and_eof_is_rejected_on_receive() {
+    for wire in [b"BAD\r\n\r\n".as_slice(), b"GET / HTTP/1.1\r\nHost:"] {
+        let (mut h, n, mut peer) = connect(65536, HttpExchangeLimits::DEFAULT);
+        peer.write_all(wire).unwrap();
+        peer.shutdown(Shutdown::Write).unwrap();
+        let poll = format!(r#"{{"version":4,"op":"http.poll_head","handle":{n}}}"#);
+        let mut ready = false;
+        for _ in 0..100 {
+            ready = call(&mut h, &poll).unwrap() == JsonValue::Bool(true);
+            if ready {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert!(ready);
+        assert!(call(
+            &mut h,
+            &format!(r#"{{"version":4,"op":"http.receive","handle":{n}}}"#)
+        )
+        .is_err());
+        assert_eq!(h.usage(), (1, 0));
+    }
+}
+
+#[test]
+fn idle_head_yields_while_other_connection_reaches_handler() {
+    let (mut h, slow, _slow_peer) = connect(65536, HttpExchangeLimits::DEFAULT);
+    let poll = format!(r#"{{"version":4,"op":"http.poll_head","handle":{slow}}}"#);
+    assert_eq!(call(&mut h, &poll).unwrap(), JsonValue::Bool(false));
+    let l = integer(call(&mut h, r#"{"version":4,"op":"net.listen","port":0}"#).unwrap());
+    let p = integer(
+        call(
+            &mut h,
+            &format!(r#"{{"version":4,"op":"net.port","handle":{l}}}"#),
+        )
+        .unwrap(),
+    );
+    let mut peer = TcpStream::connect((Ipv4Addr::LOCALHOST, p as u16)).unwrap();
+    let fast = integer(
+        call(
+            &mut h,
+            &format!(r#"{{"version":4,"op":"net.accept","handle":{l}}}"#),
+        )
+        .unwrap(),
+    );
+    peer.write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
+        .unwrap();
+    assert!(matches!(
+        call(&mut h, &receive(fast)).unwrap(),
+        JsonValue::Object(_)
+    ));
+    assert_eq!(call(&mut h, &poll).unwrap(), JsonValue::Bool(false));
+    h.close_all().unwrap();
+}
+
+#[test]
+fn prepared_head_cannot_publish_after_aggregate_deadline_expires() {
+    let (mut h, n, mut peer) = connect(65536, HttpExchangeLimits::DEFAULT);
+    peer.write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
+        .unwrap();
+    let poll = format!(r#"{{"version":4,"op":"http.poll_head","handle":{n}}}"#);
+    let mut ready = false;
+    for _ in 0..100 {
+        ready = call(&mut h, &poll).unwrap() == JsonValue::Bool(true);
+        if ready {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert!(ready);
+    std::thread::sleep(Duration::from_millis(1100));
+    assert_eq!(call(&mut h, &receive(n)).unwrap_err().code, "timeout");
+    assert_eq!(h.usage(), (1, 0));
+}

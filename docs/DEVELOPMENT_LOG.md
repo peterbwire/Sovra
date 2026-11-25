@@ -11562,3 +11562,25 @@ authentication, 24 exchange and 11 request-framing tests), strict all-target/
 all-feature Clippy, exact Rust 1.74.0 all-target check, Windows GNU all-target
 compile, formatting and documentation links. This is focused follow-up evidence,
 not a new full frozen-source/native qualification.
+
+## 2026-11-25: G14 yielding HTTP head preparation
+
+Added strict `http.poll_head` and owned pending-head state. Successful polls read
+at most one available fragment, retain head/deadline/I/O state and publish only a
+readiness Bool. Existing receive consumes pending state and rechecks the aggregate
+deadline before strict framing/access/authentication/body processing. Admission
+is charged once; idle reads consume I/O budget. Raw I/O/respond cannot bypass
+pending custody, and cancellation/error/close release it. Tests cover fragmented
+heads, idle-peer yielding to another handler, invalid/EOF readiness, cancellation,
+I/O exhaustion and single admission across poll/receive. Body/verifier/output
+phases remain waiting; fair scheduling and production concurrency remain open.
+
+Pending-head review also adds opaque debug for retained head buffers, credential
+redaction regression, actual Sovra polling/cleanup and a prepared-head deadline
+expiry test. A ready head cannot bypass the original connection deadline.
+
+Focused validation passes 82 tests (ten access, five admission, 11 authentication,
+29 HTTP exchange, 11 request framing and 16 network-host tests), strict all-target/
+all-feature Clippy, exact Rust 1.74.0 all-target check, Windows GNU all-target
+compile, formatting and documentation links. This follow-up does not replace
+full frozen-source/native G14 qualification.

@@ -161,3 +161,34 @@ preservation, exact/zero limits and sticky refusal without partial append.
 This extracts resumable head state; the socket receive loop still waits. Body,
 authentication, Continue and response state machines and fair scheduling remain
 open before concurrent HTTP service can be claimed.
+
+## Yielding head preparation (2026-11-25)
+
+Strict v4 `{"version":4,"op":"http.poll_head","handle":N}` claims a raw stream
+into unique pending-head custody. Subsequent polls resume the same head buffer.
+A successful poll attempts at most one nonblocking read and returns Bool false
+while more input is needed, or true when a delimiter, EOF or head-byte ceiling
+requires final parsing. True is not validation, authentication or a handler
+request. No raw read/write, respond or second independent claim can bypass the
+pending state. `net.close` and execution cleanup release it.
+
+`http.receive` accepts raw or pending-head custody, preserving accumulated bytes,
+accept time and I/O counts. It checks the original aggregate deadline again,
+then completes existing strict parsing, access/authentication, Continue and body
+handling before publishing a handler request. It can still wait for a body or
+verifier; this is not a fully cooperative HTTP receive API.
+
+Admission is charged once on the initial claim, not on subsequent polls or the
+transition to receive. Every actual polling read attempt, including idle attempts,
+consumes the shared I/O budget. Already-ready polls perform no new read, but still
+check control/deadline. Claimed cancellation, timeout, I/O exhaustion or errors
+drop pending custody. Initial host-call cancellation leaves the unclaimed owner
+intact. Quota refusal retains the existing bounded best-effort 429 write path,
+which may wait under its deadline; normal head preparation never sleeps/retries.
+
+Tests cover fragmented input, idle yields while another connection reaches its
+handler, readiness without validity, EOF refusal, raw-I/O exclusion, cancellation,
+shared I/O exhaustion, admission-once transitions, prepared-head deadline expiry
+and actual checked Sovra polling/cleanup. Retained head buffers expose only lengths
+and state in debug output, never raw headers or credentials. Fair scheduling, resumable
+body/verifier/output phases and production concurrency remain open.

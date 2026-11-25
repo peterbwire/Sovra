@@ -52,13 +52,22 @@ pub struct HttpRequestError {
 }
 /// Bounded resumable delimiter accumulation; completion does not validate HTTP syntax.
 /// Bytes co-read after the delimiter are retained for subsequent body framing.
-#[derive(Debug)]
 pub struct HttpHeadBuffer {
     bytes: Vec<u8>,
     maximum: usize,
     scan: usize,
     complete: bool,
     failure: Option<HttpRequestError>,
+}
+impl std::fmt::Debug for HttpHeadBuffer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HttpHeadBuffer")
+            .field("bytes", &self.bytes.len())
+            .field("maximum", &self.maximum)
+            .field("complete", &self.complete)
+            .field("failed", &self.failure.is_some())
+            .finish()
+    }
 }
 impl HttpHeadBuffer {
     /// Create a head accumulator under the existing lowerable request limits.

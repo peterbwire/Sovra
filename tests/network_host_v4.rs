@@ -647,3 +647,32 @@ fn main()->std::Result<String,std::Error>{{
     assert_eq!(wire, [255]);
     drop(TcpListener::bind((Ipv4Addr::LOCALHOST, p)).unwrap());
 }
+
+#[test]
+fn checked_sovra_can_yield_http_head_and_scope_exit_closes_pending_owner() {
+    let mut h = host();
+    let (l, p) = listener(&mut h);
+    let mut peer = TcpStream::connect((Ipv4Addr::LOCALHOST, p)).unwrap();
+    peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+    let n = integer(
+        call(
+            &mut h,
+            &format!(r#"{{"version":4,"op":"net.accept","handle":{l}}}"#),
+        )
+        .unwrap(),
+    );
+    let source = format!(
+        r#"
+fn main()->std::Result<String,std::Error>{{
+ let request=std::json_parse("{{\"version\":4,\"op\":\"http.poll_head\",\"handle\":{n}}}")?;
+ let result=std::host_call(request)?;
+ return std::json_stringify(result);
+}}"#
+    );
+    let out = execute(&source, h).unwrap();
+    assert_eq!(out.value().enum_tag(), Some(0));
+    assert_eq!(out.value().payload().unwrap().as_str(), Some("false"));
+    let mut byte = [0];
+    assert_eq!(peer.read(&mut byte).unwrap(), 0);
+    drop(TcpListener::bind((Ipv4Addr::LOCALHOST, p)).unwrap());
+}

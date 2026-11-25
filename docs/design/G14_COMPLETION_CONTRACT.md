@@ -140,3 +140,9 @@ scan cursor and sticky failures), preserving strict one-time head parsing and
 existing limits. This is the resumable head-state foundation, not a yielding
 socket receive operation. Body/authentication/interim-response/final-output states
 and fair scheduling remain open. See [exchange](../reference/http-exchange-v4.md#resumable-head-buffer-foundation-2026-11-25).
+
+`http.poll_head` now exposes pending-head custody to checked source: at most one
+nonblocking read per successful poll, no handler publication, retained aggregate
+limits and one admission charge across polls/receive. Existing `http.receive`
+consumes pending state through strict validation and can still wait for body or
+verification. See [yielding head preparation](../reference/http-exchange-v4.md#yielding-head-preparation-2026-11-25).

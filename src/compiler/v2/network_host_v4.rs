@@ -44,6 +44,7 @@ enum Owner {
         accepted: std::time::Instant,
     },
     Http(super::http_exchange_v4::HttpConnection),
+    PendingHead(Box<super::http_exchange_v4::PendingHead>),
 }
 /// Mutable trusted execution scope. Tokens alias one owner and never duplicate sockets.
 /// Closing invalidates all token aliases; tokens are never reused in this process.
@@ -160,9 +161,8 @@ impl NetworkHostV4 {
             };
             let allowed: &[&str] = match op {
                 "net.listen" => &["version", "op", "port"],
-                "net.port" | "net.accept" | "net.try_accept" | "net.close" | "http.receive" => {
-                    &["version", "op", "handle"]
-                }
+                "net.port" | "net.accept" | "net.try_accept" | "net.close" | "http.receive"
+                | "http.poll_head" => &["version", "op", "handle"],
                 "net.read" | "net.try_read" => &["version", "op", "handle", "maximum"],
                 "net.write" | "net.try_write" => &["version", "op", "handle", "data"],
                 "http.respond" => &["version", "op", "handle", "status", "headers", "body"],
@@ -218,37 +218,57 @@ impl NetworkHostV4 {
                 }
                 Some(Owner::Stream { stream, .. }) => stream.close().map(|_| J::Null),
                 Some(Owner::Http(owner)) => owner.close().map(|_| J::Null),
+                Some(Owner::PendingHead(owner)) => owner.close().map(|_| J::Null),
                 None => Err(error("input", "stale or foreign network handle")),
             });
         }
-        if op == "http.receive" {
-            if !matches!(self.owners.get(&handle), Some(Owner::Stream { .. })) {
+        if op == "http.receive" || op == "http.poll_head" {
+            if !matches!(
+                self.owners.get(&handle),
+                Some(Owner::Stream { .. }) | Some(Owner::PendingHead(_))
+            ) {
                 return Ok(Err(error(
                     "input",
-                    "HTTP receive requires a raw stream owner",
+                    "HTTP receive requires a raw or pending-head owner",
                 )));
             }
-            let Some(Owner::Stream { stream, accepted }) = self.owners.remove(&handle) else {
-                unreachable!()
+            let mut pending = match self.owners.remove(&handle) {
+                Some(Owner::PendingHead(pending)) => *pending,
+                Some(Owner::Stream { stream, accepted }) => {
+                    if !self
+                        .http_admission
+                        .as_mut()
+                        .map_or(true, |limiter| limiter.admit())
+                    {
+                        return super::http_exchange_v4::reject_admission(
+                            stream,
+                            accepted,
+                            self.limits,
+                            self.http,
+                            checkpoint,
+                        );
+                    }
+                    match super::http_exchange_v4::PendingHead::new(
+                        stream,
+                        accepted,
+                        self.limits,
+                        self.http,
+                    ) {
+                        Ok(pending) => pending,
+                        Err(e) => return Ok(Err(e)),
+                    }
+                }
+                _ => unreachable!(),
             };
-            if !self
-                .http_admission
-                .as_mut()
-                .map_or(true, |limiter| limiter.admit())
-            {
-                return super::http_exchange_v4::reject_admission(
-                    stream,
-                    accepted,
-                    self.limits,
-                    self.http,
-                    checkpoint,
-                );
+            if op == "http.poll_head" {
+                return Ok(pending.poll(&mut checkpoint)?.map(|ready| {
+                    self.owners
+                        .insert(handle, Owner::PendingHead(Box::new(pending)));
+                    J::Bool(ready)
+                }));
             }
-            return Ok(super::http_exchange_v4::receive(
-                stream,
-                accepted,
-                self.limits,
-                self.http,
+            return Ok(super::http_exchange_v4::receive_pending(
+                pending,
                 self.http_access.as_deref(),
                 self.http_verifier.as_mut(),
                 checkpoint,
@@ -408,6 +428,7 @@ impl NetworkHostV4 {
             let closed = match owner {
                 Owner::Stream { stream, .. } => stream.close(),
                 Owner::Http(owner) => owner.close(),
+                Owner::PendingHead(owner) => owner.close(),
                 Owner::Listener(_) => Ok(()),
             };
             if let Err(mut e) = closed {

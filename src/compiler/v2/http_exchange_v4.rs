@@ -238,22 +238,87 @@ pub(super) fn reject_admission<E>(
     connection.reject("admission", &mut checkpoint)?;
     Ok(Err(error("admission", "HTTP request admission exhausted")))
 }
-/// Consume the raw stream. Refusal/cancellation drops it; success yields one response owner.
-pub(super) fn receive<E>(
-    stream: LoopbackStream,
-    accepted: Instant,
-    socket: NetworkLimits,
-    limits: HttpExchangeLimits,
+/// Owned head preparation only: no parsed request or handler authority is published.
+#[derive(Debug)]
+pub(super) struct PendingHead {
+    connection: HttpConnection,
+    buffer: super::HttpHeadBuffer,
+    eof: bool,
+}
+impl PendingHead {
+    pub(super) fn new(
+        stream: LoopbackStream,
+        accepted: Instant,
+        socket: NetworkLimits,
+        limits: HttpExchangeLimits,
+    ) -> Result<Self, HostError> {
+        Ok(Self {
+            connection: HttpConnection::new(stream, accepted, socket, limits),
+            buffer: super::HttpHeadBuffer::new(limits.request)
+                .map_err(|e| error(e.code, e.message))?,
+            eof: false,
+        })
+    }
+    fn ready(&self) -> bool {
+        self.eof || self.buffer.complete() || self.buffer.remaining() == 0
+    }
+    pub(super) fn poll<E>(
+        &mut self,
+        checkpoint: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Result<bool, HostError>, E> {
+        let connection = &mut self.connection;
+        if let Err(e) = flatten(
+            checked(connection.started, connection.milliseconds, checkpoint).map(|_| Ok(())),
+        )? {
+            return Ok(Err(e));
+        }
+        if self.eof || self.buffer.complete() || self.buffer.remaining() == 0 {
+            return Ok(Ok(true));
+        }
+        if let Err(e) = connection.admit() {
+            return Ok(Err(e));
+        }
+        let (started, milliseconds) = (connection.started, connection.milliseconds);
+        match flatten(
+            connection
+                .stream
+                .try_read(self.buffer.remaining().min(connection.bytes), || {
+                    checked(started, milliseconds, checkpoint)
+                }),
+        )? {
+            Err(e) => return Ok(Err(e)),
+            Ok(None) => {}
+            Ok(Some(NetworkRead::Eof)) => self.eof = true,
+            Ok(Some(NetworkRead::Data(bytes))) => {
+                if let Err(e) = self.buffer.feed(&bytes) {
+                    return Ok(Err(error(e.code, e.message)));
+                }
+            }
+        }
+        Ok(Ok(self.ready()))
+    }
+    pub(super) fn close(self) -> Result<(), HostError> {
+        self.connection.close()
+    }
+}
+/// Consume pending head custody; strict validation precedes handler publication.
+pub(super) fn receive_pending<E>(
+    pending: PendingHead,
     access: Option<&super::HttpAccessPolicy>,
     verifier: Option<&mut super::http_authentication_v4::Verifier>,
     mut checkpoint: impl FnMut() -> Result<(), E>,
 ) -> Result<Result<(HttpConnection, J), HostError>, E> {
-    let mut connection = HttpConnection::new(stream, accepted, socket, limits);
-    let mut pending = match super::HttpHeadBuffer::new(limits.request) {
-        Ok(pending) => pending,
-        Err(e) => return Ok(Err(error(e.code, e.message))),
-    };
-    let mut eof = false;
+    let PendingHead {
+        mut connection,
+        buffer: mut pending,
+        mut eof,
+    } = pending;
+    let limits = connection.limits;
+    if let Err(e) = flatten(
+        checked(connection.started, connection.milliseconds, &mut checkpoint).map(|_| Ok(())),
+    )? {
+        return Ok(Err(e));
+    }
     while !pending.complete() && !eof && pending.remaining() > 0 {
         match connection.read(pending.remaining(), &mut checkpoint)? {
             Err(e) => return Ok(Err(e)),

@@ -31,7 +31,7 @@ fn borrowed_binary_body_headers_and_raw_target_preserve_original_bytes() {
 }
 #[test]
 fn every_partial_boundary_is_incomplete_and_eof_is_truncated() {
-    let wire = b"POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 3\r\n\r\nabc";
+    let wire = b"POST / HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer private-head-fixture\r\nContent-Length: 3\r\n\r\nabc";
     let head = wire.windows(4).position(|w| w == b"\r\n\r\n").unwrap() + 4;
     for end in 0..wire.len() {
         match parse_http_request(&wire[..end], HttpRequestLimits::DEFAULT, false).unwrap() {
@@ -304,11 +304,12 @@ fn default_size_boundaries_and_empty_opaque_fields_are_supported() {
 
 #[test]
 fn resumable_head_all_fragmentations_preserve_body_prefix_and_parser_result() {
-    let wire = b"POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 3\r\n\r\nabc";
+    let wire = b"POST / HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer private-head-fixture\r\nContent-Length: 3\r\n\r\nabc";
     for split in 0..wire.len() - 3 {
         let mut pending = HttpHeadBuffer::new(HttpRequestLimits::DEFAULT).unwrap();
         assert!(!pending.feed(&wire[..split]).unwrap());
         assert!(pending.feed(&wire[split..]).unwrap());
+        assert!(!format!("{pending:?}").contains("private-head-fixture"));
         let bytes = pending.into_bytes();
         assert_eq!(bytes, wire);
         assert_eq!(parse(&bytes).body(), b"abc");
