@@ -717,3 +717,49 @@ fn main()->std::Result<String,std::Error>{{
     assert_eq!(peer.read(&mut byte).unwrap(), 0);
     drop(TcpListener::bind((Ipv4Addr::LOCALHOST, p)).unwrap());
 }
+
+#[test]
+fn scheduler_yield_is_fixed_schema_resource_neutral_and_cancellable() {
+    let mut h = host();
+    assert_eq!(
+        call(&mut h, r#"{"version":4,"op":"net.yield"}"#).unwrap(),
+        JsonValue::Null
+    );
+    assert_eq!(h.usage(), (0, 0));
+    assert_eq!(
+        call(
+            &mut h,
+            r#"{"version":4,"op":"net.yield","milliseconds":1000}"#
+        )
+        .unwrap_err()
+        .code,
+        "input"
+    );
+    for stop in [2, 3] {
+        let mut ticks = 0;
+        assert_eq!(
+            h.call(&request(r#"{"version":4,"op":"net.yield"}"#), || {
+                ticks += 1;
+                if ticks == stop {
+                    Err("cancel yield")
+                } else {
+                    Ok(())
+                }
+            })
+            .unwrap_err(),
+            "cancel yield"
+        );
+        assert_eq!(h.usage(), (0, 0));
+    }
+    let mut denied = NetworkHostV4::new(NetworkLimits {
+        milliseconds: 0,
+        ..NetworkLimits::DEFAULT
+    })
+    .unwrap();
+    assert_eq!(
+        call(&mut denied, r#"{"version":4,"op":"net.yield"}"#)
+            .unwrap_err()
+            .code,
+        "timeout"
+    );
+}

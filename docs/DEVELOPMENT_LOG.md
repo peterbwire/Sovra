@@ -11639,3 +11639,25 @@ independent authenticated/default CLI/native consumers of the updated Sovra
 response-polling example. Strict all-target/all-feature Clippy, exact Rust 1.74.0
 all-target check, Windows GNU all-target compile, formatting and documentation
 links pass. This follow-up does not replace full frozen-source G14 qualification.
+
+## 2026-11-25: G14 two-slot cooperative HTTP scheduling
+
+The Sovra example now owns two explicit slot states, admits at most one peer per
+round and advances each active connection once through head/body/output phases.
+Full slots suppress accepts; resource-limit refusal skips admission while other
+accept errors terminate. Failed connections close/release only their slot.
+Added strict fixed one-millisecond `net.yield` with pre/post control checks,
+zero-deadline refusal and no resource/grant consumption. The finite example caps
+empty rounds at 5,000 and retains VM/HTTP bounds. Independent clients require a
+ready request to finish before completing a slow head/body, then require both
+slow requests to succeed. Fixtures run fifteen requests; authenticated consumers
+retain their separate five-request checks. Production fairness, readiness-driven
+waiting and cooperative verifier/interim/denial output remain open.
+
+Validation passes 74 tests across six focused HTTP/network targets, including
+independent authenticated/default CLI/native consumers. The default fixture
+preserves thirteen protocol/access requests plus two delayed peers that must
+succeed after other requests finish. Strict all-target/all-feature Clippy,
+exact Rust 1.74.0 all-target check, Windows GNU all-target compile, formatting
+and documentation links pass. This follow-up is not a replacement full
+frozen-source G14 qualification.

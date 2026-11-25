@@ -5,7 +5,7 @@
   ],
   "limits": {
     "listeners": 1,
-    "streams": 1,
+    "streams": 2,
     "bytes": 4096,
     "milliseconds": 5000
   },

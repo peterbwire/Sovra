@@ -106,8 +106,8 @@ The policy also grants only GET/HEAD/POST and the four exact targets `/health`,
 DELETE and unlisted query variants receive 403 before body transfer. These are
 coarse request permissions; application routing and authentication remain separate.
 
-Final responses use `http.start_response` plus `http.poll_response`, retaining
-framed output and exact partial progress in the host. The demonstration still
-handles one connection at a time; its polling loop relies on VM/control/I/O bounds
-and does not establish fairness or production concurrency. See
-[cooperative response output](../../docs/reference/http-exchange-v4.md#cooperative-final-response-output-2026-11-25).
+The server uses a bounded two-slot round-robin loop and nominal one-millisecond
+pacing. Each active connection gets one head/body/output phase turn per round;
+final responses use `http.start_response` and `http.poll_response`. Full slots
+suppress accepts. The default policy grants two streams; narrower operator limits
+still apply. See [scheduling scope and limitations](../../docs/reference/http-scheduling-v4.md).

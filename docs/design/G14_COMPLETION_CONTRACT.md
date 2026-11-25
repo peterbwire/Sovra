@@ -167,3 +167,10 @@ admission. Polling attempts one write; completion closes and invalidates the tok
 The Sovra example exercises this through CLI/native consumers. Fair scheduling,
 cooperative verifier/interim/denial output and production controls remain open.
 See [response output](../reference/http-exchange-v4.md#cooperative-final-response-output-2026-11-25).
+
+The actual Sovra example now schedules two owned connections in cyclic
+head/body/output turns, with capacity-before-accept backpressure and fixed bounded
+pacing. Independent clients prove delayed heads/bodies do not prevent another
+request from completing, then successfully finish the delayed requests. See
+[scheduling scope](../reference/http-scheduling-v4.md); preemptive/production
+fairness and cooperative verifier/interim/denial output remain open.

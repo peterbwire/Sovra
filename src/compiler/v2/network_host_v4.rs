@@ -163,6 +163,7 @@ impl NetworkHostV4 {
             };
             let allowed: &[&str] = match op {
                 "net.listen" => &["version", "op", "port"],
+                "net.yield" => &["version", "op"],
                 "net.port" | "net.accept" | "net.try_accept" | "net.close" | "http.receive"
                 | "http.poll_head" | "http.poll_body" | "http.poll_response" => {
                     &["version", "op", "handle"]
@@ -195,6 +196,24 @@ impl NetworkHostV4 {
             Ok(op) => op,
             Err(e) => return Ok(Err(e)),
         };
+        if op == "net.yield" {
+            if !cfg!(target_os = "linux") {
+                return Ok(Err(error(
+                    "unsupported",
+                    "network scheduler host is currently supported on Linux only",
+                )));
+            }
+            if self.limits.milliseconds == 0 {
+                return Ok(Err(error(
+                    "timeout",
+                    "network scheduler yield disabled by zero deadline",
+                )));
+            }
+            checkpoint()?;
+            std::thread::sleep(std::time::Duration::from_millis(1));
+            checkpoint()?;
+            return Ok(Ok(J::Null));
+        }
         if op == "net.listen" {
             let port = match get("port").and_then(|v| match v {
                 J::Int(n) => u16::try_from(*n).map_err(|_| error("input", "invalid port")),

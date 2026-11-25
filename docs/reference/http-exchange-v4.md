@@ -281,7 +281,7 @@ Tests verify byte-exact output through one-byte writes, retained HEAD context,
 stale/wrong-kind refusal, invalid framing without output, cancellation, shared
 I/O exhaustion, deadlines and opaque debug. The real Sovra HTTP example now
 starts and polls response output; independent default/authenticated CLI/native
-clients verify its behavior. Its demonstration loop remains sequential and is
-bounded by VM/control/I/O limits; this does not add a fair scheduler. Initial
+clients verify its behavior. The example now uses a [bounded two-slot scheduler](http-scheduling-v4.md);
+its I/O interleaving does not establish hard latency fairness. Initial
 verification/Continue and denial output may still wait; production concurrency,
 streaming and deployment remain open.

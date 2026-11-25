@@ -34,7 +34,8 @@ impl Fixture {
         std::fs::write(
             root.join("app/main.svr"),
             include_str!("../examples/http-loopback/app/main.svr")
-                .replace("47123", &port.to_string()),
+                .replace("47123", &port.to_string())
+                .replace("serve(13)", "serve(15)"),
         )
         .unwrap();
         std::fs::write(
@@ -77,10 +78,19 @@ fn client_and_wait(mut server: Command, port: u16) {
             .unwrap(),
     ));
     let script = r#"
-import http.client,json,sys,time
+import http.client,json,sys,time,socket
 port=int(sys.argv[1]);deadline=time.monotonic()+8
 cases=[('GET','/health',None,200,{'ok':True}),('HEAD','/health',None,200,None),('POST','/echo','{"n":7,"message":"λ😀"}'.encode('utf-8'),200,{'n':7,'message':'λ😀'}),('POST','/echo',[b'{"chunked":"', 'λ😀'.encode('utf-8')[:1], 'λ😀'.encode('utf-8')[1:], b'"}'],200,{'chunked':'λ😀'}),('POST','/echo',{'trailers':'{"trailers":"λ😀"}'.encode('utf-8')},200,{'trailers':'λ😀'}),('POST','/echo',{'expect':'100-continue','payload':b'{"continue":true}'},200,{'continue':True}),('POST','/echo',{'expect':'unrecognized','payload':b'{"never":true}'},417,None),('POST','/echo',{'access':'origin','payload':b'{"never":true}'},403,None),('POST','/echo',{'access':'host','payload':b'{"never":true}'},403,None),('DELETE','/health',{'access':'method','payload':b'{"never":true}'},403,None),('POST','/health?x=1',{'access':'target','payload':b'{"never":true}'},403,None),('GET','/missing',None,404,{'error':'not_found'}),('GET','/failure',None,500,{'error':'handler'})]
+slow=None
 for index,(method,target,body,status,expected) in enumerate(cases):
+ if index in (0,1):
+  while True:
+   try:slow=socket.create_connection(('127.0.0.1',port),timeout=3);break
+   except ConnectionRefusedError:
+    if time.monotonic()>deadline:raise
+    time.sleep(.02)
+  if index==0:slow.sendall(b'G')
+  else:slow.sendall(('POST /echo HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nContent-Length: 2\r\n\r\n'%port).encode('ascii'))
  while True:
   connection=http.client.HTTPConnection('127.0.0.1',port,timeout=3)
   try:
@@ -124,6 +134,12 @@ for index,(method,target,body,status,expected) in enumerate(cases):
  elif method=='HEAD':assert data==b'' and int(response.getheader('Content-Length'))==len(b'{"ok":true}')
  else:assert int(response.getheader('Content-Length'))==len(data) and json.loads(data)==expected,(target,data)
  connection.close()
+ if index in (0,1):
+  if index==0:slow.sendall(('ET /health HTTP/1.1\r\nHost: 127.0.0.1:%d\r\n\r\n'%port).encode('ascii'))
+  else:slow.sendall(b'{}')
+  delayed=http.client.HTTPResponse(slow);delayed.begin();assert delayed.status==200
+  assert json.loads(delayed.read())==({'ok':True} if index==0 else {})
+  delayed.close();slow.close()
 print('Independent HTTP client: GET/HEAD, fixed/chunked/trailer JSON, 100-continue, early 417, 404, handler 500 and close framing passed')
 "#;
     let client = Command::new("python3")

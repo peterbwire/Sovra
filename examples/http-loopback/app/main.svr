@@ -1,5 +1,6 @@
-// Bounded demonstration: five connections, one HTTP request per connection.
+// Bounded two-slot round robin; one HTTP request per accepted connection.
 struct Reply<T> { status: Int, body: T }
+struct Slot<T> { handle: T, phase: Int }
 fn field(value: std::JsonValue, key: String) -> std::JsonValue {
     match value {
         std::JsonValue::Object(items) => {
@@ -53,36 +54,83 @@ fn respond(handle: String, reply: Reply<String>) -> std::Result<Bool, std::Error
     let encoded = std::bytes_to_base64(bytes)?;
     let body = std::json_stringify(std::JsonValue::String(encoded))?;
     let sent = call("{\"version\":4,\"op\":\"http.start_response\",\"handle\":" + handle + ",\"status\":" + status + ",\"headers\":[[\"Content-Type\",\"application/json\"]],\"body\":" + body + "}")?;
-    let mut complete = false;
-    while (complete == false) {
-        let progress = call("{\"version\":4,\"op\":\"http.poll_response\",\"handle\":" + handle + "}")?;
-        let state = std::json_stringify(progress)?;
-        complete = state == "true";
-    }
     return std::Result::<Bool, std::Error>::Ok(true);
+}
+fn poll(handle: String, operation: String) -> std::Result<Bool, std::Error> {
+    let progress = call("{\"version\":4,\"op\":\"" + operation + "\",\"handle\":" + handle + "}")?;
+    let state = std::json_stringify(progress)?;
+    return std::Result::<Bool, std::Error>::Ok(state == "true");
+}
+fn advance(slot: Slot<String>) -> std::Result<Slot<String>, std::Error> {
+    if slot.phase == 1 {
+        let ready = poll(slot.handle, "http.poll_head")?;
+        if (ready) { return std::Result::<Slot<String>, std::Error>::Ok(Slot::<String>{handle: slot.handle, phase: 2}); }
+    }
+    if slot.phase == 2 {
+        let ready = poll(slot.handle, "http.poll_body")?;
+        if (ready) {
+            let request = call("{\"version\":4,\"op\":\"http.receive\",\"handle\":" + slot.handle + "}")?;
+            let outcome = handler(request);
+            match outcome {
+                std::Result::Ok(reply) => { let sent = respond(slot.handle, reply)?; },
+                std::Result::Err(error) => { let sent = respond(slot.handle, Reply::<String>{status: 500, body: "{\"error\":\"handler\"}"})?; }
+            }
+            return std::Result::<Slot<String>, std::Error>::Ok(Slot::<String>{handle: slot.handle, phase: 3});
+        }
+    }
+    if slot.phase == 3 {
+        let ready = poll(slot.handle, "http.poll_response")?;
+        if (ready) { return std::Result::<Slot<String>, std::Error>::Ok(Slot::<String>{handle: "", phase: 0}); }
+    }
+    return std::Result::<Slot<String>, std::Error>::Ok(slot);
 }
 fn serve(count: Int) -> std::Result<Bool, std::Error> {
     let listener = call("{\"version\":4,\"op\":\"net.listen\",\"port\":47123}")?;
     let listener_id = std::json_stringify(listener)?;
-    let mut served = 0;
-    while (served < count) {
-        let stream = call("{\"version\":4,\"op\":\"net.accept\",\"handle\":" + listener_id + "}")?;
-        let handle = std::json_stringify(stream)?;
-        let received = call("{\"version\":4,\"op\":\"http.receive\",\"handle\":" + handle + "}");
-        match received {
-            std::Result::Ok(request) => {
-                let outcome = handler(request);
-                match outcome {
-                    std::Result::Ok(reply) => { let sent = respond(handle, reply)?; },
-                    std::Result::Err(error) => {
-                        let failure = Reply::<String>{status: 500, body: "{\"error\":\"handler\"}"};
-                        let sent = respond(handle, failure)?;
+    let mut first = Slot::<String>{handle: "", phase: 0};
+    let mut second = Slot::<String>{handle: "", phase: 0};
+    let mut accepted = 0;
+    let mut completed = 0;
+    let mut idle_rounds = 0;
+    while (completed < count) {
+        if accepted < count && (first.phase == 0 || second.phase == 0) {
+            let admission = call("{\"version\":4,\"op\":\"net.try_accept\",\"handle\":" + listener_id + "}");
+            match admission {
+                std::Result::Ok(stream) => {
+                    let handle = std::json_stringify(stream)?;
+                    if handle != "null" {
+                        if first.phase == 0 { first = Slot::<String>{handle: handle, phase: 1}; }
+                        else { second = Slot::<String>{handle: handle, phase: 1}; }
+                        accepted = accepted + 1;
                     }
-                }
-            },
-            std::Result::Err(error) => { }
+                },
+                std::Result::Err(error) => { if error.code != "limit" { return std::Result::<Bool, std::Error>::Err(error); } }
+            }
         }
-        served = served + 1;
+        if first.phase != 0 {
+            let outcome = advance(first);
+            match outcome {
+                std::Result::Ok(next) => { if next.phase == 0 { completed = completed + 1; } first = next; },
+                std::Result::Err(error) => {
+                    let closed = call("{\"version\":4,\"op\":\"net.close\",\"handle\":" + first.handle + "}");
+                    first = Slot::<String>{handle: "", phase: 0}; completed = completed + 1;
+                }
+            }
+        }
+        if second.phase != 0 {
+            let outcome = advance(second);
+            match outcome {
+                std::Result::Ok(next) => { if next.phase == 0 { completed = completed + 1; } second = next; },
+                std::Result::Err(error) => {
+                    let closed = call("{\"version\":4,\"op\":\"net.close\",\"handle\":" + second.handle + "}");
+                    second = Slot::<String>{handle: "", phase: 0}; completed = completed + 1;
+                }
+            }
+        }
+        if first.phase == 0 && second.phase == 0 { idle_rounds = idle_rounds + 1; }
+        else { idle_rounds = 0; }
+        if idle_rounds >= 5000 { return std::Result::<Bool, std::Error>::Ok(false); }
+        if (completed < count) { let yielded = call("{\"version\":4,\"op\":\"net.yield\"}")?; }
     }
     return std::Result::<Bool, std::Error>::Ok(true);
 }
