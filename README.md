@@ -169,6 +169,13 @@ Start with the [language specification](docs/spec.md),
 Use the [example catalog](examples/README.md) to distinguish runnable programs,
 host components, checker-only samples and proposed application syntax.
 
+## Founder
+
+Sovra was founded by **Musungu Peter**.
+
+- Website: [www.musungupeter.co.ke](https://www.musungupeter.co.ke)
+- LinkedIn: [Musungu Peter](https://www.linkedin.com/in/musungu-peter-8b1a4b150)
+
 ## License
 
 Sovra is dual-licensed under the [MIT license](LICENSE-MIT) or the
