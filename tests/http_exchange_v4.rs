@@ -1282,3 +1282,72 @@ fn cooperative_response_deadline_and_invalid_framing_drop_pending_output() {
         h.close_all().unwrap();
     }
 }
+
+#[test]
+fn cooperative_continue_retains_exact_suffix_before_body_reads() {
+    let (mut h, n, mut peer) = connect(1, HttpExchangeLimits::DEFAULT);
+    peer.write_all(
+        b"POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 1\r\nExpect: 100-continue\r\n\r\n",
+    )
+    .unwrap();
+    let head = format!(r#"{{"version":4,"op":"http.poll_head","handle":{n}}}"#);
+    let mut ready = false;
+    for _ in 0..256 {
+        ready = call(&mut h, &head).unwrap() == JsonValue::Bool(true);
+        if ready {
+            break;
+        }
+    }
+    assert!(ready);
+    let body = format!(r#"{{"version":4,"op":"http.poll_body","handle":{n}}}"#);
+    let wire = b"HTTP/1.1 100 Continue\r\n\r\n";
+    for byte in wire {
+        assert_eq!(call(&mut h, &body).unwrap(), JsonValue::Bool(false));
+        let mut actual = [0];
+        peer.read_exact(&mut actual).unwrap();
+        assert_eq!(actual[0], *byte);
+    }
+    peer.write_all(b"x").unwrap();
+    for _ in 0..100 {
+        ready = call(&mut h, &body).unwrap() == JsonValue::Bool(true);
+        if ready {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert!(ready);
+    assert_eq!(
+        field(&call(&mut h, &receive(n)).unwrap(), "body"),
+        &JsonValue::String("eA==".into())
+    );
+    h.close_all().unwrap();
+}
+
+#[test]
+fn blocking_receive_resumes_a_partial_continue_without_duplicate_prefix() {
+    let (mut h, n, mut peer) = connect(1, HttpExchangeLimits::DEFAULT);
+    peer.write_all(
+        b"POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 1\r\nExpect: 100-continue\r\n\r\n",
+    )
+    .unwrap();
+    let head = format!(r#"{{"version":4,"op":"http.poll_head","handle":{n}}}"#);
+    let mut ready = false;
+    for _ in 0..256 {
+        ready = call(&mut h, &head).unwrap() == JsonValue::Bool(true);
+        if ready {
+            break;
+        }
+    }
+    assert!(ready);
+    let body = format!(r#"{{"version":4,"op":"http.poll_body","handle":{n}}}"#);
+    assert_eq!(call(&mut h, &body).unwrap(), JsonValue::Bool(false));
+    let first = std::thread::spawn(move || {
+        let mut wire = [0; 25];
+        peer.read_exact(&mut wire).unwrap();
+        assert_eq!(&wire, b"HTTP/1.1 100 Continue\r\n\r\n");
+        peer.write_all(b"x").unwrap();
+    });
+    call(&mut h, &receive(n)).unwrap();
+    first.join().unwrap();
+    h.close_all().unwrap();
+}

@@ -174,3 +174,8 @@ pacing. Independent clients prove delayed heads/bodies do not prevent another
 request from completing, then successfully finish the delayed requests. See
 [scheduling scope](../reference/http-scheduling-v4.md); preemptive/production
 fairness and cooperative verifier/interim/denial output remain open.
+
+Continue output now retains its exact suffix in pending-body custody and uses one
+nonblocking write turn before subsequent body reads; blocking receive resumes it
+without duplicate bytes. See [interim output](../reference/http-expect-v4.md#cooperative-interim-output-2026-11-25).
+Initial verification and denial/error output remain waiting phases.

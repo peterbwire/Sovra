@@ -60,6 +60,7 @@ pub(super) struct HttpConnection {
     bytes: usize,
     limits: HttpExchangeLimits,
 }
+const CONTINUE_WIRE: &[u8] = b"HTTP/1.1 100 Continue\r\n\r\n";
 enum Stop<E> {
     External(E),
     Timeout,
@@ -144,20 +145,16 @@ impl HttpConnection {
         }
         Ok(Ok(()))
     }
-    fn send_continue<E>(
-        &mut self,
-        checkpoint: &mut impl FnMut() -> Result<(), E>,
-    ) -> Result<Result<(), HostError>, E> {
-        const WIRE: &[u8] = b"HTTP/1.1 100 Continue\r\n\r\n";
+    fn check_continue(&self) -> Result<(), HostError> {
         let response = self.limits.response;
-        if response.head_bytes < WIRE.len()
-            || response.output_bytes < WIRE.len()
-            || response.line_bytes < WIRE.len() - 4
-            || response.work < WIRE.len()
+        if response.head_bytes < CONTINUE_WIRE.len()
+            || response.output_bytes < CONTINUE_WIRE.len()
+            || response.line_bytes < CONTINUE_WIRE.len() - 4
+            || response.work < CONTINUE_WIRE.len()
         {
-            return Ok(Err(error("limit", "interim HTTP response limits exceeded")));
+            return Err(error("limit", "interim HTTP response limits exceeded"));
         }
-        self.write(WIRE, checkpoint)
+        Ok(())
     }
     /// Explicit closure still releases the descriptor if shutdown reports an error.
     pub(super) fn close(self) -> Result<(), HostError> {
@@ -490,15 +487,19 @@ pub(super) fn prepare_pending<E>(
         connection.reject(e.code, &mut checkpoint)?;
         return Ok(Err(e));
     }
-    if head.continue_expected && !body.complete() {
-        if let Err(e) = connection.send_continue(&mut checkpoint)? {
+    let interim = if head.continue_expected && !body.complete() {
+        if let Err(e) = connection.check_continue() {
             return Ok(Err(e));
         }
-    }
+        Some(0)
+    } else {
+        None
+    };
     Ok(Ok(PendingBody {
         connection,
         metadata,
         body,
+        interim,
     }))
 }
 
@@ -589,6 +590,7 @@ pub(super) struct PendingBody {
     connection: HttpConnection,
     metadata: J,
     body: BodyState,
+    interim: Option<usize>,
 }
 impl std::fmt::Debug for PendingBody {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -608,6 +610,28 @@ impl PendingBody {
             checked(connection.started, connection.milliseconds, checkpoint).map(|_| Ok(())),
         )? {
             return Ok(Err(e));
+        }
+        if let Some(at) = self.interim {
+            if let Err(e) = connection.admit() {
+                return Ok(Err(e));
+            }
+            let end = CONTINUE_WIRE.len().min(at.saturating_add(connection.bytes));
+            let (started, milliseconds) = (connection.started, connection.milliseconds);
+            match flatten(connection.stream.try_write(&CONTINUE_WIRE[at..end], || {
+                checked(started, milliseconds, checkpoint)
+            }))? {
+                Err(e) => return Ok(Err(e)),
+                Ok(None) => {}
+                Ok(Some(n)) => {
+                    let next = at + n;
+                    self.interim = if next == CONTINUE_WIRE.len() {
+                        None
+                    } else {
+                        Some(next)
+                    };
+                }
+            }
+            return Ok(Ok(false));
         }
         if self.body.complete() {
             return Ok(Ok(true));
@@ -645,6 +669,14 @@ pub(super) fn receive_body_pending<E>(
     mut pending: PendingBody,
     mut checkpoint: impl FnMut() -> Result<(), E>,
 ) -> Result<Result<(HttpConnection, J), HostError>, E> {
+    if let Some(at) = pending.interim.take() {
+        if let Err(e) = pending
+            .connection
+            .write(&CONTINUE_WIRE[at..], &mut checkpoint)?
+        {
+            return Ok(Err(e));
+        }
+    }
     while !pending.body.complete() {
         let maximum = pending.body.remaining();
         if maximum == 0 {

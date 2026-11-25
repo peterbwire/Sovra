@@ -75,3 +75,25 @@ Unlisted requests receive a final bounded 403 before the host awaits a body.
 
 Optional exact method/target access lists are checked before Continue, alongside
 the configured Host/Origin rules. Unlisted requests receive bounded final 403.
+
+## Cooperative interim output (2026-11-25)
+
+After a checked/authenticated head needs Continue, pending-body state now retains
+an offset into the fixed interim packet. `http.poll_body` attempts at most one
+nonblocking write of its remaining suffix per turn, using the original deadline,
+byte quantum and shared I/O admission. Not-ready writes preserve the suffix;
+partial writes advance exactly by the socket count. Even the final interim write
+returns false without reading a body fragment in the same turn. The following
+poll can resume body input. Co-read complete bodies still suppress Continue.
+
+Interim framing/work/output limits are validated before queuing. Callback refusal,
+timeout or I/O failure drops custody; already transmitted prefixes are not rolled
+back and no second packet is appended to a partial Continue. Blocking receive can
+finish the same suffix before waiting for body input, without re-verifying or
+resending any prefix. Tests verify each byte with a one-byte socket quantum and
+switch from polling to blocking receive after the first transmitted byte.
+
+This removes waiting interim writes from cooperative body turns. Initial trusted
+verification and denial/error output can still wait. Fairness remains bounded to
+the documented example and does not imply preemption, production scheduler
+acceptance or secure deployment.

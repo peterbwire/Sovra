@@ -294,6 +294,7 @@ Implemented evidence:
 - [x] Retain owned checked HTTP metadata and verifier outcome with fixed/chunked pending-body custody; add `http.poll_body` with readiness-only publication and one nonblocking read after preparation. Verifier/interim/final-output scheduling remains open.
 - [x] Add cooperative final-response preparation/polling with immutable framed output, exact partial progress, shared deadlines/I/O and close-on-completion; the Sovra example uses this path. Fair scheduling and interim/verifier phases remain open.
 - [x] Schedule two HTTP connections in cyclic bounded phase turns with full-slot accept backpressure, fixed pacing and finite idle rounds; independent CLI/native clients verify delayed head/body interleaving. Production/preemptive fairness remains open.
+- [x] Queue bounded Continue output in pending-body state and advance one exact partial write per body-poll turn; blocking receive resumes the suffix without duplication. Verifier and denial/error output remain open.
 - [ ] Add reviewed concurrency/backpressure, streaming, TLS and deployment controls
   before claiming production server support. A private Node adapter is insufficient.
 

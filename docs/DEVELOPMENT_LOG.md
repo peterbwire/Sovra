@@ -11661,3 +11661,20 @@ succeed after other requests finish. Strict all-target/all-feature Clippy,
 exact Rust 1.74.0 all-target check, Windows GNU all-target compile, formatting
 and documentation links pass. This follow-up is not a replacement full
 frozen-source G14 qualification.
+
+## 2026-11-25: G14 cooperative Continue output
+
+Body preparation now queues the bounded interim packet; pending body state retains
+its exact unsent offset. Each body poll performs one nonblocking interim write,
+consuming the shared I/O/deadline/byte limits, then yields before any body read.
+Blocking receive resumes the remaining suffix before body handling. Tests cover
+byte-exact one-byte output and a poll-to-blocking transition without duplicate
+prefixes. Complete co-read bodies still suppress Continue; initial verification
+and denial/error output remain waiting phases.
+
+Validation passes 76 tests across six focused HTTP/network targets, including
+independent authenticated/default CLI/native servers and delayed-peer scheduling
+cases. Five focused Continue transitions also pass; they are included in the
+76-test total, not added again. Strict all-target/all-feature Clippy, exact
+Rust 1.74.0 all-target check, Windows GNU all-target compile, formatting and
+documentation links pass. This is not replacement full frozen-source qualification.

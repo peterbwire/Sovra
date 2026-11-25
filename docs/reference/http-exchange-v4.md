@@ -285,3 +285,12 @@ clients verify its behavior. The example now uses a [bounded two-slot scheduler]
 its I/O interleaving does not establish hard latency fairness. Initial
 verification/Continue and denial output may still wait; production concurrency,
 streaming and deployment remain open.
+
+## Pending Continue output update (2026-11-25)
+
+Body preparation now validates and queues Continue instead of writing it while
+preparing metadata. Body polls spend one write turn on a retained interim suffix
+before reading body bytes on a later turn. Blocking receive resumes that suffix.
+See [cooperative interim output](http-expect-v4.md#cooperative-interim-output-2026-11-25).
+Initial verifier and denial/error output remain waiting phases; older checkpoint
+notes describing waiting Continue preparation are superseded by this update.
