@@ -1736,8 +1736,8 @@ fn check_project_diagnostics_identify_scanned_files() {
                 const path = require('node:path').join(report.target, file);
                 const bytes = require('node:fs').readFileSync(path);
                 const start = bytes.indexOf(spelling);
-                assert.equal(require('node:fs').realpathSync(d.location.file),
-                    require('node:fs').realpathSync(path));
+                assert.equal(require('node:fs').realpathSync.native(d.location.file),
+                    require('node:fs').realpathSync.native(path));
                 assert.deepEqual(d.location, {{ file: d.location.file, start,
                     end: start + Buffer.byteLength(spelling), line, column: 0 }});
             }}

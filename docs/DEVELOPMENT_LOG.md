@@ -11788,3 +11788,15 @@ canonicalize inventory fixture roots and compare resolved diagnostic files, and
 execute generated JavaScript through Node stdin. Preserve process-reaping,
 source-location and backend-output assertions. These test changes require fresh
 qualification; the earlier successful report remains evidence for its own source.
+
+## 2026-11-25: full G14 evidence and relocated launcher follow-up
+
+Frozen qualification at a1d7f4e passed all 14 stages and 770 Rust tests, retaining
+matching start/end source hashes in the 20261125T111534.540981Z report. Broader
+hosted jobs passed both supported G13 Linux profiles. macOS completed Rust tests
+but exposed an installed launcher guard comparing aliased argv paths with resolved
+module paths. Compare real paths and exercise an installed-directory symlink in
+relocation acceptance. Windows' diagnostic test now uses Node's native realpath
+resolver because its JavaScript resolver fails on extended drive paths. These
+subsequent tooling/test edits have focused validation; they do not retroactively
+change the frozen report's source or establish fresh hosted acceptance.

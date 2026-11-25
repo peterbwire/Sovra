@@ -1,4 +1,4 @@
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, realpathSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { join } from 'node:path';
@@ -28,4 +28,4 @@ export async function launch() { try {
         await import(pathToFileURL(script).href);
     }
 } catch (error) { console.error(`Sovra developer tools: ${error.message}`); process.exitCode = 1; } }
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await launch();
+if (process.argv[1] && realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1])) await launch();
