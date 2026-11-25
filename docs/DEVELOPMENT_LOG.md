@@ -11874,3 +11874,14 @@ harness compared mixed-separator input spelling with canonical diagnostic paths.
 Use native realpath for the expected malformed source before comparing, preserving
 the requirement that the diagnostic identifies that exact file. The downloaded
 failed formatter report remains unsuccessful evidence for its original revision.
+
+## 2026-11-25: independent disabled-verifier CLI/native acceptance
+
+Extend the actual authenticated server fixture with a second six-connection run
+using max_jobs zero. Raw independent clients withhold request bodies and assert
+five empty 503 finals with no Continue/credentials, then the unchanged admission
+429 and no backend invocation file. Both CLI and standalone native paths exit
+cleanly and release the port. Reuse the same native executable after deleting
+project files and changing only external policy, preserving no-Node/PATH startup.
+This qualifies disabled launch admission for the restricted Linux profile; it does
+not add production credentials, fairness, TLS or broader runtime support.

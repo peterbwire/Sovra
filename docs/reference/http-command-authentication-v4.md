@@ -244,3 +244,18 @@ remains a required safety fallback and neither startup nor cleanup is hard
 preemptible. Regression cases cover cancellation observed inside provider startup
 and immediately after return, with successful/failing cleanup, empty wire output,
 released stream capacity and unusable abandoned handles.
+
+### Disabled admission through real CLI/native servers (2026-11-25)
+
+Independent raw TCP clients now exercise the same compiled Sovra HTTP application
+with `max_jobs: 0` after its default-limit authentication checks. Five eligible
+requests receive empty 503 responses before body transfer, without Continue or
+credential publication; the sixth receives the existing pre-verifier 429 with
+`Cache-Control: no-store`. No backend invocation is recorded. Each server exits
+at its bounded connection count and releases its listening port.
+
+CLI and standalone native paths both run this policy transition. The native
+executable is reused after the project has been removed, with cleared environment
+and unavailable Node/PATH, demonstrating that the external policy controls launch
+admission rather than a grant embedded in the executable. Default-limit identity,
+redaction, denial and delayed-verifier interleaving checks remain in the fixture.

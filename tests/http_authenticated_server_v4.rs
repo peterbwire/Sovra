@@ -113,6 +113,24 @@ print(json.dumps(out))
         .unwrap();
         Self { root, port }
     }
+    fn disable_jobs(&self) {
+        let path = self.root.join("policy.json");
+        let mut policy = parse_json(&std::fs::read(&path).unwrap(), JsonLimits::DEFAULT).unwrap();
+        let J::Object(fields) = &mut policy else {
+            panic!("policy")
+        };
+        let J::Object(authentication) = &mut fields
+            .iter_mut()
+            .find(|(k, _)| k == "http_authentication")
+            .unwrap()
+            .1
+        else {
+            panic!("authentication")
+        };
+        authentication.push(("max_jobs".into(), J::Int(0)));
+        std::fs::write(path, serialize_json(&policy, JsonLimits::DEFAULT).unwrap()).unwrap();
+        std::fs::remove_file(self.root.join("invocations")).unwrap();
+    }
     fn cli(&self, action: &str) -> Command {
         let mut command = Command::new(env!("CARGO_BIN_EXE_svr"));
         command.arg(action).arg("--experimental-generics");
@@ -136,7 +154,7 @@ impl Drop for Process {
         }
     }
 }
-fn client_and_wait(mut server: Command, port: u16, key: &std::path::Path) {
+fn client_and_wait(mut server: Command, port: u16, key: &std::path::Path, disabled: bool) {
     let mut process = Process(Some(
         server
             .stdout(Stdio::piped())
@@ -144,7 +162,36 @@ fn client_and_wait(mut server: Command, port: u16, key: &std::path::Path) {
             .spawn()
             .unwrap(),
     ));
-    let script = r#"
+    let script = if disabled {
+        r#"
+import socket,sys,time,pathlib
+port=int(sys.argv[1]);secret=pathlib.Path(sys.argv[2]).read_text();deadline=time.monotonic()+8
+for index in range(6):
+ while True:
+  try:
+   c=socket.create_connection(('127.0.0.1',port),timeout=3)
+   break
+  except ConnectionRefusedError:
+   if time.monotonic()>deadline:raise
+   time.sleep(.02)
+ c.sendall(('POST /echo HTTP/1.1\r\nHost: 127.0.0.1:'+str(port)+'\r\nAuthorization: Bearer '+secret+'\r\nContent-Length: 100\r\nExpect: 100-continue\r\n\r\n').encode('ascii'))
+ wire=b''
+ while True:
+  part=c.recv(4096)
+  if not part:break
+  wire+=part
+ c.close()
+ status=b'503 Service Unavailable' if index<5 else b'429 Too Many Requests'
+ assert wire.startswith(b'HTTP/1.1 '+status+b'\r\n'),wire
+ head,body=wire.split(b'\r\n\r\n',1)
+ assert body==b'' and b'content-length: 0' in head.lower()
+ assert b'connection: close' in head.lower()
+ assert secret.encode('ascii') not in wire and b'100 Continue' not in wire
+ if index==5:assert b'cache-control: no-store' in head.lower()
+assert not pathlib.Path(sys.argv[2]).parent.joinpath('invocations').exists()
+"#
+    } else {
+        r#"
 import http.client,json,sys,time,pathlib
 port=int(sys.argv[1]);secret=pathlib.Path(sys.argv[2]).read_text();deadline=time.monotonic()+8
 cases=[('GET','/identity',secret,200),('POST','/echo','wrong-fixture-token',401),('POST','/echo',secret,403),('GET','/identity',secret,200),('GET','/identity',secret,429)]
@@ -189,7 +236,8 @@ for index,(method,target,token,status) in enumerate(cases):
   assert secret not in json.dumps(delayed)
   slow.close()
 print('Independent authenticated HTTP client: valid identity/redaction, wrong credential 401, request permission 403, continued service and pre-verifier 429')
-"#;
+"#
+    };
     let client = Command::new("python3")
         .arg("-c")
         .arg(script)
@@ -220,11 +268,16 @@ print('Independent authenticated HTTP client: valid identity/redaction, wrong cr
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(
-        std::fs::read_to_string(key.parent().unwrap().join("invocations")).unwrap(),
-        "xxxxx",
-        "quota-denied requests must not spawn the verifier"
-    );
+    if disabled {
+        assert!(!key.parent().unwrap().join("invocations").exists());
+    } else {
+        assert_eq!(
+            std::fs::read_to_string(key.parent().unwrap().join("invocations")).unwrap(),
+            "xxxxx",
+            "quota-denied requests must not spawn the verifier"
+        );
+    }
+
     let rebound = TcpListener::bind((Ipv4Addr::LOCALHOST, port)).unwrap();
     drop(rebound);
 }
@@ -255,7 +308,15 @@ fn cli_delegates_authentication_and_recovers_after_credential_and_permission_ref
         .arg("--host-policy")
         .arg(f.root.join("policy.json"))
         .arg(f.root.join("app"));
-    client_and_wait(server, f.port, &f.root.join("key"));
+    client_and_wait(server, f.port, &f.root.join("key"), false);
+    f.disable_jobs();
+    let mut disabled_server = f.cli("run");
+    disabled_server
+        .arg("--locked")
+        .arg("--host-policy")
+        .arg(f.root.join("policy.json"))
+        .arg(f.root.join("app"));
+    client_and_wait(disabled_server, f.port, &f.root.join("key"), true);
 }
 #[test]
 fn native_delegates_authentication_without_project_node_or_embedded_credentials() {
@@ -288,12 +349,21 @@ fn native_delegates_authentication_without_project_node_or_embedded_credentials(
         .windows(FIXTURE_SECRET.len())
         .any(|part| part == FIXTURE_SECRET.as_bytes()));
     std::fs::remove_dir_all(f.root.join("app")).unwrap();
-    let mut server = Command::new(exe);
+    let mut server = Command::new(&exe);
     server
         .arg("--host-policy")
         .arg(f.root.join("policy.json"))
         .env_clear()
         .env("PATH", "/nonexistent")
         .current_dir(&f.root);
-    client_and_wait(server, f.port, &f.root.join("key"));
+    client_and_wait(server, f.port, &f.root.join("key"), false);
+    f.disable_jobs();
+    let mut disabled_server = Command::new(&exe);
+    disabled_server
+        .arg("--host-policy")
+        .arg(f.root.join("policy.json"))
+        .env_clear()
+        .env("PATH", "/nonexistent")
+        .current_dir(&f.root);
+    client_and_wait(disabled_server, f.port, &f.root.join("key"), true);
 }
