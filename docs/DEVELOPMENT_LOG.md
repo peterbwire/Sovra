@@ -11497,3 +11497,20 @@ cancellation, output limits and cross-listener counting. Authenticated CLI/nativ
 consumers now verify a fifth connection gets 429 without a fifth verifier spawn.
 No TCP/OS/per-identity/distributed admission or production fairness is claimed.
 See [bounded scope](reference/http-admission-v4.md).
+
+## 2026-11-25: G14 cooperative accept foundation
+
+Added additive `net.try_accept` to the owned v4 host and Rust listener: one syscall,
+no sleep/retry, Null on no readiness, slot admission before dequeue and control
+checks before syscall/publication. Empty attempts allocate no handle IDs;
+cancellation drops unpublished sockets. Four new tests cover real checked Sovra
+idle/ready results and cleanup, queued-peer preservation/recovery at capacity,
+empty polls, wrong-kind refusal, zero limits and post-accept cancellation.
+Concurrent HTTP parsing, fairness, readiness scheduling and production server
+controls remain open; runtime support remains Linux-only.
+
+Focused validation: 648 Rust tests (603 library, four HTTP admission, 24 HTTP
+exchange, ten network-host and seven socket-owner tests), strict all-target/
+all-feature Clippy, exact Rust 1.74.0 all-target check, Windows GNU all-target
+compile, formatting, 24 compiler security cases and documentation links pass.
+This is a focused follow-up, not a new full frozen-source G14/native qualification.

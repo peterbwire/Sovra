@@ -167,6 +167,43 @@ impl LoopbackListener {
     pub fn port(&self) -> Result<u16, HostError> {
         self.socket.local_addr().map(|a| a.port()).map_err(io_error)
     }
+    /// Attempt one accept syscall without waiting or retrying. None means not ready.
+    /// Capacity refusal occurs before dequeuing a peer; cancellation drops unpublished owners.
+    pub fn try_accept<E>(
+        &self,
+        mut checkpoint: impl FnMut() -> Result<(), E>,
+    ) -> Result<Result<Option<LoopbackStream>, HostError>, E> {
+        checkpoint()?;
+        if self.limits.milliseconds == 0 {
+            return Ok(Err(error("timeout", "network operation deadline exceeded")));
+        }
+        let result = (|| {
+            let slot = Slot::reserve(&self.streams, self.limits.streams)?;
+            let (socket, peer) = match self.socket.accept() {
+                Ok(pair) => pair,
+                Err(e)
+                    if matches!(
+                        e.kind(),
+                        io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
+                    ) =>
+                {
+                    return Ok(None);
+                }
+                Err(e) => return Err(io_error(e)),
+            };
+            if !peer.ip().is_loopback() {
+                return Err(error("authority", "accepted peer is not loopback"));
+            }
+            socket.set_nonblocking(true).map_err(io_error)?;
+            Ok(Some(LoopbackStream {
+                socket,
+                _slot: slot,
+                limits: self.limits,
+            }))
+        })();
+        checkpoint()?;
+        Ok(result)
+    }
     /// Accept one owned stream under a fresh deadline, with no background worker.
     pub fn accept<E>(
         &self,

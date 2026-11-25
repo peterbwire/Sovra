@@ -160,7 +160,7 @@ impl NetworkHostV4 {
             };
             let allowed: &[&str] = match op {
                 "net.listen" => &["version", "op", "port"],
-                "net.port" | "net.accept" | "net.close" | "http.receive" => {
+                "net.port" | "net.accept" | "net.try_accept" | "net.close" | "http.receive" => {
                     &["version", "op", "handle"]
                 }
                 "net.read" => &["version", "op", "handle", "maximum"],
@@ -314,6 +314,23 @@ impl NetworkHostV4 {
         match (op, owner) {
             ("net.port", Owner::Listener(owner)) => {
                 Ok(owner.port().map(|port| J::Int(port.into())))
+            }
+            ("net.try_accept", Owner::Listener(owner)) => {
+                let accepted = owner.try_accept(&mut checkpoint)?;
+                Ok(accepted.and_then(|stream| {
+                    let Some(stream) = stream else {
+                        return Ok(J::Null);
+                    };
+                    let handle = token()?;
+                    self.owners.insert(
+                        handle,
+                        Owner::Stream {
+                            stream,
+                            accepted: std::time::Instant::now(),
+                        },
+                    );
+                    Ok(J::Int(handle))
+                }))
             }
             ("net.accept", Owner::Listener(owner)) => {
                 let handle = match token() {

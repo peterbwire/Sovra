@@ -302,3 +302,146 @@ fn vm_instruction_refusal_releases_the_owned_network_scope() {
     let rebound = TcpListener::bind((Ipv4Addr::LOCALHOST, port)).unwrap();
     drop(rebound);
 }
+
+#[test]
+fn try_accept_yields_without_owners_and_preserves_queued_peers_at_capacity() {
+    let mut h = NetworkHostV4::new(NetworkLimits {
+        streams: 1,
+        milliseconds: 1000,
+        ..NetworkLimits::DEFAULT
+    })
+    .unwrap();
+    h.grant_port(0).unwrap();
+    let (l, p) = listener(&mut h);
+    let accept = format!(r#"{{"version":4,"op":"net.try_accept","handle":{l}}}"#);
+    // Empty attempts must not consume stream slots or globally unique handle IDs.
+    for _ in 0..100 {
+        assert_eq!(call(&mut h, &accept).unwrap(), JsonValue::Null);
+        assert_eq!(h.usage(), (1, 0));
+    }
+    let mut first = TcpStream::connect((Ipv4Addr::LOCALHOST, p)).unwrap();
+    first
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .unwrap();
+    let a = integer(call(&mut h, &accept).unwrap());
+    assert!(a > l);
+    let mut second = TcpStream::connect((Ipv4Addr::LOCALHOST, p)).unwrap();
+    second
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .unwrap();
+    second.write_all(b"queued").unwrap();
+    assert_eq!(call(&mut h, &accept).unwrap_err().code, "limit");
+    assert_eq!(h.usage(), (1, 1));
+    call(
+        &mut h,
+        &format!(r#"{{"version":4,"op":"net.close","handle":{a}}}"#),
+    )
+    .unwrap();
+    let b = integer(call(&mut h, &accept).unwrap());
+    let received = call(
+        &mut h,
+        &format!(r#"{{"version":4,"op":"net.read","handle":{b},"maximum":6}}"#),
+    )
+    .unwrap();
+    assert_eq!(received, JsonValue::String("cXVldWVk".into()));
+    assert_eq!(
+        call(
+            &mut h,
+            &format!(r#"{{"version":4,"op":"net.try_accept","handle":{b}}}"#)
+        )
+        .unwrap_err()
+        .code,
+        "input"
+    );
+    h.close_all().unwrap();
+    let mut bytes = Vec::new();
+    first.read_to_end(&mut bytes).unwrap();
+    assert!(bytes.is_empty());
+    assert_eq!(h.usage(), (0, 0));
+}
+
+#[test]
+fn try_accept_cancellation_releases_unpublished_stream_and_reservation() {
+    let mut h = host();
+    let (l, p) = listener(&mut h);
+    let mut peer = TcpStream::connect((Ipv4Addr::LOCALHOST, p)).unwrap();
+    peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+    let request = request(&format!(
+        r#"{{"version":4,"op":"net.try_accept","handle":{l}}}"#
+    ));
+    let mut ticks = 0;
+    assert_eq!(
+        h.call(&request, || {
+            ticks += 1;
+            if ticks == 3 {
+                Err("cancel publication")
+            } else {
+                Ok(())
+            }
+        })
+        .unwrap_err(),
+        "cancel publication"
+    );
+    assert_eq!(ticks, 3);
+    assert_eq!(h.usage(), (1, 0));
+    let mut wire = Vec::new();
+    peer.read_to_end(&mut wire).unwrap();
+    assert!(wire.is_empty());
+    assert_eq!(
+        h.call(&request, || Ok::<_, ()>(())).unwrap().unwrap(),
+        JsonValue::Null
+    );
+    h.close_all().unwrap();
+}
+
+#[test]
+fn try_accept_zero_deadline_and_zero_capacity_refuse_without_dequeuing() {
+    for (milliseconds, streams, code) in [(0, 1, "timeout"), (1000, 0, "limit")] {
+        let mut h = NetworkHostV4::new(NetworkLimits {
+            milliseconds,
+            streams,
+            ..NetworkLimits::DEFAULT
+        })
+        .unwrap();
+        h.grant_port(0).unwrap();
+        let (l, p) = listener(&mut h);
+        let _peer = TcpStream::connect((Ipv4Addr::LOCALHOST, p)).unwrap();
+        assert_eq!(
+            call(
+                &mut h,
+                &format!(r#"{{"version":4,"op":"net.try_accept","handle":{l}}}"#)
+            )
+            .unwrap_err()
+            .code,
+            code
+        );
+        assert_eq!(h.usage(), (1, 0));
+        h.close_all().unwrap();
+    }
+}
+
+#[test]
+fn checked_sovra_try_accept_distinguishes_idle_from_owned_connection() {
+    for ready in [false, true] {
+        let mut h = host();
+        let (l, p) = listener(&mut h);
+        let _peer = ready.then(|| TcpStream::connect((Ipv4Addr::LOCALHOST, p)).unwrap());
+        let source = format!(
+            r#"
+fn main()->std::Result<String,std::Error>{{
+ let request=std::json_parse("{{\"version\":4,\"op\":\"net.try_accept\",\"handle\":{l}}}")?;
+ let accepted=std::host_call(request)?;
+ return std::json_stringify(accepted);
+}}"#
+        );
+        let out = execute(&source, h).unwrap();
+        assert_eq!(out.value().enum_tag(), Some(0));
+        let value = out.value().payload().unwrap().as_str().unwrap();
+        if ready {
+            assert!(value.parse::<i64>().unwrap() > l);
+        } else {
+            assert_eq!(value, "null");
+        }
+        drop(TcpListener::bind((Ipv4Addr::LOCALHOST, p)).unwrap());
+    }
+}

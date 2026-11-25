@@ -11,6 +11,7 @@ exact ports explicitly. Checked data-profile `.svr` code then uses the existing
 | `net.listen` | `port` (Int, 0–65535) | Positive listener token Int |
 | `net.port` | `handle` (listener token) | Actual bound port Int |
 | `net.accept` | `handle` (listener token) | Positive accepted-stream token Int |
+| `net.try_accept` | `handle` (listener token) | Positive accepted-stream token Int, or Null when not ready |
 | `net.read` | `handle` (stream token), `maximum` (positive Int) | Strict Base64 String for a nonempty partial chunk; Null for EOF |
 | `net.write` | `handle` (stream token), `data` (strict Base64 String) | Actual partial byte count Int |
 | `net.close` | `handle` (listener or stream token) | Null |
@@ -66,3 +67,31 @@ seven socket-owner, ten v3 host, 79 data-profile tests and all 600 library tests
 Clippy, formatting, exact Rust 1.74.0 and Windows GNU all-target compilation pass.
 Windows compilation is not network runtime acceptance. Logs and the targeted
 report are retained in `target/checked-evidence/g14-network-host-execution/`.
+
+## Cooperative accept foundation (2026-11-25)
+
+`net.try_accept` performs at most one nonblocking accept syscall, without sleeping
+or retrying. WouldBlock or Interrupted returns Null: no stream owner or token is
+published. A successful attempt returns a fresh owned stream token with the same
+HTTP accept-time deadline origin as `net.accept`. Existing blocking operations
+remain unchanged.
+
+Stream capacity is reserved before accepting. At capacity, the operation returns
+`limit` without dequeuing a peer; after an owner closes, a later attempt can
+accept the queued connection. This bounds application-owned streams, not the OS
+TCP backlog. A zero operation deadline returns `timeout` before accepting.
+Cancellation is checked before the syscall and before publication; cancelled
+publication drops the new descriptor and reservation. Consumed TCP connections
+cannot be put back into the backlog. Empty attempts allocate no handle IDs.
+
+Checked Sovra source tests distinguish idle Null from an owned connection and
+verify execution-scope cleanup. Socket tests cover repeated empty attempts,
+capacity preservation/recovery, wrong-kind refusal, zero deadline/capacity and
+cancellation after accepting but before publication.
+
+This is the first cooperative scheduling primitive, not concurrent HTTP serving.
+Callers must bound polling with VM fuel or their own scheduler; busy loops remain
+possible. Read/write and HTTP receive/respond still wait under their existing
+limits. Incremental connection state, readiness/fair scheduling, bounded pending
+queues, slow-client isolation, streaming and shutdown coordination remain open.
+Linux remains the only qualified runtime host.

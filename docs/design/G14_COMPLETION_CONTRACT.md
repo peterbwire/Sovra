@@ -116,3 +116,9 @@ Optional [aggregate HTTP admission](../reference/http-admission-v4.md) now caps
 attempts per fixed monotonic window across a host domain before parser/verifier
 work, with bounded non-cacheable 429 and owned cleanup. It is not per-identity,
 distributed or OS resource admission; production backpressure/fairness remain open.
+
+Cooperative scheduling now starts with `net.try_accept`: one nonblocking accept
+attempt, explicit idle Null, capacity admission before dequeue and cancellation-safe
+publication. See [network host](../reference/network-host-v4.md#cooperative-accept-foundation-2026-11-25).
+This does not make HTTP receive/respond incremental or concurrent; connection
+state scheduling and production backpressure remain open.
