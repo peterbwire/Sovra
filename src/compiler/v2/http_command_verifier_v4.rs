@@ -15,6 +15,7 @@ pub struct HttpCommandVerifier {
     host: HostV3,
     arguments: Vec<String>,
     live: Arc<AtomicUsize>,
+    maximum_jobs: usize,
 }
 impl fmt::Debug for HttpCommandVerifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -45,7 +46,18 @@ impl HttpCommandVerifier {
         arguments: &[String],
         milliseconds: u64,
     ) -> Result<Self, HostError> {
-        if milliseconds > 1000 || arguments.len() > 16 {
+        Self::with_job_limit(executable, cwd, arguments, milliseconds, 2)
+    }
+    /// Narrow simultaneous command jobs to 0..=2; zero disables launches.
+    /// The same ceiling applies to synchronous and pending verification.
+    pub fn with_job_limit(
+        executable: &Path,
+        cwd: &Path,
+        arguments: &[String],
+        milliseconds: u64,
+        maximum_jobs: usize,
+    ) -> Result<Self, HostError> {
+        if maximum_jobs > 2 || milliseconds > 1000 || arguments.len() > 16 {
             return Err(policy());
         }
         let mut total = 0usize;
@@ -83,6 +95,7 @@ impl HttpCommandVerifier {
             host,
             arguments: arguments.to_vec(),
             live: Arc::new(AtomicUsize::new(0)),
+            maximum_jobs,
         })
     }
     fn request(&self, request: HttpBearerRequest<'_>) -> Option<J> {
@@ -164,7 +177,7 @@ impl HttpCommandVerifier {
             target_os = "linux",
             any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")
         ))]
-        let _slot = match JobSlot::reserve(&self.live) {
+        let _slot = match JobSlot::reserve(&self.live, self.maximum_jobs) {
             Some(slot) => slot,
             None => return D::Unavailable,
         };
@@ -195,7 +208,7 @@ impl HttpBearerVerifier for HttpCommandVerifier {
         ))]
         {
             let job = (|| {
-                let slot = JobSlot::reserve(&self.live)?;
+                let slot = JobSlot::reserve(&self.live, self.maximum_jobs)?;
                 let call = self.request(request)?;
                 let task = self.host.start_process(&call).ok()?;
                 Some(CommandJob {
@@ -212,7 +225,7 @@ impl HttpBearerVerifier for HttpCommandVerifier {
             any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")
         )))]
         let _ = request;
-        let _ = &self.live;
+        let _ = (&self.live, self.maximum_jobs);
         Box::new(UnavailableJob)
     }
     fn verify(&mut self, request: HttpBearerRequest<'_>) -> D {
@@ -243,10 +256,10 @@ struct JobSlot(Arc<AtomicUsize>);
     any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")
 ))]
 impl JobSlot {
-    fn reserve(live: &Arc<AtomicUsize>) -> Option<Self> {
+    fn reserve(live: &Arc<AtomicUsize>, maximum: usize) -> Option<Self> {
         let mut current = live.load(std::sync::atomic::Ordering::Acquire);
         for _ in 0..128 {
-            if current >= 2 {
+            if current >= maximum {
                 return None;
             }
             match live.compare_exchange(

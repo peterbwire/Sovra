@@ -25,16 +25,20 @@ impl Fixture {
         Self(p)
     }
     fn verifier(&self, ms: u64) -> HttpCommandVerifier {
+        self.verifier_with_limit(ms, 2)
+    }
+    fn verifier_with_limit(&self, ms: u64, jobs: usize) -> HttpCommandVerifier {
         let output = Command::new("python3")
             .args(["-c", "import sys;print(sys.executable)"])
             .output()
             .unwrap();
         let path = PathBuf::from(String::from_utf8(output.stdout).unwrap().trim());
-        HttpCommandVerifier::new(
+        HttpCommandVerifier::with_job_limit(
             &path,
             &self.0,
             &[self.0.join("backend.py").to_str().unwrap().into()],
             ms,
+            jobs,
         )
         .unwrap()
     }
@@ -400,4 +404,75 @@ fn observed_pid(fixture: &Fixture) -> Option<u32> {
         .parse::<u32>()
         .ok()
         .filter(|pid| *pid > 0)
+}
+
+#[test]
+fn lowered_command_capacity_refuses_launches_and_reuses_released_slots() {
+    let f = Fixture::new("import json,sys,pathlib,time\nr=json.load(sys.stdin)\npathlib.Path('started').write_text('yes')\ntime.sleep(10)\n");
+    for jobs in [0, 1] {
+        let (mut h, first, mut peer) = setup(f.verifier_with_limit(1000, jobs), 5000);
+        peer.write_all(request()).unwrap();
+        prepared(&mut h, first);
+        if jobs == 0 {
+            assert_eq!(
+                call(&mut h, &body_poll(first)).unwrap_err().code,
+                "authentication_unavailable"
+            );
+            let (second, mut second_peer) = extra(&mut h);
+            second_peer.write_all(request()).unwrap();
+            assert_eq!(
+                call(&mut h, &receive(second)).unwrap_err().code,
+                "authentication_unavailable"
+            );
+            assert!(!f.0.join("started").exists());
+            h.close_all().unwrap();
+            continue;
+        }
+        assert_eq!(
+            call(&mut h, &body_poll(first)).unwrap(),
+            JsonValue::Bool(false)
+        );
+        let (second, mut peer2) = extra(&mut h);
+        peer2.write_all(request()).unwrap();
+        prepared(&mut h, second);
+        assert_eq!(
+            call(&mut h, &receive(second)).unwrap_err().code,
+            "authentication_unavailable"
+        );
+        call(
+            &mut h,
+            &format!(r#"{{"version":4,"op":"net.close","handle":{first}}}"#),
+        )
+        .unwrap();
+        let (third, mut peer3) = extra(&mut h);
+        peer3.write_all(request()).unwrap();
+        prepared(&mut h, third);
+        assert_eq!(
+            call(&mut h, &body_poll(third)).unwrap(),
+            JsonValue::Bool(false)
+        );
+        h.close_all().unwrap();
+    }
+}
+
+#[test]
+fn verifier_job_policy_only_narrows_the_hard_ceiling() {
+    for value in ["0", "1", "2", "3", "-1", "1.0", "true", "\"1\""] {
+        let policy = format!(
+            r#"{{"version":4,"http_access":{{"hosts":["localhost"],"origins":[],"allow_missing_origin":true}},"http_authentication":{{"executable":"/bin/cat","cwd":"/tmp","arguments":[],"milliseconds":1000,"max_jobs":{value}}}}}"#
+        );
+        assert_eq!(
+            DataHostPolicy::from_policy(policy.as_bytes()).is_ok(),
+            matches!(value, "0" | "1" | "2"),
+            "{value}"
+        );
+    }
+    assert!(HttpCommandVerifier::with_job_limit(
+        std::path::Path::new("/bin/cat"),
+        &std::env::temp_dir(),
+        &[],
+        1000,
+        3
+    )
+    .is_err());
 }

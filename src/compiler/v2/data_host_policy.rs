@@ -288,15 +288,16 @@ fn http_command(value: &J) -> Result<super::HttpCommandVerifier, HostError> {
     let J::Object(fields) = value else {
         return Err(error("HTTP authentication must be an object"));
     };
-    if fields.len() != 4 {
+    if !(4..=5).contains(&fields.len()) {
         return Err(error(
-            "HTTP authentication requires executable, cwd, arguments, milliseconds",
+            "HTTP authentication requires executable, cwd, arguments, milliseconds and optional max_jobs",
         ));
     }
     let mut executable = None;
     let mut cwd = None;
     let mut args = None;
     let mut milliseconds = None;
+    let mut max_jobs = 2;
     for (key, value) in fields {
         match (key.as_str(), value) {
             ("executable", J::String(path)) => executable = Some(path),
@@ -313,6 +314,10 @@ fn http_command(value: &J) -> Result<super::HttpCommandVerifier, HostError> {
                 );
             }
             ("milliseconds", _) => milliseconds = Some(number(value)?),
+            ("max_jobs", _) => {
+                max_jobs = usize::try_from(number(value)?)
+                    .map_err(|_| error("HTTP verifier job limit invalid"))?
+            }
             _ => return Err(error("unknown or mistyped HTTP authentication field")),
         }
     }
@@ -322,11 +327,12 @@ fn http_command(value: &J) -> Result<super::HttpCommandVerifier, HostError> {
     if !executable.is_absolute() || !cwd.is_absolute() {
         return Err(error("HTTP verifier paths must be absolute"));
     }
-    super::HttpCommandVerifier::new(
+    super::HttpCommandVerifier::with_job_limit(
         executable,
         cwd,
         &args.ok_or_else(|| error("HTTP verifier arguments missing"))?,
         milliseconds.ok_or_else(|| error("HTTP verifier duration missing"))?,
+        max_jobs,
     )
 }
 

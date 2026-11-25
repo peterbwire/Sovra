@@ -11858,3 +11858,19 @@ otherwise invoke explicit cancel and preserve the original error. Extend the
 cleanup matrix with both provider-internal and post-return cancellation, each
 with successful/failing cleanup. The expanded regression fails against the prior
 implementation. No scheduling, production identity or platform gate is closed.
+
+## 2026-11-25: lowerable command-verifier job admission
+
+Add explicit `HttpCommandVerifier::with_job_limit` and optional external
+`http_authentication.max_jobs`, permitting 0..=2 with the existing default two.
+Zero disables launches without disabling authentication. Shared atomic admission
+covers synchronous and pending jobs; no policy can raise the hard ceiling.
+Regressions cover zero refusal, one pending job blocking synchronous verification,
+slot release/reuse, existing two-job behavior and malformed/excessive policy values.
+This adds operator-controlled narrowing, not production fairness or identity quotas.
+
+The previous Windows run passed all Rust targets but its formatter package Node
+harness compared mixed-separator input spelling with canonical diagnostic paths.
+Use native realpath for the expected malformed source before comparing, preserving
+the requirement that the diagnostic identifies that exact file. The downloaded
+failed formatter report remains unsuccessful evidence for its original revision.

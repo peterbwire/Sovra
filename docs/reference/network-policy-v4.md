@@ -101,3 +101,9 @@ Optional `http_admission` requires `requests` (0..1024) and `milliseconds`
 (1..60000). It limits attempts across all listeners in one execution domain
 before head/verifier processing. See [fixed-window admission](http-admission-v4.md)
 for failure counting, absent-policy behavior, cleanup and scope limits.
+
+The command verifier's optional `http_authentication.max_jobs` may narrow the
+shared synchronous/pending job ceiling to 0, 1 or 2 (default 2). Zero disables
+launches and returns authentication unavailable; it does not bypass verification.
+Larger, negative, fractional or mistyped values refuse policy loading. See
+[command verification](http-command-authentication-v4.md).

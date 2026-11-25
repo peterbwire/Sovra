@@ -28,7 +28,12 @@ A version-four policy may add:
 }
 ```
 
-All four authentication fields are required, with no unknown/duplicate fields.
+The four shown authentication fields are required, with no unknown/duplicate
+fields. Optional `max_jobs` is an integer from 0 through 2; omission retains 2.
+One permits one live backend job, and zero disables backend launches while
+retaining authentication enforcement (requests fail unavailable, never anonymous).
+Both blocking and pending verification share this configured admission ceiling.
+It cannot raise the hard two-job limit or provide per-identity/distributed quotas.
 Paths must be absolute; the program must be a native ELF executable. The host
 captures executable/cwd handles before serving requests. Interpreters require
 an explicitly fixed trusted script argument. Operators must protect the program,
@@ -166,7 +171,8 @@ request. Denials enter cooperative refusal custody. Receive/raw I/O/head polling
 and application responses cannot bypass pending verification. A repeated poll
 never starts another child or charges another HTTP admission.
 
-The configured command verifier admits at most two live jobs, shared between its
+The configured command verifier admits at most `max_jobs` live jobs (default/hard
+ceiling two), shared between its
 polling and synchronous paths. Exhaustion fails unavailable/503 without spawning;
 completion/close/cancellation releases the slot after child cleanup. This is a
 per-configured-verifier bound, not a global machine quota or an OS sandbox. Lower
