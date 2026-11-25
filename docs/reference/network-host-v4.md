@@ -14,6 +14,7 @@ exact ports explicitly. Checked data-profile `.svr` code then uses the existing
 | `net.try_accept` | `handle` (listener token) | Positive accepted-stream token Int, or Null when not ready |
 | `net.try_read` | `handle` (stream token), `maximum` (positive Int) | Object: `ready` Bool and `data` Base64 String or Null |
 | `net.read` | `handle` (stream token), `maximum` (positive Int) | Strict Base64 String for a nonempty partial chunk; Null for EOF |
+| `net.try_write` | `handle` (stream token), `data` (strict Base64 String) | Object: `ready` Bool and `written` Int or Null |
 | `net.write` | `handle` (stream token), `data` (strict Base64 String) | Actual partial byte count Int |
 | `net.close` | `handle` (listener or stream token) | Null |
 
@@ -121,3 +122,30 @@ scope. The operation does not register interest with an OS event loop, promise
 future readiness, add an aggregate connection deadline or make HTTP concurrent.
 Callers must bound polling. Cooperative writes, resumable HTTP state, fairness
 and slow-client scheduling remain open; HTTP receive/respond still wait.
+
+## Cooperative write foundation (2026-11-25)
+
+`net.try_write` performs one nonblocking write syscall without sleeping or
+retrying. Its result always contains exactly `ready` and `written`:
+
+- `{"ready":false,"written":null}` means WouldBlock or Interrupted; retry later.
+- `{"ready":true,"written":N}` means exactly N bytes were accepted by the socket,
+  possibly only a prefix. It does not prove peer receipt.
+
+The caller retains the payload and advances only by the reported count; the host
+never queues/retries the suffix. Empty writes may succeed with count zero. A zero
+write of a nonempty payload is an I/O error. Existing strict Base64/byte limits
+refuse malformed/oversized input before any prefix is sent. A zero operation
+deadline refuses before the syscall. Callback cancellation is checked before the
+syscall; no post-write check hides completed progress. Later VM materialization
+failure can still occur after bytes are sent, as with existing writes. No effects
+are rolled back. Stream ownership remains in scope for close/cleanup.
+
+Tests fill a non-reading client's send buffer until the operation yields, then
+prove a second connection still accepts a byte. Other tests cover over-limit
+refusal before a prefix, exact binary output, empty writes, malformed Base64,
+pre-write cancellation without duplicate output, actual checked Sovra consumption
+and scope cleanup. This is raw stream backpressure, not a fair scheduler or a
+concurrent HTTP server. HTTP receive/respond still wait; resumable HTTP states,
+bounded pending output, scheduling, aggregate lifecycle limits and production
+controls remain open. Runtime support remains Linux-only.

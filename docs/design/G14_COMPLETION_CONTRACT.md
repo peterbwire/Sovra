@@ -128,3 +128,9 @@ idle/data/EOF results and pre-read cancellation. Tests cover an idle peer yieldi
 to a ready connection and checked Sovra consumption. This remains a raw stream
 primitive; cooperative writes, resumable HTTP and fair scheduling are not yet
 implemented. See [network host](../reference/network-host-v4.md#cooperative-read-foundation-2026-11-25).
+
+`net.try_write` now adds one bounded nonblocking write attempt with exact partial
+progress or explicit not-ready output. Tests fill a non-reading peer's send buffer
+and prove another connection still progresses. Callers retain pending suffixes;
+this does not add resumable HTTP or a fair scheduler. See
+[network host](../reference/network-host-v4.md#cooperative-write-foundation-2026-11-25).

@@ -249,6 +249,34 @@ pub struct LoopbackStream {
     limits: NetworkLimits,
 }
 impl LoopbackStream {
+    /// One nonblocking partial write. None means not ready; callers retain the suffix.
+    /// Cancellation is checked before the syscall; completed bytes are never rolled back.
+    pub fn try_write<E>(
+        &mut self,
+        bytes: &[u8],
+        mut checkpoint: impl FnMut() -> Result<(), E>,
+    ) -> Result<Result<Option<usize>, HostError>, E> {
+        if bytes.len() > self.limits.bytes {
+            return Ok(Err(error("limit", "network write byte limit exceeded")));
+        }
+        checkpoint()?;
+        if self.limits.milliseconds == 0 {
+            return Ok(Err(error("timeout", "network operation deadline exceeded")));
+        }
+        Ok(match self.socket.write(bytes) {
+            Ok(0) if !bytes.is_empty() => Err(error("io", "network write made no progress")),
+            Ok(n) => Ok(Some(n)),
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
+                ) =>
+            {
+                Ok(None)
+            }
+            Err(e) => Err(io_error(e)),
+        })
+    }
     /// One nonblocking read attempt. None means not ready, distinct from EOF.
     /// No sleeping/retry; cancellation is checked before any bytes are consumed.
     pub fn try_read<E>(

@@ -557,3 +557,93 @@ fn main()->std::Result<String,std::Error>{{
     );
     drop(TcpListener::bind((Ipv4Addr::LOCALHOST, p)).unwrap());
 }
+
+#[test]
+fn cooperative_write_preserves_data_on_cancellation_and_reports_exact_progress() {
+    let mut h = host();
+    let (l, p) = listener(&mut h);
+    let mut peer = TcpStream::connect((Ipv4Addr::LOCALHOST, p)).unwrap();
+    peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+    let n = integer(
+        call(
+            &mut h,
+            &format!(r#"{{"version":4,"op":"net.accept","handle":{l}}}"#),
+        )
+        .unwrap(),
+    );
+    let write = request(&format!(
+        r#"{{"version":4,"op":"net.try_write","handle":{n},"data":"/w=="}}"#
+    ));
+    let mut ticks = 0;
+    assert_eq!(
+        h.call(&write, || {
+            ticks += 1;
+            if ticks == 2 {
+                Err("cancel write")
+            } else {
+                Ok(())
+            }
+        })
+        .unwrap_err(),
+        "cancel write"
+    );
+    assert_eq!(
+        h.call(&write, || Ok::<_, ()>(())).unwrap().unwrap(),
+        request(r#"{"ready":true,"written":1}"#)
+    );
+    let mut byte = [0];
+    peer.read_exact(&mut byte).unwrap();
+    assert_eq!(byte, [255]);
+    assert_eq!(
+        call(
+            &mut h,
+            &format!(r#"{{"version":4,"op":"net.try_write","handle":{n},"data":""}}"#)
+        )
+        .unwrap(),
+        request(r#"{"ready":true,"written":0}"#)
+    );
+    assert!(call(
+        &mut h,
+        &format!(r#"{{"version":4,"op":"net.try_write","handle":{n},"data":"bad"}}"#)
+    )
+    .is_err());
+    h.close_all().unwrap();
+    assert_eq!(
+        peer.read(&mut byte).unwrap(),
+        0,
+        "cancelled write must not send a duplicate"
+    );
+}
+
+#[test]
+fn checked_sovra_cooperative_write_sends_binary_and_cleans_scope() {
+    let mut h = host();
+    let (l, p) = listener(&mut h);
+    let mut peer = TcpStream::connect((Ipv4Addr::LOCALHOST, p)).unwrap();
+    peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+    let n = integer(
+        call(
+            &mut h,
+            &format!(r#"{{"version":4,"op":"net.accept","handle":{l}}}"#),
+        )
+        .unwrap(),
+    );
+    let source = format!(
+        r#"
+fn main()->std::Result<String,std::Error>{{
+ let request=std::json_parse("{{\"version\":4,\"op\":\"net.try_write\",\"handle\":{n},\"data\":\"/w==\"}}")?;
+ let result=std::host_call(request)?;
+ return std::json_stringify(result);
+}}"#
+    );
+    let out = execute(&source, h).unwrap();
+    assert_eq!(out.value().enum_tag(), Some(0));
+    assert_eq!(
+        request(out.value().payload().unwrap().as_str().unwrap()),
+        request(r#"{"ready":true,"written":1}"#)
+    );
+    let mut wire = Vec::new();
+    peer.read_to_end(&mut wire).unwrap();
+    assert_eq!(wire, [255]);
+    drop(TcpListener::bind((Ipv4Addr::LOCALHOST, p)).unwrap());
+}

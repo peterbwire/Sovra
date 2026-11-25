@@ -11530,3 +11530,19 @@ Focused validation passes 48 socket/HTTP integration tests (four admission,
 all-feature Clippy, exact Rust 1.74.0 all-target check, Windows GNU all-target
 compile, formatting and documentation links. This is follow-up evidence, not a
 new full frozen-source G14/native qualification.
+
+## 2026-11-25: G14 cooperative write foundation
+
+Added `LoopbackStream::try_write` and strict v4 `net.try_write` with one syscall,
+no sleep/retry, explicit ready/written results and exact partial progress. Input
+bounds and cancellation refuse before sending; pending suffixes remain caller
+owned. Tests force send-buffer backpressure on a non-reading client while another
+connection progresses, and cover binary/empty output, invalid/oversized payloads,
+cancellation without duplicate output, checked Sovra consumption and cleanup.
+Resumable HTTP and fair scheduling remain open; no wider OS runtime claim.
+
+Focused validation passes 51 socket/HTTP tests (four admission, 24 exchange,
+15 network-host and eight socket-owner tests), strict all-target/all-feature
+Clippy, exact Rust 1.74.0 all-target check, Windows GNU all-target compile,
+formatting and documentation links. This follow-up does not replace the earlier
+full frozen-source/native qualification.

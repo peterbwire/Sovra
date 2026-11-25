@@ -164,7 +164,7 @@ impl NetworkHostV4 {
                     &["version", "op", "handle"]
                 }
                 "net.read" | "net.try_read" => &["version", "op", "handle", "maximum"],
-                "net.write" => &["version", "op", "handle", "data"],
+                "net.write" | "net.try_write" => &["version", "op", "handle", "data"],
                 "http.respond" => &["version", "op", "handle", "status", "headers", "body"],
                 _ => {
                     return Err(error(
@@ -377,11 +377,22 @@ impl NetworkHostV4 {
                         NetworkRead::Data(bytes) => encode(&bytes),
                     }))
             }
-            ("net.write", Owner::Stream { stream: owner, .. }) => {
+            ("net.write" | "net.try_write", Owner::Stream { stream: owner, .. }) => {
                 let bytes = match get("data").and_then(|value| decode(value, self.limits.bytes)) {
                     Ok(bytes) => bytes,
                     Err(e) => return Ok(Err(e)),
                 };
+                if op == "net.try_write" {
+                    return Ok(owner.try_write(&bytes, checkpoint)?.map(|count| {
+                        J::Object(vec![
+                            ("ready".into(), J::Bool(count.is_some())),
+                            (
+                                "written".into(),
+                                count.map_or(J::Null, |n| J::Int(n as i64)),
+                            ),
+                        ])
+                    }));
+                }
                 Ok(owner.write(&bytes, checkpoint)?.map(|n| J::Int(n as i64)))
             }
             _ => Ok(Err(error(
