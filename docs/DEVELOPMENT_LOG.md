@@ -11750,3 +11750,15 @@ formatter/runtime behavior or platform support. The first local G14 qualificatio
 was deliberately interrupted and retained as unsuccessful before this edit;
 qualification restarts on the corrected frozen source. Hosted acceptance still
 requires actual successful job/artifact evidence.
+
+## 2026-11-25: captured native launch-name correction
+
+Hosted Ubuntu 26.04 qualification exposed a nonzero captured cat invocation.
+A native dispatch-name regression reproduced a launch defect independently:
+argv[0] was the internal /proc/self/fd execution path. Preserve the grant-time
+absolute executable name as fixed argv[0] while continuing to execute the captured
+ELF descriptor. Bound the fixed name to 4096 bytes and reject NUL; source arguments
+cannot override it. The regression removes the grant-time executable alias before
+launch, proving execution does not reopen that pathname. Existing v3 and command
+verifier checks pass. The second local qualification remains interrupted and
+unsuccessful; restart frozen-source qualification after this correction.

@@ -196,3 +196,12 @@ six connections: one verifier gated by a fixture file, four other verified attem
 and a final pre-verifier 429. The fast identity request must finish before the
 client releases the gated verifier, and exactly five backend invocations occur.
 The backend/key remain external test fixtures, not a production credential system.
+
+## Captured launch identity
+
+Native children execute the captured ELF descriptor while argv[0] retains the
+fixed absolute executable name supplied at grant time (at most 4096 bytes, no
+NUL). This supports programs that dispatch by their invocation name without
+reopening a pathname at launch. Source arguments cannot replace argv[0]. A native
+regression removes the grant-time alias before execution and verifies both the
+captured program and original launch name remain in effect.

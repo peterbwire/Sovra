@@ -85,6 +85,7 @@ impl HostLimits {
 #[derive(Debug)]
 struct Program {
     executable: File,
+    argument_zero: PathBuf,
     cwd: File,
     environment: BTreeMap<String, String>,
 }
@@ -298,7 +299,17 @@ impl HostV3 {
             any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")
         ))]
         {
+            use std::os::unix::ffi::OsStrExt;
             use std::os::unix::fs::OpenOptionsExt;
+            let argument_zero = if executable.is_absolute() {
+                executable.to_path_buf()
+            } else {
+                std::env::current_dir().map_err(io)?.join(executable)
+            };
+            let label = argument_zero.as_os_str().as_bytes();
+            if label.len() > 4096 || label.contains(&0) {
+                return Err(err("input", "invalid native executable argument zero"));
+            }
             let executable = OpenOptions::new()
                 .read(true)
                 .custom_flags(open_flags(false))
@@ -328,6 +339,7 @@ impl HostV3 {
                 name.into(),
                 Program {
                     executable,
+                    argument_zero,
                     cwd: dir(&fs::canonicalize(cwd).map_err(io)?)?,
                     environment,
                 },
@@ -814,6 +826,7 @@ impl HostV3 {
         r: &J,
     ) -> Result<process_exchange::OwnedProcessExchange, HostError> {
         use std::{
+            os::unix::process::CommandExt,
             os::{fd::OwnedFd, unix::net::UnixStream},
             process::{Command, Stdio},
         };
@@ -856,6 +869,7 @@ impl HostV3 {
             b.set_nonblocking(true).map_err(io)?;
             c.set_nonblocking(true).map_err(io)?;
             let child = Command::new(fd(&grant.executable))
+                .arg0(&grant.argument_zero)
                 .args(argv)
                 .current_dir(fd(&grant.cwd))
                 .env_clear()
