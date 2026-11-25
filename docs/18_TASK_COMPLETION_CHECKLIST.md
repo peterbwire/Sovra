@@ -296,6 +296,7 @@ Implemented evidence:
 - [x] Schedule two HTTP connections in cyclic bounded phase turns with full-slot accept backpressure, fixed pacing and finite idle rounds; independent CLI/native clients verify delayed head/body interleaving. Production/preemptive fairness remains open.
 - [x] Queue bounded Continue output in pending-body state and advance one exact partial write per body-poll turn; blocking receive resumes the suffix without duplication. Verifier and denial/error output remain open.
 - [x] Retain cooperative admission/head-preparation refusals under owned bounded output custody, yielding exact partial writes then returning the original error; forbid handler/raw/application-response transitions. Initial verifier execution and production fairness remain open.
+- [x] Extract private bounded owned-process polling state with retained pipe/deadline/exit progress, opaque debug and kill/reap cleanup; existing synchronous runner uses it. Pending HTTP verification remains open.
 - [ ] Add reviewed concurrency/backpressure, streaming, TLS and deployment controls
   before claiming production server support. A private Node adapter is insufficient.
 

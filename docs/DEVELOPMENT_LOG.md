@@ -11697,3 +11697,22 @@ independent authenticated/default CLI/native servers and delayed-peer scheduling
 clients. Strict all-target/all-feature Clippy, exact Rust 1.74.0 all-target check,
 Windows GNU all-target compile, formatting and documentation links pass. This
 follow-up does not replace full frozen-source G14 qualification.
+
+## 2026-11-25: G14 owned process polling prerequisite
+
+Extracted a private owned process task retaining child, pipe offsets/buffers,
+original limits/deadline, EOF and exit state. Each poll performs at most one write,
+one read per output stream and one try-wait without sleeping. Interrupted or
+WouldBlock yields, bounded output refuses before append, and completion publishes
+one result. Existing synchronous process.run reuses these polls with explicit
+kill/reap cleanup and Drop fallback. Tests cover a multi-fragment native-child
+exchange, bounded per-turn output, opaque debug, one-result publication and
+control refusal/reaping. HTTP verification still waits; pending-job integration
+remains the next layer, and no source-visible process authority was added.
+
+Validation passes two focused process-state unit tests and 29 integration tests
+(v3 host, command-verifier protocol, trusted verifier and authenticated CLI/native
+server), 31 distinct tests total. The final process fixture includes NUL and
+non-UTF-8 bytes. Strict Clippy, exact Rust 1.74.0 all-target check, Windows GNU
+all-target compile, formatting and documentation links pass. This is focused
+follow-up evidence, not full frozen-source G14 qualification.

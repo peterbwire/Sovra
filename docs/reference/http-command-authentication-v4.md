@@ -126,3 +126,26 @@ fulfill RFC 6750's TLS requirements. See the [G14 contract](../design/G14_COMPLE
 [Aggregate HTTP attempt admission](http-admission-v4.md) may be configured to
 limit verifier-spawn pressure before parsing/authentication. It is separate from
 backend per-identity quotas and does not provide process isolation or fair scheduling.
+
+## Owned process polling prerequisite (2026-11-25)
+
+The existing private process runner now retains child ownership, bounded input/
+stdout/stderr buffers, offsets, pipe EOF state, exit status and original deadline
+in an opaque internal task. A poll performs at most one stdin write, one bounded
+read from each output stream and one nonblocking exit check, without sleeping.
+Interrupted/WouldBlock operations yield; output ceilings are checked before append.
+After exit, available data is drained over bounded turns until EOF or a quiet
+post-exit sweep, preserving the existing direct-child/unsupported-descendant
+contract. The result is published once; repeat polling after completion refuses.
+
+The synchronous `process.run` wrapper uses these polls with its existing pacing
+and explicit cleanup. Cancellation/failure still kills/reaps the direct child;
+Drop remains a fallback. No worker thread, source-visible process endpoint or
+extra process grant is introduced. Debug exposes no input/output content.
+
+Tests move a binary-preserving multi-fragment stream through a real native child,
+check bounded per-turn output and one-result publication, and verify explicit
+kill/reap after control refusal. Existing v3, command protocol and authenticated
+CLI/native consumers remain regression coverage. This is the process-state
+prerequisite for asynchronous verification: HTTP verification still waits inside
+the synchronous wrapper until a pending-verification stage is connected.

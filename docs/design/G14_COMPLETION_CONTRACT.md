@@ -186,3 +186,15 @@ failures can yield without ever publishing a handler/principal. Blocking receive
 keeps synchronous best-effort refusal; later polling failures may close silently.
 See [refusal scope](../reference/http-exchange-v4.md#cooperative-refusal-output-2026-11-25).
 Initial verifier execution and production controls remain open.
+
+Private child-process I/O now has retained bounded polling state reused by the
+synchronous runner, with one operation per pipe/exit check per turn and explicit
+kill/reap cleanup. This is a prerequisite, not completed asynchronous HTTP
+verification. See [process polling](../reference/http-command-authentication-v4.md#owned-process-polling-prerequisite-2026-11-25).
+
+Pending-verification integration must bind each job to its original checked
+request/authority/transport, bound live jobs per domain and preserve the original
+controls across polls. It must spawn once, keep decisions/credentials private,
+kill/reap on close or cancellation, and publish no handler until verification and
+body completion. Synchronous trusted-provider fallback must remain explicit rather
+than being described as asynchronous execution.
