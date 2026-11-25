@@ -87,12 +87,41 @@ pub enum HttpAuthenticationDecision {
     /// Provider cannot establish authority (e.g. backend unavailable): 503.
     Unavailable,
 }
+/// Cooperative host cancellation/deadline control. A false result must stop verification.
+pub struct HttpBearerControl<'a> {
+    poll: &'a mut dyn FnMut() -> bool,
+}
+impl fmt::Debug for HttpBearerControl<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("HttpBearerControl([opaque])")
+    }
+}
+impl<'a> HttpBearerControl<'a> {
+    pub(super) fn new(poll: &'a mut dyn FnMut() -> bool) -> Self {
+        Self { poll }
+    }
+    /// Check host cancellation/deadline. No verifier can reset these controls.
+    pub fn check(&mut self) -> bool {
+        (self.poll)()
+    }
+}
 /// Trusted synchronous embedding interface, not an untrusted plugin or production backend.
 /// Implementations verify credentials and request permissions using their reviewed backend.
 /// They must return promptly; host controls check cancellation/deadline before and after calls.
 pub trait HttpBearerVerifier: Send + Sync {
     /// Authenticate the checked credential and authorize this exact request head.
     fn verify(&mut self, request: HttpBearerRequest<'_>) -> HttpAuthenticationDecision;
+    /// Override for bounded I/O backends to poll while running. The default remains cooperative.
+    fn verify_controlled(
+        &mut self,
+        request: HttpBearerRequest<'_>,
+        control: &mut HttpBearerControl<'_>,
+    ) -> HttpAuthenticationDecision {
+        if !control.check() {
+            return HttpAuthenticationDecision::Unavailable;
+        }
+        self.verify(request)
+    }
 }
 pub(super) struct Verifier(pub Box<dyn HttpBearerVerifier>);
 impl fmt::Debug for Verifier {
@@ -105,6 +134,7 @@ impl Verifier {
         &mut self,
         request: &HttpRequest<'_>,
         work: &mut usize,
+        control: &mut HttpBearerControl<'_>,
     ) -> Result<HttpPrincipal, HostError> {
         let mut fields = request
             .headers()
@@ -180,13 +210,16 @@ impl Verifier {
             .map(std::str::from_utf8)
             .transpose()
             .map_err(|_| error("authentication_unavailable", "invalid HTTP origin context"))?;
-        match self.0.verify(HttpBearerRequest {
-            method: request.method(),
-            target: request.target(),
-            credential,
-            authority,
-            origin,
-        }) {
+        match self.0.verify_controlled(
+            HttpBearerRequest {
+                method: request.method(),
+                target: request.target(),
+                credential,
+                authority,
+                origin,
+            },
+            control,
+        ) {
             HttpAuthenticationDecision::Granted(principal) => Ok(principal),
             HttpAuthenticationDecision::Unauthenticated => {
                 Err(error("authentication", "HTTP credential not verified"))

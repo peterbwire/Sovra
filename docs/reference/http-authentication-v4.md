@@ -9,8 +9,9 @@ auto traits. Provider debug formatting is opaque.
 
 This is an integration boundary, not a bundled credential backend. External JSON
 policies, Sovra source and generated native images cannot register Rust callbacks.
-CLI/native authentication is still unimplemented; unknown authentication policy
-fields refuse. Hosts without a verifier retain prior behavior. No credentials,
+An explicit [external command adapter](http-command-authentication-v4.md) now
+provides bounded delegation for CLI/native launches; other unknown authentication
+configuration still refuses. Hosts without a verifier retain prior behavior. No credentials,
 cryptography, sessions, issuer configuration or implicit grants are introduced.
 
 ## Checked input and outcomes
@@ -99,10 +100,15 @@ context, missing Origin preservation and rejection of forged secure forwarding
 claims before body transfer.
 Existing CLI/native tests exercise unchanged default behavior without a provider.
 
-Deployable CLI/native credential backends require a separate reviewed contract,
+Production credential backends require a separate reviewed contract,
 including credential storage/lifecycle, comparison/cryptography dependencies,
 identity permissions, offline native runtime packaging and independent real
 credential clients. Bearer use also requires a reviewed secure transport model;
 RFC 6750's TLS requirements are not fulfilled by this loopback-only foundation.
 These and production/conformance/platform gates remain open under the
 [G14 contract](../design/G14_COMPLETION_CONTRACT.md).
+
+I/O providers can implement the additive `verify_controlled` method and poll
+`HttpBearerControl::check()` while running. The default preserves original
+synchronous implementations. The explicit command adapter uses this hook for
+child cleanup on HTTP cancellation/deadline, not only a post-return check.

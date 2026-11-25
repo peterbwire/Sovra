@@ -257,6 +257,14 @@ fn target(root: &File, path: &str) -> Result<(File, PathBuf), HostError> {
     Ok((current, path))
 }
 impl HostV3 {
+    pub(super) fn with_limits(limits: HostLimits) -> Result<Self, HostError> {
+        limits.validate()?;
+        Ok(Self {
+            limits,
+            ..Self::default()
+        })
+    }
+
     /// Grant a captured read directory; no source API can call this method.
     pub fn grant_read(&mut self, name: &str, path: &Path) -> Result<(), HostError> {
         self.read

@@ -62,7 +62,8 @@ A missing or cfg-disabled target cannot pass qualification.
 The Rust suite includes owned sockets, network host/policy, actual network CLI/
 native clients, fixed/chunked framing, validated-discard trailers, Continue,
 Host/Origin/method/target admission, the trusted Bearer-verifier embedding
-boundary and independent actual HTTP/JSON clients.
+boundary, strict external verifier command protocol/cleanup and independent
+actual authenticated CLI/native HTTP/JSON clients.
 Existing v3 host and data CLI/native workflows also run. Native tests delete
 project files, clear the environment and remove Node/PATH availability. The
 existing G13 complete-source suite and IDE host evidence remain separate.
@@ -81,7 +82,7 @@ Implemented and locally qualified behavior covers the documented restricted
 loopback HTTP lifecycle and independent CLI/native consumers. The following
 remain open and must not be inferred from a passing report:
 
-- Deployable CLI/native credential backends, reviewed client authentication,
+- Reviewed production credential backends, issuance/storage/lifecycle,
   identity/per-route authorization and deployment policy.
 - Complete HTTP protocol/conformance coverage and retained/verified trailers.
 - Concurrency/scheduling, backpressure, streaming, TLS and remote serving.

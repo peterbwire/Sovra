@@ -657,10 +657,12 @@ pub use runtime_json::{parse_json, serialize_json, JsonError, JsonLimits, JsonVa
 
 mod http_chunked_v4;
 pub use http_chunked_v4::{HttpChunkedDecoder, HttpChunkedLimits, HttpTrailerLimits};
+mod http_command_verifier_v4;
+pub use http_command_verifier_v4::HttpCommandVerifier;
 mod http_authentication_v4;
 pub use http_authentication_v4::{
-    HttpAuthenticationDecision, HttpBearerRequest, HttpBearerTransport, HttpBearerVerifier,
-    HttpPrincipal,
+    HttpAuthenticationDecision, HttpBearerControl, HttpBearerRequest, HttpBearerTransport,
+    HttpBearerVerifier, HttpPrincipal,
 };
 mod http_access_v4;
 pub use http_access_v4::HttpAccessPolicy;

@@ -118,6 +118,7 @@ fn network_policy(fields: &[(String, J)]) -> Result<NetworkHostV4, HostError> {
     let mut ports = Vec::new();
     let mut http = super::HttpExchangeLimits::DEFAULT;
     let mut access = None;
+    let mut authentication = None;
     for (key, value) in fields {
         match key.as_str() {
             "version" => {}
@@ -135,6 +136,7 @@ fn network_policy(fields: &[(String, J)]) -> Result<NetworkHostV4, HostError> {
                     ports.push(port);
                 }
             }
+            "http_authentication" => authentication = Some(http_command(value)?),
             "http_access" => {
                 access = Some(http_access(value)?);
             }
@@ -210,6 +212,9 @@ fn network_policy(fields: &[(String, J)]) -> Result<NetworkHostV4, HostError> {
     if let Some(access) = access {
         host.set_http_access(access)?;
     }
+    if let Some(verifier) = authentication {
+        host.set_http_bearer_verifier(Box::new(verifier))?;
+    }
     for port in ports {
         host.grant_port(port)?;
     }
@@ -272,4 +277,50 @@ fn access_strings(value: &J) -> Result<Vec<&str>, HostError> {
             _ => Err(error("HTTP access grants must be Strings")),
         })
         .collect()
+}
+
+fn http_command(value: &J) -> Result<super::HttpCommandVerifier, HostError> {
+    let J::Object(fields) = value else {
+        return Err(error("HTTP authentication must be an object"));
+    };
+    if fields.len() != 4 {
+        return Err(error(
+            "HTTP authentication requires executable, cwd, arguments, milliseconds",
+        ));
+    }
+    let mut executable = None;
+    let mut cwd = None;
+    let mut args = None;
+    let mut milliseconds = None;
+    for (key, value) in fields {
+        match (key.as_str(), value) {
+            ("executable", J::String(path)) => executable = Some(path),
+            ("cwd", J::String(path)) => cwd = Some(path),
+            ("arguments", J::Array(values)) if values.len() <= 16 => {
+                args = Some(
+                    values
+                        .iter()
+                        .map(|value| match value {
+                            J::String(s) => Ok(s.clone()),
+                            _ => Err(error("HTTP verifier arguments must be Strings")),
+                        })
+                        .collect::<Result<Vec<_>, _>>()?,
+                );
+            }
+            ("milliseconds", _) => milliseconds = Some(number(value)?),
+            _ => return Err(error("unknown or mistyped HTTP authentication field")),
+        }
+    }
+    let executable =
+        Path::new(executable.ok_or_else(|| error("HTTP verifier executable missing"))?);
+    let cwd = Path::new(cwd.ok_or_else(|| error("HTTP verifier cwd missing"))?);
+    if !executable.is_absolute() || !cwd.is_absolute() {
+        return Err(error("HTTP verifier paths must be absolute"));
+    }
+    super::HttpCommandVerifier::new(
+        executable,
+        cwd,
+        &args.ok_or_else(|| error("HTTP verifier arguments missing"))?,
+        milliseconds.ok_or_else(|| error("HTTP verifier duration missing"))?,
+    )
 }

@@ -271,7 +271,34 @@ pub(super) fn receive<E>(
         )? {
             return Ok(Err(e));
         }
-        let outcome = verifier.authenticate(&head.request, &mut head.work);
+        let mut stopped = None;
+        let mut poll = || {
+            if stopped.is_some() {
+                return false;
+            }
+            match checked(connection.started, connection.milliseconds, &mut checkpoint) {
+                Ok(()) => true,
+                Err(stop) => {
+                    stopped = Some(stop);
+                    false
+                }
+            }
+        };
+        let outcome = verifier.authenticate(
+            &head.request,
+            &mut head.work,
+            &mut super::HttpBearerControl::new(&mut poll),
+        );
+        match stopped {
+            Some(Stop::External(e)) => return Err(e),
+            Some(Stop::Timeout) => {
+                return Ok(Err(error(
+                    "timeout",
+                    "aggregate HTTP exchange deadline exceeded",
+                )))
+            }
+            None => {}
+        }
         if let Err(e) = flatten(
             checked(connection.started, connection.milliseconds, &mut checkpoint).map(|_| Ok(())),
         )? {

@@ -1214,3 +1214,15 @@ refusal despite forged secure forwarding claims. Context scans/validation share
 HTTP work and preserve credential/URI debug redaction. This does not implement
 TLS, trusted proxies or CLI/native credential backends.
 See [audience context](reference/http-authentication-v4.md#audience-and-actual-transport-context).
+
+
+2026-11-24 G14 external verifier delegation: CLI/native policies can now select
+an exact captured native program/cwd and fixed arguments for a bounded JSON
+verification protocol. Credentials use stdin; no environment inheritance or
+source-visible general process authority is added. Strict replies fail closed,
+and child/HTTP timeout or cancellation reaps the direct child. Independent
+CLI/native clients prove principal/redaction, wrong-token 401, permission 403 and
+continued service without embedded credentials, project files or Node startup.
+The test backend is not a shipped production credential system; TLS and reviewed
+credential lifecycle/deployment remain open.
+See [command contract](reference/http-command-authentication-v4.md).

@@ -17,7 +17,9 @@ unsupported expectations refuse with 417 before body transfer. Optional external
 request-head grants before Continue/body handling, with optional exact method/
 raw-target lists and shared comparison work; a trusted [Bearer-verifier embedding boundary](../reference/http-authentication-v4.md)
 now supports pre-body verification, public principal publication and credential
-redaction. CLI/native credential backends and production qualification remain open. Trailer integrity/
+redaction. Explicit [CLI/native command delegation](../reference/http-command-authentication-v4.md)
+now supports bounded verification and private process cleanup; reviewed production
+credential backends and secure transport remain open. Trailer integrity/
 retention, remaining protocol coverage, production server controls and G14 qualification
 remain open.
 G13's experimental Linux foundation remains complete under its documented scope.

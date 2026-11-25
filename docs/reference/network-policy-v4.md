@@ -91,3 +91,8 @@ work and pre-body refusal. Omitting the object retains existing HTTP behavior.
 `http_access` may also supply paired `methods` and `targets` arrays with bounded
 exact grants. Omitting both retains Host/Origin-only behavior; supplying only one
 refuses. Their comparisons consume shared HTTP work. See [request permissions](http-access-v4.md#optional-exact-method-and-target-grants).
+
+An optional `http_authentication` object now selects a captured, bounded
+[external verifier command](http-command-authentication-v4.md). It requires
+`http_access` and does not expose v3 process/file endpoints to source. Absence
+retains existing authentication behavior; invalid configuration never falls back.

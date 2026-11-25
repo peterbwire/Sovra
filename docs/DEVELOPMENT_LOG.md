@@ -11468,3 +11468,19 @@ per-audience denial, raw/missing metadata and spoofed secure proxy headers;
 existing verifier API implementations remain source compatible. TLS/proxy trust,
 reviewed credential backends and production qualification remain open.
 See [provider context contract](reference/http-authentication-v4.md).
+
+
+2026-11-24 G14 explicit external verifier: added HttpCommandVerifier using a
+private HostV3 owned-process grant, fixed program/cwd/argv, empty environment and
+strict version-one JSON stdin/stdout. Protocol/stdio bytes, argument count/bytes
+and child duration are bounded; malformed/nonzero/oversized replies fail closed.
+An additive cooperative verifier control hook preserves existing implementations
+while allowing command I/O to observe aggregate HTTP cancellation/deadline and
+kill/reap the direct child. Optional external v4 policy dispatch requires access
+configuration; it does not expose v3 endpoints or embed backend credentials.
+Five protocol/process tests and two independent authenticated CLI/native clients
+cover valid principals/redaction, 401/403, continued service, source deletion,
+empty environment, absence of fixture credentials in native bytes and cleanup.
+The fixture backend/key are test-only dependencies. Production credential
+lifecycle, TLS and deployment qualification remain open.
+See [delegation scope](reference/http-command-authentication-v4.md).

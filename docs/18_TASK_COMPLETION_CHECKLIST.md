@@ -282,7 +282,8 @@ Implemented evidence:
 - [x] Retain repeatable independent client, port-conflict, partial I/O, disconnect, deadline and cleanup evidence through the [frozen-source G14 qualifier](G14_QUALIFICATION.md), including CLI/native and v3 compatibility. Hosted/additional-platform results must be collected separately.
 - [x] Add a trusted Rust Bearer-verifier embedding boundary with bounded checked credentials, provider outcomes, validated principal publication, Authorization redaction, shared controls and an actual Sovra consumer. See [provider scope](reference/http-authentication-v4.md). No CLI/native credential backend or cryptographic verification is bundled.
 - [x] Supply admitted Host/Origin and actual transport to trusted verifiers; test audience-bound refusal, exact context and denial of forged secure forwarding claims. See [audience context](reference/http-authentication-v4.md#audience-and-actual-transport-context); TLS/proxy trust and deployable credential backends remain open.
-- [ ] Implement client authentication and reviewed per-identity/per-route authorization; existing exact request allowlists do not authenticate clients.
+- [x] Delegate CLI/native Bearer verification to an explicit captured external command with strict bounded protocol, private process authority, cooperative cancellation/deadline cleanup and independent valid/401/403 native clients. See [command contract](reference/http-command-authentication-v4.md). No production backend/store/TLS is bundled.
+- [ ] Select and qualify reviewed production credential backends, issuance/storage/rotation/revocation and per-identity/per-route permissions; delegated verification does not itself provide those systems.
 - [ ] Add reviewed concurrency/backpressure, streaming, TLS and deployment controls
   before claiming production server support. A private Node adapter is insufficient.
 
