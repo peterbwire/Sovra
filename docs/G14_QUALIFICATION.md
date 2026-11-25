@@ -64,7 +64,11 @@ native clients, fixed/chunked framing, validated-discard trailers, Continue,
 Host/Origin/method/target admission, the trusted Bearer-verifier embedding
 boundary, strict external verifier command protocol/cleanup, aggregate HTTP admission
 (counting/clock boundaries/pre-verifier 429) and independent
-actual authenticated CLI/native HTTP/JSON clients.
+actual authenticated CLI/native HTTP/JSON clients. Current coverage includes
+owned head/body/Continue/final/refusal polling, two-slot delayed-peer interleaving,
+private process-state polls and two-job pending command verification with gated
+independent clients and direct-child cleanup. Trusted-provider compatibility
+defaults and blocking APIs remain synchronous.
 Existing v3 host and data CLI/native workflows also run. Native tests delete
 project files, clear the environment and remove Node/PATH availability. The
 existing G13 complete-source suite and IDE host evidence remain separate.
@@ -86,7 +90,8 @@ remain open and must not be inferred from a passing report:
 - Reviewed production credential backends, issuance/storage/lifecycle,
   identity/per-route authorization and deployment policy.
 - Complete HTTP protocol/conformance coverage and retained/verified trailers.
-- Concurrency/scheduling, backpressure, streaming, TLS and remote serving.
+- Production/preemptive scheduling, configurable readiness-driven pools, streaming,
+  TLS and remote serving; bounded example I/O interleaving is implemented.
 - Windows/macOS runtime, browser/mobile targets and release qualification.
 
 Optional Host/Origin/method/target policies preserve the documented absent-policy

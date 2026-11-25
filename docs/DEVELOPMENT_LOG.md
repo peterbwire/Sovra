@@ -11740,3 +11740,13 @@ refused before verification. Capacity, close/cancellation/timeout reaping and
 existing v3/HTTP controls pass. Strict all-target/all-feature Clippy, exact Rust
 1.74.0 all-target check, Windows GNU all-target compile, formatting and documentation
 links pass. This follow-up does not replace full frozen-source qualification.
+
+## 2026-11-25: qualification platform guard correction
+
+GitHub macOS job 139148392272 failed strict Clippy because the test-only formatter
+publication helper was compiled where all its callers are disabled. Restrict its
+cfg to the same Windows/Linux test platforms as those callers. This changes no
+formatter/runtime behavior or platform support. The first local G14 qualification
+was deliberately interrupted and retained as unsuccessful before this edit;
+qualification restarts on the corrected frozen source. Hosted acceptance still
+requires actual successful job/artifact evidence.
