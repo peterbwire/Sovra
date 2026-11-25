@@ -249,3 +249,39 @@ scope cleanup, and repeated idle polls with exactly one verifier invocation.
 Independent CLI/native authenticated and default server regressions remain part
 of validation. Fair scheduling, asynchronous verification/Continue/final output,
 production concurrency and secure deployment remain open.
+
+## Cooperative final response output (2026-11-25)
+
+`http.start_response` accepts the same status/headers/Base64 body fields as
+`http.respond`, validates/renders through the same bounded framing code and
+returns Null without a socket write. It consumes the parsed request owner into
+private pending-response custody with immutable wire bytes and an unsent offset.
+It checks the shared accepted-time deadline before and after rendering.
+
+`http.poll_response` takes only version/op/handle, attempts at most one nonblocking
+write and returns Bool false while output remains. Partial writes advance exactly
+by the reported count; not-ready attempts retain the same suffix. Every write
+attempt, including not-ready, consumes the existing shared I/O budget and byte
+quantum. Polling never resets the accepted-time deadline. True means all bytes
+were accepted by the socket and close succeeded, not proof of peer receipt. It
+consumes custody and makes every token alias stale. A close error still drops the
+owner and is reported rather than publishing True.
+
+Raw I/O, receive and another response cannot bypass pending-output custody.
+Claimed cancellation, deadline, I/O/error refusal or explicit close drops queued
+output and the stream. Already transmitted prefixes are not rolled back, and no
+second error response is appended to a partial response. Initial host-call
+cancellation leaves unclaimed custody intact. Pending debug omits wire content.
+Each queued response remains under the existing output cap and stream slot;
+there is no unbounded background output queue. This is not an OS memory bound
+or a fairness/global-machine quota.
+
+Blocking `http.respond` remains supported through the same preparation/renderer.
+Tests verify byte-exact output through one-byte writes, retained HEAD context,
+stale/wrong-kind refusal, invalid framing without output, cancellation, shared
+I/O exhaustion, deadlines and opaque debug. The real Sovra HTTP example now
+starts and polls response output; independent default/authenticated CLI/native
+clients verify its behavior. Its demonstration loop remains sequential and is
+bounded by VM/control/I/O limits; this does not add a fair scheduler. Initial
+verification/Continue and denial output may still wait; production concurrency,
+streaming and deployment remain open.

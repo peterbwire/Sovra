@@ -1152,3 +1152,133 @@ fn pending_body_cancellation_and_deadline_release_private_state() {
         h.close_all().unwrap();
     }
 }
+
+#[test]
+fn cooperative_response_preserves_exact_wire_across_partial_writes_and_head_context() {
+    for method in ["GET", "HEAD"] {
+        let (mut h, n, mut peer) = connect(1, HttpExchangeLimits::DEFAULT);
+        peer.write_all(format!("{method} / HTTP/1.1\r\nHost: localhost\r\n\r\n").as_bytes())
+            .unwrap();
+        call(&mut h, &receive(n)).unwrap();
+        let start = response(n).replace("http.respond", "http.start_response");
+        assert_eq!(call(&mut h, &start).unwrap(), JsonValue::Null);
+        assert_eq!(h.usage(), (1, 1));
+        assert_eq!(call(&mut h, &start).unwrap_err().code, "input");
+        assert_eq!(
+            call(
+                &mut h,
+                &format!(r#"{{"version":4,"op":"net.write","handle":{n},"data":"eA=="}}"#)
+            )
+            .unwrap_err()
+            .code,
+            "input"
+        );
+        let poll = format!(r#"{{"version":4,"op":"http.poll_response","handle":{n}}}"#);
+        assert_eq!(call(&mut h, &poll).unwrap(), JsonValue::Bool(false));
+        let mut complete = false;
+        for _ in 0..1024 {
+            complete = call(&mut h, &poll).unwrap() == JsonValue::Bool(true);
+            if complete {
+                break;
+            }
+        }
+        assert!(complete);
+        assert_eq!(h.usage(), (1, 0));
+        assert_eq!(call(&mut h, &poll).unwrap_err().code, "input");
+        let mut wire = Vec::new();
+        peer.read_to_end(&mut wire).unwrap();
+        let expected = render_http_response(
+            200,
+            if method == "HEAD" {
+                HttpResponseContext::Head
+            } else {
+                HttpResponseContext::Standard
+            },
+            &[HttpResponseHeader {
+                name: "Content-Type",
+                value: b"application/json",
+            }],
+            b"{}",
+            HttpResponseLimits::DEFAULT,
+        )
+        .unwrap();
+        assert_eq!(wire, expected);
+        h.close_all().unwrap();
+    }
+}
+
+#[test]
+fn cooperative_response_cancellation_and_io_exhaustion_send_no_prefix() {
+    for cancel in [false, true] {
+        let (mut h, n, mut peer) = connect(
+            65536,
+            HttpExchangeLimits {
+                io_operations: 1,
+                ..HttpExchangeLimits::DEFAULT
+            },
+        );
+        peer.write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
+            .unwrap();
+        call(&mut h, &receive(n)).unwrap();
+        call(
+            &mut h,
+            &response(n).replace("http.respond", "http.start_response"),
+        )
+        .unwrap();
+        let poll = format!(r#"{{"version":4,"op":"http.poll_response","handle":{n}}}"#);
+        if cancel {
+            let mut ticks = 0;
+            assert_eq!(
+                h.call(&request(&poll), || {
+                    ticks += 1;
+                    if ticks == 2 {
+                        Err("cancel output")
+                    } else {
+                        Ok(())
+                    }
+                })
+                .unwrap_err(),
+                "cancel output"
+            );
+        } else {
+            assert_eq!(call(&mut h, &poll).unwrap_err().code, "limit");
+        }
+        assert_eq!(h.usage(), (1, 0));
+        let mut wire = Vec::new();
+        peer.read_to_end(&mut wire).unwrap();
+        assert!(wire.is_empty());
+        h.close_all().unwrap();
+    }
+}
+
+#[test]
+fn cooperative_response_deadline_and_invalid_framing_drop_pending_output() {
+    for expire in [false, true] {
+        let (mut h, n, mut peer) = connect(65536, HttpExchangeLimits::DEFAULT);
+        peer.write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
+            .unwrap();
+        call(&mut h, &receive(n)).unwrap();
+        let start = response(n).replace("http.respond", "http.start_response");
+        if expire {
+            call(&mut h, &start).unwrap();
+            assert!(!format!("{h:?}").contains("application/json"));
+            std::thread::sleep(Duration::from_millis(1100));
+            assert_eq!(
+                call(
+                    &mut h,
+                    &format!(r#"{{"version":4,"op":"http.poll_response","handle":{n}}}"#)
+                )
+                .unwrap_err()
+                .code,
+                "timeout"
+            );
+        } else {
+            assert!(call(&mut h, &start.replace("Content-Type", "Content-Length")).is_err());
+        }
+        assert_eq!(h.usage(), (1, 0));
+        let mut wire = Vec::new();
+        peer.read_to_end(&mut wire).unwrap();
+        assert!(wire.is_empty());
+        h.close_all().unwrap();
+    }
+}

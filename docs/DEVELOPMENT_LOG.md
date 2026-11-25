@@ -11620,3 +11620,22 @@ Node/PATH unavailable), actual Sovra body polling/cleanup and command-verifier
 regressions. Strict all-target/all-feature Clippy, exact Rust 1.74.0 all-target
 check, Windows GNU all-target compile, formatting and documentation links pass.
 This follow-up does not replace complete frozen-source G14 qualification.
+
+## 2026-11-25: G14 cooperative final-response output
+
+Added strict `http.start_response` and `http.poll_response`: validate/render before
+sending, retain immutable wire bytes and exact unsent suffix, then attempt one
+nonblocking write per poll. Shared accepted-time deadline, byte quantum and I/O
+budget remain; successful completion closes/invalidate custody. Failures drop the
+queue without appending a second error packet to transmitted prefixes. Debug
+omits wire content. Blocking respond shares preparation/rendering. Tests cover
+one-byte exact wire output and HEAD context, wrong-kind/stale refusal, invalid
+framing, cancellation, deadline and shared I/O exhaustion. The actual Sovra HTTP
+example now prepares/polls output; its loop is still sequential. Fair scheduling
+and cooperative verifier/interim/denial output remain open.
+
+Validation passes 94 tests across eight focused HTTP/network targets, including
+independent authenticated/default CLI/native consumers of the updated Sovra
+response-polling example. Strict all-target/all-feature Clippy, exact Rust 1.74.0
+all-target check, Windows GNU all-target compile, formatting and documentation
+links pass. This follow-up does not replace full frozen-source G14 qualification.

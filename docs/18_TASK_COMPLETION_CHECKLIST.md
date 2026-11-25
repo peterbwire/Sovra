@@ -292,6 +292,7 @@ Implemented evidence:
 - [x] Add `http.poll_head` pending-owner custody with one nonblocking read, retained head/deadline/I/O state and admission-once transition into checked receive. Body/verifier/output phases and fair scheduling remain open.
 - [x] Extract bounded resumable fixed-length HTTP body state with exact/zero lengths, sticky excess refusal, opaque debug and complete-only publication; integrate after authentication. Yielding body phases remain open.
 - [x] Retain owned checked HTTP metadata and verifier outcome with fixed/chunked pending-body custody; add `http.poll_body` with readiness-only publication and one nonblocking read after preparation. Verifier/interim/final-output scheduling remains open.
+- [x] Add cooperative final-response preparation/polling with immutable framed output, exact partial progress, shared deadlines/I/O and close-on-completion; the Sovra example uses this path. Fair scheduling and interim/verifier phases remain open.
 - [ ] Add reviewed concurrency/backpressure, streaming, TLS and deployment controls
   before claiming production server support. A private Node adapter is insufficient.
 

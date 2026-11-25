@@ -52,7 +52,13 @@ fn respond(handle: String, reply: Reply<String>) -> std::Result<Bool, std::Error
     let bytes = std::bytes_from_text(reply.body)?;
     let encoded = std::bytes_to_base64(bytes)?;
     let body = std::json_stringify(std::JsonValue::String(encoded))?;
-    let sent = call("{\"version\":4,\"op\":\"http.respond\",\"handle\":" + handle + ",\"status\":" + status + ",\"headers\":[[\"Content-Type\",\"application/json\"]],\"body\":" + body + "}")?;
+    let sent = call("{\"version\":4,\"op\":\"http.start_response\",\"handle\":" + handle + ",\"status\":" + status + ",\"headers\":[[\"Content-Type\",\"application/json\"]],\"body\":" + body + "}")?;
+    let mut complete = false;
+    while (complete == false) {
+        let progress = call("{\"version\":4,\"op\":\"http.poll_response\",\"handle\":" + handle + "}")?;
+        let state = std::json_stringify(progress)?;
+        complete = state == "true";
+    }
     return std::Result::<Bool, std::Error>::Ok(true);
 }
 fn serve(count: Int) -> std::Result<Bool, std::Error> {

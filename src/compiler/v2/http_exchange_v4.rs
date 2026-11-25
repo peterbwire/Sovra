@@ -163,26 +163,48 @@ impl HttpConnection {
     pub(super) fn close(self) -> Result<(), HostError> {
         self.stream.close()
     }
+    pub(super) fn start_response<E>(
+        self,
+        status: u16,
+        headers: &[HttpResponseHeader<'_>],
+        body: &[u8],
+        mut checkpoint: impl FnMut() -> Result<(), E>,
+    ) -> Result<Result<PendingResponse, HostError>, E> {
+        if let Err(e) =
+            flatten(checked(self.started, self.milliseconds, &mut checkpoint).map(|_| Ok(())))?
+        {
+            return Ok(Err(e));
+        }
+        let wire =
+            match render_http_response(status, self.context, headers, body, self.limits.response) {
+                Ok(wire) => wire,
+                Err(e) => return Ok(Err(error(e.code, e.message))),
+            };
+        if let Err(e) =
+            flatten(checked(self.started, self.milliseconds, &mut checkpoint).map(|_| Ok(())))?
+        {
+            return Ok(Err(e));
+        }
+        Ok(Ok(PendingResponse {
+            connection: self,
+            wire,
+            at: 0,
+        }))
+    }
     pub(super) fn respond<E>(
-        mut self,
+        self,
         status: u16,
         headers: &[HttpResponseHeader<'_>],
         body: &[u8],
         mut checkpoint: impl FnMut() -> Result<(), E>,
     ) -> Result<Result<J, HostError>, E> {
-        let wire =
-            match render_http_response(status, self.context, headers, body, self.limits.response) {
-                Ok(wire) => wire,
-                Err(e) => {
-                    return Ok(Err(HostError {
-                        code: e.code,
-                        message: e.message.into(),
-                    }))
-                }
-            };
-        match self.write(&wire, &mut checkpoint)? {
+        let mut pending = match self.start_response(status, headers, body, &mut checkpoint)? {
+            Ok(pending) => pending,
+            Err(e) => return Ok(Err(e)),
+        };
+        match pending.connection.write(&pending.wire, &mut checkpoint)? {
             Err(e) => Ok(Err(e)),
-            Ok(()) => Ok(self.close().map(|_| J::Null)),
+            Ok(()) => Ok(pending.close().map(|_| J::Null)),
         }
     }
     fn reject<E>(
@@ -237,6 +259,52 @@ pub(super) fn reject_admission<E>(
     let mut connection = HttpConnection::new(stream, accepted, socket, limits);
     connection.reject("admission", &mut checkpoint)?;
     Ok(Err(error("admission", "HTTP request admission exhausted")))
+}
+/// Immutable rendered response and exact unsent suffix; Debug never reveals output.
+pub(super) struct PendingResponse {
+    connection: HttpConnection,
+    wire: Vec<u8>,
+    at: usize,
+}
+impl std::fmt::Debug for PendingResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PendingResponse").finish_non_exhaustive()
+    }
+}
+impl PendingResponse {
+    pub(super) fn close(self) -> Result<(), HostError> {
+        self.connection.close()
+    }
+    pub(super) fn poll<E>(
+        &mut self,
+        checkpoint: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Result<bool, HostError>, E> {
+        let connection = &mut self.connection;
+        if let Err(e) = flatten(
+            checked(connection.started, connection.milliseconds, checkpoint).map(|_| Ok(())),
+        )? {
+            return Ok(Err(e));
+        }
+        if self.at == self.wire.len() {
+            return Ok(Ok(true));
+        }
+        if let Err(e) = connection.admit() {
+            return Ok(Err(e));
+        }
+        let end = self
+            .wire
+            .len()
+            .min(self.at.saturating_add(connection.bytes));
+        let (started, milliseconds) = (connection.started, connection.milliseconds);
+        match flatten(connection.stream.try_write(&self.wire[self.at..end], || {
+            checked(started, milliseconds, checkpoint)
+        }))? {
+            Err(e) => return Ok(Err(e)),
+            Ok(None) => {}
+            Ok(Some(n)) => self.at += n,
+        }
+        Ok(Ok(self.at == self.wire.len()))
+    }
 }
 /// Owned head preparation only: no parsed request or handler authority is published.
 #[derive(Debug)]

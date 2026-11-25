@@ -160,3 +160,10 @@ body completion without re-verification. Initial preparation can still wait for
 verification/Continue, and receive can wait for incomplete bodies. Fair scheduling
 and cooperative verification/output remain open. See
 [body polling](../reference/http-exchange-v4.md#checked-metadata-and-body-polling-2026-11-25).
+
+`http.start_response` and `http.poll_response` now retain immutable framed output
+and exact unsent suffix under owned custody, shared deadlines and per-attempt I/O
+admission. Polling attempts one write; completion closes and invalidates the token.
+The Sovra example exercises this through CLI/native consumers. Fair scheduling,
+cooperative verifier/interim/denial output and production controls remain open.
+See [response output](../reference/http-exchange-v4.md#cooperative-final-response-output-2026-11-25).

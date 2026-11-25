@@ -44,6 +44,7 @@ enum Owner {
         accepted: std::time::Instant,
     },
     Http(super::http_exchange_v4::HttpConnection),
+    PendingResponse(Box<super::http_exchange_v4::PendingResponse>),
     PendingHead(Box<super::http_exchange_v4::PendingHead>),
     PendingBody(Box<super::http_exchange_v4::PendingBody>),
 }
@@ -163,10 +164,14 @@ impl NetworkHostV4 {
             let allowed: &[&str] = match op {
                 "net.listen" => &["version", "op", "port"],
                 "net.port" | "net.accept" | "net.try_accept" | "net.close" | "http.receive"
-                | "http.poll_head" | "http.poll_body" => &["version", "op", "handle"],
+                | "http.poll_head" | "http.poll_body" | "http.poll_response" => {
+                    &["version", "op", "handle"]
+                }
                 "net.read" | "net.try_read" => &["version", "op", "handle", "maximum"],
                 "net.write" | "net.try_write" => &["version", "op", "handle", "data"],
-                "http.respond" => &["version", "op", "handle", "status", "headers", "body"],
+                "http.respond" | "http.start_response" => {
+                    &["version", "op", "handle", "status", "headers", "body"]
+                }
                 _ => {
                     return Err(error(
                         "unsupported",
@@ -221,6 +226,7 @@ impl NetworkHostV4 {
                 Some(Owner::Http(owner)) => owner.close().map(|_| J::Null),
                 Some(Owner::PendingHead(owner)) => owner.close().map(|_| J::Null),
                 Some(Owner::PendingBody(owner)) => owner.close().map(|_| J::Null),
+                Some(Owner::PendingResponse(owner)) => owner.close().map(|_| J::Null),
                 None => Err(error("input", "stale or foreign network handle")),
             });
         }
@@ -329,7 +335,26 @@ impl NetworkHostV4 {
                 ),
             );
         }
-        if op == "http.respond" {
+        if op == "http.poll_response" {
+            if !matches!(self.owners.get(&handle), Some(Owner::PendingResponse(_))) {
+                return Ok(Err(error(
+                    "input",
+                    "HTTP response poll requires pending output",
+                )));
+            }
+            let Some(Owner::PendingResponse(mut pending)) = self.owners.remove(&handle) else {
+                unreachable!()
+            };
+            return Ok(pending.poll(&mut checkpoint)?.and_then(|done| {
+                if done {
+                    pending.close()?;
+                } else {
+                    self.owners.insert(handle, Owner::PendingResponse(pending));
+                }
+                Ok(J::Bool(done))
+            }));
+        }
+        if op == "http.respond" || op == "http.start_response" {
             if !matches!(self.owners.get(&handle), Some(Owner::Http(_))) {
                 return Ok(Err(error(
                     "input",
@@ -374,6 +399,13 @@ impl NetworkHostV4 {
                 unreachable!()
             };
             return match setup {
+                Ok((status, headers, body)) if op == "http.start_response" => Ok(owner
+                    .start_response(status, &headers, &body, checkpoint)?
+                    .map(|pending| {
+                        self.owners
+                            .insert(handle, Owner::PendingResponse(Box::new(pending)));
+                        J::Null
+                    })),
                 Ok((status, headers, body)) => owner.respond(status, &headers, &body, checkpoint),
                 Err(e) => Ok(Err(e)),
             };
@@ -481,6 +513,7 @@ impl NetworkHostV4 {
                 Owner::Http(owner) => owner.close(),
                 Owner::PendingHead(owner) => owner.close(),
                 Owner::PendingBody(owner) => owner.close(),
+                Owner::PendingResponse(owner) => owner.close(),
                 Owner::Listener(_) => Ok(()),
             };
             if let Err(mut e) = closed {
