@@ -81,6 +81,27 @@ runner separately on Linux x86_64 and ARM64 and uploads reports even on failure.
 Configured CI jobs are not proof of a hosted pass; collect actual uploaded
 results before claiming hosted ARM64 acceptance.
 
+## Hosted restricted-profile evidence (2026-11-25)
+
+[CI run 45604357126](https://github.com/peterbwire/Sovra/actions/runs/45604357126)
+qualified revision `e47470d6fd608ebb0e155ec3a431d2a5557c8904` on both
+Linux x86_64 and aarch64. Downloaded artifact reports were inspected, rather than
+inferring acceptance from job configuration. Each passed 770 Rust tests and all
+13 mandatory stages, with identical start/end source hash
+`fa3054691e1a1131d84ee00066b59ecb46cb40910ab16e62f1990377c2ace3fe`.
+
+| Host | Artifact ID | Report directory |
+| --- | --- | --- |
+| Linux x86_64 | 15017836497 | `20261125T112608.488540Z` |
+| Linux aarch64 | 15017317466 | `20261125T112639.048690Z` |
+
+The optional Windows compile stage was not requested by these hosted profiles;
+its separate local evidence does not establish Windows runtime acceptance. The
+same run passed broader macOS/Ubuntu Rust/tooling jobs and both supported G13
+Linux profiles. The Windows job failed two formatter test expectations, addressed
+in the subsequent follow-up; the whole CI run is not green. Later edits require
+fresh evidence and do not change these reports' qualified revision.
+
 ## Completion boundaries
 
 Implemented and locally qualified behavior covers the documented restricted

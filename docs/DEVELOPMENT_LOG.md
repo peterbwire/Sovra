@@ -11800,3 +11800,14 @@ relocation acceptance. Windows' diagnostic test now uses Node's native realpath
 resolver because its JavaScript resolver fails on extended drive paths. These
 subsequent tooling/test edits have focused validation; they do not retroactively
 change the frozen report's source or establish fresh hosted acceptance.
+
+## 2026-11-25: hosted G14 ARM64/x64 acceptance and Windows formatter assertions
+
+Inspected both uploaded G14 reports from CI run 45604357126 at e47470d: each
+passes 770 Rust tests, all 13 mandatory stages and matching start/end source
+hashes. Record artifact IDs and exact scope in G14 qualification/checklist.
+Broader macOS and Ubuntu jobs passed. Windows advanced past the earlier CLI
+failures but exposed two formatter-test assumptions: compare against canonical
+source paths, and require the existing guarded package-capture refusal on
+Windows while retaining successful formatting. All 16 formatter CLI tests pass
+locally. Windows execution of this follow-up still requires hosted evidence.

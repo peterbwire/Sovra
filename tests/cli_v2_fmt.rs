@@ -378,7 +378,8 @@ fn package_preflight_rejects_a_later_malformed_source_without_writes_or_notices(
         if mode == "--write" && !cfg!(any(windows, target_os = "linux")) {
             assert!(stderr.contains("qualified only on Windows and Linux"));
         } else {
-            assert!(stderr.contains(text(&dependency.join("src/main.svr"))));
+            let source = std::fs::canonicalize(dependency.join("src/main.svr")).unwrap();
+            assert!(stderr.contains(text(&source)), "{stderr}");
         }
         assert_eq!(
             std::fs::read_to_string(root.join("src/main.svr")).unwrap(),
@@ -519,5 +520,16 @@ fn package_formatter_prepares_module_function_sources_without_executing_them() {
         .cli(&["fmt", "--experimental-v2", "--package", "--check", p])
         .status
         .success());
-    assert!(t.cli(&["check", "--experimental-v2", p]).status.success());
+    let checked = t.cli(&["check", "--experimental-v2", p]);
+    if cfg!(target_os = "linux") {
+        assert!(
+            checked.status.success(),
+            "{}",
+            String::from_utf8_lossy(&checked.stderr)
+        );
+    } else {
+        assert_eq!(checked.status.code(), Some(1));
+        assert!(String::from_utf8_lossy(&checked.stderr)
+            .contains("guarded package source capture unavailable on this host"));
+    }
 }
