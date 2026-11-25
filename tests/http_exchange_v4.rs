@@ -1351,3 +1351,118 @@ fn blocking_receive_resumes_a_partial_continue_without_duplicate_prefix() {
     first.join().unwrap();
     h.close_all().unwrap();
 }
+
+#[test]
+fn cooperative_refusal_sends_one_byte_turns_and_never_becomes_a_handler() {
+    let (mut h, n, mut peer) = connect(1, HttpExchangeLimits::DEFAULT);
+    peer.write_all(b"BAD\r\n\r\n").unwrap();
+    let head = format!(r#"{{"version":4,"op":"http.poll_head","handle":{n}}}"#);
+    let mut ready = false;
+    for _ in 0..64 {
+        ready = call(&mut h, &head).unwrap() == JsonValue::Bool(true);
+        if ready {
+            break;
+        }
+    }
+    assert!(ready);
+    let poll = format!(r#"{{"version":4,"op":"http.poll_body","handle":{n}}}"#);
+    assert_eq!(call(&mut h, &poll).unwrap(), JsonValue::Bool(false));
+    assert_eq!(call(&mut h, &receive(n)).unwrap_err().code, "input");
+    assert_eq!(call(&mut h, &response(n)).unwrap_err().code, "input");
+    assert_eq!(
+        call(
+            &mut h,
+            &format!(r#"{{"version":4,"op":"net.read","handle":{n},"maximum":1}}"#)
+        )
+        .unwrap_err()
+        .code,
+        "input"
+    );
+    let mut terminal = false;
+    for _ in 0..256 {
+        match call(&mut h, &poll) {
+            Ok(value) => assert_eq!(value, JsonValue::Bool(false)),
+            Err(e) => {
+                assert_eq!(e.code, "syntax");
+                terminal = true;
+                break;
+            }
+        }
+    }
+    assert!(terminal);
+    let mut wire = Vec::new();
+    peer.read_to_end(&mut wire).unwrap();
+    assert_eq!(
+        wire,
+        render_http_response(
+            400,
+            HttpResponseContext::Standard,
+            &[],
+            b"",
+            HttpResponseLimits::DEFAULT
+        )
+        .unwrap()
+    );
+    assert_eq!(h.usage(), (1, 0));
+    assert!(call(&mut h, &poll).is_err());
+    h.close_all().unwrap();
+}
+
+#[test]
+fn cooperative_refusal_cancellation_drops_suffix_without_second_packet() {
+    let (mut h, n, mut peer) = connect(1, HttpExchangeLimits::DEFAULT);
+    peer.write_all(b"BAD\r\n\r\n").unwrap();
+    let head = format!(r#"{{"version":4,"op":"http.poll_head","handle":{n}}}"#);
+    let mut ready = false;
+    for _ in 0..64 {
+        ready = call(&mut h, &head).unwrap() == JsonValue::Bool(true);
+        if ready {
+            break;
+        }
+    }
+    assert!(ready);
+    let poll = format!(r#"{{"version":4,"op":"http.poll_body","handle":{n}}}"#);
+    assert_eq!(call(&mut h, &poll).unwrap(), JsonValue::Bool(false));
+    let mut ticks = 0;
+    assert_eq!(
+        h.call(&request(&poll), || {
+            ticks += 1;
+            if ticks == 2 {
+                Err("cancel refusal")
+            } else {
+                Ok(())
+            }
+        })
+        .unwrap_err(),
+        "cancel refusal"
+    );
+    let mut wire = Vec::new();
+    peer.read_to_end(&mut wire).unwrap();
+    assert_eq!(wire, b"H");
+    assert_eq!(h.usage(), (1, 0));
+    h.close_all().unwrap();
+}
+
+#[test]
+fn cooperative_refusal_deadline_stops_writes_and_preserves_original_error() {
+    let (mut h, n, mut peer) = connect(1, HttpExchangeLimits::DEFAULT);
+    peer.write_all(b"BAD\r\n\r\n").unwrap();
+    let head = format!(r#"{{"version":4,"op":"http.poll_head","handle":{n}}}"#);
+    let mut ready = false;
+    for _ in 0..64 {
+        ready = call(&mut h, &head).unwrap() == JsonValue::Bool(true);
+        if ready {
+            break;
+        }
+    }
+    assert!(ready);
+    let poll = format!(r#"{{"version":4,"op":"http.poll_body","handle":{n}}}"#);
+    assert_eq!(call(&mut h, &poll).unwrap(), JsonValue::Bool(false));
+    std::thread::sleep(Duration::from_millis(1100));
+    assert_eq!(call(&mut h, &poll).unwrap_err().code, "syntax");
+    let mut wire = Vec::new();
+    peer.read_to_end(&mut wire).unwrap();
+    assert_eq!(wire, b"H");
+    assert_eq!(h.usage(), (1, 0));
+    h.close_all().unwrap();
+}

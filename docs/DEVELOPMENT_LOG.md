@@ -11678,3 +11678,22 @@ cases. Five focused Continue transitions also pass; they are included in the
 76-test total, not added again. Strict all-target/all-feature Clippy, exact
 Rust 1.74.0 all-target check, Windows GNU all-target compile, formatting and
 documentation links pass. This is not replacement full frozen-source qualification.
+
+## 2026-11-25: G14 cooperative automatic refusal output
+
+Added opaque pending-refusal custody sharing the existing status/header renderer
+and response writer. Cooperative quota and head/body-preparation refusals perform
+one write attempt per poll, retain suffix/deadline/I/O state and return only false
+until the original terminal error. Denied connections cannot become handlers,
+receive raw I/O or accept application responses. Packet/close failure preserves
+the original refusal category; cancellation drops suffixes without adding another
+packet. Blocking receive retains synchronous best-effort refusal and later polling
+failures may still close silently. Tests cover byte-exact 400 output, state
+exclusion, cancellation/deadline after a prefix and no-input no-store 429.
+Initial verifier execution and production fairness remain open.
+
+Validation passes 90 tests across seven focused HTTP/network targets, including
+independent authenticated/default CLI/native servers and delayed-peer scheduling
+clients. Strict all-target/all-feature Clippy, exact Rust 1.74.0 all-target check,
+Windows GNU all-target compile, formatting and documentation links pass. This
+follow-up does not replace full frozen-source G14 qualification.

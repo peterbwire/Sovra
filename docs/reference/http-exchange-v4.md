@@ -294,3 +294,34 @@ before reading body bytes on a later turn. Blocking receive resumes that suffix.
 See [cooperative interim output](http-expect-v4.md#cooperative-interim-output-2026-11-25).
 Initial verifier and denial/error output remain waiting phases; older checkpoint
 notes describing waiting Continue preparation are superseded by this update.
+
+## Cooperative refusal output (2026-11-25)
+
+Cooperative head admission and body preparation now retain automatic refusal
+packets under unique pending-refusal custody. This covers quota refusal before
+head/verifier work and checked head parsing, access, authentication and initial
+body-framing failures during `http.poll_body`. The same fixed status/header
+renderer is used: empty HEAD-safe bodies, Bearer challenge for 401 and no-store
+for 429. Response ceilings are checked before any packet is queued.
+
+`http.poll_head` or `http.poll_body` advances at most one refusal write attempt
+per call, preserving the exact suffix, accepted-time deadline and shared I/O/byte
+limits. Partial/not-ready output returns Bool false only. When packet bytes are accepted by the socket
+or output can no longer proceed, custody closes and the original host error is returned.
+No True/handler request/principal is ever published for a refused connection.
+Output is best effort: exhausted rendering/I/O/deadline limits may close without a
+complete packet. Packet errors and close errors do not replace the original
+refusal category, matching the existing automatic-refusal contract.
+
+`http.receive`, raw reads/writes and application responses cannot consume pending
+refusal custody. Explicit close is allowed. Claimed cancellation drops queued
+suffixes and the socket; transmitted prefixes cannot be undone and no extra error
+packet is appended. Debug output omits wire data and refusal metadata.
+
+Blocking receive keeps its synchronous best-effort refusal behavior. Later
+polling read/decoder/control failures may still close silently; they do not gain
+an obligation to emit a packet. This is not asynchronous verification or a
+production fairness guarantee. Tests cover exact one-byte 400 output, fail-closed
+state exclusion, cancellation/deadline after a prefix, stale tokens and a no-input
+429 with no-store. CLI/native consumers exercise automatic credential/access/
+expectation/admission refusals through the actual Sovra scheduler.

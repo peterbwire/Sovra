@@ -204,11 +204,7 @@ impl HttpConnection {
             Ok(()) => Ok(pending.close().map(|_| J::Null)),
         }
     }
-    fn reject<E>(
-        &mut self,
-        code: &'static str,
-        checkpoint: &mut impl FnMut() -> Result<(), E>,
-    ) -> Result<(), E> {
+    fn rejection_wire(&self, code: &'static str) -> Result<Vec<u8>, HostError> {
         let status = match code {
             "limit" => 413,
             "unsupported" => 501,
@@ -233,13 +229,21 @@ impl HttpConnection {
             429 => &no_store,
             _ => &[],
         };
-        if let Ok(wire) = render_http_response(
+        render_http_response(
             status,
             HttpResponseContext::Standard,
             headers,
             b"",
             self.limits.response,
-        ) {
+        )
+        .map_err(|e| error(e.code, e.message))
+    }
+    fn reject<E>(
+        &mut self,
+        code: &'static str,
+        checkpoint: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<(), E> {
+        if let Ok(wire) = self.rejection_wire(code) {
             let _ = self.write(&wire, checkpoint)?;
         }
         Ok(())
@@ -256,6 +260,73 @@ pub(super) fn reject_admission<E>(
     let mut connection = HttpConnection::new(stream, accepted, socket, limits);
     connection.reject("admission", &mut checkpoint)?;
     Ok(Err(error("admission", "HTTP request admission exhausted")))
+}
+/// A refusal can only publish its terminal error, never handler metadata.
+pub(super) struct PendingRefusal {
+    output: PendingResponse,
+    failure: HostError,
+}
+impl std::fmt::Debug for PendingRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PendingRefusal").finish_non_exhaustive()
+    }
+}
+impl PendingRefusal {
+    fn new(connection: HttpConnection, failure: HostError) -> Result<Self, HostError> {
+        let wire = match connection.rejection_wire(failure.code) {
+            Ok(wire) => wire,
+            Err(_) => return Err(failure),
+        };
+        Ok(Self {
+            output: PendingResponse {
+                connection,
+                wire,
+                at: 0,
+            },
+            failure,
+        })
+    }
+    pub(super) fn poll<E>(
+        &mut self,
+        checkpoint: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Result<bool, HostError>, E> {
+        self.output.poll(checkpoint)
+    }
+    pub(super) fn close(self) -> Result<(), HostError> {
+        self.output.close()
+    }
+    pub(super) fn finish(self) -> HostError {
+        let _ = self.output.close();
+        self.failure
+    }
+}
+pub(super) fn queue_admission(
+    stream: LoopbackStream,
+    accepted: Instant,
+    socket: NetworkLimits,
+    limits: HttpExchangeLimits,
+) -> Result<PendingRefusal, HostError> {
+    PendingRefusal::new(
+        HttpConnection::new(stream, accepted, socket, limits),
+        error("admission", "HTTP request admission exhausted"),
+    )
+}
+pub(super) enum Prepared {
+    Body(Box<PendingBody>),
+    Refusal(Box<PendingRefusal>),
+}
+fn refuse<E>(
+    mut connection: HttpConnection,
+    failure: HostError,
+    cooperative: bool,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Result<Prepared, HostError>, E> {
+    if cooperative {
+        return Ok(PendingRefusal::new(connection, failure)
+            .map(|pending| Prepared::Refusal(Box::new(pending))));
+    }
+    connection.reject(failure.code, checkpoint)?;
+    Ok(Err(failure))
 }
 /// Immutable rendered response and exact unsent suffix; Debug never reveals output.
 pub(super) struct PendingResponse {
@@ -369,10 +440,11 @@ impl PendingHead {
 /// Consume pending head custody; strict validation precedes handler publication.
 pub(super) fn prepare_pending<E>(
     pending: PendingHead,
+    cooperative: bool,
     access: Option<&super::HttpAccessPolicy>,
     verifier: Option<&mut super::http_authentication_v4::Verifier>,
     mut checkpoint: impl FnMut() -> Result<(), E>,
-) -> Result<Result<PendingBody, HostError>, E> {
+) -> Result<Result<Prepared, HostError>, E> {
     let PendingHead {
         mut connection,
         buffer: mut pending,
@@ -399,21 +471,25 @@ pub(super) fn prepare_pending<E>(
     let mut head = match parse_http_head(&buffer, limits.request, eof, true) {
         Ok(Some(head)) => head,
         Ok(None) => {
-            connection.reject("limit", &mut checkpoint)?;
-            return Ok(Err(error(
-                "limit",
-                "HTTP head did not complete within limit",
-            )));
+            return refuse(
+                connection,
+                error("limit", "HTTP head did not complete within limit"),
+                cooperative,
+                &mut checkpoint,
+            );
         }
         Err(e) => {
-            connection.reject(e.code, &mut checkpoint)?;
-            return Ok(Err(error(e.code, e.message)));
+            return refuse(
+                connection,
+                error(e.code, e.message),
+                cooperative,
+                &mut checkpoint,
+            );
         }
     };
     if let Some(access) = access {
         if let Err(e) = access.admit(&head.request, &mut head.work) {
-            connection.reject(e.code, &mut checkpoint)?;
-            return Ok(Err(e));
+            return refuse(connection, e, cooperative, &mut checkpoint);
         }
     }
     let principal = if let Some(verifier) = verifier {
@@ -458,8 +534,7 @@ pub(super) fn prepare_pending<E>(
         match outcome {
             Ok(principal) => Some(principal),
             Err(e) => {
-                connection.reject(e.code, &mut checkpoint)?;
-                return Ok(Err(e));
+                return refuse(connection, e, cooperative, &mut checkpoint);
             }
         }
     } else {
@@ -479,13 +554,11 @@ pub(super) fn prepare_pending<E>(
     let mut body = match BodyState::new(head.framing, head.work, connection.limits) {
         Ok(body) => body,
         Err(e) => {
-            connection.reject(e.code, &mut checkpoint)?;
-            return Ok(Err(e));
+            return refuse(connection, e, cooperative, &mut checkpoint);
         }
     };
     if let Err(e) = body.feed(&buffer[head.bytes..]) {
-        connection.reject(e.code, &mut checkpoint)?;
-        return Ok(Err(e));
+        return refuse(connection, e, cooperative, &mut checkpoint);
     }
     let interim = if head.continue_expected && !body.complete() {
         if let Err(e) = connection.check_continue() {
@@ -495,12 +568,12 @@ pub(super) fn prepare_pending<E>(
     } else {
         None
     };
-    Ok(Ok(PendingBody {
+    Ok(Ok(Prepared::Body(Box::new(PendingBody {
         connection,
         metadata,
         body,
         interim,
-    }))
+    }))))
 }
 
 enum BodyState {

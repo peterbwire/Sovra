@@ -45,6 +45,7 @@ enum Owner {
     },
     Http(super::http_exchange_v4::HttpConnection),
     PendingResponse(Box<super::http_exchange_v4::PendingResponse>),
+    PendingRefusal(Box<super::http_exchange_v4::PendingRefusal>),
     PendingHead(Box<super::http_exchange_v4::PendingHead>),
     PendingBody(Box<super::http_exchange_v4::PendingBody>),
 }
@@ -246,8 +247,17 @@ impl NetworkHostV4 {
                 Some(Owner::PendingHead(owner)) => owner.close().map(|_| J::Null),
                 Some(Owner::PendingBody(owner)) => owner.close().map(|_| J::Null),
                 Some(Owner::PendingResponse(owner)) => owner.close().map(|_| J::Null),
+                Some(Owner::PendingRefusal(owner)) => owner.close().map(|_| J::Null),
                 None => Err(error("input", "stale or foreign network handle")),
             });
+        }
+        if (op == "http.poll_head" || op == "http.poll_body")
+            && matches!(self.owners.get(&handle), Some(Owner::PendingRefusal(_)))
+        {
+            let Some(Owner::PendingRefusal(pending)) = self.owners.remove(&handle) else {
+                unreachable!()
+            };
+            return self.poll_refusal(handle, pending, &mut checkpoint);
         }
         if op == "http.poll_body"
             || (op == "http.receive"
@@ -266,11 +276,15 @@ impl NetworkHostV4 {
                 Some(Owner::PendingBody(body)) => *body,
                 Some(Owner::PendingHead(head)) => match super::http_exchange_v4::prepare_pending(
                     *head,
+                    true,
                     self.http_access.as_deref(),
                     self.http_verifier.as_mut(),
                     &mut checkpoint,
                 )? {
-                    Ok(body) => body,
+                    Ok(super::http_exchange_v4::Prepared::Body(body)) => *body,
+                    Ok(super::http_exchange_v4::Prepared::Refusal(pending)) => {
+                        return self.poll_refusal(handle, pending, &mut checkpoint)
+                    }
                     Err(e) => return Ok(Err(e)),
                 },
                 _ => unreachable!(),
@@ -309,6 +323,18 @@ impl NetworkHostV4 {
                         .as_mut()
                         .map_or(true, |limiter| limiter.admit())
                     {
+                        if op == "http.poll_head" {
+                            let pending = match super::http_exchange_v4::queue_admission(
+                                stream,
+                                accepted,
+                                self.limits,
+                                self.http,
+                            ) {
+                                Ok(pending) => pending,
+                                Err(e) => return Ok(Err(e)),
+                            };
+                            return self.poll_refusal(handle, Box::new(pending), &mut checkpoint);
+                        }
                         return super::http_exchange_v4::reject_admission(
                             stream,
                             accepted,
@@ -338,11 +364,15 @@ impl NetworkHostV4 {
             }
             let body = match super::http_exchange_v4::prepare_pending(
                 pending,
+                false,
                 self.http_access.as_deref(),
                 self.http_verifier.as_mut(),
                 &mut checkpoint,
             )? {
-                Ok(body) => body,
+                Ok(super::http_exchange_v4::Prepared::Body(body)) => *body,
+                Ok(super::http_exchange_v4::Prepared::Refusal(pending)) => {
+                    return Ok(Err(pending.finish()))
+                }
                 Err(e) => return Ok(Err(e)),
             };
             return Ok(
@@ -523,6 +553,20 @@ impl NetworkHostV4 {
             ))),
         }
     }
+    fn poll_refusal<E>(
+        &mut self,
+        handle: i64,
+        mut pending: Box<super::http_exchange_v4::PendingRefusal>,
+        checkpoint: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Result<J, HostError>, E> {
+        match pending.poll(checkpoint)? {
+            Ok(false) => {
+                self.owners.insert(handle, Owner::PendingRefusal(pending));
+                Ok(Ok(J::Bool(false)))
+            }
+            _ => Ok(Err(pending.finish())),
+        }
+    }
     /// Close every owner, even after an error. First shutdown failure is explicit.
     pub fn close_all(&mut self) -> Result<(), HostError> {
         let mut first = None;
@@ -533,6 +577,7 @@ impl NetworkHostV4 {
                 Owner::PendingHead(owner) => owner.close(),
                 Owner::PendingBody(owner) => owner.close(),
                 Owner::PendingResponse(owner) => owner.close(),
+                Owner::PendingRefusal(owner) => owner.close(),
                 Owner::Listener(_) => Ok(()),
             };
             if let Err(mut e) = closed {

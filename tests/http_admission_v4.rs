@@ -220,3 +220,42 @@ fn head_polls_charge_admission_once_and_receive_does_not_recharge() {
     );
     h.close_all().unwrap();
 }
+
+#[test]
+fn zero_quota_polling_retains_one_byte_refusal_without_reading_request() {
+    let mut h = NetworkHostV4::new(NetworkLimits {
+        bytes: 1,
+        ..NetworkLimits::DEFAULT
+    })
+    .unwrap();
+    h.set_http_admission(HttpAdmissionPolicy {
+        requests: 0,
+        milliseconds: 60000,
+    })
+    .unwrap();
+    h.grant_port(0).unwrap();
+    let (l, p) = listener(&mut h);
+    let (n, mut peer) = connect(&mut h, l, p);
+    let poll = format!(r#"{{"version":4,"op":"http.poll_head","handle":{n}}}"#);
+    assert_eq!(call(&mut h, &poll).unwrap(), JsonValue::Bool(false));
+    let mut terminal = false;
+    for _ in 0..256 {
+        match call(&mut h, &poll) {
+            Ok(value) => assert_eq!(value, JsonValue::Bool(false)),
+            Err(e) => {
+                assert_eq!(e.code, "admission");
+                terminal = true;
+                break;
+            }
+        }
+    }
+    assert!(terminal);
+    let mut wire = Vec::new();
+    peer.read_to_end(&mut wire).unwrap();
+    assert!(wire.starts_with(b"HTTP/1.1 429 Too Many Requests\r\n"));
+    assert!(wire
+        .windows(b"Cache-Control: no-store\r\n".len())
+        .any(|v| v == b"Cache-Control: no-store\r\n"));
+    assert_eq!(h.usage(), (1, 0));
+    h.close_all().unwrap();
+}

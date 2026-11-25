@@ -179,3 +179,10 @@ Continue output now retains its exact suffix in pending-body custody and uses on
 nonblocking write turn before subsequent body reads; blocking receive resumes it
 without duplicate bytes. See [interim output](../reference/http-expect-v4.md#cooperative-interim-output-2026-11-25).
 Initial verification and denial/error output remain waiting phases.
+
+Cooperative automatic refusals now retain bounded output custody and return only
+false while pending, then the original terminal error. Admission/head preparation
+failures can yield without ever publishing a handler/principal. Blocking receive
+keeps synchronous best-effort refusal; later polling failures may close silently.
+See [refusal scope](../reference/http-exchange-v4.md#cooperative-refusal-output-2026-11-25).
+Initial verifier execution and production controls remain open.
