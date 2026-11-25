@@ -1,4 +1,6 @@
 //! Integration tests for the `svr` command-line contract.
+mod support;
+use support::run_node_source;
 
 use std::io;
 use std::process::{Command, Output};
@@ -1505,20 +1507,6 @@ fn structural_depth_errors_replace_subprocess_crashes() {
     "#,
     );
     std::fs::remove_dir_all(&directory).unwrap();
-}
-
-// Generated programs can exceed Windows' command-line limit.
-fn run_node_source(source: &[u8]) -> std::io::Result<Output> {
-    use std::io::Write as _;
-    use std::process::Stdio;
-    let mut child = Command::new("node")
-        .arg("-")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
-    child.stdin.take().expect("stdin").write_all(source)?;
-    child.wait_with_output()
 }
 
 fn assert_json_report(output: &Output, assertions: &str) {

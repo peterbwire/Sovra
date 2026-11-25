@@ -11834,3 +11834,15 @@ cancellation preserves caller custody and does not call cleanup. Explicit cleanu
 surfaces the cleanup error; cancellation/deadline retain their original errors.
 This extends regression coverage without broadening supported hosts or changing
 runtime behavior. Full qualification remains tied to the source of each report.
+
+## 2026-11-25: portable JavaScript backend acceptance harness
+
+Hosted run 45612634553 passed G14 on Linux x64/ARM64 and broader Ubuntu/macOS
+checks at bc846f6. Windows reached typed-array backend parity, then failed two
+Node launches with OS error 206 because generated JavaScript exceeded the
+command-line limit. Move the existing CLI stdin runner into shared test support
+and use it for typed arrays, value footprints and deep runtime values. Generated
+programs execute through Node stdin, preserving interpreter/JavaScript output
+assertions and avoiding command-line length limits. This is a test transport
+correction, not an expansion of runtime platform claims. Hosted Windows
+acceptance still requires a fresh run.

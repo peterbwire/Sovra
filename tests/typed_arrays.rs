@@ -1,4 +1,5 @@
 //! Approved G13 structural array annotations and snapshot behavior.
+mod support;
 use sovra::compiler::{
     backend, compile_program, interpreter, parser::Parser, semantic::SemanticAnalyzer,
 };
@@ -6,10 +7,7 @@ fn execute(source: &str, expected: &[&str]) {
     let program = Parser::new().parse_source(source).unwrap();
     let (ir, _) = compile_program(&program).unwrap();
     assert_eq!(interpreter::run(&ir).unwrap(), expected);
-    let output = std::process::Command::new("node")
-        .args(["--eval", &backend::render_javascript(&ir)])
-        .output()
-        .unwrap();
+    let output = support::run_node_source(backend::render_javascript(&ir).as_bytes()).unwrap();
     assert!(
         output.status.success(),
         "{}",
@@ -73,10 +71,7 @@ fn independent_registered_library_exports_arrays_records_and_owned_results() {
     .unwrap();
     let expected = ["9", "1.5", "0", "1", "4.5"];
     assert_eq!(interpreter::run(package.ir()).unwrap(), expected);
-    let js = std::process::Command::new("node")
-        .args(["--eval", &backend::render_javascript(package.ir())])
-        .output()
-        .unwrap();
+    let js = support::run_node_source(backend::render_javascript(package.ir()).as_bytes()).unwrap();
     assert!(
         js.status.success(),
         "{}",

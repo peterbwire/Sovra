@@ -1,4 +1,5 @@
 //! Isolated regressions: an old stack overflow must fail a child, not the test runner.
+mod support;
 use sovra::compiler::{
     backend, interpreter,
     ir::{Instruction, IrFunction, IrProgram, Literal},
@@ -409,10 +410,7 @@ fn recursive_source_records_preserve_copy_equality_and_display_in_both_engines()
         interpreter::run(&ir).unwrap(),
         ["true".to_owned(), text.clone()]
     );
-    let js = std::process::Command::new("node")
-        .args(["--eval", &backend::render_javascript(&ir)])
-        .output()
-        .unwrap();
+    let js = support::run_node_source(backend::render_javascript(&ir).as_bytes()).unwrap();
     assert!(
         js.status.success(),
         "{}",
