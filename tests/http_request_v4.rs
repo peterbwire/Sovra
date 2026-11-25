@@ -301,3 +301,48 @@ fn default_size_boundaries_and_empty_opaque_fields_are_supported() {
         "limit"
     );
 }
+
+#[test]
+fn resumable_head_all_fragmentations_preserve_body_prefix_and_parser_result() {
+    let wire = b"POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 3\r\n\r\nabc";
+    for split in 0..wire.len() - 3 {
+        let mut pending = HttpHeadBuffer::new(HttpRequestLimits::DEFAULT).unwrap();
+        assert!(!pending.feed(&wire[..split]).unwrap());
+        assert!(pending.feed(&wire[split..]).unwrap());
+        let bytes = pending.into_bytes();
+        assert_eq!(bytes, wire);
+        assert_eq!(parse(&bytes).body(), b"abc");
+    }
+    let mut pending = HttpHeadBuffer::new(HttpRequestLimits::DEFAULT).unwrap();
+    for byte in &wire[..wire.len() - 3] {
+        pending.feed(&[*byte]).unwrap();
+    }
+    assert!(pending.complete());
+    assert_eq!(pending.into_bytes(), &wire[..wire.len() - 3]);
+}
+
+#[test]
+fn resumable_head_limits_and_terminal_errors_are_sticky_without_prefix_copy() {
+    let limits = HttpRequestLimits {
+        head_bytes: 4,
+        ..HttpRequestLimits::DEFAULT
+    };
+    let mut pending = HttpHeadBuffer::new(limits).unwrap();
+    assert!(!pending.feed(b"\r\n").unwrap());
+    let error = pending.feed(b"\r\nx").unwrap_err();
+    assert_eq!(error.code, "limit");
+    assert_eq!(pending.remaining(), 2);
+    assert_eq!(pending.feed(b"\r\n").unwrap_err(), error);
+    assert_eq!(pending.into_bytes(), b"\r\n");
+    let mut pending = HttpHeadBuffer::new(limits).unwrap();
+    assert!(pending.feed(b"\r\n\r\n").unwrap());
+    assert_eq!(pending.remaining(), 0);
+    assert_eq!(pending.feed(b"").unwrap_err().code, "input");
+    let mut zero = HttpHeadBuffer::new(HttpRequestLimits {
+        head_bytes: 0,
+        ..limits
+    })
+    .unwrap();
+    assert!(!zero.feed(b"").unwrap());
+    assert_eq!(zero.feed(b"x").unwrap_err().code, "limit");
+}

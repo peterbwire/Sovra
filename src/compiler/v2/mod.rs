@@ -677,8 +677,8 @@ pub use http_response_v4::{
 };
 mod http_request_v4;
 pub use http_request_v4::{
-    parse_http_request, HttpRequest, HttpRequestError, HttpRequestHeader, HttpRequestLimits,
-    HttpRequestParse,
+    parse_http_request, HttpHeadBuffer, HttpRequest, HttpRequestError, HttpRequestHeader,
+    HttpRequestLimits, HttpRequestParse,
 };
 mod data_host_policy;
 pub use data_host_policy::DataHostPolicy;

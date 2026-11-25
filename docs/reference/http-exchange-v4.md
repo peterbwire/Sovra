@@ -138,3 +138,26 @@ CLI/native launches retain their existing no-provider behavior.
 Optional [fixed-window HTTP admission](http-admission-v4.md) now runs before
 head/parser/verifier work. All listeners share one domain count; failures consume
 admitted attempts and quota refusal closes with best-effort non-cacheable 429.
+
+## Resumable head-buffer foundation (2026-11-25)
+
+`HttpHeadBuffer` now owns bounded accumulated bytes, the delimiter scan cursor,
+completion and sticky failure state. Each feed resumes scanning from the prior
+cursor, including delimiters split across fragments. It does not reparse earlier
+fragments. Co-read body bytes remain intact; consuming the buffer moves its bytes
+without copying. An over-limit fragment is refused before any prefix is appended.
+A completed buffer refuses further feeds, including empty ones. Zero head capacity
+admits no bytes. Construction validates the existing lowerable request limits.
+
+The existing HTTP receive path now uses this accumulator while keeping its
+accept-to-response deadline, socket I/O counts and strict parser/access/verifier
+ordering. Delimiter completion is not syntax validation or authorization: the
+complete head still passes the existing parser exactly once, and no handler sees
+an incomplete/unchecked request. Parser work remains separately bounded; the
+accumulator only bounds byte storage and incremental delimiter scanning.
+
+Tests cover every two-fragment split and one-byte fragmentation, body-prefix
+preservation, exact/zero limits and sticky refusal without partial append.
+This extracts resumable head state; the socket receive loop still waits. Body,
+authentication, Continue and response state machines and fair scheduling remain
+open before concurrent HTTP service can be claimed.

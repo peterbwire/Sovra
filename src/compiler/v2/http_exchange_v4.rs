@@ -249,31 +249,23 @@ pub(super) fn receive<E>(
     mut checkpoint: impl FnMut() -> Result<(), E>,
 ) -> Result<Result<(HttpConnection, J), HostError>, E> {
     let mut connection = HttpConnection::new(stream, accepted, socket, limits);
-    let mut buffer = Vec::new();
-    let mut scan = 0;
+    let mut pending = match super::HttpHeadBuffer::new(limits.request) {
+        Ok(pending) => pending,
+        Err(e) => return Ok(Err(error(e.code, e.message))),
+    };
     let mut eof = false;
-    // Scan only new head bytes. The complete head is parsed exactly once.
-    'head: loop {
-        while scan + 4 <= buffer.len() {
-            if &buffer[scan..scan + 4] == b"\r\n\r\n" {
-                break 'head;
-            }
-            scan += 1;
-        }
-        if eof || buffer.len() >= limits.request.head_bytes {
-            break;
-        }
-        match connection.read(limits.request.head_bytes - buffer.len(), &mut checkpoint)? {
+    while !pending.complete() && !eof && pending.remaining() > 0 {
+        match connection.read(pending.remaining(), &mut checkpoint)? {
             Err(e) => return Ok(Err(e)),
             Ok(NetworkRead::Eof) => eof = true,
             Ok(NetworkRead::Data(bytes)) => {
-                if buffer.try_reserve(bytes.len()).is_err() {
-                    return Ok(Err(error("limit", "HTTP head allocation refused")));
+                if let Err(e) = pending.feed(&bytes) {
+                    return Ok(Err(error(e.code, e.message)));
                 }
-                buffer.extend_from_slice(&bytes);
             }
         }
     }
+    let buffer = pending.into_bytes();
     let mut head = match parse_http_head(&buffer, limits.request, eof, true) {
         Ok(Some(head)) => head,
         Ok(None) => {

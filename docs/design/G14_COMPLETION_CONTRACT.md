@@ -134,3 +134,9 @@ progress or explicit not-ready output. Tests fill a non-reading peer's send buff
 and prove another connection still progresses. Callers retain pending suffixes;
 this does not add resumable HTTP or a fair scheduler. See
 [network host](../reference/network-host-v4.md#cooperative-write-foundation-2026-11-25).
+
+HTTP receive now retains delimiter accumulation in `HttpHeadBuffer` (owned bytes,
+scan cursor and sticky failures), preserving strict one-time head parsing and
+existing limits. This is the resumable head-state foundation, not a yielding
+socket receive operation. Body/authentication/interim-response/final-output states
+and fair scheduling remain open. See [exchange](../reference/http-exchange-v4.md#resumable-head-buffer-foundation-2026-11-25).

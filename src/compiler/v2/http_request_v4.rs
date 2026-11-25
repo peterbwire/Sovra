@@ -43,12 +43,87 @@ impl HttpRequestLimits {
 /// Stable refusal category and original zero-based wire offset; no peer text is echoed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HttpRequestError {
-    /// policy, limit, syntax, framing, expectation, unsupported or truncated.
+    /// input, policy, limit, syntax, framing, expectation, unsupported or truncated.
     pub code: &'static str,
     /// Original input byte offset.
     pub offset: usize,
     /// Fixed explanation, independent of untrusted field/target contents.
     pub message: &'static str,
+}
+/// Bounded resumable delimiter accumulation; completion does not validate HTTP syntax.
+/// Bytes co-read after the delimiter are retained for subsequent body framing.
+#[derive(Debug)]
+pub struct HttpHeadBuffer {
+    bytes: Vec<u8>,
+    maximum: usize,
+    scan: usize,
+    complete: bool,
+    failure: Option<HttpRequestError>,
+}
+impl HttpHeadBuffer {
+    /// Create a head accumulator under the existing lowerable request limits.
+    pub fn new(limits: HttpRequestLimits) -> Result<Self, HttpRequestError> {
+        limits.validate()?;
+        Ok(Self {
+            bytes: Vec::new(),
+            maximum: limits.head_bytes,
+            scan: 0,
+            complete: false,
+            failure: None,
+        })
+    }
+    /// Remaining admitted input bytes, including any co-read body prefix.
+    pub fn remaining(&self) -> usize {
+        self.maximum - self.bytes.len()
+    }
+    /// True only when CRLF CRLF has been found; semantic parsing is still required.
+    pub fn complete(&self) -> bool {
+        self.complete
+    }
+    /// Feed one fragment. Errors are sticky and no over-limit prefix is copied.
+    pub fn feed(&mut self, fragment: &[u8]) -> Result<bool, HttpRequestError> {
+        if let Some(e) = &self.failure {
+            return Err(e.clone());
+        }
+        let refusal = if self.complete {
+            Some(fail(
+                "input",
+                self.bytes.len(),
+                "HTTP head accumulation already complete",
+            ))
+        } else if fragment.len() > self.remaining() {
+            Some(fail(
+                "limit",
+                self.bytes.len(),
+                "HTTP head accumulation limit exceeded",
+            ))
+        } else if self.bytes.try_reserve(fragment.len()).is_err() {
+            Some(fail(
+                "limit",
+                self.bytes.len(),
+                "HTTP head allocation refused",
+            ))
+        } else {
+            None
+        };
+        if let Some(e) = refusal {
+            self.failure = Some(e.clone());
+            return Err(e);
+        }
+        self.bytes.extend_from_slice(fragment);
+        while self.scan + 4 <= self.bytes.len() {
+            if &self.bytes[self.scan..self.scan + 4] == b"\r\n\r\n" {
+                self.complete = true;
+                break;
+            }
+            self.scan += 1;
+        }
+        Ok(self.complete)
+    }
+    /// Consume the buffer without copying; callers must still parse and validate it.
+    pub fn into_bytes(self) -> Vec<u8> {
+        self.bytes
+    }
 }
 fn fail(code: &'static str, offset: usize, message: &'static str) -> HttpRequestError {
     HttpRequestError {

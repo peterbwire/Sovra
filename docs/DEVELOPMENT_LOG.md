@@ -11546,3 +11546,19 @@ Focused validation passes 51 socket/HTTP tests (four admission, 24 exchange,
 Clippy, exact Rust 1.74.0 all-target check, Windows GNU all-target compile,
 formatting and documentation links. This follow-up does not replace the earlier
 full frozen-source/native qualification.
+
+## 2026-11-25: G14 resumable HTTP head-state foundation
+
+Extracted `HttpHeadBuffer` with owned bounded bytes, retained delimiter cursor,
+completion and sticky failures. Existing receive now uses it before strict
+one-time parsing; aggregate deadlines, authentication/admission and body handling
+remain unchanged. Fragmentation tests cover every two-part split and byte-wise
+heads, co-read body preservation, exact/zero limits and sticky over-limit refusal
+without prefix append. This is resumable head state, not concurrent HTTP; socket
+receive, body/authentication/output state machines and scheduling remain open.
+
+Focused validation passes 60 HTTP tests (ten access, four admission, 11
+authentication, 24 exchange and 11 request-framing tests), strict all-target/
+all-feature Clippy, exact Rust 1.74.0 all-target check, Windows GNU all-target
+compile, formatting and documentation links. This is focused follow-up evidence,
+not a new full frozen-source/native qualification.
