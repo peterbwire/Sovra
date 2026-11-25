@@ -205,3 +205,19 @@ NUL). This supports programs that dispatch by their invocation name without
 reopening a pathname at launch. Source arguments cannot replace argv[0]. A native
 regression removes the grant-time alias before execution and verifies both the
 captured program and original launch name remain in effect.
+
+### Pending-owner cleanup on abandonment (2026-11-25)
+
+Outstanding verification jobs now receive their explicit `cancel` hook when
+pending HTTP custody is abandoned by callback cancellation, aggregate deadline
+failure or host destruction, as well as explicit close. Taking the job before
+calling cleanup prevents a second host-issued cancellation during destruction.
+Explicit close can report cleanup errors; destruction is best-effort and cannot
+replace the original cancellation/deadline error. Completed jobs still own their
+completion cleanup; trusted jobs must retain safe Drop behavior. This does not
+supervise descendants or make OS cleanup preemptible.
+
+A trusted pending-job regression observes exactly one host cancellation on each
+of the four abandonment paths, with no Continue/handler/principal publication.
+Existing command-job tests continue to check direct-child disappearance and
+capacity release.

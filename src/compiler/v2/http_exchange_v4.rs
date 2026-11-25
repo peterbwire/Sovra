@@ -663,9 +663,16 @@ impl std::fmt::Debug for PendingVerification {
             .finish_non_exhaustive()
     }
 }
+impl Drop for PendingVerification {
+    fn drop(&mut self) {
+        if let Some(mut job) = self.job.take() {
+            let _ = job.cancel();
+        }
+    }
+}
 impl PendingVerification {
     pub(super) fn close(mut self) -> Result<(), HostError> {
-        let job = self.job.as_mut().map_or(Ok(()), |job| job.cancel());
+        let job = self.job.take().map_or(Ok(()), |mut job| job.cancel());
         let socket = self.connection.take().unwrap().close();
         job.and(socket)
     }

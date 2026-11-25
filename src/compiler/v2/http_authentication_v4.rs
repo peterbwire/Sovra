@@ -107,7 +107,8 @@ impl<'a> HttpBearerControl<'a> {
 }
 /// Owned trusted verification work. Polls must return promptly; None means pending.
 pub trait HttpVerificationJob: Send + Sync {
-    /// Explicit cleanup; Drop must remain a safe ownership fallback.
+    /// Explicit cleanup on pending-owner close or abandonment.
+    /// Destruction ignores cleanup errors; Drop must remain a safe ownership fallback.
     fn cancel(&mut self) -> Result<(), HostError> {
         Ok(())
     }

@@ -493,3 +493,94 @@ fn body_polls_retain_one_verification_and_hide_principal_until_complete() {
     assert!(!format!("{value:?}").contains(TOKEN));
     h.close_all().unwrap();
 }
+
+#[test]
+fn pending_verifier_cleanup_runs_once_on_every_abandoned_owner_path() {
+    struct Provider(Arc<AtomicUsize>);
+    struct Job(Arc<AtomicUsize>);
+    impl HttpVerificationJob for Job {
+        fn poll(&mut self, _: &mut HttpBearerControl<'_>) -> Option<HttpAuthenticationDecision> {
+            None
+        }
+        fn cancel(&mut self) -> Result<(), HostError> {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+    impl HttpBearerVerifier for Provider {
+        fn verify(&mut self, _: HttpBearerRequest<'_>) -> HttpAuthenticationDecision {
+            panic!("pending provider must not select the synchronous path")
+        }
+        fn start_verification(
+            &mut self,
+            _: HttpBearerRequest<'_>,
+            _: &mut HttpBearerControl<'_>,
+        ) -> Box<dyn HttpVerificationJob> {
+            Box::new(Job(self.0.clone()))
+        }
+    }
+    for mode in ["close", "cancel", "timeout", "drop"] {
+        let cancelled = Arc::new(AtomicUsize::new(0));
+        let mut h = NetworkHostV4::new(NetworkLimits::DEFAULT).unwrap();
+        h.set_http_limits(HttpExchangeLimits {
+            milliseconds: 1000,
+            ..HttpExchangeLimits::DEFAULT
+        })
+        .unwrap();
+        h.set_http_access(HttpAccessPolicy::new(&["localhost"], &[], true).unwrap())
+            .unwrap();
+        h.set_http_bearer_verifier(Box::new(Provider(cancelled.clone())))
+            .unwrap();
+        h.grant_port(0).unwrap();
+        let l = int(call(&mut h, r#"{"version":4,"op":"net.listen","port":0}"#).unwrap());
+        let port = int(call(
+            &mut h,
+            &format!(r#"{{"version":4,"op":"net.port","handle":{l}}}"#),
+        )
+        .unwrap());
+        let mut peer = TcpStream::connect((Ipv4Addr::LOCALHOST, port as u16)).unwrap();
+        peer.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        let n = int(call(
+            &mut h,
+            &format!(r#"{{"version":4,"op":"net.accept","handle":{l}}}"#),
+        )
+        .unwrap());
+        peer.write_all(head(&(credential() + "Expect: 100-continue\r\n")).as_bytes())
+            .unwrap();
+        let head_poll = format!(r#"{{"version":4,"op":"http.poll_head","handle":{n}}}"#);
+        while call(&mut h, &head_poll).unwrap() == JsonValue::Bool(false) {}
+        let body_poll = format!(r#"{{"version":4,"op":"http.poll_body","handle":{n}}}"#);
+        assert_eq!(call(&mut h, &body_poll).unwrap(), JsonValue::Bool(false));
+        assert_eq!(cancelled.load(Ordering::SeqCst), 0);
+        match mode {
+            "close" => {
+                call(
+                    &mut h,
+                    &format!(r#"{{"version":4,"op":"net.close","handle":{n}}}"#),
+                )
+                .unwrap();
+            }
+            "cancel" => {
+                assert_eq!(
+                    h.call(&json(&body_poll), || Err("stop pending verifier"))
+                        .unwrap_err(),
+                    "stop pending verifier"
+                );
+            }
+            "timeout" => {
+                std::thread::sleep(Duration::from_millis(1100));
+                assert_eq!(call(&mut h, &body_poll).unwrap_err().code, "timeout");
+            }
+            "drop" => {}
+            _ => unreachable!(),
+        }
+        drop(h);
+        assert_eq!(cancelled.load(Ordering::SeqCst), 1, "{mode}");
+        let mut wire = Vec::new();
+        peer.read_to_end(&mut wire).unwrap();
+        assert!(
+            wire.is_empty(),
+            "no Continue or principal may escape: {mode}"
+        );
+    }
+}

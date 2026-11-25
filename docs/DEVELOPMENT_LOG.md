@@ -11811,3 +11811,15 @@ failures but exposed two formatter-test assumptions: compare against canonical
 source paths, and require the existing guarded package-capture refusal on
 Windows while retaining successful formatting. All 16 formatter CLI tests pass
 locally. Windows execution of this follow-up still requires hosted evidence.
+
+## 2026-11-25: explicit pending-verifier cleanup on abandoned custody
+
+Pending HTTP verification previously called the trusted job's cancel hook on
+explicit close but relied entirely on job Drop for callback/deadline abandonment.
+Add a pending-owner destructor that takes/cancels outstanding work; explicit close
+also takes the job, preventing duplicate host cancellation. Preserve original
+control errors and socket destruction. A four-path trusted-job regression fails
+against the prior implementation and passes for close, cancellation, timeout and
+host destruction, with no interim or identity publication. Existing command
+verifier process cleanup tests remain part of focused validation. Production
+preemption, descendant supervision and wider G14 gates remain open.
