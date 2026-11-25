@@ -297,6 +297,7 @@ Implemented evidence:
 - [x] Queue bounded Continue output in pending-body state and advance one exact partial write per body-poll turn; blocking receive resumes the suffix without duplication. Verifier and denial/error output remain open.
 - [x] Retain cooperative admission/head-preparation refusals under owned bounded output custody, yielding exact partial writes then returning the original error; forbid handler/raw/application-response transitions. Initial verifier execution and production fairness remain open.
 - [x] Extract private bounded owned-process polling state with retained pipe/deadline/exit progress, opaque debug and kill/reap cleanup; existing synchronous runner uses it. Pending HTTP verification remains open.
+- [x] Bind owned checked metadata to pending command-verifier jobs, poll bounded child I/O without duplicate spawn, cap live jobs at two and kill/reap on close/cancellation/timeout; qualify independently gated CLI/native clients. Legacy trusted-provider fallback and production controls remain separate.
 - [ ] Add reviewed concurrency/backpressure, streaming, TLS and deployment controls
   before claiming production server support. A private Node adapter is insufficient.
 

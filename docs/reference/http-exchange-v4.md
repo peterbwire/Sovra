@@ -325,3 +325,14 @@ production fairness guarantee. Tests cover exact one-byte 400 output, fail-close
 state exclusion, cancellation/deadline after a prefix, stale tokens and a no-input
 429 with no-store. CLI/native consumers exercise automatic credential/access/
 expectation/admission refusals through the actual Sovra scheduler.
+
+## Pending verification update (2026-11-25)
+
+Cooperative command authentication now retains a pending job and redacted owned
+metadata instead of blocking on child I/O. Body polls resume the job; only grants
+can enter body handling. Pending verification accepts only body polls or close,
+not receive/raw/application-response transitions. The command backend is bounded
+to two live jobs and checks original controls across turns. Trusted-provider
+compatibility defaults and blocking receive remain synchronous; process launch
+and cleanup are not hard-preempted. See
+[verification scope](http-command-authentication-v4.md#pending-command-verification-2026-11-25).

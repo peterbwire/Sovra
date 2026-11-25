@@ -11716,3 +11716,27 @@ server), 31 distinct tests total. The final process fixture includes NUL and
 non-UTF-8 bytes. Strict Clippy, exact Rust 1.74.0 all-target check, Windows GNU
 all-target compile, formatting and documentation links pass. This is focused
 follow-up evidence, not full frozen-source G14 qualification.
+
+## 2026-11-25: G14 pending command verification
+
+Added trusted owned verification jobs with an explicit synchronous compatibility
+fallback. The command backend uses private child-process polls and a two-live-job
+ceiling shared with its blocking path. Pending HTTP verification owns redacted
+checked metadata, original request context/limits and co-read prefix; body/Continue
+processing and principal publication wait for grant. Body polls never respawn or
+recharge admission. Denials enter cooperative output; close/control refusal kills
+and reaps children. Tests gate one verifier until another request completes,
+assert one spawn per request, exercise capacity/refusal/reuse, and check PID cleanup
+after close/cancellation/timeout. Authenticated CLI/native fixtures now use six
+connections and five backend calls, including independently gated/fast identities.
+Legacy providers/blocking receive remain synchronous, native launch can wait and
+no OS watchdog/hard preemption or production credential system is claimed.
+
+Validation passes 99 tests across eight focused host/HTTP targets, including
+independent default/authenticated CLI/native servers. The authenticated fixture
+proves a fast identity request finishes before a gated verifier is released,
+then both identities succeed; six connections invoke five backends, with the last
+refused before verification. Capacity, close/cancellation/timeout reaping and
+existing v3/HTTP controls pass. Strict all-target/all-feature Clippy, exact Rust
+1.74.0 all-target check, Windows GNU all-target compile, formatting and documentation
+links pass. This follow-up does not replace full frozen-source qualification.

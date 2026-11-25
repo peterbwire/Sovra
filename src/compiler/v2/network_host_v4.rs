@@ -46,6 +46,7 @@ enum Owner {
     Http(super::http_exchange_v4::HttpConnection),
     PendingResponse(Box<super::http_exchange_v4::PendingResponse>),
     PendingRefusal(Box<super::http_exchange_v4::PendingRefusal>),
+    PendingVerification(Box<super::http_exchange_v4::PendingVerification>),
     PendingHead(Box<super::http_exchange_v4::PendingHead>),
     PendingBody(Box<super::http_exchange_v4::PendingBody>),
 }
@@ -248,6 +249,7 @@ impl NetworkHostV4 {
                 Some(Owner::PendingBody(owner)) => owner.close().map(|_| J::Null),
                 Some(Owner::PendingResponse(owner)) => owner.close().map(|_| J::Null),
                 Some(Owner::PendingRefusal(owner)) => owner.close().map(|_| J::Null),
+                Some(Owner::PendingVerification(owner)) => owner.close().map(|_| J::Null),
                 None => Err(error("input", "stale or foreign network handle")),
             });
         }
@@ -258,6 +260,17 @@ impl NetworkHostV4 {
                 unreachable!()
             };
             return self.poll_refusal(handle, pending, &mut checkpoint);
+        }
+        if op == "http.poll_body"
+            && matches!(
+                self.owners.get(&handle),
+                Some(Owner::PendingVerification(_))
+            )
+        {
+            let Some(Owner::PendingVerification(pending)) = self.owners.remove(&handle) else {
+                unreachable!()
+            };
+            return self.poll_verification(handle, pending, &mut checkpoint);
         }
         if op == "http.poll_body"
             || (op == "http.receive"
@@ -281,6 +294,9 @@ impl NetworkHostV4 {
                     self.http_verifier.as_mut(),
                     &mut checkpoint,
                 )? {
+                    Ok(super::http_exchange_v4::Prepared::Verification(pending)) => {
+                        return self.poll_verification(handle, pending, &mut checkpoint)
+                    }
                     Ok(super::http_exchange_v4::Prepared::Body(body)) => *body,
                     Ok(super::http_exchange_v4::Prepared::Refusal(pending)) => {
                         return self.poll_refusal(handle, pending, &mut checkpoint)
@@ -370,6 +386,13 @@ impl NetworkHostV4 {
                 &mut checkpoint,
             )? {
                 Ok(super::http_exchange_v4::Prepared::Body(body)) => *body,
+                Ok(super::http_exchange_v4::Prepared::Verification(pending)) => {
+                    let _ = pending.close();
+                    return Ok(Err(error(
+                        "authentication_unavailable",
+                        "unexpected pending verification",
+                    )));
+                }
                 Ok(super::http_exchange_v4::Prepared::Refusal(pending)) => {
                     return Ok(Err(pending.finish()))
                 }
@@ -553,6 +576,29 @@ impl NetworkHostV4 {
             ))),
         }
     }
+    fn poll_verification<E>(
+        &mut self,
+        handle: i64,
+        mut pending: Box<super::http_exchange_v4::PendingVerification>,
+        checkpoint: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Result<J, HostError>, E> {
+        match pending.poll(checkpoint)? {
+            Err(e) => Ok(Err(e)),
+            Ok(None) => {
+                self.owners
+                    .insert(handle, Owner::PendingVerification(pending));
+                Ok(Ok(J::Bool(false)))
+            }
+            Ok(Some(super::http_exchange_v4::Prepared::Body(body))) => {
+                self.owners.insert(handle, Owner::PendingBody(body));
+                Ok(Ok(J::Bool(false)))
+            }
+            Ok(Some(super::http_exchange_v4::Prepared::Refusal(refusal))) => {
+                self.poll_refusal(handle, refusal, checkpoint)
+            }
+            Ok(Some(super::http_exchange_v4::Prepared::Verification(_))) => unreachable!(),
+        }
+    }
     fn poll_refusal<E>(
         &mut self,
         handle: i64,
@@ -578,6 +624,7 @@ impl NetworkHostV4 {
                 Owner::PendingBody(owner) => owner.close(),
                 Owner::PendingResponse(owner) => owner.close(),
                 Owner::PendingRefusal(owner) => owner.close(),
+                Owner::PendingVerification(owner) => owner.close(),
                 Owner::Listener(_) => Ok(()),
             };
             if let Err(mut e) = closed {

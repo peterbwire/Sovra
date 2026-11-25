@@ -196,3 +196,199 @@ fn configuration_is_bounded_absolute_and_requires_http_access() {
         assert!(DataHostPolicy::from_policy(text.as_bytes()).is_err());
     }
 }
+
+fn prepared(h: &mut NetworkHostV4, n: i64) {
+    let poll = format!(r#"{{"version":4,"op":"http.poll_head","handle":{n}}}"#);
+    let mut ready = false;
+    for _ in 0..100 {
+        ready = call(h, &poll).unwrap() == JsonValue::Bool(true);
+        if ready {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert!(ready);
+}
+fn extra(h: &mut NetworkHostV4) -> (i64, TcpStream) {
+    let l = int(call(h, r#"{"version":4,"op":"net.listen","port":0}"#).unwrap());
+    let p = int(call(
+        h,
+        &format!(r#"{{"version":4,"op":"net.port","handle":{l}}}"#),
+    )
+    .unwrap());
+    let s = TcpStream::connect((Ipv4Addr::LOCALHOST, p as u16)).unwrap();
+    let n = int(call(
+        h,
+        &format!(r#"{{"version":4,"op":"net.accept","handle":{l}}}"#),
+    )
+    .unwrap());
+    (n, s)
+}
+fn body_poll(n: i64) -> String {
+    format!(r#"{{"version":4,"op":"http.poll_body","handle":{n}}}"#)
+}
+fn complete(h: &mut NetworkHostV4, n: i64) {
+    let mut ready = false;
+    for _ in 0..500 {
+        ready = call(h, &body_poll(n)).unwrap() == JsonValue::Bool(true);
+        if ready {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert!(ready);
+}
+#[test]
+fn command_jobs_yield_slow_verification_while_another_request_completes() {
+    let f = Fixture::new(
+        r#"import json,sys,pathlib,time
+r=json.load(sys.stdin)
+with pathlib.Path('calls').open('a') as out:out.write(r['target']+'\n')
+if r['target']=='/slow':
+ while not pathlib.Path('release').exists():time.sleep(.002)
+print(json.dumps({'version':1,'decision':'grant','principal':'process-client'}))
+"#,
+    );
+    let (mut h, slow, mut slow_peer) = setup(f.verifier(1000), 5000);
+    let wire = String::from_utf8(request().to_vec())
+        .unwrap()
+        .replace("/safe", "/slow")
+        .replace("Expect: 100-continue\r\n", "");
+    slow_peer.write_all(wire.as_bytes()).unwrap();
+    slow_peer.write_all(b"x").unwrap();
+    prepared(&mut h, slow);
+    assert_eq!(
+        call(&mut h, &body_poll(slow)).unwrap(),
+        JsonValue::Bool(false)
+    );
+    assert!(call(&mut h, &receive(slow)).is_err());
+    assert!(!format!("{h:?}").contains("fixture-credential"));
+    let (fast, mut fast_peer) = extra(&mut h);
+    let wire = String::from_utf8(request().to_vec())
+        .unwrap()
+        .replace("Expect: 100-continue\r\n", "");
+    fast_peer.write_all(wire.as_bytes()).unwrap();
+    fast_peer.write_all(b"x").unwrap();
+    prepared(&mut h, fast);
+    complete(&mut h, fast);
+    let value = call(&mut h, &receive(fast)).unwrap();
+    assert!(format!("{value:?}").contains("process-client"));
+    assert!(!f.0.join("release").exists());
+    std::fs::write(f.0.join("release"), b"go").unwrap();
+    complete(&mut h, slow);
+    call(&mut h, &receive(slow)).unwrap();
+    let calls = std::fs::read_to_string(f.0.join("calls")).unwrap();
+    assert_eq!(calls.lines().count(), 2);
+    h.close_all().unwrap();
+}
+#[test]
+fn pending_command_close_kills_reaps_and_releases_capacity() {
+    let f = Fixture::new(
+        r#"import json,sys,pathlib,os,time
+r=json.load(sys.stdin)
+pathlib.Path('pid').write_text(str(os.getpid()))
+while True:time.sleep(.01)
+"#,
+    );
+    let (mut h, n, mut peer) = setup(f.verifier(1000), 5000);
+    peer.write_all(request()).unwrap();
+    prepared(&mut h, n);
+    assert_eq!(call(&mut h, &body_poll(n)).unwrap(), JsonValue::Bool(false));
+    for _ in 0..100 {
+        if f.0.join("pid").exists() {
+            break;
+        }
+        assert_eq!(call(&mut h, &body_poll(n)).unwrap(), JsonValue::Bool(false));
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    let pid = std::fs::read_to_string(f.0.join("pid")).unwrap();
+    call(
+        &mut h,
+        &format!(r#"{{"version":4,"op":"net.close","handle":{n}}}"#),
+    )
+    .unwrap();
+    assert!(!std::path::Path::new(&format!("/proc/{pid}")).exists());
+    assert_eq!(h.usage(), (1, 0));
+    h.close_all().unwrap();
+}
+#[test]
+fn pending_command_jobs_have_a_two_child_ceiling() {
+    let f = Fixture::new("import json,sys,time\nr=json.load(sys.stdin)\ntime.sleep(10)\n");
+    let (mut h, first, mut a) = setup(f.verifier(1000), 5000);
+    a.write_all(request()).unwrap();
+    prepared(&mut h, first);
+    assert_eq!(
+        call(&mut h, &body_poll(first)).unwrap(),
+        JsonValue::Bool(false)
+    );
+    let (second, mut b) = extra(&mut h);
+    b.write_all(request()).unwrap();
+    prepared(&mut h, second);
+    assert_eq!(
+        call(&mut h, &body_poll(second)).unwrap(),
+        JsonValue::Bool(false)
+    );
+    let (third, mut c) = extra(&mut h);
+    c.write_all(request()).unwrap();
+    prepared(&mut h, third);
+    assert_eq!(
+        call(&mut h, &body_poll(third)).unwrap_err().code,
+        "authentication_unavailable"
+    );
+    call(
+        &mut h,
+        &format!(r#"{{"version":4,"op":"net.close","handle":{first}}}"#),
+    )
+    .unwrap();
+    let (fourth, mut d) = extra(&mut h);
+    d.write_all(request()).unwrap();
+    prepared(&mut h, fourth);
+    assert_eq!(
+        call(&mut h, &body_poll(fourth)).unwrap(),
+        JsonValue::Bool(false)
+    );
+    h.close_all().unwrap();
+}
+
+#[test]
+fn pending_command_timeout_and_claimed_cancellation_kill_and_reap() {
+    for cancel in [false, true] {
+        let f=Fixture::new("import json,sys,pathlib,os,time\nr=json.load(sys.stdin)\npathlib.Path('pid').write_text(str(os.getpid()))\nwhile True:time.sleep(.01)\n");
+        let (mut h, n, mut peer) = setup(f.verifier(1000), 5000);
+        peer.write_all(request()).unwrap();
+        prepared(&mut h, n);
+        assert_eq!(call(&mut h, &body_poll(n)).unwrap(), JsonValue::Bool(false));
+        for _ in 0..200 {
+            if f.0.join("pid").exists() {
+                break;
+            }
+            assert_eq!(call(&mut h, &body_poll(n)).unwrap(), JsonValue::Bool(false));
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        let pid = std::fs::read_to_string(f.0.join("pid")).unwrap();
+        if cancel {
+            let mut ticks = 0;
+            assert_eq!(
+                h.call(&j(&body_poll(n)), || {
+                    ticks += 1;
+                    if ticks == 2 {
+                        Err("cancel verification")
+                    } else {
+                        Ok(())
+                    }
+                })
+                .unwrap_err(),
+                "cancel verification"
+            );
+        } else {
+            std::thread::sleep(Duration::from_millis(1100));
+            assert_eq!(
+                call(&mut h, &body_poll(n)).unwrap_err().code,
+                "authentication_unavailable"
+            );
+        }
+        assert!(!std::path::Path::new(&format!("/proc/{pid}")).exists());
+        assert_eq!(h.usage(), (1, 0));
+        h.close_all().unwrap();
+    }
+}

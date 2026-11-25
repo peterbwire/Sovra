@@ -946,3 +946,9 @@ impl Drop for OwnedChild {
 ))]
 #[path = "host_process_exchange_v3.rs"]
 mod process_exchange;
+
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")
+))]
+pub(super) use process_exchange::OwnedProcessExchange;

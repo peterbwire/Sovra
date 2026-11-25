@@ -112,3 +112,12 @@ I/O providers can implement the additive `verify_controlled` method and poll
 `HttpBearerControl::check()` while running. The default preserves original
 synchronous implementations. The explicit command adapter uses this hook for
 child cleanup on HTTP cancellation/deadline, not only a post-return check.
+
+## Owned verification jobs
+
+Trusted providers may implement `start_verification` returning `HttpVerificationJob`
+with bounded prompt polls and explicit cancel/Drop ownership. The default remains
+synchronous for compatibility. The external command implementation uses retained
+process polls, a two-job domain bound and controlled direct-child cleanup; see
+[pending command verification](http-command-authentication-v4.md#pending-command-verification-2026-11-25).
+This does not turn arbitrary trusted callbacks into preemptible tasks.

@@ -149,3 +149,50 @@ kill/reap after control refusal. Existing v3, command protocol and authenticated
 CLI/native consumers remain regression coverage. This is the process-state
 prerequisite for asynchronous verification: HTTP verification still waits inside
 the synchronous wrapper until a pending-verification stage is connected.
+
+## Pending command verification (2026-11-25)
+
+The command backend now starts one owned verification job during cooperative body
+preparation instead of waiting in process.run. Pending verification retains only
+owned checked/redacted request metadata, the admitted authority/transport context,
+a bounded co-read body prefix and the job. It does not parse/process that body,
+send Continue or publish principal/handler metadata before a grant.
+
+Each subsequent `http.poll_body` advances one process exchange turn: at most one
+stdin write, one read per output stream and one exit check, without sleeping.
+Pending returns false. A grant moves into pending-body custody; the following
+body turns retain all prior controls and only complete bodies can publish the
+request. Denials enter cooperative refusal custody. Receive/raw I/O/head polling
+and application responses cannot bypass pending verification. A repeated poll
+never starts another child or charges another HTTP admission.
+
+The configured command verifier admits at most two live jobs, shared between its
+polling and synchronous paths. Exhaustion fails unavailable/503 without spawning;
+completion/close/cancellation releases the slot after child cleanup. This is a
+per-configured-verifier bound, not a global machine quota or an OS sandbox. Lower
+stream limits still apply; larger configurable pools remain a reviewed gate.
+No worker threads or new source-visible process authority are introduced.
+
+The child retains captured executable/cwd, fixed arguments, cleared environment,
+strict 4096-byte protocol streams and the existing <=1000ms configured deadline.
+Controls/deadlines are checked on polls; no OS watchdog or hard preemption between
+polls is claimed. Callers must keep scheduling jobs or close them. HTTP accepted-
+time deadlines are checked before/after starting/polling and before publishing a
+decision. Close/cancellation/timeouts kill/reap the direct child; Drop is an
+ownership fallback. Descendant supervision remains outside this contract.
+
+`HttpVerificationJob` and `HttpBearerVerifier::start_verification` provide a trusted
+Rust extension hook. Existing providers use the explicit synchronous compatibility
+default; arbitrary trusted callbacks are not made asynchronous or preemptible.
+Blocking receive keeps its existing synchronous verifier path. Native process
+launch itself can still wait on the OS. Pending job/host debug output omits
+credentials, private metadata and pipe buffers.
+
+Tests prove an independently gated command yields while another request finishes,
+then successfully resumes without a duplicate spawn; two-child admission/refusal
+and slot reuse; PID disappearance after close, claimed cancellation and timeout;
+and principal/credential privacy. The real authenticated CLI/native fixture uses
+six connections: one verifier gated by a fixture file, four other verified attempts
+and a final pre-verifier 429. The fast identity request must finish before the
+client releases the gated verifier, and exactly five backend invocations occur.
+The backend/key remain external test fixtures, not a production credential system.

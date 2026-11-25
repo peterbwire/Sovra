@@ -4,11 +4,17 @@ use super::{
     HttpBearerControl, HttpBearerRequest, HttpBearerTransport, HttpBearerVerifier, HttpPrincipal,
     JsonLimits, JsonValue as J,
 };
-use std::{collections::BTreeMap, fmt, path::Path};
+use std::{
+    collections::BTreeMap,
+    fmt,
+    path::Path,
+    sync::{atomic::AtomicUsize, Arc},
+};
 /// Captured native executable/cwd and fixed arguments, separate from source-visible v3 authority.
 pub struct HttpCommandVerifier {
     host: HostV3,
     arguments: Vec<String>,
+    live: Arc<AtomicUsize>,
 }
 impl fmt::Debug for HttpCommandVerifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -76,84 +82,139 @@ impl HttpCommandVerifier {
         Ok(Self {
             host,
             arguments: arguments.to_vec(),
+            live: Arc::new(AtomicUsize::new(0)),
         })
     }
+    fn request(&self, request: HttpBearerRequest<'_>) -> Option<J> {
+        let transport = match request.transport() {
+            HttpBearerTransport::LoopbackPlaintext => "loopback-plaintext",
+        };
+        let input = object(vec![
+            ("version", J::Int(1)),
+            ("method", J::String(request.method().into())),
+            ("target", J::String(request.target().into())),
+            ("authority", J::String(request.authority().into())),
+            (
+                "origin",
+                request
+                    .origin()
+                    .map(|s| J::String(s.into()))
+                    .unwrap_or(J::Null),
+            ),
+            ("transport", J::String(transport.into())),
+            (
+                "credential",
+                J::String(std::str::from_utf8(request.credential()).ok()?.into()),
+            ),
+        ]);
+        let limits = JsonLimits {
+            bytes: 4096,
+            values: 64,
+            ..JsonLimits::DEFAULT
+        };
+        let input = serialize_json(&input, limits).ok()?;
+        let encoded = super::http_exchange_v4::encode(input.as_bytes()).ok()?;
+        let call = object(vec![
+            ("version", J::Int(3)),
+            ("op", J::String("process.run".into())),
+            ("program", J::String("http-verifier".into())),
+            (
+                "arguments",
+                J::Array(self.arguments.iter().cloned().map(J::String).collect()),
+            ),
+            ("input", J::String(encoded)),
+        ]);
+        Some(call)
+    }
+    fn reply(output: &J) -> Option<D> {
+        let limits = JsonLimits {
+            bytes: 4096,
+            values: 64,
+            ..JsonLimits::DEFAULT
+        };
+        if field(output, "exit_code") != Some(&J::Int(0)) {
+            return None;
+        }
+        let stdout = super::http_exchange_v4::decode(field(output, "stdout")?, 4096).ok()?;
+        let result = parse_json(&stdout, limits).ok()?;
+        let J::Object(fields) = &result else {
+            return None;
+        };
+        if field(&result, "version") != Some(&J::Int(1)) {
+            return None;
+        }
+        let J::String(decision) = field(&result, "decision")? else {
+            return None;
+        };
+        match decision.as_str() {
+            "grant" if fields.len() == 3 => {
+                let J::String(name) = field(&result, "principal")? else {
+                    return None;
+                };
+                Some(D::Granted(HttpPrincipal::new(name).ok()?))
+            }
+            "unauthenticated" if fields.len() == 2 => Some(D::Unauthenticated),
+            "forbidden" if fields.len() == 2 => Some(D::Forbidden),
+            "unavailable" if fields.len() == 2 => Some(D::Unavailable),
+            _ => None,
+        }
+    }
     fn run(&mut self, request: HttpBearerRequest<'_>, mut poll: impl FnMut() -> bool) -> D {
-        let outcome = (|| -> Option<D> {
-            let transport = match request.transport() {
-                HttpBearerTransport::LoopbackPlaintext => "loopback-plaintext",
-            };
-            let input = object(vec![
-                ("version", J::Int(1)),
-                ("method", J::String(request.method().into())),
-                ("target", J::String(request.target().into())),
-                ("authority", J::String(request.authority().into())),
-                (
-                    "origin",
-                    request
-                        .origin()
-                        .map(|s| J::String(s.into()))
-                        .unwrap_or(J::Null),
-                ),
-                ("transport", J::String(transport.into())),
-                (
-                    "credential",
-                    J::String(std::str::from_utf8(request.credential()).ok()?.into()),
-                ),
-            ]);
-            let limits = JsonLimits {
-                bytes: 4096,
-                values: 64,
-                ..JsonLimits::DEFAULT
-            };
-            let input = serialize_json(&input, limits).ok()?;
-            let encoded = super::http_exchange_v4::encode(input.as_bytes()).ok()?;
-            let call = object(vec![
-                ("version", J::Int(3)),
-                ("op", J::String("process.run".into())),
-                ("program", J::String("http-verifier".into())),
-                (
-                    "arguments",
-                    J::Array(self.arguments.iter().cloned().map(J::String).collect()),
-                ),
-                ("input", J::String(encoded)),
-            ]);
+        #[cfg(all(
+            target_os = "linux",
+            any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")
+        ))]
+        let _slot = match JobSlot::reserve(&self.live) {
+            Some(slot) => slot,
+            None => return D::Unavailable,
+        };
+        let outcome = (|| {
+            let call = self.request(request)?;
             let output = self
                 .host
                 .call(&call, || if poll() { Ok(()) } else { Err(()) })
                 .ok()?
                 .ok()?;
-            if field(&output, "exit_code") != Some(&J::Int(0)) {
-                return None;
-            }
-            let stdout = super::http_exchange_v4::decode(field(&output, "stdout")?, 4096).ok()?;
-            let result = parse_json(&stdout, limits).ok()?;
-            let J::Object(fields) = &result else {
-                return None;
-            };
-            if field(&result, "version") != Some(&J::Int(1)) {
-                return None;
-            }
-            let J::String(decision) = field(&result, "decision")? else {
-                return None;
-            };
-            match decision.as_str() {
-                "grant" if fields.len() == 3 => {
-                    let J::String(name) = field(&result, "principal")? else {
-                        return None;
-                    };
-                    Some(D::Granted(HttpPrincipal::new(name).ok()?))
-                }
-                "unauthenticated" if fields.len() == 2 => Some(D::Unauthenticated),
-                "forbidden" if fields.len() == 2 => Some(D::Forbidden),
-                "unavailable" if fields.len() == 2 => Some(D::Unavailable),
-                _ => None,
-            }
+            Self::reply(&output)
         })();
         outcome.unwrap_or(D::Unavailable)
     }
 }
 impl HttpBearerVerifier for HttpCommandVerifier {
+    fn start_verification(
+        &mut self,
+        request: HttpBearerRequest<'_>,
+        control: &mut HttpBearerControl<'_>,
+    ) -> Box<dyn super::HttpVerificationJob> {
+        if !control.check() {
+            return Box::new(UnavailableJob);
+        }
+        #[cfg(all(
+            target_os = "linux",
+            any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")
+        ))]
+        {
+            let job = (|| {
+                let slot = JobSlot::reserve(&self.live)?;
+                let call = self.request(request)?;
+                let task = self.host.start_process(&call).ok()?;
+                Some(CommandJob {
+                    task: Some(task),
+                    slot: Some(slot),
+                })
+            })();
+            if let Some(job) = job {
+                return Box::new(job);
+            }
+        }
+        #[cfg(not(all(
+            target_os = "linux",
+            any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")
+        )))]
+        let _ = request;
+        let _ = &self.live;
+        Box::new(UnavailableJob)
+    }
     fn verify(&mut self, request: HttpBearerRequest<'_>) -> D {
         self.run(request, || true)
     }
@@ -163,5 +224,89 @@ impl HttpBearerVerifier for HttpCommandVerifier {
         control: &mut HttpBearerControl<'_>,
     ) -> D {
         self.run(request, || control.check())
+    }
+}
+
+struct UnavailableJob;
+impl super::HttpVerificationJob for UnavailableJob {
+    fn poll(&mut self, _: &mut HttpBearerControl<'_>) -> Option<D> {
+        Some(D::Unavailable)
+    }
+}
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")
+))]
+struct JobSlot(Arc<AtomicUsize>);
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")
+))]
+impl JobSlot {
+    fn reserve(live: &Arc<AtomicUsize>) -> Option<Self> {
+        let mut current = live.load(std::sync::atomic::Ordering::Acquire);
+        for _ in 0..128 {
+            if current >= 2 {
+                return None;
+            }
+            match live.compare_exchange(
+                current,
+                current + 1,
+                std::sync::atomic::Ordering::AcqRel,
+                std::sync::atomic::Ordering::Acquire,
+            ) {
+                Ok(_) => return Some(Self(live.clone())),
+                Err(next) => current = next,
+            }
+        }
+        None
+    }
+}
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")
+))]
+impl Drop for JobSlot {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+    }
+}
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")
+))]
+struct CommandJob {
+    task: Option<super::host_v3::OwnedProcessExchange>,
+    slot: Option<JobSlot>,
+}
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")
+))]
+impl super::HttpVerificationJob for CommandJob {
+    fn cancel(&mut self) -> Result<(), HostError> {
+        let result = self.task.take().map_or(Ok(()), |mut task| task.cleanup());
+        self.slot.take();
+        result
+    }
+    fn poll(&mut self, control: &mut HttpBearerControl<'_>) -> Option<D> {
+        let Some(task) = self.task.as_mut() else {
+            return Some(D::Unavailable);
+        };
+        let outcome = task.poll(&mut || if control.check() { Ok(()) } else { Err(()) });
+        if matches!(outcome, Ok(Ok(None))) {
+            return None;
+        }
+        let result = match outcome {
+            Ok(Ok(Some(value))) => HttpCommandVerifier::reply(&value).unwrap_or(D::Unavailable),
+            _ => D::Unavailable,
+        };
+        let cleanup = self.task.take().unwrap().cleanup();
+        self.slot.take();
+        Some(if cleanup.is_ok() {
+            result
+        } else {
+            D::Unavailable
+        })
     }
 }

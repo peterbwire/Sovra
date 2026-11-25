@@ -314,6 +314,7 @@ pub(super) fn queue_admission(
 pub(super) enum Prepared {
     Body(Box<PendingBody>),
     Refusal(Box<PendingRefusal>),
+    Verification(Box<PendingVerification>),
 }
 fn refuse<E>(
     mut connection: HttpConnection,
@@ -442,7 +443,7 @@ pub(super) fn prepare_pending<E>(
     pending: PendingHead,
     cooperative: bool,
     access: Option<&super::HttpAccessPolicy>,
-    verifier: Option<&mut super::http_authentication_v4::Verifier>,
+    mut verifier: Option<&mut super::http_authentication_v4::Verifier>,
     mut checkpoint: impl FnMut() -> Result<(), E>,
 ) -> Result<Result<Prepared, HostError>, E> {
     let PendingHead {
@@ -490,6 +491,73 @@ pub(super) fn prepare_pending<E>(
     if let Some(access) = access {
         if let Err(e) = access.admit(&head.request, &mut head.work) {
             return refuse(connection, e, cooperative, &mut checkpoint);
+        }
+    }
+    if cooperative {
+        if let Some(verifier) = verifier.as_deref_mut() {
+            let (started, milliseconds) = (connection.started, connection.milliseconds);
+            if let Err(e) =
+                flatten(checked(started, milliseconds, &mut checkpoint).map(|_| Ok(())))?
+            {
+                return Ok(Err(e));
+            }
+            let mut stopped = None;
+            let mut poll = || {
+                if stopped.is_some() {
+                    return false;
+                }
+                match checked(started, milliseconds, &mut checkpoint) {
+                    Ok(()) => true,
+                    Err(stop) => {
+                        stopped = Some(stop);
+                        false
+                    }
+                }
+            };
+            let outcome = verifier.start(
+                &head.request,
+                &mut head.work,
+                &mut super::HttpBearerControl::new(&mut poll),
+            );
+            match stopped {
+                Some(Stop::External(e)) => return Err(e),
+                Some(Stop::Timeout) => {
+                    return Ok(Err(error(
+                        "timeout",
+                        "aggregate HTTP exchange deadline exceeded",
+                    )))
+                }
+                None => {}
+            }
+            let job = match outcome {
+                Ok(job) => job,
+                Err(e) => return refuse(connection, e, true, &mut checkpoint),
+            };
+            if let Err(e) =
+                flatten(checked(started, milliseconds, &mut checkpoint).map(|_| Ok(())))?
+            {
+                return Ok(Err(e));
+            }
+            connection.context = if head.request.method() == "HEAD" {
+                HttpResponseContext::Head
+            } else {
+                HttpResponseContext::Standard
+            };
+            let metadata = match flatten(describe(&head.request, None, true, &mut || {
+                checked(started, milliseconds, &mut checkpoint)
+            }))? {
+                Ok(metadata) => metadata,
+                Err(e) => return Ok(Err(e)),
+            };
+            return Ok(Ok(Prepared::Verification(Box::new(PendingVerification {
+                connection: Some(connection),
+                metadata,
+                framing: head.framing,
+                work: head.work,
+                continue_expected: head.continue_expected,
+                initial: buffer[head.bytes..].to_vec(),
+                job: Some(job),
+            }))));
         }
     }
     let principal = if let Some(verifier) = verifier {
@@ -545,9 +613,12 @@ pub(super) fn prepare_pending<E>(
     } else {
         HttpResponseContext::Standard
     };
-    let metadata = match flatten(describe(&head.request, principal.as_ref(), &mut || {
-        checked(connection.started, connection.milliseconds, &mut checkpoint)
-    }))? {
+    let metadata = match flatten(describe(
+        &head.request,
+        principal.as_ref(),
+        false,
+        &mut || checked(connection.started, connection.milliseconds, &mut checkpoint),
+    ))? {
         Ok(metadata) => metadata,
         Err(e) => return Ok(Err(e)),
     };
@@ -576,6 +647,108 @@ pub(super) fn prepare_pending<E>(
     }))))
 }
 
+/// Original checked metadata and one owned verification job; no credential Debug output.
+pub(super) struct PendingVerification {
+    connection: Option<HttpConnection>,
+    metadata: J,
+    framing: HttpBodyFraming,
+    work: usize,
+    continue_expected: bool,
+    initial: Vec<u8>,
+    job: Option<Box<dyn super::HttpVerificationJob>>,
+}
+impl std::fmt::Debug for PendingVerification {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PendingVerification")
+            .finish_non_exhaustive()
+    }
+}
+impl PendingVerification {
+    pub(super) fn close(mut self) -> Result<(), HostError> {
+        let job = self.job.as_mut().map_or(Ok(()), |job| job.cancel());
+        let socket = self.connection.take().unwrap().close();
+        job.and(socket)
+    }
+    pub(super) fn poll<E>(
+        &mut self,
+        checkpoint: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Result<Option<Prepared>, HostError>, E> {
+        let connection = self.connection.as_ref().unwrap();
+        let (started, milliseconds) = (connection.started, connection.milliseconds);
+        if let Err(e) = flatten(checked(started, milliseconds, checkpoint).map(|_| Ok(())))? {
+            return Ok(Err(e));
+        }
+        let mut stopped = None;
+        let mut poll = || {
+            if stopped.is_some() {
+                return false;
+            }
+            match checked(started, milliseconds, checkpoint) {
+                Ok(()) => true,
+                Err(stop) => {
+                    stopped = Some(stop);
+                    false
+                }
+            }
+        };
+        let outcome = self
+            .job
+            .as_mut()
+            .unwrap()
+            .poll(&mut super::HttpBearerControl::new(&mut poll));
+        match stopped {
+            Some(Stop::External(e)) => return Err(e),
+            Some(Stop::Timeout) => {
+                return Ok(Err(error(
+                    "timeout",
+                    "aggregate HTTP exchange deadline exceeded",
+                )))
+            }
+            None => {}
+        }
+        if let Err(e) = flatten(checked(started, milliseconds, checkpoint).map(|_| Ok(())))? {
+            return Ok(Err(e));
+        }
+        let Some(decision) = outcome else {
+            return Ok(Ok(None));
+        };
+        self.job.take();
+        let connection = self.connection.take().unwrap();
+        let principal = match super::http_authentication_v4::decision_result(decision) {
+            Ok(principal) => principal,
+            Err(e) => {
+                return refuse(connection, e, true, checkpoint).map(|result| result.map(Some))
+            }
+        };
+        let mut metadata = std::mem::replace(&mut self.metadata, J::Null);
+        if let J::Object(fields) = &mut metadata {
+            fields.push(("principal".into(), J::String(principal.name().into())));
+        }
+        let mut body = match BodyState::new(self.framing, self.work, connection.limits) {
+            Ok(body) => body,
+            Err(e) => {
+                return refuse(connection, e, true, checkpoint).map(|result| result.map(Some))
+            }
+        };
+        if let Err(e) = body.feed(&self.initial) {
+            return refuse(connection, e, true, checkpoint).map(|result| result.map(Some));
+        }
+        let interim = if self.continue_expected && !body.complete() {
+            if let Err(e) = connection.check_continue() {
+                return Ok(Err(e));
+            }
+            Some(0)
+        } else {
+            None
+        };
+        Ok(Ok(Some(Prepared::Body(Box::new(PendingBody {
+            connection,
+            metadata,
+            body,
+            interim,
+        })))))
+    }
+}
 enum BodyState {
     Fixed(super::HttpFixedBody),
     Chunked {
@@ -846,13 +1019,14 @@ pub(super) fn decode(value: &J, maximum: usize) -> Result<Vec<u8>, HostError> {
 fn describe<E>(
     request: &HttpRequest<'_>,
     principal: Option<&super::HttpPrincipal>,
+    redact: bool,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<Result<J, HostError>, E> {
     checkpoint()?;
     let mut headers = Vec::new();
     for field in request.headers() {
         checkpoint()?;
-        if principal.is_some() && field.name().eq_ignore_ascii_case("authorization") {
+        if (redact || principal.is_some()) && field.name().eq_ignore_ascii_case("authorization") {
             continue;
         }
         let value = match encode(field.value()) {

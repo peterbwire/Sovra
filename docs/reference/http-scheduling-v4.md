@@ -49,7 +49,8 @@ Host tests cover fixed-schema, zero-deadline refusal, resource neutrality and
 cancellation before/after scheduler pacing.
 
 This establishes cooperative I/O interleaving for this bounded example, not hard
-latency fairness or a production scheduler. Initial verifier execution can still wait; automatic admission/head-preparation
+latency fairness or a production scheduler. Command-verifier I/O now yields as owned jobs; trusted-provider compatibility
+fallbacks and native process launch can still wait; automatic admission/head-preparation
 refusals and Continue now advance in one-write polling turns; blocking receive
 still uses synchronous refusal output; application handler execution is not preempted between
 connections. VM exhaustion/fatal cancellation closes the entire execution scope.

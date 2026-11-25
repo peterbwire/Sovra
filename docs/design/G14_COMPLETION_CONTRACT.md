@@ -198,3 +198,11 @@ controls across polls. It must spawn once, keep decisions/credentials private,
 kill/reap on close or cancellation, and publish no handler until verification and
 body completion. Synchronous trusted-provider fallback must remain explicit rather
 than being described as asynchronous execution.
+
+The command backend now implements pending verification jobs bound to owned
+checked/redacted metadata, original request context and controls. Cooperative body
+polls advance private child I/O with a two-job ceiling; grant/deny transitions are
+fail-closed and direct children are killed/reaped on close/control refusal.
+Synchronous provider fallback, blocking receive, OS launch/cleanup and lack of an
+OS watchdog remain explicit. See [job scope](../reference/http-command-authentication-v4.md#pending-command-verification-2026-11-25).
+Production identity/TLS/deployment and broader qualification remain open.

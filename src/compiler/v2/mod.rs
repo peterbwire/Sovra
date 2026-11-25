@@ -662,7 +662,7 @@ pub use http_command_verifier_v4::HttpCommandVerifier;
 mod http_authentication_v4;
 pub use http_authentication_v4::{
     HttpAuthenticationDecision, HttpBearerControl, HttpBearerRequest, HttpBearerTransport,
-    HttpBearerVerifier, HttpPrincipal,
+    HttpBearerVerifier, HttpPrincipal, HttpVerificationJob,
 };
 mod http_admission_v4;
 pub use http_admission_v4::HttpAdmissionPolicy;
