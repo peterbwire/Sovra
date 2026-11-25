@@ -11896,3 +11896,18 @@ response. A subsequent request proves capacity reuse. Preserve denial/privacy,
 admission-429, exact backend counts, bounded exit and port-rebind checks. Reuse
 the same project-free native executable with cleared environment/no Node/PATH.
 This adds acceptance for bounded admission, not production scheduling guarantees.
+
+## 2026-11-25: consolidated G14 qualification and Windows Node selection
+
+Completed frozen-source qualification at 55451f1: 773 Rust tests, all 14 stages,
+strict Clippy, exact MSRV, Windows GNU compile checking and four Node scripts;
+all 18 runner regressions passed separately. Independently recomputed the source
+fingerprint after completion and confirmed identical start/end hashes. Retain
+20261125T182140.765554Z evidence without rewriting its source scope.
+
+Hosted Windows now advances through Rust/formatter acceptance to packaging, where
+Get-Command returns two Node installations and PowerShell combines their paths.
+Select the first Application in PATH order in both build and installed-toolchain
+acceptance scripts. Preserve failure on missing Node. PowerShell is unavailable
+locally; fresh hosted Windows execution is required for this packaging correction.
+Task Manager application behavior is unchanged.

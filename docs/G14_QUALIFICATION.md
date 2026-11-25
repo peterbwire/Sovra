@@ -102,6 +102,24 @@ Linux profiles. The Windows job failed two formatter test expectations, addresse
 in the subsequent follow-up; the whole CI run is not green. Later edits require
 fresh evidence and do not change these reports' qualified revision.
 
+## Consolidated local evidence (2026-11-25)
+
+Revision `55451f1` passed all 14 stages of `--windows-compile` qualification,
+including 773 Rust tests, strict Clippy, exact Rust 1.74 checking, Windows GNU
+compilation and four Node checks. All 18 qualifier regressions passed separately.
+The retained report is `target/checked-evidence/g14-qualification/20261125T182140.765554Z/`.
+Its unchanged start/end source hash was independently rechecked after completion:
+`7a638b426901be12746c7f5dd6c91681b72822aae66b4d636f0730645aee263e`.
+This consolidates verifier startup/abandonment cleanup, configured zero/one/two
+job admission, and actual CLI/native policy-transition acceptance.
+
+Subsequent packaging/documentation edits do not change that qualified revision.
+Windows hosted run 45673645777 passed Rust and formatter stages but failed
+packaging because PowerShell resolved multiple Node installations into one
+command path. Its follow-up selects the first executable in PATH order; fresh
+Windows packaging execution remains required. Local compile checking never
+establishes Windows runtime acceptance or production G14 completion.
+
 ## Completion boundaries
 
 Implemented and locally qualified behavior covers the documented restricted
