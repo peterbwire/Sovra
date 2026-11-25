@@ -11823,3 +11823,14 @@ against the prior implementation and passes for close, cancellation, timeout and
 host destruction, with no interim or identity publication. Existing command
 verifier process cleanup tests remain part of focused validation. Production
 preemption, descendant supervision and wider G14 gates remain open.
+
+## 2026-11-25: failed cleanup hooks and error precedence
+
+Expand pending verifier lifecycle acceptance to ten cases: successful/failing
+cleanup hooks through close, close-all, callback cancellation, timeout and host
+destruction. Assert exactly one host cleanup call, released stream capacity,
+invalidated claimed tokens and no Continue or identity publication. Pre-claim
+cancellation preserves caller custody and does not call cleanup. Explicit cleanup
+surfaces the cleanup error; cancellation/deadline retain their original errors.
+This extends regression coverage without broadening supported hosts or changing
+runtime behavior. Full qualification remains tied to the source of each report.

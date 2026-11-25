@@ -217,7 +217,12 @@ replace the original cancellation/deadline error. Completed jobs still own their
 completion cleanup; trusted jobs must retain safe Drop behavior. This does not
 supervise descendants or make OS cleanup preemptible.
 
-A trusted pending-job regression observes exactly one host cancellation on each
-of the four abandonment paths, with no Continue/handler/principal publication.
+A trusted pending-job regression exercises successful and failing cleanup across
+explicit close, close-all, callback cancellation, aggregate timeout and host
+destruction. Each case observes exactly one host cancellation and no
+Continue/handler/principal publication. Close/close-all report cleanup failures;
+callback/deadline errors retain priority. After claimed-owner abandonment, tokens refuse reuse and stream reservations
+are released even when cleanup reports an error. Cancellation before the call
+claims ownership preserves the token and pending job for explicit later cleanup.
 Existing command-job tests continue to check direct-child disappearance and
 capacity release.
