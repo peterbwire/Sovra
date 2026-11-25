@@ -11775,3 +11775,16 @@ The two existing lock-publication conflict tests and all 16 v2 formatter CLI tes
 pass locally. Hosted ARM64/macOS acceptance still requires fresh CI reports.
 The third local qualification was interrupted and retained as unsuccessful before
 these edits; restart on the corrected source.
+
+## 2026-11-25: hosted fixture portability and verifier PID publication
+
+Frozen Linux qualification at a3d08e5 passed 770 Rust tests, exact MSRV, strict
+Clippy, Windows compile checking and the required Node checks. Hosted G13 x64
+and ARM64 profiles also passed. Broader hosted checks exposed remaining test
+harness assumptions: PID file creation can precede numeric contents, macOS temp
+paths can resolve through aliases, and generated JavaScript exceeds Windows'
+command-line bound. Observe a positive numeric PID before cleanup assertions,
+canonicalize inventory fixture roots and compare resolved diagnostic files, and
+execute generated JavaScript through Node stdin. Preserve process-reaping,
+source-location and backend-output assertions. These test changes require fresh
+qualification; the earlier successful report remains evidence for its own source.

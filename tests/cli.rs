@@ -448,11 +448,7 @@ fn scoped_type_example_checks_runs_and_builds() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let js = Command::new("node")
-        .arg("-e")
-        .arg(String::from_utf8(output.stdout).unwrap())
-        .output()
-        .unwrap();
+    let js = run_node_source(&output.stdout).unwrap();
     assert!(
         js.status.success(),
         "{}",
@@ -1357,11 +1353,7 @@ fn local_library_consumer_checks_runs_and_builds_on_both_engines() {
         return;
     };
     assert!(js.status.success());
-    let output = Command::new("node")
-        .arg("-e")
-        .arg(String::from_utf8(js.stdout).unwrap())
-        .output()
-        .expect("Node required");
+    let output = run_node_source(&js.stdout).expect("Node required");
     assert!(
         output.status.success(),
         "{}",
@@ -1407,11 +1399,7 @@ fn library_foundations_example_checks_runs_and_builds() {
         "{}",
         String::from_utf8_lossy(&built.stderr)
     );
-    let js = Command::new("node")
-        .arg("-e")
-        .arg(String::from_utf8(built.stdout).unwrap())
-        .output()
-        .expect("Node is required for backend validation");
+    let js = run_node_source(&built.stdout).expect("Node is required for backend validation");
     assert!(
         js.status.success(),
         "{}",
@@ -1517,6 +1505,20 @@ fn structural_depth_errors_replace_subprocess_crashes() {
     "#,
     );
     std::fs::remove_dir_all(&directory).unwrap();
+}
+
+// Generated programs can exceed Windows' command-line limit.
+fn run_node_source(source: &[u8]) -> std::io::Result<Output> {
+    use std::io::Write as _;
+    use std::process::Stdio;
+    let mut child = Command::new("node")
+        .arg("-")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    child.stdin.take().expect("stdin").write_all(source)?;
+    child.wait_with_output()
 }
 
 fn assert_json_report(output: &Output, assertions: &str) {
@@ -1734,8 +1736,8 @@ fn check_project_diagnostics_identify_scanned_files() {
                 const path = require('node:path').join(report.target, file);
                 const bytes = require('node:fs').readFileSync(path);
                 const start = bytes.indexOf(spelling);
-                assert.equal(require('node:path').resolve(d.location.file),
-                    require('node:path').resolve(path));
+                assert.equal(require('node:fs').realpathSync(d.location.file),
+                    require('node:fs').realpathSync(path));
                 assert.deepEqual(d.location, {{ file: d.location.file, start,
                     end: start + Buffer.byteLength(spelling), line, column: 0 }});
             }}

@@ -150,7 +150,7 @@ fn child_timeout_cancellation_and_http_deadline_cleanup_are_distinct() {
         peer.write_all(request()).unwrap();
         if kind == 1 {
             let result = h.call(&j(&receive(n)), || {
-                if f.0.join("pid").exists() {
+                if observed_pid(&f).is_some() {
                     Err("cancel command verifier")
                 } else {
                     Ok(())
@@ -295,13 +295,13 @@ while True:time.sleep(.01)
     prepared(&mut h, n);
     assert_eq!(call(&mut h, &body_poll(n)).unwrap(), JsonValue::Bool(false));
     for _ in 0..100 {
-        if f.0.join("pid").exists() {
+        if observed_pid(&f).is_some() {
             break;
         }
         assert_eq!(call(&mut h, &body_poll(n)).unwrap(), JsonValue::Bool(false));
         std::thread::sleep(Duration::from_millis(1));
     }
-    let pid = std::fs::read_to_string(f.0.join("pid")).unwrap();
+    let pid = observed_pid(&f).expect("verifier published a positive PID");
     call(
         &mut h,
         &format!(r#"{{"version":4,"op":"net.close","handle":{n}}}"#),
@@ -359,13 +359,13 @@ fn pending_command_timeout_and_claimed_cancellation_kill_and_reap() {
         prepared(&mut h, n);
         assert_eq!(call(&mut h, &body_poll(n)).unwrap(), JsonValue::Bool(false));
         for _ in 0..200 {
-            if f.0.join("pid").exists() {
+            if observed_pid(&f).is_some() {
                 break;
             }
             assert_eq!(call(&mut h, &body_poll(n)).unwrap(), JsonValue::Bool(false));
             std::thread::sleep(Duration::from_millis(1));
         }
-        let pid = std::fs::read_to_string(f.0.join("pid")).unwrap();
+        let pid = observed_pid(&f).expect("verifier published a positive PID");
         if cancel {
             let mut ticks = 0;
             assert_eq!(
@@ -391,4 +391,13 @@ fn pending_command_timeout_and_claimed_cancellation_kill_and_reap() {
         assert_eq!(h.usage(), (1, 0));
         h.close_all().unwrap();
     }
+}
+
+// Creating the PID file precedes writing its contents; existence alone races.
+fn observed_pid(fixture: &Fixture) -> Option<u32> {
+    std::fs::read_to_string(fixture.0.join("pid"))
+        .ok()?
+        .parse::<u32>()
+        .ok()
+        .filter(|pid| *pid > 0)
 }
