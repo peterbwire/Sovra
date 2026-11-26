@@ -2,9 +2,9 @@
 
 The Rust embedding API exports `LoopbackNetwork`, `LoopbackListener`,
 `LoopbackStream`, `NetworkLimits` and `NetworkRead` from `compiler::v2`.
-It is an initial G14 resource adapter, currently supported on Linux. The `v4`
-module name does not change the existing v3 JSON host schema or install a v4
-source/CLI protocol.
+It is an initial G14 resource adapter, currently supported on Linux. The existing v3 JSON host schema is unchanged. A separate explicit
+[network request adapter](network-host-v4.md) now supports checked source
+execution through Rust embedding; CLI/native network policy is not installed.
 
 Create a denied network with `Default` or lower its finite limits with `new`.
 The trusted caller explicitly `grant_port`s each allowed localhost port. Granting
@@ -28,9 +28,10 @@ read/accept deadlines, oversized operations without prefix writes, concurrent
 listener admission and reservation recovery. Existing v3 hosts and binary-data
 APIs remain separate and receive regression checks.
 
-This is not yet callable from `.svr`, a Sovra-written server, HTTP, outbound
-networking, TLS, async scheduling or production deployment. Next is checked host
-integration and a bounded Sovra-owned sequential server. Browser/mobile and
+[Network host requests](network-host-v4.md) now connect this foundation to
+checked `.svr` data execution through an explicit owned Rust host scope.
+CLI/native network policy, HTTP, outbound networking, TLS, async scheduling and
+production deployment remain open. Next is independently launched server integration. Browser/mobile and
 additional desktop hosts retain their own explicit support gates.
 
 Targeted Linux qualification passes 631 unique Rust tests: seven new socket

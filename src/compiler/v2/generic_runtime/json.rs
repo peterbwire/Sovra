@@ -221,7 +221,14 @@ pub(super) fn execute(
         let mut left = limits.values;
         let request = extract(input, input.nodes.len() - 1, b, 0, &mut left)?;
         let host = b.host;
-        let value = match host.call(&request, || b.work(0))? {
+        let response = match host {
+            DataExecutionHost::V3(host) => host.call(&request, || b.work(0)),
+            DataExecutionHost::Network(host) => host
+                .try_borrow_mut()
+                .map_err(|_| b.invalid("network host is already borrowed"))?
+                .call(&request, || b.work(0)),
+        };
+        let value = match response? {
             Ok(value) => value,
             Err(e) => {
                 if e.code == "cleanup" {

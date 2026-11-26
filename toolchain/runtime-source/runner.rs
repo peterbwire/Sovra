@@ -72,7 +72,7 @@ fn run_generic_package(image:&[u8])->ExitCode {
         let args:Vec<_>=env::args_os().skip(1).collect();
         if args.is_empty(){return match sovra::compiler::v2::execute_generic_data_package_native_image(image){Ok(_)=>ExitCode::SUCCESS,Err(e)=>{eprintln!("svr: {}",e.chars().take(1024).flat_map(char::escape_default).collect::<String>());ExitCode::from(1)}};}
         if args.len()!=2||args[0]!="--host-policy"{eprintln!("svr: data native launch accepts only --host-policy PATH");return ExitCode::from(1);}
-        let result=(||{let host=sovra::compiler::v2::HostV3::load_policy(std::path::Path::new(&args[1])).map_err(|e|e.message)?;let program=sovra::compiler::v2::decode_generic_data_package_native_image(image)?;sovra::compiler::v2::execute_generic_data_package_with_host(&program,sovra::compiler::v2::generic_command_runtime_policy(),&host).map_err(|e|format!("{e:?}"))?;Ok::<(),String>(())})();
+        let result=(||{let host=sovra::compiler::v2::DataHostPolicy::load_policy(std::path::Path::new(&args[1])).map_err(|e|e.message)?;let program=sovra::compiler::v2::decode_generic_data_package_native_image(image)?;host.execute(&program,sovra::compiler::v2::generic_command_runtime_policy()).map_err(|e|format!("{e:?}"))?;Ok::<(),String>(())})();
         return match result{Ok(())=>ExitCode::SUCCESS,Err(e)=>{eprintln!("svr: {}",e.chars().take(1024).flat_map(char::escape_default).collect::<String>());ExitCode::from(1)}};
     }
 

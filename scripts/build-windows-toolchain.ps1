@@ -28,7 +28,7 @@ New-Item -ItemType Directory -Path (Join-Path $stage 'bin') -Force | Out-Null
 Copy-Item -LiteralPath $compiler -Destination (Join-Path $stage 'bin\svr.exe')
 Copy-Item -LiteralPath 'toolchain\bin\svr-new.ps1' -Destination (Join-Path $stage 'bin')
 Copy-Item -LiteralPath 'toolchain\bin\svr-editor.ps1' -Destination (Join-Path $stage 'bin')
-$node = Get-Command node -CommandType Application -ErrorAction Stop
+$node = Get-Command node -CommandType Application -ErrorAction Stop | Select-Object -First 1
 $developerOutput = Join-Path $stage 'developer-tools'
 if ($IdeExtension) {
     & $node.Source (Join-Path $PSScriptRoot 'build-developer-tools.mjs') $developerOutput ([IO.Path]::GetFullPath($IdeExtension))

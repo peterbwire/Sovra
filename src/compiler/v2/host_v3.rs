@@ -85,6 +85,7 @@ impl HostLimits {
 #[derive(Debug)]
 struct Program {
     executable: File,
+    argument_zero: PathBuf,
     cwd: File,
     environment: BTreeMap<String, String>,
 }
@@ -257,6 +258,14 @@ fn target(root: &File, path: &str) -> Result<(File, PathBuf), HostError> {
     Ok((current, path))
 }
 impl HostV3 {
+    pub(super) fn with_limits(limits: HostLimits) -> Result<Self, HostError> {
+        limits.validate()?;
+        Ok(Self {
+            limits,
+            ..Self::default()
+        })
+    }
+
     /// Grant a captured read directory; no source API can call this method.
     pub fn grant_read(&mut self, name: &str, path: &Path) -> Result<(), HostError> {
         self.read
@@ -290,7 +299,17 @@ impl HostV3 {
             any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")
         ))]
         {
+            use std::os::unix::ffi::OsStrExt;
             use std::os::unix::fs::OpenOptionsExt;
+            let argument_zero = if executable.is_absolute() {
+                executable.to_path_buf()
+            } else {
+                std::env::current_dir().map_err(io)?.join(executable)
+            };
+            let label = argument_zero.as_os_str().as_bytes();
+            if label.len() > 4096 || label.contains(&0) {
+                return Err(err("input", "invalid native executable argument zero"));
+            }
             let executable = OpenOptions::new()
                 .read(true)
                 .custom_flags(open_flags(false))
@@ -320,6 +339,7 @@ impl HostV3 {
                 name.into(),
                 Program {
                     executable,
+                    argument_zero,
                     cwd: dir(&fs::canonicalize(cwd).map_err(io)?)?,
                     environment,
                 },
@@ -801,16 +821,16 @@ impl HostV3 {
     any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")
 ))]
 impl HostV3 {
-    fn process<E>(
+    pub(super) fn start_process(
         &self,
         r: &J,
-        tick: &mut impl FnMut() -> Result<(), E>,
-    ) -> Result<Result<J, HostError>, E> {
+    ) -> Result<process_exchange::OwnedProcessExchange, HostError> {
         use std::{
+            os::unix::process::CommandExt,
             os::{fd::OwnedFd, unix::net::UnixStream},
             process::{Command, Stdio},
         };
-        let prepare = (|| {
+        (|| {
             let grant = self
                 .programs
                 .get(text(field(r, "program")?)?)
@@ -849,6 +869,7 @@ impl HostV3 {
             b.set_nonblocking(true).map_err(io)?;
             c.set_nonblocking(true).map_err(io)?;
             let child = Command::new(fd(&grant.executable))
+                .arg0(&grant.argument_zero)
                 .args(argv)
                 .current_dir(fd(&grant.cwd))
                 .env_clear()
@@ -859,90 +880,39 @@ impl HostV3 {
                 .spawn()
                 .map_err(io)?;
             Ok((child, a, b, c, input))
-        })();
-        let (child, mut input_pipe, mut stdout, mut stderr, input) = match prepare {
-            Ok(v) => v,
+        })()
+        .map(|(child, input_pipe, stdout, stderr, input)| {
+            process_exchange::OwnedProcessExchange::new(
+                child,
+                input_pipe,
+                stdout,
+                stderr,
+                input,
+                self.limits,
+            )
+        })
+    }
+    fn process<E>(
+        &self,
+        r: &J,
+        tick: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Result<J, HostError>, E> {
+        let mut pending = match self.start_process(r) {
+            Ok(pending) => pending,
             Err(e) => return Ok(Err(e)),
         };
-        let mut child = OwnedChild(child);
-        let mut output = Vec::new();
-        let mut errors = Vec::new();
-        let mut sent = 0;
-        let mut closed = false;
-        let mut status = None;
-        let start = Instant::now();
-        let run = (|| loop {
-            tick()?;
-            if start.elapsed() > Duration::from_millis(self.limits.milliseconds) {
-                return Ok(Err(err("timeout", "owned child deadline")));
-            }
-            if !closed {
-                if sent < input.len() {
-                    match input_pipe.write(&input[sent..]) {
-                        Ok(0) => closed = true,
-                        Ok(n) => sent += n,
-                        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
-                        Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => closed = true,
-                        Err(e) => return Ok(Err(io(e))),
-                    }
-                }
-                if sent == input.len() || closed {
-                    let _ = input_pipe.shutdown(std::net::Shutdown::Write);
-                    closed = true;
-                }
-            }
-            for (pipe, data) in [(&mut stdout, &mut output), (&mut stderr, &mut errors)] {
-                let mut chunk = [0u8; 8192];
-                loop {
-                    match pipe.read(&mut chunk) {
-                        Ok(0) => break,
-                        Ok(n) => {
-                            if n > self.limits.bytes.saturating_sub(data.len()) {
-                                return Ok(Err(err("limit", "child output ceiling")));
-                            }
-                            data.extend_from_slice(&chunk[..n]);
-                        }
-                        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
-                        Err(e) => return Ok(Err(io(e))),
-                    }
-                }
-            }
-            if let Some(exit) = child.try_wait().map_err(io).unwrap_or(None) {
-                if status.is_some() {
-                    return Ok(Ok(exit));
-                }
-                status = Some(exit);
-            }
-            std::thread::sleep(Duration::from_millis(2));
-        })();
-        let cleanup = if status.is_some() {
-            child.wait()
-        } else {
-            let killed = child.kill();
-            let waited = child.wait();
-            match (killed, waited) {
-                (_, Ok(s)) => Ok(s),
-                (Err(e), Err(_)) => Err(e),
-                (_, Err(e)) => Err(e),
+        let run = loop {
+            match pending.poll(tick) {
+                Ok(Ok(None)) => std::thread::sleep(Duration::from_millis(2)),
+                Ok(Ok(Some(value))) => break Ok(Ok(value)),
+                Ok(Err(e)) => break Ok(Err(e)),
+                Err(e) => break Err(e),
             }
         };
-        if let Err(e) = cleanup {
-            return Ok(Err(err(
-                "cleanup",
-                format!("owned child cleanup failed: {e}"),
-            )));
+        if let Err(e) = pending.cleanup() {
+            return Ok(Err(e));
         }
-        match run {
-            Err(e) => Err(e),
-            Ok(Err(e)) => Ok(Err(e)),
-            Ok(Ok(exit)) => Ok((|| {
-                Ok(obj(vec![
-                    ("exit_code", J::Int(exit.code().map_or(-1, i64::from))),
-                    ("stdout", encode(&output)?),
-                    ("stderr", encode(&errors)?),
-                ]))
-            })()),
-        }
+        run
     }
 }
 
@@ -983,3 +953,16 @@ impl Drop for OwnedChild {
         }
     }
 }
+
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")
+))]
+#[path = "host_process_exchange_v3.rs"]
+mod process_exchange;
+
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")
+))]
+pub(super) use process_exchange::OwnedProcessExchange;

@@ -58,9 +58,15 @@ mod linux {
         if text.len() > super::super::MAX_LOCK_BYTES {
             return Err("lock output exceeds 8 MiB".into());
         }
+        // Linux arm64 uses different directory/no-follow ABI bits from x86.
+        let directory_flags = if cfg!(target_arch = "aarch64") {
+            0x8000 | 0x4000
+        } else {
+            0x20000 | 0x10000
+        };
         let directory = OpenOptions::new()
             .read(true)
-            .custom_flags(0o400000 | 0o200000)
+            .custom_flags(directory_flags)
             .open(root)
             .map_err(|e| e.to_string())?;
         let anchor = PathBuf::from(format!("/proc/self/fd/{}", directory.as_raw_fd()));

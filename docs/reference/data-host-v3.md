@@ -26,7 +26,9 @@ This is source-backed VM execution inside a native executable, not machine-code
 optimization of each Sovra function. Independent launch is tested on Linux.
 
 Host authority is absent by default. Only `run` accepts `--host-policy PATH`;
-the native executable accepts the same optional pair. The policy remains an
+the native executable accepts the same optional pair. Version-three policies select file/process/time services; [version-four network
+policies](network-policy-v4.md) separately select explicitly granted loopback
+networking. The policy remains an
 external trusted file and is never embedded in the image or accepted from an
 environment variable. Check/test/build cannot acquire grants through this flag.
 Standalone files, JavaScript/worker execution and editor/LSP data-profile options

@@ -259,3 +259,45 @@ fn concurrent_embedding_callers_cannot_exceed_the_domain_listener_limit() {
     );
     assert_eq!(network.usage(), (0, 0));
 }
+
+#[test]
+fn cooperative_write_yields_at_backpressure_and_other_stream_still_progresses() {
+    let domain = network(NetworkLimits::DEFAULT);
+    let listener = domain.listen(0, ok).unwrap().unwrap();
+    let port = listener.port().unwrap();
+    let _slow_peer = client(port);
+    let mut slow = listener.accept(ok).unwrap().unwrap();
+    let mut fast_peer = client(port);
+    let mut fast = listener.accept(ok).unwrap().unwrap();
+    let chunk = vec![42; NetworkLimits::DEFAULT.bytes];
+    let mut blocked = false;
+    for _ in 0..1024 {
+        match slow.try_write(&chunk, ok).unwrap().unwrap() {
+            Some(n) => assert!(n > 0 && n <= chunk.len()),
+            None => {
+                blocked = true;
+                break;
+            }
+        }
+    }
+    assert!(
+        blocked,
+        "non-reading peer must eventually apply backpressure"
+    );
+    assert_eq!(
+        fast.try_write(&vec![0; chunk.len() + 1], ok)
+            .unwrap()
+            .unwrap_err()
+            .code,
+        "limit"
+    );
+    assert_eq!(fast.try_write(b"x", ok).unwrap().unwrap(), Some(1));
+    let mut byte = [0];
+    fast_peer.read_exact(&mut byte).unwrap();
+    assert_eq!(byte, [b'x']);
+    assert_eq!(domain.usage(), (1, 2));
+    drop(slow);
+    drop(fast);
+    drop(listener);
+    assert_eq!(domain.usage(), (0, 0));
+}

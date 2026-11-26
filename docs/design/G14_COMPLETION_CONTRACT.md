@@ -1,7 +1,27 @@
 # G14 resources, networking and HTTP completion contract
 
-Status: active implementation. The first slice is a trusted Rust embedding
-foundation; it does not establish a Sovra socket builtin or HTTP server.
+Status: active implementation. The trusted Rust embedding foundation now
+provides version-four requests through checked `.svr` data execution with owned
+execution-scope handles. Explicit external policies now enable CLI/native
+loopback byte serving. A pure bounded fixed-length HTTP request parser is now
+implemented, along with bounded final-response rendering and one-request owned
+HTTP socket dispatch. Real Sovra handlers pass independent CLI/native HTTP/JSON
+acceptance. The [incremental chunked decoder](../reference/http-chunked-v4.md)
+now integrates checked head framing, shared HTTP work and socket deadlines;
+CLI/native clients cover chunked Unicode JSON and declared trailers.
+[Bounded validated-discard trailers](../reference/http-trailers-v4.md) remain
+separate from headers and never authorize application behavior. Bounded
+[100-continue handshakes](../reference/http-expect-v4.md) now precede body waits;
+unsupported expectations refuse with 417 before body transfer. Optional external
+[Host/Origin access policy](../reference/http-access-v4.md) now admits exact
+request-head grants before Continue/body handling, with optional exact method/
+raw-target lists and shared comparison work; a trusted [Bearer-verifier embedding boundary](../reference/http-authentication-v4.md)
+now supports pre-body verification, public principal publication and credential
+redaction. Explicit [CLI/native command delegation](../reference/http-command-authentication-v4.md)
+now supports bounded verification and private process cleanup; reviewed production
+credential backends and secure transport remain open. Trailer integrity/
+retention, remaining protocol coverage, production server controls and G14 qualification
+remain open.
 G13's experimental Linux foundation remains complete under its documented scope.
 Task Manager feature work remains paused.
 
@@ -71,3 +91,118 @@ path; an independent client must assert status, headers, body and JSON behavior.
 Retain malformed/ambiguous/truncated input, partial I/O, disconnect, resource,
 port-conflict, timeout/cancellation and reliable cleanup evidence. Unsupported
 hosts/features must refuse without silently selecting another backend.
+
+## Repeatable restricted-profile qualification
+
+The [G14 qualifier](../G14_QUALIFICATION.md) retains frozen-source Linux library,
+network/HTTP, CLI/native and v3 compatibility results plus strict lint/MSRV and
+Node checks. It rejects partial/skipped targets, command failures and source
+drift. CI uploads independent x86_64/ARM64 reports; configured jobs do not count
+as hosted runtime evidence. A passing restricted-profile run does not close
+client authentication, full conformance or production/platform gates.
+
+Qualification source capture now refuses linked parents/files, missing tracked
+inputs, special-file substitution and read-time identity/content changes. It
+bounds manifest/file/aggregate bytes and retains failure reports even before a
+source hash can be established. These tooling checks do not add protocol or
+production-server guarantees.
+
+The trusted verifier context now carries admitted raw Host/Origin plus actual
+loopback plaintext transport. Provider audience/channel decisions do not infer
+security from forwarded headers. This enables backend scoping; it does not add
+TLS, trusted proxies or a deployable credential backend.
+
+Optional [aggregate HTTP admission](../reference/http-admission-v4.md) now caps
+attempts per fixed monotonic window across a host domain before parser/verifier
+work, with bounded non-cacheable 429 and owned cleanup. It is not per-identity,
+distributed or OS resource admission; production backpressure/fairness remain open.
+
+Cooperative scheduling now starts with `net.try_accept`: one nonblocking accept
+attempt, explicit idle Null, capacity admission before dequeue and cancellation-safe
+publication. See [network host](../reference/network-host-v4.md#cooperative-accept-foundation-2026-11-25).
+This does not make HTTP receive/respond incremental or concurrent; connection
+state scheduling and production backpressure remain open.
+
+`net.try_read` now adds one bounded nonblocking read attempt with distinct
+idle/data/EOF results and pre-read cancellation. Tests cover an idle peer yielding
+to a ready connection and checked Sovra consumption. This remains a raw stream
+primitive; cooperative writes, resumable HTTP and fair scheduling are not yet
+implemented. See [network host](../reference/network-host-v4.md#cooperative-read-foundation-2026-11-25).
+
+`net.try_write` now adds one bounded nonblocking write attempt with exact partial
+progress or explicit not-ready output. Tests fill a non-reading peer's send buffer
+and prove another connection still progresses. Callers retain pending suffixes;
+this does not add resumable HTTP or a fair scheduler. See
+[network host](../reference/network-host-v4.md#cooperative-write-foundation-2026-11-25).
+
+HTTP receive now retains delimiter accumulation in `HttpHeadBuffer` (owned bytes,
+scan cursor and sticky failures), preserving strict one-time head parsing and
+existing limits. This is the resumable head-state foundation, not a yielding
+socket receive operation. Body/authentication/interim-response/final-output states
+and fair scheduling remain open. See [exchange](../reference/http-exchange-v4.md#resumable-head-buffer-foundation-2026-11-25).
+
+`http.poll_head` now exposes pending-head custody to checked source: at most one
+nonblocking read per successful poll, no handler publication, retained aggregate
+limits and one admission charge across polls/receive. Existing `http.receive`
+consumes pending state through strict validation and can still wait for body or
+verification. See [yielding head preparation](../reference/http-exchange-v4.md#yielding-head-preparation-2026-11-25).
+
+Fixed-length HTTP receive now uses `HttpFixedBody`, retaining bounded binary
+fragments with sticky refusal and complete-only publication. This extracts body
+state after existing authentication, not a yielding body API. Checked metadata,
+verification/interim/final-output state and scheduling remain open. See
+[exchange](../reference/http-exchange-v4.md#resumable-fixed-length-body-state-2026-11-25).
+
+`http.poll_body` now retains owned checked request metadata, verifier outcome and
+fixed/chunked body decoder state. Polls expose readiness only and preserve the
+shared I/O/deadline and admission state; receive publishes metadata only after
+body completion without re-verification. Initial preparation can still wait for
+verification/Continue, and receive can wait for incomplete bodies. Fair scheduling
+and cooperative verification/output remain open. See
+[body polling](../reference/http-exchange-v4.md#checked-metadata-and-body-polling-2026-11-25).
+
+`http.start_response` and `http.poll_response` now retain immutable framed output
+and exact unsent suffix under owned custody, shared deadlines and per-attempt I/O
+admission. Polling attempts one write; completion closes and invalidates the token.
+The Sovra example exercises this through CLI/native consumers. Fair scheduling,
+cooperative verifier/interim/denial output and production controls remain open.
+See [response output](../reference/http-exchange-v4.md#cooperative-final-response-output-2026-11-25).
+
+The actual Sovra example now schedules two owned connections in cyclic
+head/body/output turns, with capacity-before-accept backpressure and fixed bounded
+pacing. Independent clients prove delayed heads/bodies do not prevent another
+request from completing, then successfully finish the delayed requests. See
+[scheduling scope](../reference/http-scheduling-v4.md); preemptive/production
+fairness and cooperative verifier/interim/denial output remain open.
+
+Continue output now retains its exact suffix in pending-body custody and uses one
+nonblocking write turn before subsequent body reads; blocking receive resumes it
+without duplicate bytes. See [interim output](../reference/http-expect-v4.md#cooperative-interim-output-2026-11-25).
+Initial verification and denial/error output remain waiting phases.
+
+Cooperative automatic refusals now retain bounded output custody and return only
+false while pending, then the original terminal error. Admission/head preparation
+failures can yield without ever publishing a handler/principal. Blocking receive
+keeps synchronous best-effort refusal; later polling failures may close silently.
+See [refusal scope](../reference/http-exchange-v4.md#cooperative-refusal-output-2026-11-25).
+Initial verifier execution and production controls remain open.
+
+Private child-process I/O now has retained bounded polling state reused by the
+synchronous runner, with one operation per pipe/exit check per turn and explicit
+kill/reap cleanup. This is a prerequisite, not completed asynchronous HTTP
+verification. See [process polling](../reference/http-command-authentication-v4.md#owned-process-polling-prerequisite-2026-11-25).
+
+Pending-verification integration must bind each job to its original checked
+request/authority/transport, bound live jobs per domain and preserve the original
+controls across polls. It must spawn once, keep decisions/credentials private,
+kill/reap on close or cancellation, and publish no handler until verification and
+body completion. Synchronous trusted-provider fallback must remain explicit rather
+than being described as asynchronous execution.
+
+The command backend now implements pending verification jobs bound to owned
+checked/redacted metadata, original request context and controls. Cooperative body
+polls advance private child I/O with a two-job ceiling; grant/deny transitions are
+fail-closed and direct children are killed/reaped on close/control refusal.
+Synchronous provider fallback, blocking receive, OS launch/cleanup and lack of an
+OS watchdog remain explicit. See [job scope](../reference/http-command-authentication-v4.md#pending-command-verification-2026-11-25).
+Production identity/TLS/deployment and broader qualification remain open.

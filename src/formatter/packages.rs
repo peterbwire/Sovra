@@ -70,7 +70,7 @@ pub(super) fn execute(root: &Path, mode: Mode, profile: Profile) -> Result<bool,
     execute_profile(root, mode, profile, |_| Ok(()))
 }
 
-#[cfg(test)]
+#[cfg(all(test, any(windows, target_os = "linux")))]
 fn execute_with(
     root: &Path,
     mode: Mode,

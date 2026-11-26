@@ -132,7 +132,10 @@ fn owned_process_captures_binary_streams_clears_environment_and_cleans_on_contro
     let JsonValue::Object(fields) = result else {
         panic!()
     };
-    assert!(fields.contains(&("exit_code".into(), JsonValue::Int(0))));
+    assert!(
+        fields.contains(&("exit_code".into(), JsonValue::Int(0))),
+        "{fields:?}"
+    );
     assert!(fields.contains(&("stdout".into(), JsonValue::String("AP8=".into()))));
     host.grant_program(
         "env",
@@ -378,6 +381,10 @@ fn portable_relative_paths_are_pure_and_cannot_introduce_parent_or_absolute_root
 
 #[test]
 fn owned_child_fixture() {
+    if let Some(expected) = std::env::var_os("SOVRA_EXPECTED_ARG0") {
+        assert_eq!(std::env::args_os().next(), Some(expected));
+        return;
+    }
     if let Some(path) = std::env::var_os("SOVRA_OWNED_CHILD_PID") {
         std::fs::write(path, std::process::id().to_string()).unwrap();
         loop {
@@ -418,5 +425,26 @@ fn control_refusal_kills_and_reaps_the_observed_owned_child() {
     assert!(
         !std::path::Path::new("/proc").join(pid).exists(),
         "owned child must be dead and reaped"
+    );
+}
+
+#[test]
+fn captured_native_program_preserves_argv_zero_after_alias_removal() {
+    let root = Root::new();
+    let alias = root.0.join("native-dispatch-name");
+    std::os::unix::fs::symlink(std::env::current_exe().unwrap(), &alias).unwrap();
+    let mut environment = BTreeMap::new();
+    environment.insert("SOVRA_EXPECTED_ARG0".into(), alias.to_str().unwrap().into());
+    let mut host = HostV3::default();
+    host.grant_program("dispatch", &alias, &root.0, environment)
+        .unwrap();
+    std::fs::remove_file(&alias).unwrap();
+    let result=run(&host,r#"{"version":3,"op":"process.run","program":"dispatch","arguments":["--exact","owned_child_fixture","--nocapture"],"input":""}"#).unwrap();
+    let JsonValue::Object(fields) = result else {
+        panic!("object")
+    };
+    assert!(
+        fields.contains(&("exit_code".into(), JsonValue::Int(0))),
+        "{fields:?}"
     );
 }

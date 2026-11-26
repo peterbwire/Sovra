@@ -11283,3 +11283,631 @@ Byte storage plans refuse instead of selecting Int keys. See
 [checked data layout graphs](reference/generic-data-layouts-v2.md).
 Checked byte operations, owned Result/error admission, runtime Byte keys, CLI/native
 data profiles and JSON remain open; D1/G13 are incomplete.
+
+
+2026-11-24 G14 chunked decoding foundation: added the experimental incremental
+Rust `HttpChunkedDecoder`, reviewing RFC 9112 sections 7.1–7.1.3. Per-byte state
+tracks strict CRLF, checked hexadecimal sizes, binary data, bounded extensions
+and the terminal empty trailer line. Body publication requires consuming
+completion; errors and trailing bytes permanently revoke it. Aggregate wire,
+body, line, chunk-count and logical work limits persist across feeds. Nine
+focused tests cover fragmentation, truncation, grammar, mutation and exact limits;
+existing HTTP framing/exchange regressions remain strict. Nonempty trailers
+refuse. This is a Rust decoder foundation, not CLI/native chunked admission.
+Next: checked head/socket integration and independent client acceptance under
+existing deadlines before enabling transfer coding in actual Sovra servers.
+See [contract and scope](reference/http-chunked-v4.md).
+Validation for this checkpoint: 638 Rust tests, strict Clippy, Rust 1.74.0,
+Windows GNU all-target compilation, formatting and documentation links pass.
+CLI/native HTTP acceptance was not rerun for this isolated Rust helper.
+
+
+2026-11-24 G14 chunked socket integration: refactored the existing parser to share
+internal checked head framing while preserving the public borrowed fixed-length
+API. Socket receive parses the head once and incrementally decodes exactly one
+chunked coding; head work passes its remaining budget to the decoder. Decoded
+bytes/extension lines inherit HTTP limits, and the existing aggregate deadline,
+I/O count, cancellation and owned cleanup span all input and output. Original
+header metadata stays separate from decoded body content. Five additional socket
+tests cover binary one-byte reads/extensions, framing/coding/trailer refusals,
+truncation, shared work/body/line limits, slow input, cancellation and I/O refusal.
+The six-request Sovra example and independent Python CLI/native client now cover
+fixed/chunked Unicode JSON with splits inside UTF-8; native startup still removes
+project files and Node/PATH. Nonempty trailers and remaining HTTP/production
+gates remain open. Next: trailer policy/handling and broader protocol qualification
+under the [G14 contract](design/G14_COMPLETION_CONTRACT.md).
+
+Latest chunked serving validation: 671 Rust tests pass (600 library and 71
+HTTP/network/v3-host integration tests), including independent CLI/native
+fixed-length and chunked Unicode JSON clients. Four Node security/language/
+example/documentation checks, strict Clippy, exact Rust 1.74.0, Windows GNU
+all-target compilation and formatting pass. Windows runtime and full HTTP
+conformance remain unqualified. Local evidence:
+`target/checked-evidence/g14-http-chunked-serving/verification.json`.
+
+
+2026-11-24 G14 validated-discard trailers: reviewed RFC 9112 section 7.1.2 and
+RFC 9110 section 6.5.1, then added explicit bounded trailer admission while
+preserving the Rust decoder's original empty-only constructor. Socket hosts opt
+into validating/discarding fields without merging request headers or exposing
+integrity metadata. Trailer declarations and actual lines reject malformed or
+known security-sensitive names. Inherited section/line/count limits and shared
+wire/work/deadline/I/O budgets span all feeds; claimed failures close owners.
+Six decoder and four socket cases cover splits, truncation, mutation, limits,
+non-merging, refusal, cancellation and slow progress. Independent Python clients
+exercise declared trailers through CLI/native Sovra JSON handlers alongside
+fixed/chunked requests. Next: broader HTTP protocol and production authorization
+qualification; trailer retention/integrity requires a separate explicit contract.
+See [implemented scope](reference/http-trailers-v4.md).
+
+Validation: 681 unique Rust tests pass (600 library and 81 HTTP/network/v3-host
+integration tests), including independent CLI/native declared-trailer clients
+and 18 socket exchange tests. Four Node security/language/catalog/documentation
+checks, strict Clippy, exact Rust 1.74.0, Windows GNU all-target compilation and
+formatting pass. Windows runtime/full HTTP/production qualification remain open.
+Local evidence: `target/checked-evidence/g14-http-trailers/verification.json`.
+
+
+2026-11-24 G14 expectation handling: reviewed RFC 9110 section 10.1.1 and added
+one exact case-insensitive 100-continue expectation to the owned socket host.
+Checked head/framing admission precedes a fixed interim packet; fully buffered
+or empty frames omit it. Unknown expectations receive early bounded 417 and
+close without awaiting a body. Interim writes honor response output/head/line/
+work bounds and existing aggregate I/O/deadline/cancellation controls. The public
+borrowed fixed-length parser and source final-response operation retain their
+contracts. Six socket tests cover fixed/chunked handshake, omission, early
+refusal, output limits, cancellation/I/O exhaustion and timeout. Sovra now
+recovers ordinary per-connection receive errors in its bounded example. Actual
+CLI/native clients wait for 100 before body transfer and exercise 417 without
+sending content, then verify subsequent routes. Next: Host/origin authorization
+and remaining protocol/production qualification under the G14 contract.
+
+Validation: 687 unique Rust tests pass (600 library and 87 HTTP/network/v3-host
+integration tests), including 24 socket exchange tests and independent CLI/native
+100-continue/early-417 clients. Four Node security/language/catalog/documentation
+checks, strict Clippy, exact Rust 1.74.0, Windows GNU all-target compilation and
+formatting pass. This is targeted Linux G14 evidence; Windows runtime, full HTTP
+conformance and production qualification remain open. Local evidence:
+`target/checked-evidence/g14-http-expect/verification.json`.
+
+
+2026-11-24 G14 explicit HTTP access: added immutable Rust and optional external
+`http_access` policies with required Host/Origin lists and missing-Origin Bool.
+Bounded exact matching, duplicate/malformed grants and duplicate Origin refusal
+run before Continue/body/handler publication. Admission precharges shared HTTP
+work; denial closes the claimed owner with best-effort 403. Raw grants and
+policies without access configuration preserve existing behavior. Six focused
+policy/socket tests cover grammar, limits, matching, absence, timing and work.
+The eleven-connection example enables access and independent CLI/native clients
+withhold bodies for denied Host/Origin cases, then verify continued service.
+This does not implement authentication, CORS response headers or complete CSRF
+protection. Next: application authentication/deployment and broader G14 protocol/
+production qualification. See [access contract](reference/http-access-v4.md).
+
+Validation: 693 unique Rust tests pass (600 library and 93 HTTP/network/v3-host
+integration tests), including six access-policy tests and independent CLI/native
+403 clients withholding request bodies. Four Node security/language/catalog/
+documentation checks, strict Clippy, exact Rust 1.74.0, Windows GNU all-target
+compilation and formatting pass. This targeted Linux G14 checkpoint does not
+establish Windows runtime, complete HTTP conformance or production readiness.
+Local evidence: `target/checked-evidence/g14-http-access/verification.json`.
+
+
+2026-11-24 G14 exact request permissions: extended explicit HTTP access policy
+with paired optional method and raw-target lists. Lists are independent exact
+allowlists, bounded to 16 unique entries (methods 32 bytes, targets 256 bytes).
+No URL decoding, normalization, wildcard/prefix or method-case folding occurs.
+Empty lists deny all; incomplete/malformed configuration refuses. Comparison
+work precharges the same head/access/chunk/trailer budget, and denial closes
+with bounded 403 before Continue/body/handler processing. Four additional tests
+cover policy grammar/limits, case/escape/query variants, empty denial and shared
+work. The thirteen-connection example enables the restrictions and independent
+CLI/native clients withhold bodies for denied method/query requests, then verify
+continued service. Next: application authentication and broader protocol/
+deployment qualification. See [request permission scope](reference/http-access-v4.md).
+
+Latest request-permission validation: 697 unique Rust tests pass (600 library
+and 97 HTTP/network/v3-host integration tests), including ten access-policy
+tests and independent CLI/native clients withholding bodies for denied methods/
+query targets. Four Node security/language/catalog/documentation checks, strict
+Clippy, exact Rust 1.74.0, Windows GNU all-target compilation and formatting pass.
+This is targeted Linux G14 evidence; client authentication, full HTTP conformance,
+production and Windows runtime qualification remain open. Local evidence:
+`target/checked-evidence/g14-http-request-access/verification.json`.
+
+
+2026-11-24 G14 repeatable qualification: added `scripts/qualify-g14.py`, unique
+UTC evidence directories, source/toolchain/CLI identities, per-stage progress
+reports, command timeout/interrupt cleanup and fail-closed Rust target coverage.
+Eight Python regressions cover failed/missing commands, timeout, source drift,
+new inputs and silent skips. Separate Linux x86_64/ARM64 CI jobs retain evidence
+even on failure. Reconciled redundant G14 parent checklist items with completed
+restricted loopback behavior; authentication, complete HTTP, production and
+additional-platform qualification remain open. Validation uses the runner and
+its failure regressions; exact current results are retained in each report.
+See [qualification scope](G14_QUALIFICATION.md).
+
+
+2026-11-24 G14 qualification source capture: regressions reproduced acceptance
+of linked source and initial missing-input errors without a persisted report.
+Capture now uses Linux no-follow directory/file descriptors, regular-file
+admission, nonblocking opens and bounded manifest/file/aggregate bytes. Descriptor
+metadata and guarded path reopen checks reject read-time mutation/replacement.
+Qualification persists unsuccessful reports before initial fingerprinting.
+Eighteen Python tests exercise links/parent links, missing/FIFO/directory inputs,
+absent Git metadata, mutation/replacement, limits and previous runner failure
+paths. Existing runtime and protocol behavior is unchanged. Re-run the complete
+frozen-source qualifier to retain integrated positive-path evidence; production
+authentication and full HTTP qualification remain open.
+
+
+2026-11-24 G14 trusted Bearer-verifier boundary: added a Send/Sync Rust embedding
+interface with bounded checked credential context, validated public principals,
+fixed 401/403/503 decisions and opaque debug formatting. Installation requires
+HTTP access policy and no live sockets. Verification runs before body/Continue
+with shared framework work and cancellation/deadline checkpoints before/after
+the trusted callback. Successful descriptions omit Authorization and publish a
+separate principal field; failures never publish an HTTP owner. Eight tests
+exercise malformed credentials, provider outcomes, redaction, real Sovra source,
+verified Continue, policy/work ordering and post-provider controls/cleanup.
+Boxed optional access policy keeps host size bounded and preserves its public
+API. The G14 qualifier now includes this target. CLI/native credential backends,
+secure transport, reviewed cryptography/storage and identity permissions remain
+open; no credential scheme or secrets are embedded.
+See [authentication boundary scope](reference/http-authentication-v4.md).
+
+
+2026-11-24 G14 authentication audience context: extended the trusted borrowed
+verifier request with exact admitted Host/Origin getters and a non-exhaustive
+actual-transport enum, currently LoopbackPlaintext. Forwarded/Referer metadata
+never supplies authority/origin or promotes transport security. This lets a
+backend bind credentials to one admitted audience or refuse a nonconfidential
+channel before body/Continue. Framework context scans/UTF-8 validation consume
+shared work; Debug continues to omit all context values. Three new tests cover
+per-audience denial, raw/missing metadata and spoofed secure proxy headers;
+existing verifier API implementations remain source compatible. TLS/proxy trust,
+reviewed credential backends and production qualification remain open.
+See [provider context contract](reference/http-authentication-v4.md).
+
+
+2026-11-24 G14 explicit external verifier: added HttpCommandVerifier using a
+private HostV3 owned-process grant, fixed program/cwd/argv, empty environment and
+strict version-one JSON stdin/stdout. Protocol/stdio bytes, argument count/bytes
+and child duration are bounded; malformed/nonzero/oversized replies fail closed.
+An additive cooperative verifier control hook preserves existing implementations
+while allowing command I/O to observe aggregate HTTP cancellation/deadline and
+kill/reap the direct child. Optional external v4 policy dispatch requires access
+configuration; it does not expose v3 endpoints or embed backend credentials.
+Five protocol/process tests and two independent authenticated CLI/native clients
+cover valid principals/redaction, 401/403, continued service, source deletion,
+empty environment, absence of fixture credentials in native bytes and cleanup.
+The fixture backend/key are test-only dependencies. Production credential
+lifecycle, TLS and deployment qualification remain open.
+See [delegation scope](reference/http-command-authentication-v4.md).
+
+
+2026-11-25 G14 fixed-window HTTP admission: added optional external and trusted
+Rust policies with bounded count/window limits and per-domain monotonic state.
+Admission precedes parser/verifier work; failed claimed attempts consume quota,
+while preclaim cancellation and invalid handles do not. State spans listeners
+and survives owner closure. Exhaustion attempts empty non-cacheable 429 under
+remaining output/I/O/deadline controls and drops the raw stream. Three clock
+tests and four policy/socket cases cover exact reset, no idle credits, denial,
+cancellation, output limits and cross-listener counting. Authenticated CLI/native
+consumers now verify a fifth connection gets 429 without a fifth verifier spawn.
+No TCP/OS/per-identity/distributed admission or production fairness is claimed.
+See [bounded scope](reference/http-admission-v4.md).
+
+## 2026-11-25: G14 cooperative accept foundation
+
+Added additive `net.try_accept` to the owned v4 host and Rust listener: one syscall,
+no sleep/retry, Null on no readiness, slot admission before dequeue and control
+checks before syscall/publication. Empty attempts allocate no handle IDs;
+cancellation drops unpublished sockets. Four new tests cover real checked Sovra
+idle/ready results and cleanup, queued-peer preservation/recovery at capacity,
+empty polls, wrong-kind refusal, zero limits and post-accept cancellation.
+Concurrent HTTP parsing, fairness, readiness scheduling and production server
+controls remain open; runtime support remains Linux-only.
+
+Focused validation: 648 Rust tests (603 library, four HTTP admission, 24 HTTP
+exchange, ten network-host and seven socket-owner tests), strict all-target/
+all-feature Clippy, exact Rust 1.74.0 all-target check, Windows GNU all-target
+compile, formatting, 24 compiler security cases and documentation links pass.
+This is a focused follow-up, not a new full frozen-source G14/native qualification.
+
+## 2026-11-25: G14 cooperative read foundation
+
+Added `LoopbackStream::try_read` and strict version-four `net.try_read` requests:
+one syscall, no waiting/retry, bounded buffer and explicit ready/data result so
+idle is distinct from orderly EOF. Pre-read callback refusal consumes no bytes;
+raw stream ownership remains in scope. Tests exercise idle-peer yielding,
+binary data, EOF, limits, cancellation with queued-byte preservation and an actual
+checked Sovra consumer. HTTP remains sequential; cooperative writes, resumable
+HTTP state and fair scheduling remain open. Linux runtime support is unchanged.
+
+Focused validation passes 48 socket/HTTP integration tests (four admission,
+24 exchange, 13 network-host and seven socket-owner tests), strict all-target/
+all-feature Clippy, exact Rust 1.74.0 all-target check, Windows GNU all-target
+compile, formatting and documentation links. This is follow-up evidence, not a
+new full frozen-source G14/native qualification.
+
+## 2026-11-25: G14 cooperative write foundation
+
+Added `LoopbackStream::try_write` and strict v4 `net.try_write` with one syscall,
+no sleep/retry, explicit ready/written results and exact partial progress. Input
+bounds and cancellation refuse before sending; pending suffixes remain caller
+owned. Tests force send-buffer backpressure on a non-reading client while another
+connection progresses, and cover binary/empty output, invalid/oversized payloads,
+cancellation without duplicate output, checked Sovra consumption and cleanup.
+Resumable HTTP and fair scheduling remain open; no wider OS runtime claim.
+
+Focused validation passes 51 socket/HTTP tests (four admission, 24 exchange,
+15 network-host and eight socket-owner tests), strict all-target/all-feature
+Clippy, exact Rust 1.74.0 all-target check, Windows GNU all-target compile,
+formatting and documentation links. This follow-up does not replace the earlier
+full frozen-source/native qualification.
+
+## 2026-11-25: G14 resumable HTTP head-state foundation
+
+Extracted `HttpHeadBuffer` with owned bounded bytes, retained delimiter cursor,
+completion and sticky failures. Existing receive now uses it before strict
+one-time parsing; aggregate deadlines, authentication/admission and body handling
+remain unchanged. Fragmentation tests cover every two-part split and byte-wise
+heads, co-read body preservation, exact/zero limits and sticky over-limit refusal
+without prefix append. This is resumable head state, not concurrent HTTP; socket
+receive, body/authentication/output state machines and scheduling remain open.
+
+Focused validation passes 60 HTTP tests (ten access, four admission, 11
+authentication, 24 exchange and 11 request-framing tests), strict all-target/
+all-feature Clippy, exact Rust 1.74.0 all-target check, Windows GNU all-target
+compile, formatting and documentation links. This is focused follow-up evidence,
+not a new full frozen-source/native qualification.
+
+## 2026-11-25: G14 yielding HTTP head preparation
+
+Added strict `http.poll_head` and owned pending-head state. Successful polls read
+at most one available fragment, retain head/deadline/I/O state and publish only a
+readiness Bool. Existing receive consumes pending state and rechecks the aggregate
+deadline before strict framing/access/authentication/body processing. Admission
+is charged once; idle reads consume I/O budget. Raw I/O/respond cannot bypass
+pending custody, and cancellation/error/close release it. Tests cover fragmented
+heads, idle-peer yielding to another handler, invalid/EOF readiness, cancellation,
+I/O exhaustion and single admission across poll/receive. Body/verifier/output
+phases remain waiting; fair scheduling and production concurrency remain open.
+
+Pending-head review also adds opaque debug for retained head buffers, credential
+redaction regression, actual Sovra polling/cleanup and a prepared-head deadline
+expiry test. A ready head cannot bypass the original connection deadline.
+
+Focused validation passes 82 tests (ten access, five admission, 11 authentication,
+29 HTTP exchange, 11 request framing and 16 network-host tests), strict all-target/
+all-feature Clippy, exact Rust 1.74.0 all-target check, Windows GNU all-target
+compile, formatting and documentation links. This follow-up does not replace
+full frozen-source/native G14 qualification.
+
+## 2026-11-25: G14 resumable fixed-length body-state foundation
+
+Added bounded `HttpFixedBody` and integrated it into actual fixed-length receive
+after existing parsing/access/authentication. Partial fragments remain private;
+excess refuses without prefix append and sticks through finish, truncation never
+publishes a partial body, and debug output omits payload contents. Tests cover
+all two-part splits, bytewise input, binary data, exact/zero bounds, truncation,
+sticky errors and debug redaction. Socket body handling still waits; persistent
+checked metadata, yielding body/Continue/output phases and scheduling remain open.
+
+Focused validation passes 69 HTTP tests (ten access, five admission, 11
+authentication, 29 exchange and 14 request/body-framing tests), strict all-target/
+all-feature Clippy, exact Rust 1.74.0 all-target check, Windows GNU all-target
+compile, formatting and documentation links. This is focused follow-up evidence,
+not a replacement full frozen-source/native qualification.
+
+## 2026-11-25: G14 checked metadata and yielding body polling
+
+Added pending-body custody containing owned checked metadata/verifier outcome and
+fixed/chunked body state. `http.poll_body` prepares a ready head once, then reads
+at most one available body fragment per poll; readiness never publishes partial
+payloads or principals. Existing receive consumes pending bodies without repeating
+verification. Shared admission/I/O/deadline, pre-body access/authentication,
+Continue, trailer discard and response custody remain. Pending debug omits all
+metadata. Tests cover fragments, EOF, wrong kinds/raw-I/O exclusion, deadline,
+cancellation, actual Sovra polling/cleanup and exactly one verifier invocation
+across idle polls. Initial verifier/Continue and final output can still wait;
+fair scheduling and production concurrency remain open.
+
+Validation passes 99 tests across nine focused HTTP/network targets, including
+both authenticated/default CLI and independent native servers (project files and
+Node/PATH unavailable), actual Sovra body polling/cleanup and command-verifier
+regressions. Strict all-target/all-feature Clippy, exact Rust 1.74.0 all-target
+check, Windows GNU all-target compile, formatting and documentation links pass.
+This follow-up does not replace complete frozen-source G14 qualification.
+
+## 2026-11-25: G14 cooperative final-response output
+
+Added strict `http.start_response` and `http.poll_response`: validate/render before
+sending, retain immutable wire bytes and exact unsent suffix, then attempt one
+nonblocking write per poll. Shared accepted-time deadline, byte quantum and I/O
+budget remain; successful completion closes/invalidate custody. Failures drop the
+queue without appending a second error packet to transmitted prefixes. Debug
+omits wire content. Blocking respond shares preparation/rendering. Tests cover
+one-byte exact wire output and HEAD context, wrong-kind/stale refusal, invalid
+framing, cancellation, deadline and shared I/O exhaustion. The actual Sovra HTTP
+example now prepares/polls output; its loop is still sequential. Fair scheduling
+and cooperative verifier/interim/denial output remain open.
+
+Validation passes 94 tests across eight focused HTTP/network targets, including
+independent authenticated/default CLI/native consumers of the updated Sovra
+response-polling example. Strict all-target/all-feature Clippy, exact Rust 1.74.0
+all-target check, Windows GNU all-target compile, formatting and documentation
+links pass. This follow-up does not replace full frozen-source G14 qualification.
+
+## 2026-11-25: G14 two-slot cooperative HTTP scheduling
+
+The Sovra example now owns two explicit slot states, admits at most one peer per
+round and advances each active connection once through head/body/output phases.
+Full slots suppress accepts; resource-limit refusal skips admission while other
+accept errors terminate. Failed connections close/release only their slot.
+Added strict fixed one-millisecond `net.yield` with pre/post control checks,
+zero-deadline refusal and no resource/grant consumption. The finite example caps
+empty rounds at 5,000 and retains VM/HTTP bounds. Independent clients require a
+ready request to finish before completing a slow head/body, then require both
+slow requests to succeed. Fixtures run fifteen requests; authenticated consumers
+retain their separate five-request checks. Production fairness, readiness-driven
+waiting and cooperative verifier/interim/denial output remain open.
+
+Validation passes 74 tests across six focused HTTP/network targets, including
+independent authenticated/default CLI/native consumers. The default fixture
+preserves thirteen protocol/access requests plus two delayed peers that must
+succeed after other requests finish. Strict all-target/all-feature Clippy,
+exact Rust 1.74.0 all-target check, Windows GNU all-target compile, formatting
+and documentation links pass. This follow-up is not a replacement full
+frozen-source G14 qualification.
+
+## 2026-11-25: G14 cooperative Continue output
+
+Body preparation now queues the bounded interim packet; pending body state retains
+its exact unsent offset. Each body poll performs one nonblocking interim write,
+consuming the shared I/O/deadline/byte limits, then yields before any body read.
+Blocking receive resumes the remaining suffix before body handling. Tests cover
+byte-exact one-byte output and a poll-to-blocking transition without duplicate
+prefixes. Complete co-read bodies still suppress Continue; initial verification
+and denial/error output remain waiting phases.
+
+Validation passes 76 tests across six focused HTTP/network targets, including
+independent authenticated/default CLI/native servers and delayed-peer scheduling
+cases. Five focused Continue transitions also pass; they are included in the
+76-test total, not added again. Strict all-target/all-feature Clippy, exact
+Rust 1.74.0 all-target check, Windows GNU all-target compile, formatting and
+documentation links pass. This is not replacement full frozen-source qualification.
+
+## 2026-11-25: G14 cooperative automatic refusal output
+
+Added opaque pending-refusal custody sharing the existing status/header renderer
+and response writer. Cooperative quota and head/body-preparation refusals perform
+one write attempt per poll, retain suffix/deadline/I/O state and return only false
+until the original terminal error. Denied connections cannot become handlers,
+receive raw I/O or accept application responses. Packet/close failure preserves
+the original refusal category; cancellation drops suffixes without adding another
+packet. Blocking receive retains synchronous best-effort refusal and later polling
+failures may still close silently. Tests cover byte-exact 400 output, state
+exclusion, cancellation/deadline after a prefix and no-input no-store 429.
+Initial verifier execution and production fairness remain open.
+
+Validation passes 90 tests across seven focused HTTP/network targets, including
+independent authenticated/default CLI/native servers and delayed-peer scheduling
+clients. Strict all-target/all-feature Clippy, exact Rust 1.74.0 all-target check,
+Windows GNU all-target compile, formatting and documentation links pass. This
+follow-up does not replace full frozen-source G14 qualification.
+
+## 2026-11-25: G14 owned process polling prerequisite
+
+Extracted a private owned process task retaining child, pipe offsets/buffers,
+original limits/deadline, EOF and exit state. Each poll performs at most one write,
+one read per output stream and one try-wait without sleeping. Interrupted or
+WouldBlock yields, bounded output refuses before append, and completion publishes
+one result. Existing synchronous process.run reuses these polls with explicit
+kill/reap cleanup and Drop fallback. Tests cover a multi-fragment native-child
+exchange, bounded per-turn output, opaque debug, one-result publication and
+control refusal/reaping. HTTP verification still waits; pending-job integration
+remains the next layer, and no source-visible process authority was added.
+
+Validation passes two focused process-state unit tests and 29 integration tests
+(v3 host, command-verifier protocol, trusted verifier and authenticated CLI/native
+server), 31 distinct tests total. The final process fixture includes NUL and
+non-UTF-8 bytes. Strict Clippy, exact Rust 1.74.0 all-target check, Windows GNU
+all-target compile, formatting and documentation links pass. This is focused
+follow-up evidence, not full frozen-source G14 qualification.
+
+## 2026-11-25: G14 pending command verification
+
+Added trusted owned verification jobs with an explicit synchronous compatibility
+fallback. The command backend uses private child-process polls and a two-live-job
+ceiling shared with its blocking path. Pending HTTP verification owns redacted
+checked metadata, original request context/limits and co-read prefix; body/Continue
+processing and principal publication wait for grant. Body polls never respawn or
+recharge admission. Denials enter cooperative output; close/control refusal kills
+and reaps children. Tests gate one verifier until another request completes,
+assert one spawn per request, exercise capacity/refusal/reuse, and check PID cleanup
+after close/cancellation/timeout. Authenticated CLI/native fixtures now use six
+connections and five backend calls, including independently gated/fast identities.
+Legacy providers/blocking receive remain synchronous, native launch can wait and
+no OS watchdog/hard preemption or production credential system is claimed.
+
+Validation passes 99 tests across eight focused host/HTTP targets, including
+independent default/authenticated CLI/native servers. The authenticated fixture
+proves a fast identity request finishes before a gated verifier is released,
+then both identities succeed; six connections invoke five backends, with the last
+refused before verification. Capacity, close/cancellation/timeout reaping and
+existing v3/HTTP controls pass. Strict all-target/all-feature Clippy, exact Rust
+1.74.0 all-target check, Windows GNU all-target compile, formatting and documentation
+links pass. This follow-up does not replace full frozen-source qualification.
+
+## 2026-11-25: qualification platform guard correction
+
+GitHub macOS job 139148392272 failed strict Clippy because the test-only formatter
+publication helper was compiled where all its callers are disabled. Restrict its
+cfg to the same Windows/Linux test platforms as those callers. This changes no
+formatter/runtime behavior or platform support. The first local G14 qualification
+was deliberately interrupted and retained as unsuccessful before this edit;
+qualification restarts on the corrected frozen source. Hosted acceptance still
+requires actual successful job/artifact evidence.
+
+## 2026-11-25: captured native launch-name correction
+
+Hosted Ubuntu 26.04 qualification exposed a nonzero captured cat invocation.
+A native dispatch-name regression reproduced a launch defect independently:
+argv[0] was the internal /proc/self/fd execution path. Preserve the grant-time
+absolute executable name as fixed argv[0] while continuing to execute the captured
+ELF descriptor. Bound the fixed name to 4096 bytes and reject NUL; source arguments
+cannot override it. The regression removes the grant-time executable alias before
+launch, proving execution does not reopen that pathname. Existing v3 and command
+verifier checks pass. The second local qualification remains interrupted and
+unsuccessful; restart frozen-source qualification after this correction.
+
+## 2026-11-25: ARM64 lock guards and macOS formatter expectations
+
+Hosted ARM64 G13/G14 reports exposed x86-only directory/no-follow bits in guarded
+lock publication. Use the same architecture-specific Linux ABI values already
+used by the handle-rooted host; no-follow/directory checks remain mandatory.
+Hosted macOS tests also incorrectly expected qualified write behavior on an
+unsupported write host. Keep portable check/format assertions and explicitly
+verify write refusal/unchanged bytes on macOS instead of skipping the tests.
+The two existing lock-publication conflict tests and all 16 v2 formatter CLI tests
+pass locally. Hosted ARM64/macOS acceptance still requires fresh CI reports.
+The third local qualification was interrupted and retained as unsuccessful before
+these edits; restart on the corrected source.
+
+## 2026-11-25: hosted fixture portability and verifier PID publication
+
+Frozen Linux qualification at a3d08e5 passed 770 Rust tests, exact MSRV, strict
+Clippy, Windows compile checking and the required Node checks. Hosted G13 x64
+and ARM64 profiles also passed. Broader hosted checks exposed remaining test
+harness assumptions: PID file creation can precede numeric contents, macOS temp
+paths can resolve through aliases, and generated JavaScript exceeds Windows'
+command-line bound. Observe a positive numeric PID before cleanup assertions,
+canonicalize inventory fixture roots and compare resolved diagnostic files, and
+execute generated JavaScript through Node stdin. Preserve process-reaping,
+source-location and backend-output assertions. These test changes require fresh
+qualification; the earlier successful report remains evidence for its own source.
+
+## 2026-11-25: full G14 evidence and relocated launcher follow-up
+
+Frozen qualification at a1d7f4e passed all 14 stages and 770 Rust tests, retaining
+matching start/end source hashes in the 20261125T111534.540981Z report. Broader
+hosted jobs passed both supported G13 Linux profiles. macOS completed Rust tests
+but exposed an installed launcher guard comparing aliased argv paths with resolved
+module paths. Compare real paths and exercise an installed-directory symlink in
+relocation acceptance. Windows' diagnostic test now uses Node's native realpath
+resolver because its JavaScript resolver fails on extended drive paths. These
+subsequent tooling/test edits have focused validation; they do not retroactively
+change the frozen report's source or establish fresh hosted acceptance.
+
+## 2026-11-25: hosted G14 ARM64/x64 acceptance and Windows formatter assertions
+
+Inspected both uploaded G14 reports from CI run 45604357126 at e47470d: each
+passes 770 Rust tests, all 13 mandatory stages and matching start/end source
+hashes. Record artifact IDs and exact scope in G14 qualification/checklist.
+Broader macOS and Ubuntu jobs passed. Windows advanced past the earlier CLI
+failures but exposed two formatter-test assumptions: compare against canonical
+source paths, and require the existing guarded package-capture refusal on
+Windows while retaining successful formatting. All 16 formatter CLI tests pass
+locally. Windows execution of this follow-up still requires hosted evidence.
+
+## 2026-11-25: explicit pending-verifier cleanup on abandoned custody
+
+Pending HTTP verification previously called the trusted job's cancel hook on
+explicit close but relied entirely on job Drop for callback/deadline abandonment.
+Add a pending-owner destructor that takes/cancels outstanding work; explicit close
+also takes the job, preventing duplicate host cancellation. Preserve original
+control errors and socket destruction. A four-path trusted-job regression fails
+against the prior implementation and passes for close, cancellation, timeout and
+host destruction, with no interim or identity publication. Existing command
+verifier process cleanup tests remain part of focused validation. Production
+preemption, descendant supervision and wider G14 gates remain open.
+
+## 2026-11-25: failed cleanup hooks and error precedence
+
+Expand pending verifier lifecycle acceptance to ten cases: successful/failing
+cleanup hooks through close, close-all, callback cancellation, timeout and host
+destruction. Assert exactly one host cleanup call, released stream capacity,
+invalidated claimed tokens and no Continue or identity publication. Pre-claim
+cancellation preserves caller custody and does not call cleanup. Explicit cleanup
+surfaces the cleanup error; cancellation/deadline retain their original errors.
+This extends regression coverage without broadening supported hosts or changing
+runtime behavior. Full qualification remains tied to the source of each report.
+
+## 2026-11-25: portable JavaScript backend acceptance harness
+
+Hosted run 45612634553 passed G14 on Linux x64/ARM64 and broader Ubuntu/macOS
+checks at bc846f6. Windows reached typed-array backend parity, then failed two
+Node launches with OS error 206 because generated JavaScript exceeded the
+command-line limit. Move the existing CLI stdin runner into shared test support
+and use it for typed arrays, value footprints and deep runtime values. Generated
+programs execute through Node stdin, preserving interpreter/JavaScript output
+assertions and avoiding command-line length limits. This is a test transport
+correction, not an expansion of runtime platform claims. Hosted Windows
+acceptance still requires a fresh run.
+
+## 2026-11-25: verifier startup handoff custody
+
+A trusted verifier could return a newly owned job, then hit a cancellation or
+post-provider failure before PendingVerification existed. The pending-owner
+cleanup guard could not cover that interval. Wrap successful start results in
+temporary owned custody immediately, before checking provider control outcomes,
+post-start deadlines or metadata preparation. Transfer once into pending custody;
+otherwise invoke explicit cancel and preserve the original error. Extend the
+cleanup matrix with both provider-internal and post-return cancellation, each
+with successful/failing cleanup. The expanded regression fails against the prior
+implementation. No scheduling, production identity or platform gate is closed.
+
+## 2026-11-25: lowerable command-verifier job admission
+
+Add explicit `HttpCommandVerifier::with_job_limit` and optional external
+`http_authentication.max_jobs`, permitting 0..=2 with the existing default two.
+Zero disables launches without disabling authentication. Shared atomic admission
+covers synchronous and pending jobs; no policy can raise the hard ceiling.
+Regressions cover zero refusal, one pending job blocking synchronous verification,
+slot release/reuse, existing two-job behavior and malformed/excessive policy values.
+This adds operator-controlled narrowing, not production fairness or identity quotas.
+
+The previous Windows run passed all Rust targets but its formatter package Node
+harness compared mixed-separator input spelling with canonical diagnostic paths.
+Use native realpath for the expected malformed source before comparing, preserving
+the requirement that the diagnostic identifies that exact file. The downloaded
+failed formatter report remains unsuccessful evidence for its original revision.
+
+## 2026-11-25: independent disabled-verifier CLI/native acceptance
+
+Extend the actual authenticated server fixture with a second six-connection run
+using max_jobs zero. Raw independent clients withhold request bodies and assert
+five empty 503 finals with no Continue/credentials, then the unchanged admission
+429 and no backend invocation file. Both CLI and standalone native paths exit
+cleanly and release the port. Reuse the same native executable after deleting
+project files and changing only external policy, preserving no-Node/PATH startup.
+This qualifies disabled launch admission for the restricted Linux profile; it does
+not add production credentials, fairness, TLS or broader runtime support.
+
+## 2026-11-25: single-job CLI/native backpressure acceptance
+
+Extend independent authenticated consumers to reload external max_jobs one
+between existing default-two and disabled-zero runs. Hold one recorded verifier
+behind a gate, require a second valid request's pre-body 503 without another
+backend start, then release the original and require its successful identity
+response. A subsequent request proves capacity reuse. Preserve denial/privacy,
+admission-429, exact backend counts, bounded exit and port-rebind checks. Reuse
+the same project-free native executable with cleared environment/no Node/PATH.
+This adds acceptance for bounded admission, not production scheduling guarantees.
+
+## 2026-11-25: consolidated G14 qualification and Windows Node selection
+
+Completed frozen-source qualification at 55451f1: 773 Rust tests, all 14 stages,
+strict Clippy, exact MSRV, Windows GNU compile checking and four Node scripts;
+all 18 runner regressions passed separately. Independently recomputed the source
+fingerprint after completion and confirmed identical start/end hashes. Retain
+20261125T182140.765554Z evidence without rewriting its source scope.
+
+Hosted Windows now advances through Rust/formatter acceptance to packaging, where
+Get-Command returns two Node installations and PowerShell combines their paths.
+Select the first Application in PATH order in both build and installed-toolchain
+acceptance scripts. Preserve failure on missing Node. PowerShell is unavailable
+locally; fresh hosted Windows execution is required for this packaging correction.
+Task Manager application behavior is unchanged.

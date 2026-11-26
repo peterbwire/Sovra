@@ -167,6 +167,43 @@ impl LoopbackListener {
     pub fn port(&self) -> Result<u16, HostError> {
         self.socket.local_addr().map(|a| a.port()).map_err(io_error)
     }
+    /// Attempt one accept syscall without waiting or retrying. None means not ready.
+    /// Capacity refusal occurs before dequeuing a peer; cancellation drops unpublished owners.
+    pub fn try_accept<E>(
+        &self,
+        mut checkpoint: impl FnMut() -> Result<(), E>,
+    ) -> Result<Result<Option<LoopbackStream>, HostError>, E> {
+        checkpoint()?;
+        if self.limits.milliseconds == 0 {
+            return Ok(Err(error("timeout", "network operation deadline exceeded")));
+        }
+        let result = (|| {
+            let slot = Slot::reserve(&self.streams, self.limits.streams)?;
+            let (socket, peer) = match self.socket.accept() {
+                Ok(pair) => pair,
+                Err(e)
+                    if matches!(
+                        e.kind(),
+                        io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
+                    ) =>
+                {
+                    return Ok(None);
+                }
+                Err(e) => return Err(io_error(e)),
+            };
+            if !peer.ip().is_loopback() {
+                return Err(error("authority", "accepted peer is not loopback"));
+            }
+            socket.set_nonblocking(true).map_err(io_error)?;
+            Ok(Some(LoopbackStream {
+                socket,
+                _slot: slot,
+                limits: self.limits,
+            }))
+        })();
+        checkpoint()?;
+        Ok(result)
+    }
     /// Accept one owned stream under a fresh deadline, with no background worker.
     pub fn accept<E>(
         &self,
@@ -212,6 +249,73 @@ pub struct LoopbackStream {
     limits: NetworkLimits,
 }
 impl LoopbackStream {
+    /// One nonblocking partial write. None means not ready; callers retain the suffix.
+    /// Cancellation is checked before the syscall; completed bytes are never rolled back.
+    pub fn try_write<E>(
+        &mut self,
+        bytes: &[u8],
+        mut checkpoint: impl FnMut() -> Result<(), E>,
+    ) -> Result<Result<Option<usize>, HostError>, E> {
+        if bytes.len() > self.limits.bytes {
+            return Ok(Err(error("limit", "network write byte limit exceeded")));
+        }
+        checkpoint()?;
+        if self.limits.milliseconds == 0 {
+            return Ok(Err(error("timeout", "network operation deadline exceeded")));
+        }
+        Ok(match self.socket.write(bytes) {
+            Ok(0) if !bytes.is_empty() => Err(error("io", "network write made no progress")),
+            Ok(n) => Ok(Some(n)),
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
+                ) =>
+            {
+                Ok(None)
+            }
+            Err(e) => Err(io_error(e)),
+        })
+    }
+    /// One nonblocking read attempt. None means not ready, distinct from EOF.
+    /// No sleeping/retry; cancellation is checked before any bytes are consumed.
+    pub fn try_read<E>(
+        &mut self,
+        maximum: usize,
+        mut checkpoint: impl FnMut() -> Result<(), E>,
+    ) -> Result<Result<Option<NetworkRead>, HostError>, E> {
+        if maximum == 0 {
+            return Ok(Err(error("input", "read maximum must be nonzero")));
+        }
+        if maximum > self.limits.bytes {
+            return Ok(Err(error("limit", "network read byte limit exceeded")));
+        }
+        checkpoint()?;
+        if self.limits.milliseconds == 0 {
+            return Ok(Err(error("timeout", "network operation deadline exceeded")));
+        }
+        let mut bytes = Vec::new();
+        if bytes.try_reserve_exact(maximum).is_err() {
+            return Ok(Err(error("limit", "network read allocation refused")));
+        }
+        bytes.resize(maximum, 0);
+        Ok(match self.socket.read(&mut bytes) {
+            Ok(0) => Ok(Some(NetworkRead::Eof)),
+            Ok(n) => {
+                bytes.truncate(n);
+                Ok(Some(NetworkRead::Data(bytes)))
+            }
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
+                ) =>
+            {
+                Ok(None)
+            }
+            Err(e) => Err(io_error(e)),
+        })
+    }
     /// Read one nonempty chunk or EOF. Zero maximum is an input error, not EOF.
     pub fn read<E>(
         &mut self,

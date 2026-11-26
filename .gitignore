@@ -14,3 +14,7 @@
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# Generated Python qualification bytecode.
+__pycache__/
+*.py[cod]

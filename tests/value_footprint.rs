@@ -1,4 +1,5 @@
 //! Read-only logical measurements, independent of allocator/layout and limit policy.
+mod support;
 use sovra::compiler::interpreter::{StructValue, Value, ValueFootprint};
 #[test]
 fn primitive_empty_and_unicode_sizes_keep_distinct_units() {
@@ -106,10 +107,7 @@ fn record_labels_payloads_and_display_sizes_match_actual_engines() {
         }],
     };
     assert_eq!(interpreter::run(&raw).unwrap(), ["15"]);
-    let raw_node = std::process::Command::new("node")
-        .args(["--eval", &backend::render_javascript(&raw)])
-        .output()
-        .unwrap();
+    let raw_node = support::run_node_source(backend::render_javascript(&raw).as_bytes()).unwrap();
     assert!(
         raw_node.status.success(),
         "{}",
@@ -122,10 +120,7 @@ fn record_labels_payloads_and_display_sizes_match_actual_engines() {
         interpreter::run(&ir).unwrap(),
         [expected.display_bytes.to_string()]
     );
-    let node = std::process::Command::new("node")
-        .args(["--eval", &backend::render_javascript(&ir)])
-        .output()
-        .unwrap();
+    let node = support::run_node_source(backend::render_javascript(&ir).as_bytes()).unwrap();
     assert!(
         node.status.success(),
         "{}",

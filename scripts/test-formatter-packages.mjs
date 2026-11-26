@@ -1,7 +1,7 @@
 // Package formatter selection and failure checks, entirely inside a temporary tree.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -40,7 +40,7 @@ try {
         assert.deepEqual(readFileSync(path), snapshots[index].bytes);
         assert.equal(statSync(path, { bigint: true }).mtimeNs, snapshots[index].time);
     }
-    const broken = join(provider, 'src/main.svr');
+    const broken = realpathSync.native(join(provider, 'src/main.svr'));
     writeFileSync(broken, 'fn main(){let x=;}');
     const failure = run(['--check', '--package', consumer]);
     assert.equal(failure.status, 1);

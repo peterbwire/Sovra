@@ -374,8 +374,13 @@ impl GenericVmOutcome {
         self.peak_operands
     }
 }
+#[derive(Clone, Copy)]
+enum DataExecutionHost<'a> {
+    V3(&'a HostV3),
+    Network(&'a std::cell::RefCell<super::NetworkHostV4>),
+}
 struct Budget<'a> {
-    host: &'a HostV3,
+    host: DataExecutionHost<'a>,
     json: JsonLimits,
     max_byte_buffer_bytes: usize,
     fuel: RuntimeValueFuel,
@@ -812,7 +817,40 @@ pub fn execute_generic_data_ir_with_host(
     policy: GenericVmPolicy,
     host: &HostV3,
 ) -> Result<GenericVmOutcome, GenericVmError> {
-    execute_mode(ir.checked_ir(), policy, true, true, true, Some(host))
+    execute_mode(
+        ir.checked_ir(),
+        policy,
+        true,
+        true,
+        true,
+        Some(DataExecutionHost::V3(host)),
+    )
+}
+/// Execute data IR with an owned network scope; all live sockets close before returning.
+/// This additive Rust API installs no CLI or native-image network authority.
+pub fn execute_generic_data_ir_with_network_host(
+    ir: &CheckedGenericPropagationIr,
+    policy: GenericVmPolicy,
+    host: super::NetworkHostV4,
+) -> Result<GenericVmOutcome, GenericVmError> {
+    let host = std::cell::RefCell::new(host);
+    let result = execute_mode(
+        ir.checked_ir(),
+        policy,
+        true,
+        true,
+        true,
+        Some(DataExecutionHost::Network(&host)),
+    );
+    if let Err(error) = host.into_inner().close_all() {
+        return Err(GenericVmError {
+            function: 0,
+            instruction: 0,
+            span: ir.checked_ir().functions()[0].instructions()[0].span,
+            kind: GenericVmErrorKind::HostCleanup(error.message),
+        });
+    }
+    result
 }
 fn execute_mode(
     ir: &CheckedGenericIr,
@@ -820,10 +858,10 @@ fn execute_mode(
     propagation: bool,
     collections: bool,
     data: bool,
-    host: Option<&HostV3>,
+    host: Option<DataExecutionHost>,
 ) -> Result<GenericVmOutcome, GenericVmError> {
     let denied_host = HostV3::default();
-    let host = host.unwrap_or(&denied_host);
+    let host = host.unwrap_or(DataExecutionHost::V3(&denied_host));
     let first = ir.functions()[0].instructions()[0].span;
     let mut b = Budget {
         host,

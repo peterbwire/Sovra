@@ -42,10 +42,40 @@ and 16 Node scripts, including exact Rust 1.74.0 and Clippy. Subsequent IDE-only
 changes pass all 16 Node scripts and all six actual VS Code 1.106.0 host modes,
 including generic packages and restricted workspaces. G13 is complete for the
 documented experimental Linux profile. Additional-host/runtime/release acceptance
-remains separate. G14 now has a Rust-only owned loopback socket foundation,
+remains separate. G14 now has an owned Rust loopback socket host,
 with explicit port grants, bounded nonblocking I/O and independent TCP-client
-tests. It does not yet expose source/CLI networking or HTTP. Continue with
-checked network-host integration under `docs/design/G14_COMPLETION_CONTRACT.md`. Consult
+tests. An explicit owned version-four network host now lets checked `.svr` data
+programs bind/accept/read/write/close, with scoped token custody and cleanup on
+VM success/failure. Bounded external v3/v4 policy loading now enables explicit
+CLI/native loopback byte servers with no embedded grants, project or Node startup
+dependency. A pure borrowed fixed-length HTTP/1.1 request parser now validates
+framing, Host/field syntax, partial input and lowerable limits. Bounded response
+construction owns framing, HEAD/bodyless rules and field injection refusal.
+`http.receive`/`http.respond` now wire these to execution-owned sockets with
+aggregate deadlines and one-request state. A real Sovra HTTP/JSON example passes
+independent CLI/native client acceptance. A bounded incremental chunked-body Rust
+decoder now shares HTTP head work and aggregate socket deadlines through
+`http.receive`; independent CLI/native Unicode chunked JSON clients are covered
+(see `docs/reference/http-chunked-v4.md`). Trailer sections now use bounded validated discard without header merging,
+with known security-field refusal (see `docs/reference/http-trailers-v4.md`).
+The host now supports bounded 100-continue with early 417 refusal for unsupported
+expectations and shared deadline/I/O accounting (see `docs/reference/http-expect-v4.md`).
+Explicit optional HTTP Host/Origin access policies now check exact grants before
+100/body handling, with bounded 403 refusal and shared work admission; see
+`docs/reference/http-access-v4.md`. Policies without this object retain prior behavior. Optional paired exact
+method/raw-target lists now further narrow access before Continue/body handling;
+query/escape/case variants do not select a normalization fallback.
+A trusted Rust Bearer-verifier boundary now runs before body/Continue, returns
+validated public principals and redacts Authorization from handler descriptions;
+see `docs/reference/http-authentication-v4.md`. An optional external verifier command now delegates authentication for CLI/native
+launches through bounded private owned-process authority and a strict protocol;
+see `docs/reference/http-command-authentication-v4.md`. No production credential
+backend or TLS is bundled. Optional fixed-window HTTP attempt admission now
+limits pre-parser/pre-verifier work across a host domain and returns bounded
+non-cacheable 429; see `docs/reference/http-admission-v4.md`. Verifiers now receive admitted Host/Origin and actual
+loopback plaintext transport context; forwarded headers cannot promote security.
+Trailer integrity/application access, full protocol, production
+server controls and wider qualification remain open. Continue under `docs/design/G14_COMPLETION_CONTRACT.md`. Consult
 `docs/G13_QUALIFICATION.md` and `docs/reference/generic-formatting.md` for current
 evidence and remaining gates. Historical checkpoints below do not reopen these
 implemented slices or establish G13/release/platform completion.
@@ -57,6 +87,15 @@ user-requested toolchain/native/stdlib/HTTP/UI/package goals. Preserve those IDs
 and completed foundation scopes; unchecked product criteria remain open.
 Older dated checkpoints are historical
 evidence, not a substitute for current source and exact-platform verification.
+
+User workflow rule (2026-11-24): at every G-task transition, push the completed
+work to GitHub and open a pull request before starting the next G task. G14 has
+its own review branch. PR #3 is merged into main; PR #4 was closed unmerged.
+The continued G14 review targets main and includes all unmerged G14 work.
+Continue incremental work within that task. Cooperative scheduling now starts with one-syscall `net.try_accept`, idle Null and capacity-before-dequeue admission; `net.try_read` now adds bounded single-syscall reads with distinct idle/data/EOF results. `net.try_write` adds exact partial progress or not-ready output without waiting. HTTP head accumulation now uses bounded resumable `HttpHeadBuffer`; `http.poll_head` now yields head preparation while retaining custody/limits; `HttpFixedBody` now retains bounded fixed-length body state; `http.poll_body` now retains checked metadata/verifier outcome and polls fixed/chunked bodies after preparation. `http.start_response`/`http.poll_response` now queue bounded immutable output and yield partial writes. Continue now advances by one retained-suffix write per body-poll turn. Cooperative admission/head-preparation refusal output now retains an owned suffix and yields until its original terminal error; it cannot publish handlers. Command verification now retains owned pending jobs and checked/redacted metadata, polls bounded child I/O with a two-job ceiling and kills/reaps on close/control refusal. Trusted-provider compatibility fallback and blocking receive/respond remain synchronous; OS launch/cleanup are not hard-preempted; the actual HTTP example now uses two-slot cyclic I/O scheduling with fixed pacing; preemptive/production fairness remains open. See `docs/reference/http-scheduling-v4.md`. See `docs/reference/network-host-v4.md` and `docs/reference/http-exchange-v4.md`. `scripts/qualify-g14.py` now retains
+frozen-source Linux loopback HTTP qualification and failure evidence, with
+bounded no-follow regular-file source capture and retained initial failures; consult
+`docs/G14_QUALIFICATION.md` for supported scope and remaining production gates.
 
 Current sequencing (2026-11-11): review and qualify the compiler/runtime, shared
 UI, developer tooling and Windows packaging before further Task Manager feature

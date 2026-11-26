@@ -587,3 +587,24 @@ pub fn execute_generic_data_package_with_host(
         out
     })
 }
+
+/// Execute a data package with owned network authority, closing sockets on success or failure.
+pub fn execute_generic_data_package_with_network_host(
+    program: &CompiledGenericPackage,
+    policy: GenericVmPolicy,
+    host: super::NetworkHostV4,
+) -> Result<GenericVmOutcome, Diagnostics> {
+    execute_generic_data_ir_with_network_host(&program.ir, policy, host).map_err(|e| {
+        let mut out = super::generic_package_types::failure(
+            program.bodies.types().declarations(),
+            None,
+            diagnostic_message!("{e}"),
+        );
+        out.items[0].code = "E3125";
+        if let Some(location) = program.location(e.function, e.span) {
+            out.items[0].source_file = Some(location.source_file.to_string_lossy().into_owned());
+            out.items[0].span = location.span;
+        }
+        out
+    })
+}

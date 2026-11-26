@@ -1,4 +1,6 @@
 //! Integration tests for the `svr` command-line contract.
+mod support;
+use support::run_node_source;
 
 use std::io;
 use std::process::{Command, Output};
@@ -448,11 +450,7 @@ fn scoped_type_example_checks_runs_and_builds() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let js = Command::new("node")
-        .arg("-e")
-        .arg(String::from_utf8(output.stdout).unwrap())
-        .output()
-        .unwrap();
+    let js = run_node_source(&output.stdout).unwrap();
     assert!(
         js.status.success(),
         "{}",
@@ -1357,11 +1355,7 @@ fn local_library_consumer_checks_runs_and_builds_on_both_engines() {
         return;
     };
     assert!(js.status.success());
-    let output = Command::new("node")
-        .arg("-e")
-        .arg(String::from_utf8(js.stdout).unwrap())
-        .output()
-        .expect("Node required");
+    let output = run_node_source(&js.stdout).expect("Node required");
     assert!(
         output.status.success(),
         "{}",
@@ -1407,11 +1401,7 @@ fn library_foundations_example_checks_runs_and_builds() {
         "{}",
         String::from_utf8_lossy(&built.stderr)
     );
-    let js = Command::new("node")
-        .arg("-e")
-        .arg(String::from_utf8(built.stdout).unwrap())
-        .output()
-        .expect("Node is required for backend validation");
+    let js = run_node_source(&built.stdout).expect("Node is required for backend validation");
     assert!(
         js.status.success(),
         "{}",
@@ -1734,8 +1724,8 @@ fn check_project_diagnostics_identify_scanned_files() {
                 const path = require('node:path').join(report.target, file);
                 const bytes = require('node:fs').readFileSync(path);
                 const start = bytes.indexOf(spelling);
-                assert.equal(require('node:path').resolve(d.location.file),
-                    require('node:path').resolve(path));
+                assert.equal(require('node:fs').realpathSync.native(d.location.file),
+                    require('node:fs').realpathSync.native(path));
                 assert.deepEqual(d.location, {{ file: d.location.file, start,
                     end: start + Buffer.byteLength(spelling), line, column: 0 }});
             }}
@@ -2745,7 +2735,7 @@ fn check_help_describes_current_usage() {
     assert!(output.status.success());
     assert_eq!(
         String::from_utf8_lossy(&output.stdout).trim(),
-        "Usage: svr check [--format human|json] [--service-calls] [--symbols] <source.svr|project-directory>\n       svr check --format json --overlays-stdin <package-directory>\n       svr check --experimental-generics [--locked] [--format human|json] [--symbols] <source.svr|package-directory>\n       svr check --experimental-v2 [--locked] [--format human|json] [--symbols] <source.svr|package-directory>\n  --experimental-v2 Opt-in single-entry source/package enum/match checking only; no execution.\n  --service-calls  Experimental project-only contract checks; incomplete coverage fails.\n  --symbols        Opt-in checked symbol/type evidence for successful standalone JSON checks.\n  --overlays-stdin Framed unsaved package buffers; requires JSON, never executes or writes source.\n  --package-context Resolve canonical paths (generic mode includes registered sources); JSON, no source validation.\n  --host-policy PATH  Explicit version-three grants for data-package run; native grants are supplied only at launch.\n  --experimental-data  Enable checked Byte/Bytes/codecs in --experimental-generics package commands.\n  --experimental-collections  Enable Map/Set in --experimental-generics package check/run/test/build.\n  --locked         Verify sovra.lock; requires --executable-package, --experimental-v2 or --experimental-generics package mode.\n  --executable-package Compile all package sources and linked IR; never execute them."
+        "Usage: svr check [--format human|json] [--service-calls] [--symbols] <source.svr|project-directory>\n       svr check --format json --overlays-stdin <package-directory>\n       svr check --experimental-generics [--locked] [--format human|json] [--symbols] <source.svr|package-directory>\n       svr check --experimental-v2 [--locked] [--format human|json] [--symbols] <source.svr|package-directory>\n  --experimental-v2 Opt-in single-entry source/package enum/match checking only; no execution.\n  --service-calls  Experimental project-only contract checks; incomplete coverage fails.\n  --symbols        Opt-in checked symbol/type evidence for successful standalone JSON checks.\n  --overlays-stdin Framed unsaved package buffers; requires JSON, never executes or writes source.\n  --package-context Resolve canonical paths (generic mode includes registered sources); JSON, no source validation.\n  --host-policy PATH  Explicit v3 file/process or v4 loopback grants for data-package run; native grants are supplied only at launch.\n  --experimental-data  Enable checked Byte/Bytes/codecs in --experimental-generics package commands.\n  --experimental-collections  Enable Map/Set in --experimental-generics package check/run/test/build.\n  --locked         Verify sovra.lock; requires --executable-package, --experimental-v2 or --experimental-generics package mode.\n  --executable-package Compile all package sources and linked IR; never execute them."
     );
 }
 

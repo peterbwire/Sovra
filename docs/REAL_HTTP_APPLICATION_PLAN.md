@@ -1,14 +1,21 @@
 # Path to a real HTTP application
 
-Status: a native Sovra HTTP runtime remains planned. The first G14
-[Rust socket owner](reference/loopback-network-v4.md) now provides bounded trusted
-loopback I/O; source/CLI networking and HTTP integration remain open under the
-[G14 contract](design/G14_COMPLETION_CONTRACT.md). The unnumbered
-`dogfood/sovra-http-server` now demonstrates a private Node loopback adapter:
-Node owns the socket and calls a Sovra package to choose route responses in
-both execution engines. This is a partial hosted application, not a socket API
-or public HTTP contract. Routes and service metadata in Fielddesk still do not
-listen, receive bytes or send network responses.
+Status: a restricted native Sovra HTTP/JSON demonstration is now implemented on
+Linux through [owned HTTP exchanges](reference/http-exchange-v4.md). Real Sovra
+handlers pass independent CLI/native GET/HEAD, fixed-length/chunked Unicode JSON
+echo, 404 and recovered 500
+acceptance, including bounded declared-trailer discard and native startup without source files or Node. External
+policies grant exact loopback ports and lowerable aggregate limits. Optional
+[Host/Origin access rules](reference/http-access-v4.md) now check exact head
+grants before Continue/body processing; application authentication remains open. Full HTTP
+protocol coverage, trailer integrity/retention, production controls and additional hosts
+remain open under the
+[G14 contract](design/G14_COMPLETION_CONTRACT.md).
+
+The unnumbered `dogfood/sovra-http-server` remains a historical private Node
+adapter demonstration. It does not provide these native socket guarantees or
+replace the actual [Sovra HTTP example](../examples/http-loopback/README.md).
+Fielddesk route/service metadata remains separate from executable server behavior.
 
 ## Dependency chain
 

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, copyFile, chmod, readFile, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, copyFile, chmod, readFile, writeFile, rm, symlink } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -23,6 +23,13 @@ try {
     const run = args => spawnSync(process.execPath, [launcher, ...args], { cwd: scratch, encoding: 'utf8', timeout: 20000, maxBuffer: 2 * 1024 * 1024 });
     const ready = run(['--check']);
     assert.equal(ready.status, 0, ready.stderr); assert.equal(JSON.parse(ready.stdout).success, true);
+    if (process.platform !== 'win32') {
+        const alias = join(scratch, 'installed-alias');
+        await symlink(prefix, alias);
+        const viaAlias = spawnSync(process.execPath, [join(alias, 'developer-tools/launch.mjs'), '--check'], { cwd: scratch, encoding: 'utf8', timeout: 20000 });
+        assert.equal(viaAlias.status, 0, viaAlias.stderr);
+        assert.equal(JSON.parse(viaAlias.stdout).success, true);
+    }
     const lsp = spawnSync(process.execPath, [join(root, 'scripts/test-lsp.mjs')], { cwd: scratch, env: { ...process.env, SOVRA_LSP_LAUNCHER: launcher }, encoding: 'utf8', timeout: 60000, maxBuffer: 2 * 1024 * 1024 });
     assert.equal(lsp.status, 0, lsp.stdout + lsp.stderr);
     const packages = spawnSync(process.execPath, [join(root, 'scripts/test-lsp-packages.mjs')], { cwd: scratch, env: { ...process.env, SOVRA_LSP_LAUNCHER: launcher }, encoding: 'utf8', timeout: 60000, maxBuffer: 2 * 1024 * 1024 });

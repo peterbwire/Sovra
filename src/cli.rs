@@ -175,7 +175,7 @@ fn command_status(command: &str, args: &[String]) -> ExitCode {
             println!("  --symbols        Opt-in checked symbol/type evidence for successful standalone JSON checks.");
             println!("  --overlays-stdin Framed unsaved package buffers; requires JSON, never executes or writes source.");
             println!("  --package-context Resolve canonical paths (generic mode includes registered sources); JSON, no source validation.");
-            println!("  --host-policy PATH  Explicit version-three grants for data-package run; native grants are supplied only at launch.");
+            println!("  --host-policy PATH  Explicit v3 file/process or v4 loopback grants for data-package run; native grants are supplied only at launch.");
             println!("  --experimental-data  Enable checked Byte/Bytes/codecs in --experimental-generics package commands.");
             println!("  --experimental-collections  Enable Map/Set in --experimental-generics package check/run/test/build.");
             println!("  --locked         Verify sovra.lock; requires --executable-package, --experimental-v2 or --experimental-generics package mode.");

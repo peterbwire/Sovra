@@ -107,7 +107,7 @@ try {
         }
     }
     $installedHash = (Get-FileHash -LiteralPath (Join-Path $prefix 'bin\svr.exe') -Algorithm SHA256).Hash
-    $node = (Get-Command node -CommandType Application -ErrorAction Stop).Source
+    $node = (Get-Command node -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
     & $node (Join-Path $PSScriptRoot 'test-installed-developer-tools.mjs') $prefix
     if ($LASTEXITCODE -ne 0) { throw 'Installed developer tools acceptance failed.' }
     $developerHealth = (& (Join-Path $prefix 'bin\svr-editor.ps1') -NodePath $node -Check) -join "`n"

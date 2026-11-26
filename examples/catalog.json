@@ -27,6 +27,7 @@
         {"directory": "enum-package", "kind": "experimental", "profile": "v2", "supported_hosts": ["linux"], "execution": "run"},
         {"directory": "enum-tests", "kind": "experimental", "profile": "v2", "entry": "main.svr", "execution": "test"},
         {"directory": "enum-text-copy", "kind": "experimental", "profile": "v2", "entry": "main.svr", "execution": "none"},
+        {"directory": "http-loopback", "kind": "experimental", "profile": "data", "entry": "app", "supported_hosts": ["linux"], "execution": "none"},
         {"directory": "generic-packages", "kind": "experimental", "profile": "generics", "entry": "app", "supported_hosts": ["linux"], "execution": "run"},
         {"directory": "intrinsic-collections", "kind": "experimental", "profile": "collections", "entry": "app", "supported_hosts": ["linux"], "execution": "run"},
         {"directory": "module-functions", "kind": "experimental", "profile": "v2", "entry": "main.svr", "execution": "run"},

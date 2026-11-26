@@ -244,7 +244,7 @@ means the listed behavior is verified, not that a placeholder file exists.
 | G11 / large, partial: supported syntax + opt-in coverage | Structured M12 application nodes | Bounded alias/record AST nodes now reuse executable parsing and retain original spans, with explicit unparsed ranges and optional metadata exhaustion. This is a library-only syntax API, not full checking. Callable/body ASTs and service containers/prototypes now have bounded library syntax APIs and explicit coverage gaps; signatures are not resolved contracts. Dotted import nodes and opt-in same-snapshot checker coverage now retain separate semantic results and explicit metadata failures. Entry-only app container/binding nodes now reuse existing route/page/schedule/list/auth scanner grammar, retaining unknown fields as gaps. Combined entry/declaration syntax now uses original-token filtering and preserves unknown ranges; existing APIs remain strict. Opt-in combined project coverage now shares source snapshots/quotas while preserving semantic and incomplete-check diagnostics. Self-contained ordinary functions beside entries now reuse core semantic analysis through a scoped source API; imports/services/tasks explicitly require additional context. Structured route/page method/path/duplicate checks now share scanner rules through a scoped source API with exact member spans and diagnostic quotas. Unqualified same-source route names now resolve to retained ordinary function identities, with precise E4033 ranges and explicit unavailable ambiguous/import/service/task contexts. Local route placeholders now require explicit same-name handler parameters (E4144), without HTTP decoding, injection or complete argument typing. Local scheduled-declaration targets now retain ordinary/task identity using shared E4071/E4072 rules, without validating task bodies or schedule execution. Independent auth syntax now retains containers/policy headers while every where clause and provider/user/nested form remains unparsed; it grants no permissions. Additive auth-aware source/project coverage now composes these nodes with original-token filtering and shared snapshots/quotas, preserving all guard gaps and E4096 diagnostics. Independent model/enum headers now retain all nonempty bodies as gaps; same-source policy model references resolve only explicit unique Model declarations using shared E4081 rules. Independent page/view headers now retain explicit unresolved annotations and opaque bodies without Unit defaults; local page-route targets resolve only unique Page/View identities using shared E4042 rules. Page-route placeholders now require explicit same-name local Page/View parameters (E4145), preserving target/shape errors without render or HTTP type assumptions. Integrated partial source/project header coverage now composes auth/data/render/entry/declaration nodes under original-token boundary checks and shared quotas, preserving all opaque gaps and E4096. The user-approved [first model-field slice](design/M12_MODEL_FIELDS.md) now has an additive source checker for newline/comma fields, primitives/local primitive aliases, exact duplicate/unknown diagnostics and bounded whole-request refusal. Model identity stays separate from executable records; optional project model-field checks now share checker snapshots, retain file-owned errors and enforce cumulative metadata/diagnostic bounds. Ordinary function checks now also compose beside opaque auth/data/render headers through an additive source API with core diagnostic parity and explicit unavailable excluded-name/import/service/task contexts. Optional project ordinary-function outcomes now retain file-owned diagnostics from shared checker snapshots under cumulative function/diagnostic bounds, without implicit cross-file linking or suppressing E4096. Local route target/path/placeholder rules now also compose beside opaque auth/data/render headers through a source API, preserving gaps and refusing excluded-header target collisions without new namespace semantics. Optional project route outcomes now retain file-owned binding diagnostics from shared checker snapshots under cumulative route/placeholder/diagnostic bounds, including nested diagnostic copies. Default checking remains partial. Extra-parameter/qualified binding, policy/render typing, model/page bodies and default full validation remain. |
 | G12 / large, partial / active | Modules, locks and distributed package ecosystem | User approved the [G12 design](design/G12_MODULES_AND_LOCKS.md). Additive [source inventory](reference/package-source-inventory.md) now admits explicit module mappings with bounded deterministic selection, original manifest ownership, canonical containment, observed-size budgets and Unix alias identity checks. Other hosts report unavailable identity checks. Older Rust/context/overlay APIs remain strict; executable CLI commands now select the registered compiler when needed. The additive [source-unit loader](reference/package-source-units.md) now captures bounded owned buffers/ASTs/file-local imports and checks matching headers/module uniqueness with guarded Linux/procfs handle validation. An additive [primitive callable compiler](reference/registered-package-functions.md) now checks all file-owned bodies, resolves direct file-local imports and links bounded checked IR; an independent consumer prints 49 in interpreter/Node JS. Private access, alias coercions, distinct package targets and relocation have regressions. A separate [record-capable API](reference/registered-package-records.md) now compiles nominal records with aliases/imports/construction/returns, private boundary checks and source-owned diagnostics; visible record-valued field edges retain canonical IDs without recursive layout expansion and nested values execute in both engines. CLI check/run/build/test now detect registrations across the declared graph, preserve root-only test discovery and fail without scanner/entry-only fallback; IR/Node execution regressions pass. Exact parsed manifest snapshots now feed deterministic bounded source locks; explicit lock generation/check and locked check/run/build/test consume the same owned inputs with guarded Linux publication. Package formatting now includes registered sources without rewriting locks, and existing standard result records cross registered interfaces. Remaining type contexts, complete context/overlay/navigation/editor integration and exact-host qualification remain open; this does not complete G12 or G11. |
 | G13 / experimental Linux foundation complete | General stdlib: collections/errors/data, filesystem, dates and processes | Explicit generic/collection/data profiles implement checked abstractions, Option/Result/Error, collections including Byte keys, immutable bytes/codecs, recursive strict JSON and version-3 filesystem/date/clock/timer/process adapters. Data package Check/Run/Test and word-2047 native execution have independent Linux consumers with source deletion and no Node/PATH. Host authority is external, explicit and denied by default; process cancellation kills/reaps owned children and reports cleanup failure. See [data/host scope and limits](reference/data-host-v3.md). Current frozen-source Linux qualification passes 2,273 Rust tests, exact Rust 1.74.0 and 16 Node scripts. Generic/data CLI/package and LSP formatting is implemented; the formatter and consolidated Linux regression gaps are closed. Newer opt-in [generic package tasks](reference/generic-package-tasks.md) now select registered sources and dependencies for Check/Run with related-only saves and dirty-manifest refusal. A separate [generic package diagnostics](reference/generic-package-diagnostics.md) opt-in now checks unsaved entries/modules/dependencies with source-owned diagnostics and generation invalidation. [Checked package function navigation](reference/generic-package-navigation.md) now provides imported call definitions/hover and function outlines; [type annotation navigation](reference/generic-package-type-navigation.md) also preserves imported and alias identities. Body types, local bindings and [record fields](reference/generic-package-field-navigation.md) now navigate through checked identities. The full result above includes these newer package changes. E2/C1 implementation and Linux compiler/LSP qualification are complete for the documented experimental profiles; actual VS Code 1.106.0 package-host acceptance also passes. G13 is complete for the documented experimental Linux scope. Additional OS runtime, browser/mobile and release gates remain separate. |
-| G14 / large, active partial | Resources, networking, HTTP and server lifecycle | A trusted Rust IPv4 loopback adapter now owns denied-by-default exact-port grants, listeners/streams, bounded partial binary I/O, EOF, deadlines/cancellation and cleanup with independent TCP-client tests. Checked source/CLI/native host integration, Sovra-owned serving, HTTP framing/handlers and supported-host/API qualification remain open; see [socket foundation](reference/loopback-network-v4.md). |
+| G14 / large, active partial | Resources, networking, HTTP and server lifecycle | A trusted Rust IPv4 loopback adapter now owns denied-by-default exact-port grants, listeners/streams, bounded partial binary I/O, EOF, deadlines/cancellation and cleanup with independent TCP-client tests. Explicit Rust-owned version-four requests now connect checked source execution with tested binary echo and scope cleanup. External v3/v4 policy dispatch now enables independent CLI/native loopback byte serving without embedded grants or Node/project startup dependencies. A bounded borrowed fixed-length HTTP/1.1 request parser now validates framing and partial input; pure bounded final-response construction also enforces framing and HEAD/bodyless status rules. One-request HTTP socket integration and real Sovra CLI/native handlers now pass independent fixed-length/chunked Unicode HTTP/JSON client acceptance with shared head/decode work and deadlines. Full protocol/production and wider supported-host qualification remain open; see [socket foundation](reference/loopback-network-v4.md). |
 | G15 / medium/large, design | Browser execution and shared web UI | A real Sovra program runs in-browser through a documented host; no hidden Node dependency. |
 | G16 / large, design | Mobile runtime, UI and packaging | Shared checked logic plus real Android/iOS build/lifecycle/device tests; platform-specific limits stated. |
 | G17 / maintainer | Publish accurate support/version/reporting policy | Concrete support scope, private reporting channels, review ownership and release authority; no unsupported “stable 1.0” claim. |
@@ -1079,3 +1079,160 @@ See [socket scope](reference/loopback-network-v4.md) and the
 [G14 contract](design/G14_COMPLETION_CONTRACT.md). Source/CLI/native network host
 integration, Sovra-owned serving, HTTP framing/handlers and independent API
 acceptance remain open. This Rust-only slice does not establish HTTP support.
+
+G14 network execution checkpoint (2026-11-24): `NetworkHostV4` validates exact
+version-four requests and keeps process-unique tokens tied to private socket
+owners. Additive Rust checked-data entry points consume the host and close its
+owners on VM success, runtime failure or control refusal. Real `.svr` binary echo
+is tested against an independent TCP client. Existing v3/default entry points
+remain separate; CLI/native network policy, HTTP and additional-host acceptance
+remain open. See [network host requests](reference/network-host-v4.md).
+
+G14 external-policy checkpoint (2026-11-24): the existing data-profile
+`--host-policy` option now dispatches exact v3 file/process/time or v4 loopback
+policy documents. Regular-file reads are bounded; v4 grants exact ports and only
+lowerable limits. CLI/native network echo runs with an independent TCP client;
+native startup is tested after project deletion with an empty environment and
+no Node/PATH. No grant is embedded or accepted by check/test/build. Existing v3
+source/native tests remain regression coverage. HTTP/TLS and wider platform
+qualification remain open; see [network policy](reference/network-policy-v4.md).
+
+G14 HTTP request checkpoint (2026-11-24): a pure borrowed fixed-length HTTP/1.1
+parser now checks exact CRLF/request lines, Host/field syntax, declared binary
+bodies, partial input/EOF and lowerable byte/count/work limits. Ambiguous framing,
+unsupported transfer coding/contexts and buffered trailing data refuse. RFC 9110
+and 9112 primary sections were reviewed. This is a restricted Rust parser, not
+full HTTP conformance or socket/Sovra handler integration. See
+[request framing](reference/http-request-framing-v4.md) for the explicit profile
+and required aggregate connection controls.
+
+G14 HTTP response checkpoint (2026-11-24): a pure Rust renderer now validates and
+sizes final HTTP/1.1 responses before allocation, owns Content-Length/Connection,
+handles HEAD and 204/205/304, rejects field injection/framing overrides and
+preserves separate Set-Cookie lines. Exact serialized byte/count/work caps and
+primary RFC rules are tested. Response/socket/Sovra-handler wiring and full
+protocol conformance remain open. See [response framing](reference/http-response-framing-v4.md).
+
+G14 HTTP exchange checkpoint (2026-11-24): version-four HTTP receive/respond
+operations now own one-request socket state, aggregate accept-to-send deadlines,
+I/O admission and partial-write completion. Framing refusals never publish a
+handler request; HEAD context is retained by the host. A real Sovra example
+passes independent Python HTTP-client checks for GET/HEAD, JSON echo, 404 and
+Result-based handler 500 through CLI/native launch, with no Node/source startup
+dependency. Chunked/full protocol, production controls and additional platforms
+remain open; see [HTTP exchange scope](reference/http-exchange-v4.md).
+
+
+2026-11-24 G14 incremental chunked-decoder checkpoint: the experimental Rust
+helper now validates binary chunk frames and ignored extensions with aggregate
+wire/body/line/chunk/work limits, sticky failures and no partial body exposure.
+[Scope and next integration](reference/http-chunked-v4.md): nonempty trailers
+refuse; request-head/socket/CLI/native chunked admission remains open. The
+existing fixed-length Sovra HTTP serving checkpoint is unchanged.
+
+
+2026-11-24 G14 chunked serving checkpoint: `http.receive` now admits exactly one
+chunked coding through checked head framing and bounded incremental decoding.
+Head work, byte/line limits, socket deadline, I/O count and cancellation remain
+shared; partial/malformed bodies never publish a handler request. Independent
+CLI/native clients exercise chunked Unicode JSON, including splits inside UTF-8.
+The public borrowed parser retains its fixed-length contract. Nonempty trailers,
+remaining protocol/production and additional-host gates stay open.
+See [chunked host scope](reference/http-chunked-v4.md).
+
+
+2026-11-24 G14 trailer checkpoint: the HTTP host validates and discards bounded
+chunked trailers under inherited byte/line/count and shared work/deadline/I/O
+limits. No trailer field is merged into the handler header map. Known framing,
+routing/authentication/content-processing fields refuse. Independent CLI/native
+clients cover declared trailers; integrity verification and application retention
+remain outside this discard contract. Full protocol/production gates stay open.
+See [trailer scope](reference/http-trailers-v4.md).
+
+
+2026-11-24 G14 expectation checkpoint: checked HTTP heads now permit one
+100-continue expectation; bounded interim output precedes body waits under the
+same deadline/I/O accounting. Unsupported expectations receive early 417;
+duplicate/invalid framing refuses before interim output. The Sovra example
+recovers ordinary receive errors per connection and independent CLI/native
+clients verify headers-only waiting and subsequent requests. Full protocol,
+Host/origin authorization and production gates remain open.
+See [expectation scope](reference/http-expect-v4.md).
+
+
+2026-11-24 G14 Host/Origin checkpoint: optional trusted HTTP access policies now
+validate bounded exact Host/Origin grants and explicit missing-Origin rules
+before Continue/body processing. Admission consumes shared request work; denial
+returns bounded 403 and drops the owner. The example enables the policy and
+independent CLI/native clients test early denial without body transfer followed
+by successful requests. Existing policies without the object retain their HTTP
+behavior; this is not authentication, CORS or complete CSRF protection.
+See [access scope](reference/http-access-v4.md).
+
+
+2026-11-24 G14 request-permission checkpoint: optional paired method/raw-target
+lists now narrow external HTTP access before Continue/body processing. Finite
+exact matching preserves method case, encoded targets and queries; comparisons
+consume existing HTTP work. Empty lists deny all, incomplete configurations
+refuse and omitting both preserves Host/Origin-only behavior. Independent CLI/
+native clients exercise unlisted methods and query variants without sending
+bodies. This is coarse request admission, not application authentication or
+per-route identity permissions. See [access contract](reference/http-access-v4.md).
+
+
+2026-11-24 G14 qualification consolidation: a [frozen-source runner](G14_QUALIFICATION.md)
+now covers library/network/HTTP, actual CLI/native clients and v3 compatibility
+with strict lint/MSRV and Node checks. It retains stage failures and rejects
+source drift or missing/skipped Rust targets. The checklist now closes the
+implemented restricted loopback lifecycle/client foundation while keeping client
+authentication, full protocol/production and additional-platform gates explicit.
+CI jobs retain x86_64/ARM64 evidence; actual hosted passes require their reports.
+
+
+2026-11-24 G14 qualifier source-capture hardening: bounded no-follow Linux
+directory/file reads now refuse symlinks, missing tracked files and nonregular
+substitutions; read/reopen identity checks reject mutation and replacement.
+Initial capture errors retain unsuccessful reports. Eighteen Python regressions
+cover these cases and existing qualifier failures. Runtime HTTP/authentication
+capabilities are unchanged. See [qualification limits](G14_QUALIFICATION.md).
+
+
+2026-11-24 G14 trusted authentication boundary: a Rust embedding caller can now
+register a synchronous Bearer verifier before socket creation. The framework
+checks bounded credential syntax, gates body/Continue, maps fixed provider
+outcomes, publishes a validated public principal and redacts Authorization from
+VM descriptions. Eight tests include real Sovra consumption and post-verifier
+controls/cleanup. This is not a CLI/native credential backend or cryptographic
+verification implementation; those deployment gates remain open.
+See [provider contract](reference/http-authentication-v4.md).
+
+
+2026-11-24 G14 verifier audience/transport context: trusted providers now receive
+exact admitted Host, optional Origin and actual loopback plaintext transport.
+Three additional cases verify per-audience refusal, exact/missing context and
+refusal despite forged secure forwarding claims. Context scans/validation share
+HTTP work and preserve credential/URI debug redaction. This does not implement
+TLS, trusted proxies or CLI/native credential backends.
+See [audience context](reference/http-authentication-v4.md#audience-and-actual-transport-context).
+
+
+2026-11-24 G14 external verifier delegation: CLI/native policies can now select
+an exact captured native program/cwd and fixed arguments for a bounded JSON
+verification protocol. Credentials use stdin; no environment inheritance or
+source-visible general process authority is added. Strict replies fail closed,
+and child/HTTP timeout or cancellation reaps the direct child. Independent
+CLI/native clients prove principal/redaction, wrong-token 401, permission 403 and
+continued service without embedded credentials, project files or Node startup.
+The test backend is not a shipped production credential system; TLS and reviewed
+credential lifecycle/deployment remain open.
+See [command contract](reference/http-command-authentication-v4.md).
+
+
+2026-11-25 G14 aggregate HTTP admission: optional bounded fixed-window budgets
+now govern attempts across a host domain before head/parser/authentication work.
+Failures consume admitted attempts; listener closure does not replenish credits.
+Exhaustion returns best-effort non-cacheable 429 and drops the owner. Three
+deterministic clock and four policy/socket cases cover bounds/counters/cleanup;
+authenticated CLI/native clients prove denied requests do not spawn verifiers.
+This is aggregate attempt limiting, not per-identity/distributed fairness or
+production DoS protection. See [admission contract](reference/http-admission-v4.md).

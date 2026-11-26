@@ -655,6 +655,35 @@ pub use generic_package_native::{
 mod runtime_json;
 pub use runtime_json::{parse_json, serialize_json, JsonError, JsonLimits, JsonValue};
 
+mod http_chunked_v4;
+pub use http_chunked_v4::{HttpChunkedDecoder, HttpChunkedLimits, HttpTrailerLimits};
+mod http_command_verifier_v4;
+pub use http_command_verifier_v4::HttpCommandVerifier;
+mod http_authentication_v4;
+pub use http_authentication_v4::{
+    HttpAuthenticationDecision, HttpBearerControl, HttpBearerRequest, HttpBearerTransport,
+    HttpBearerVerifier, HttpPrincipal, HttpVerificationJob,
+};
+mod http_admission_v4;
+pub use http_admission_v4::HttpAdmissionPolicy;
+mod http_access_v4;
+pub use http_access_v4::HttpAccessPolicy;
+mod http_exchange_v4;
+pub use http_exchange_v4::HttpExchangeLimits;
+mod http_response_v4;
+pub use http_response_v4::{
+    render_http_response, HttpResponseContext, HttpResponseError, HttpResponseHeader,
+    HttpResponseLimits,
+};
+mod http_request_v4;
+pub use http_request_v4::{
+    parse_http_request, HttpHeadBuffer, HttpRequest, HttpRequestError, HttpRequestHeader,
+    HttpRequestLimits, HttpRequestParse,
+};
+mod data_host_policy;
+pub use data_host_policy::DataHostPolicy;
+mod network_host_v4;
+pub use network_host_v4::NetworkHostV4;
 mod network_v4;
 pub use network_v4::{
     LoopbackListener, LoopbackNetwork, LoopbackStream, NetworkLimits, NetworkRead,
@@ -666,5 +695,12 @@ pub use host_v3::{HostError, HostLimits, HostV3};
 mod host_dates;
 pub use host_dates::{add_date, format_date, parse_date};
 
-pub use generic_package_compile::execute_generic_data_package_with_host;
-pub use generic_runtime::execute_generic_data_ir_with_host;
+pub use generic_package_compile::{
+    execute_generic_data_package_with_host, execute_generic_data_package_with_network_host,
+};
+pub use generic_runtime::{
+    execute_generic_data_ir_with_host, execute_generic_data_ir_with_network_host,
+};
+
+mod http_fixed_body_v4;
+pub use http_fixed_body_v4::HttpFixedBody;
